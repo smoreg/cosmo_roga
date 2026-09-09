@@ -211,10 +211,12 @@ is a zone — somewhere a body moves around without opening anything. Rooms whos
 doorways the artist drew open come out as one zone, which is the honest answer:
 if you can walk it, it is one space.
 
-A hex grid then goes over the top, at a size you choose, default 50 ft. It is a
-coarse way to say roughly where something is and how far there is to walk — not
-a floor plan, and it decides nothing. Set it to 10 ft or 80 ft and the rooms,
-the doors and the contents are identical; only the overlay changes. That
+A hex grid then goes over the top, at a size you choose, default 50 ft, and from
+there the lattice is the structure: hexagons are where you stand, and the walls
+and doors between them are its edges. What the lattice does not decide is what
+the ship contains — set it to 10 ft or 80 ft and the same 68 rooms are there
+with the same names and contents; what changes is how finely they are divided
+into places to stand, and therefore how many walls there are to draw. That
 separation was worth getting right: when the zones were built from whichever
 rooms happened to win a hexagon, a galley too narrow for one vanished and took
 its doors with it, stranding the compartments beyond.
@@ -225,29 +227,42 @@ of 1052 came out under 50 square feet. The cutoff is 80 — about nine feet
 square, smaller than a stateroom, bigger than a wardrobe — which leaves 68 rooms
 holding 84% of the floor.
 
-**Doors belong to the wall the artwork drew them in.** A crossing of three feet
-or less with a different room on each side is somewhere a door can be; the
-thickness cutoff is what stops the hull, the fuel tanks and the space between
-two hulls from becoming doorways. Each run of touching wall is its own
-candidate — two rooms can meet in more than one place, and averaging those
-together used to put the door in the wall between them, or inside a third room.
-The door is drawn along the wall, perpendicular to the direction the probe
-crossed it. The pair of hexagons either side is recorded too, as `from` and `to`
-in the export: that is the coarse move, and it is guidance, not geometry.
+**Walls and doors are lattice edges, and only lattice edges.** A wall is the
+edge between two hexagons in different rooms; the hull is the edge between a
+hexagon and the vacuum; a door is a wall with a way through. An edge inside a
+compartment is not a wall and stays the faint line of the hexagon itself. So the
+map has one geometry rather than two, and the drawing is the same object the
+movement rules read — the arrangement in `experiments/hullforms`.
 
-Not every shared wall becomes a door — a deck where they all did would say
-nothing about where you can go — so it keeps a spanning tree, which makes the
-ship walkable, plus 45% of the rest for loops. That share is `LOOP_SHARE` from
+Which walls have doors comes from the artwork. A crossing of three feet or less
+with a different room on each side is somewhere a door can be; the thickness
+cutoff is what stops the hull, the fuel tanks and the space between two hulls
+from becoming doorways. Each connection then lands on the wall nearest where the
+artwork drew it.
+
+A room too small to hold a hexagon is absorbed into one, and **its connections
+are absorbed with it**: a corridor five feet wide still lets you through, so the
+contact graph is walked through the absorbed rooms and two hexagon-holding rooms
+count as joined if the artwork links them directly or through nothing but
+absorbed space. Without that the rooms such a corridor served were sealed, and
+how many depended on the hex size — 14 at 25 ft against 6 at 50 ft. With it the
+figure barely moves: 5, 7 and 8 sealed at 50, 25 and 10 ft.
+
+Not every wall becomes a door — a deck where they all did would say nothing
+about where you can go — so it keeps a spanning tree, which makes the ship
+walkable, plus 45% of the rest for loops. That share is `LOOP_SHARE` from
 smoreg's `experiments/hullforms/generate.mjs`, and it is there for the same
 reason.
 
-**Sealed rooms are reported, not fabricated.** On the deck above, 8 of 68 have
-no door: three air-raft bays, three weapon mounts, a plasma conduit — all
-reached through their own hatches — and one galley that the artwork itself draws
-shut. Widening the cutoff from 3 ft to 8 ft recovers exactly one of them and
-risks doors through fuel tanks, so the cutoff stays and the rooms are marked
-`sealed`, drawn with a dashed red edge, counted, and kept out of the choice of
-boarding point.
+**Sealed rooms are reported, not fabricated.** Reachability is a walk over the
+hexagons themselves — freely across a compartment, between compartments only
+where a wall has a door — and 86–90% of them come out reachable. What does not
+is usually right: air-raft bays and weapon mounts between two hulls are entered
+through their own hatches. One galley on the test deck is genuinely stranded,
+because the tile draws it with its door shut. Widening the cutoff from 3 ft to
+8 ft recovers exactly one room and risks doors through fuel tanks, so the cutoff
+stays and those rooms are marked `sealed`, drawn with a dashed red edge, counted,
+and kept out of the choice of boarding point.
 
 **Rooms name themselves** from the tile beneath them — "Fighter Bay Crossroad",
 "Construction Deck - Upper" — and take their trade from that tile's taxonomy

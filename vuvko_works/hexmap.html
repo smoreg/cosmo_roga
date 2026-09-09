@@ -41,12 +41,15 @@ button:hover{background:#fff}
 .stage{margin:auto;position:relative;flex:none}
 .stage canvas{position:absolute;top:0;left:0;image-rendering:auto}
 .stage svg{position:absolute;top:0;left:0;overflow:visible}
-.hex{stroke:#0e1114;stroke-width:.6;cursor:pointer}
+.hex{stroke:rgba(190,210,220,.16);stroke-width:.4;cursor:pointer}
 .hex:hover{stroke:#fff;stroke-width:1.6}
 .hex.sel{stroke:var(--stamp);stroke-width:2}
 .hex.here{stroke:#fff;stroke-width:2.4}
-.door{stroke:var(--door);stroke-width:3;stroke-linecap:round}
-.door.shut{stroke-dasharray:3 3}
+.wall{stroke:#9fb4c0;stroke-width:1.1;stroke-linecap:round}
+.wall.sealed{stroke:var(--stamp);stroke-dasharray:2 2}
+.hull{stroke:#dbe7ee;stroke-width:1.9;stroke-linecap:round}
+.door{stroke:var(--door);stroke-width:2.6;stroke-linecap:butt}
+.door.shut{stroke-dasharray:2.5 2}
 .node{fill:var(--ink);font:700 9px "B612 Mono",monospace;text-anchor:middle;pointer-events:none}
 .zlabel{fill:#fff;font:700 9px "B612",sans-serif;text-anchor:middle;pointer-events:none;
   paint-order:stroke;stroke:#0b0e10;stroke-width:2.5px}
@@ -453,9 +456,42 @@ async function build(){
   }
 
   const cellList = [...cells.values()];
-  const doors = pickDoors(contacts(rast, reg), zoneOf, zones, cellList, geom);
-  dressUp(zones, doors, plan);
-  return {plan, rast, reg, geom, hexFt, cells:cellList, zones, doors};
+  const byKey = new Map(cellList.map(c=>[hexKey(c), c]));
+
+  /* From here the lattice is the structure, not a tint over one. A wall is the
+     edge between two hexagons in different rooms; the hull is the edge between
+     a hexagon and the vacuum; a door is a wall with a way through. Nothing is
+     drawn off the lattice, so the map has one geometry rather than two.
+
+     Rooms too small to hold a hexagon share one with a neighbour. Between those
+     there is no wall to draw and nothing to open: at this size they are one
+     place to stand, and saying otherwise would put a door inside a hexagon. */
+  const walls = [];
+  for (const c of cellList){
+    if (c.kind !== "floor") continue;
+    for (const d of HEX_DIRS){
+      const n = byKey.get(hexKey({q:c.q + d.q, r:c.r + d.r}));
+      const outside = !n || n.kind !== "floor";
+      if (!outside && n.zone === c.zone) continue;          // same room: open floor
+      if (!outside && (n.q < c.q || (n.q === c.q && n.r < c.r))) continue;  // once per edge
+      const pa = geom.centre(c), pb = outside
+        ? {x: pa.x + geom.ft * (d.q + d.r/2), y: pa.y + 1.5 * geom.R * d.r}
+        : geom.centre(n);
+      const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+      const ex = pb.x - pa.x, ey = pb.y - pa.y;
+      const len = Math.hypot(ex, ey) || 1;
+      walls.push({
+        a: c, b: outside ? null : n, hull: outside,
+        x1: mx - ey / len * geom.R / 2, y1: my + ex / len * geom.R / 2,
+        x2: mx + ey / len * geom.R / 2, y2: my - ex / len * geom.R / 2,
+        mx, my,
+      });
+    }
+  }
+
+  const doors = pickDoors(contacts(rast, reg), zoneOf, zones, walls);
+  dressUp(zones, doors, cellList, byKey, walls);
+  return {plan, rast, reg, geom, hexFt, cells:cellList, byKey, zones, walls, doors};
 }
 
 /** Which tile is under a point, in feet. Overlays are vehicles, not rooms. */
@@ -474,38 +510,79 @@ function zoneKind(roles){
   return "hold";
 }
 
-/* A door belongs to the wall the artwork drew it in, not to the lattice: the
-   hexagons are guidance laid on top, and at 50 ft one of them can cover a whole
-   suite of rooms whose doors are all inside it. So a door is placed at the run
-   of wall it was found in and drawn along that wall — perpendicular to the
-   direction the probe crossed it.
+/* A door is a wall with a way through, so it is one of the edges the lattice
+   already has. The artwork says which rooms connect and roughly where; the
+   lattice says which edge that is. Where two rooms touch only inside a single
+   hexagon there is no edge between them and no door to place: at that size they
+   are one place to stand.
 
-   The pair of hexagons either side is still worth knowing, and is recorded when
-   both zones own one: that is the coarse move a player makes, and it is what
-   the export carries as from/to.
-
-   Not every shared wall becomes a door — a deck where they all did would say
-   nothing about where you can go — so keep a spanning tree, which makes the
-   ship walkable, plus a share of the rest for loops: the proportion smoreg's
+   Not every wall becomes a door — a deck where they all did would say nothing
+   about where you can go — so keep a spanning tree, which makes the ship
+   walkable, plus a share of the rest for loops: the proportion smoreg's
    hullforms generator settled on. */
-function pickDoors(list, zoneOf, zones, cells, geom){
-  const byKey = new Map(cells.map(c=>[hexKey(c), c]));
-  const hexAt = (z, x, y) => {
-    let best = null;
-    for (const c of zones[z].cells){
-      const p = geom.centre(c);
-      const d = Math.hypot(p.x - x, p.y - y);
-      if (!best || d < best.d) best = {c, d};
-    }
-    return best && best.c;
-  };
-  const edges = [];
+function pickDoors(list, zoneOf, zones, walls){
+  /* Every wall, indexed by the pair of rooms it separates. */
+  const byPair = new Map();
+  for (const w of walls){
+    if (w.hull) continue;
+    const a = w.a.zone, b = w.b.zone;
+    const key = a < b ? a + ":" + b : b + ":" + a;
+    if (!byPair.has(key)) byPair.set(key, []);
+    byPair.get(key).push(w);
+  }
+  /* What the artwork says connects to what. A room too small to own a hexagon
+     is absorbed into one, and its connections have to come with it: a corridor
+     five feet wide still lets you through, and dropping it would seal the rooms
+     it served. So the contact graph is walked through the absorbed rooms, and
+     two rooms that hold hexagons count as connected if the artwork joins them
+     directly or through nothing but absorbed space. */
+  const contact = new Map(zones.map(z=>[z.id, new Map()]));
   for (const c of list){
     const a = zoneOf.get(c.a), b = zoneOf.get(c.b);
     if (a === undefined || b === undefined || a === b) continue;
-    const x = c.x / PX_FT, y = c.y / PX_FT;
-    edges.push({a, b, n:c.n, x, y, ax:c.ax, ay:c.ay,
-                from:hexAt(a, x, y), to:hexAt(b, x, y)});
+    contact.get(a).set(b, Math.max(contact.get(a).get(b) || 0, c.n));
+    contact.get(b).set(a, Math.max(contact.get(b).get(a) || 0, c.n));
+  }
+  const absorbed = z => !zones[z].cells.length;
+  const joined = new Map();                    // "a:b" -> strength
+  for (const z of zones){
+    if (absorbed(z.id)) continue;
+    const seenRooms = new Set([z.id]);
+    const queue = [[z.id, Infinity]];
+    while (queue.length){
+      const [at, via] = queue.shift();
+      for (const [next, n] of contact.get(at)){
+        if (seenRooms.has(next)) continue;
+        const strength = Math.min(via, n);
+        if (absorbed(next)){ seenRooms.add(next); queue.push([next, strength]); continue; }
+        seenRooms.add(next);
+        const key = z.id < next ? z.id + ":" + next : next + ":" + z.id;
+        joined.set(key, Math.max(joined.get(key) || 0, strength));
+      }
+    }
+  }
+
+  /* Each connection lands on the wall between the two rooms nearest where the
+     artwork drew it. */
+  const edges = [];
+  for (const [key, n] of joined){
+    const [a, b] = key.split(":").map(Number);
+    const options = byPair.get(key);
+    if (!options) continue;                  // no lattice edge between them
+    const near = contact.get(a).has(b) ? list.find(c=>{
+      const ca = zoneOf.get(c.a), cb = zoneOf.get(c.b);
+      return (ca === a && cb === b) || (ca === b && cb === a);
+    }) : null;
+    const x = near ? near.x / PX_FT : null, y = near ? near.y / PX_FT : null;
+    let best = options[0];
+    if (x !== null){
+      let bd = Infinity;
+      for (const w of options){
+        const d = Math.hypot(w.mx - x, w.my - y);
+        if (d < bd){ bd = d; best = w; }
+      }
+    }
+    edges.push({a, b, n, wall:best});
   }
   edges.sort((p, q)=>q.n - p.n);
 
@@ -517,14 +594,18 @@ function pickDoors(list, zoneOf, zones, cells, geom){
     if (ra !== rb){ parent[ra] = rb; doors.push({...e, tree:true}); }
   }
   for (const e of edges){
-    if (doors.some(d=>d.a === e.a && d.b === e.b)) continue;
+    if (doors.some(d=>d.wall === e.wall)) continue;
+    if (doors.some(d=>d.a === e.a && d.b === e.b) && rnd() >= LOOP_SHARE) continue;
     if (rnd() < LOOP_SHARE) doors.push({...e, tree:false});
   }
   for (let i = 0; i < doors.length; i++){
-    doors[i].id = i;
-    doors[i].state = doors[i].tree
-      ? (rnd() < 0.12 ? "closed" : "open")
-      : (rnd() < 0.25 ? "locked" : rnd() < 0.5 ? "closed" : "open");
+    const d = doors[i];
+    d.id = i;
+    d.wall.door = d;
+    d.from = d.wall.a; d.to = d.wall.b;
+    d.x = d.wall.mx; d.y = d.wall.my;
+    d.state = d.tree ? (rnd() < 0.12 ? "closed" : "open")
+                     : (rnd() < 0.25 ? "locked" : rnd() < 0.5 ? "closed" : "open");
   }
   return doors;
 }
@@ -545,7 +626,7 @@ const FITTINGS = {
   hold:     ["debris", "loose panel", "stowage"],
 };
 const HAZARDS = ["vented", "fire", "flooded", "live wiring", "radiation"];
-function dressUp(zones, doors, plan){
+function dressUp(zones, doors, cells, byKey, walls){
   const named = new Map();
   for (const z of zones){
     const base = z.source ? z.source.split(/[(,]/)[0].trim() : z.kind;
@@ -564,35 +645,54 @@ function dressUp(zones, doors, plan){
     }
     if (rnd() < 0.14) z.hazard = pick(HAZARDS);
   }
-  /* Which compartments can actually be walked to. Not every pocket connects:
-     a weapon mount or an air-raft bay between two hulls is reached through its
-     own hatch, and a wall too thick to be a doorway is not one. Rather than
-     invent a door through a fuel tank, say which spaces are sealed — they are
-     content, not an error, and a boarding party can cut. */
-  const adj = new Map(zones.map(z=>[z.id, []]));
-  for (const d of doors){ adj.get(d.a).push(d.b); adj.get(d.b).push(d.a); }
-  const seen = new Map();
+  /* Walk the ship the way a body would: freely across a room, and between rooms
+     only where a wall has a door. The lattice is the movement graph, so this is
+     a walk over hexagons rather than over an abstraction of them.
+
+     What it cannot reach is sealed, and staying sealed is often right — a weapon
+     mount or an air-raft bay between two hulls is entered through its own hatch.
+     Better to say so than to invent a door through a fuel tank. */
+  const open = new Set();
+  for (const w of walls) if (w.door) open.add(w);
+  const wallBetween = new Map();
+  for (const w of walls){
+    if (w.hull) continue;
+    wallBetween.set(hexKey(w.a) + "|" + hexKey(w.b), w);
+    wallBetween.set(hexKey(w.b) + "|" + hexKey(w.a), w);
+  }
+  const floor = cells.filter(c=>c.kind === "floor");
+  const visited = new Set();
   const parts = [];
-  for (const z of zones){
-    if (seen.has(z.id)) continue;
-    const part = [], st = [z.id];
-    seen.set(z.id, parts.length);
+  for (const start of floor){
+    if (visited.has(start)) continue;
+    const part = [start], st = [start];
+    visited.add(start);
     while (st.length){
-      const q = st.pop(); part.push(q);
-      for (const n of adj.get(q)) if (!seen.has(n)){ seen.set(n, parts.length); st.push(n); }
+      const c = st.pop();
+      for (const d of HEX_DIRS){
+        const n = byKey.get(hexKey({q:c.q + d.q, r:c.r + d.r}));
+        if (!n || n.kind !== "floor" || visited.has(n)) continue;
+        if (n.zone !== c.zone){
+          const w = wallBetween.get(hexKey(c) + "|" + hexKey(n));
+          if (!w || !open.has(w)) continue;      // a wall with no door
+        }
+        visited.add(n); part.push(n); st.push(n);
+      }
     }
     parts.push(part);
   }
   parts.sort((a, b)=>b.length - a.length);
-  const main = new Set(parts[0] || []);
-  for (const z of zones) z.sealed = !main.has(z.id);
+  const body = new Set(parts[0] || []);
+  for (const c of floor) c.reachable = body.has(c);
+  for (const z of zones) z.sealed = z.cells.length > 0 && !z.cells.some(c=>body.has(c));
+  for (const z of zones) if (!z.cells.length) z.sealed = false;   // shares a hexagon
 
   /* Come aboard somewhere you can walk out of: an airlock in the connected
      part of the ship, else its aftmost compartment, where a tube would clamp. */
-  const open = zones.filter(z=>!z.sealed);
-  const locks = open.filter(z=>z.roles.includes("airlock"));
+  const reachable = zones.filter(z=>!z.sealed && z.cells.some(c=>body.has(c)));
+  const locks = reachable.filter(z=>z.roles.includes("airlock"));
   const entry = locks.length ? pick(locks)
-    : open.slice().sort((a, b)=>b.cy - a.cy)[0];
+    : reachable.slice().sort((a, b)=>b.cy - a.cy)[0];
   if (entry){ entry.entry = true; entry.marks.unshift("boarding point"); }
 }
 
@@ -632,13 +732,24 @@ function draw(){
       poly.setAttribute("class", "hex" + (SEL === c.zone ? " sel" : "") +
         (HEX === c ? " here" : ""));
       poly.setAttribute("fill", zoneColour(z, SEL === c.zone));
-      if (z.sealed){ poly.setAttribute("stroke", "#c8503f"); poly.setAttribute("stroke-dasharray", "1.5 1.5"); }
       poly.addEventListener("click", ()=>{ HEX = c; SEL = c.zone; draw(); listZones(); inspect(); });
       const t = document.createElementNS(NS, "title");
       t.textContent = z.name + " — " + z.kind + (z.sealed ? " · sealed" : "") +
-        (c.mark ? " · " + c.mark : "");
+        (z.marks.length ? " · " + z.marks.join(", ") : "");
       poly.appendChild(t);
       svg.appendChild(poly);
+    }
+    /* The hull and the bulkheads are edges of the lattice, drawn once each.
+       An edge inside a compartment is not a wall and is left as the faint line
+       of the hexagon itself. */
+    for (const w of MAP.walls){
+      const line = document.createElementNS(NS, "line");
+      line.setAttribute("x1", w.x1); line.setAttribute("y1", w.y1);
+      line.setAttribute("x2", w.x2); line.setAttribute("y2", w.y2);
+      line.setAttribute("class", w.hull ? "hull" : "wall");
+      if (!w.hull && (zones[w.a.zone].sealed || zones[w.b.zone].sealed))
+        line.setAttribute("class", "wall sealed");
+      svg.appendChild(line);
     }
   }
   /* A door lies *on* the edge the two hexagons share: the segment between their
@@ -649,16 +760,11 @@ function draw(){
   for (const d of doors){
     const a = zones[d.a], b = zones[d.b];
     const label = a.name + " ↔ " + b.name + " · " + d.state;
-    /* Along the wall: the probe crossed it in (ax, ay), so the wall itself runs
-       across that. Length is a doorway, not a hexagon — the door is a feature of
-       the plan, and stays the same size whatever the lattice is set to. */
-    const len = Math.hypot(d.ax, d.ay) || 1;
-    const half = 5;                                   // a 10 ft doorway
+    /* A door lies on the wall it opens: the same lattice edge, drawn over it. */
+    const w = d.wall;
     const line = document.createElementNS(NS, "line");
-    line.setAttribute("x1", d.x - d.ay / len * half);
-    line.setAttribute("y1", d.y + d.ax / len * half);
-    line.setAttribute("x2", d.x + d.ay / len * half);
-    line.setAttribute("y2", d.y - d.ax / len * half);
+    line.setAttribute("x1", w.x1); line.setAttribute("y1", w.y1);
+    line.setAttribute("x2", w.x2); line.setAttribute("y2", w.y2);
     line.setAttribute("class", "door" + (d.state === "open" ? "" : " shut"));
     const t = document.createElementNS(NS, "title");
     t.textContent = label;
