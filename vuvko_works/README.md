@@ -198,6 +198,61 @@ checking — tiles whose names disagree with their art, and tiles that want open
 space. Serve the folder and open it. If a classification is wrong you see it
 there rather than three ships later.
 
+## hexmap.html — the boarding map
+
+`geomorphs.html` builds a ship. This asks the drawing where a player could
+stand.
+
+The tiles are line art on transparency: walls and furniture are ink, floor is
+nothing at all. So the plan rasterises into a mask where every pixel is either
+structure or space, at 12 px to a 5 ft square. Flood the space inward from the
+border and whatever it reaches is vacuum; what it cannot reach is enclosed, in
+pieces. **Each enclosed piece is a zone** — somewhere a body moves around
+without opening anything. Rooms whose doorways the artist drew open come out as
+one zone, which is the honest answer: if you can walk it, it is one space.
+
+Then the hexagons go on. **A hexagon is a node** — a place to stand, something to
+search — and belongs to whichever zone owns most of its area. Inside a zone you
+move freely between touching hexes; leaving one costs a door.
+
+**Hex size is a control**, in feet across the flats. At 25 ft a 100 ft geomorph
+tile is four hexes wide and a stateroom is one hex; at 10 ft the same ship has
+five times the nodes and small rooms come into their own; at 50 ft only the
+halls survive. The zones do not change — they are read off the artwork, not the
+lattice — but which of them are big enough to hold a hexagon does.
+
+**Doors** are found by looking across the structure: a crossing of three feet or
+less with a different zone on each side is somewhere a door can be, and the
+thickness cutoff is what stops the hull, the tanks and the space between two
+hulls from becoming doorways. Not every shared wall gets one — a deck where they
+all did would say nothing about where you can go — so it keeps a spanning tree,
+which makes the whole ship walkable, plus 45% of the rest for loops. That share
+is `LOOP_SHARE` from smoreg's `experiments/hullforms/generate.mjs`, and it is
+there for the same reason.
+
+**Zones name themselves** from the tile beneath their middle — "Fighter Bay
+Crossroad", "Construction Deck - Upper" — and take their trade from that tile's
+taxonomy roles. The seeded content pass then furnishes each by its trade:
+consoles and nav plots in `command`, reactor taps in `drive`, footlockers in
+`quarters`, and a hazard on about one zone in seven. Nothing invents a room; the
+artwork decided what is there, the pass only decides what is lying in it.
+
+The lattice — pointy-top, axial `q, r`, six directions, odd-r offset — is the
+one in `smoreg_works/experiments/hullforms/hexgrid.mjs`, reimplemented rather
+than imported: that folder is a sandbox, and the two halves of this repo do not
+reach into each other. A map from here and a hull from there are on the same
+grid.
+
+*Export JSON* writes zones, hexes, doors and the tile provenance of each zone.
+
+### Sharing the model
+
+`geomorph-core.js` holds everything both pages need — tile parsing, the library,
+the taxonomy, the fit test, the layouts — and touches no DOM. Each page reads
+its own controls and hands them to `layout(opts)`; what comes back is geometry.
+A classic script rather than a module, because both pages must work from
+`file://`, where module loading and `fetch` are equally refused.
+
 ### Saved ships
 
 *Export JSON* and *Open JSON…* speak Shipyard's format:

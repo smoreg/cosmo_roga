@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hex Boarding Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0e1114; --deck:#12161a; --ink:#dfe6e6; --dim:#8e9a9b; --rule:#39434a;
+  --panel:#181d22; --stamp:#c8503f; --door:#e8c15a; --grid:#1d242a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--void);color:var(--ink);font:400 14px/1.5 "B612",system-ui,sans-serif;
+     display:flex;flex-direction:column}
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;background:var(--panel);
+     border-bottom:1px solid var(--rule);padding:10px 14px;flex:none}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+select,input[type=text],input[type=search]{font:400 13px/1 "B612 Mono",monospace;padding:6px 8px;
+  background:var(--deck);color:var(--ink);border:1px solid var(--rule);border-radius:0}
+input[type=range]{width:150px;accent-color:var(--stamp)}
+button{font:700 13px/1 "B612",sans-serif;padding:8px 14px;cursor:pointer;background:var(--ink);
+  color:var(--void);border:1px solid var(--ink);border-radius:0}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule)}
+button.ghost:hover{background:var(--rule)}
+button:hover{background:#fff}
+.check{display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;cursor:pointer}
+.check input{accent-color:var(--stamp)}
+.spacer{flex:1}
+:focus-visible{outline:2px solid var(--stamp);outline-offset:2px}
+
+.work{flex:1;display:flex;min-height:0}
+.map{flex:1;overflow:auto;display:flex;background:var(--void);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:48px 48px;position:relative}
+.stage{margin:auto;position:relative;flex:none}
+.stage canvas{position:absolute;top:0;left:0;image-rendering:auto}
+.stage svg{position:absolute;top:0;left:0;overflow:visible}
+.hex{stroke:#0e1114;stroke-width:.6;cursor:pointer}
+.hex:hover{stroke:#fff;stroke-width:1.6}
+.hex.sel{stroke:var(--stamp);stroke-width:2}
+.door{stroke:var(--door);stroke-width:3;stroke-linecap:round}
+.door.shut{stroke-dasharray:3 3}
+.node{fill:var(--ink);font:700 9px "B612 Mono",monospace;text-anchor:middle;pointer-events:none}
+.zlabel{fill:#fff;font:700 9px "B612",sans-serif;text-anchor:middle;pointer-events:none;
+  paint-order:stroke;stroke:#0b0e10;stroke-width:2.5px}
+
+aside{width:290px;flex:none;border-left:1px solid var(--rule);background:var(--panel);
+      display:flex;flex-direction:column;min-height:0}
+aside h2{margin:0;padding:9px 12px;border-bottom:1px solid var(--rule);font-size:12px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--dim);font-weight:400}
+.zones{overflow:auto;flex:1}
+.zone{padding:7px 12px;border-bottom:1px solid #20262b;cursor:pointer;display:flex;gap:8px;align-items:baseline}
+.zone:hover{background:#1e242a}
+.zone.sel{background:#242c33}
+.swatch{width:11px;height:11px;flex:none;border:1px solid #0e1114;margin-top:3px}
+.zone b{font:700 12.5px "B612",sans-serif;display:block}
+.zone small{color:var(--dim);font-size:11px;display:block;line-height:1.35}
+.tally{padding:8px 12px;border-top:1px solid var(--rule);font:400 11.5px/1.6 "B612 Mono",monospace;color:var(--dim)}
+.tally b{color:var(--ink)}
+.splash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:30px;text-align:center}
+.splash .card{max-width:560px;border:1px solid var(--rule);background:var(--panel);padding:24px 28px}
+.splash h1{font-size:19px;margin:0 0 10px}
+.splash p{color:var(--dim);font-size:13.5px;margin:0 0 10px}
+code{font-family:"B612 Mono",monospace;background:var(--deck);border:1px solid var(--rule);padding:1px 5px}
+.credit{font-size:11px;color:var(--dim);padding:6px 14px;border-top:1px solid var(--rule)}
+.credit a{color:var(--dim)}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="field"><label for="seed">Seed</label><input type="text" id="seed" spellcheck="false" style="width:120px"></div>
+  <div class="field"><label for="hull">Hull</label><select id="hull">
+    <option value="ship" selected>Ship</option>
+    <option value="rimmed">Deck — rimmed</option>
+    <option value="capped">Deck — capped</option>
+    <option value="bare">Deck — bare</option>
+  </select></div>
+  <div class="field"><label for="rows">Length</label><select id="rows">
+    <option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option>
+  </select></div>
+  <div class="field"><label for="beam">Bays</label><select id="beam">
+    <option>1</option><option selected>2</option><option>3</option><option>4</option>
+  </select></div>
+  <div class="field"><label for="sets">Tiles</label><select id="sets">
+    <option value="all" selected>Mobius — both sets</option>
+    <option value="Geomorphs">Geomorphs only</option>
+    <option value="Custom-Tiles">Custom tiles only</option>
+    <option value="AdventureClass">Adventure Class</option>
+  </select></div>
+  <div class="field"><label for="family">Wings</label><select id="family"><option value="">Any (seeded)</option></select></div>
+  <div class="field">
+    <label for="hexft">Hex <span id="hexlab">25 ft</span></label>
+    <input type="range" id="hexft" min="10" max="60" step="5" value="25">
+  </div>
+  <div class="field"><label>Show</label>
+    <div style="display:flex;gap:11px;padding-bottom:5px">
+      <label class="check"><input type="checkbox" id="showArt" checked> Plan</label>
+      <label class="check"><input type="checkbox" id="showHex" checked> Hexes</label>
+      <label class="check"><input type="checkbox" id="showNodes" checked> Nodes</label>
+      <label class="check"><input type="checkbox" id="showNames" checked> Names</label>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="field"><label for="zoom">Zoom</label><input type="range" id="zoom" min="10" max="800" value="60"></div>
+  <button id="go">Generate</button>
+  <button class="ghost" id="json">Export JSON</button>
+  <button class="ghost" id="loadBtn">Load tiles…</button>
+  <input type="file" id="picker" webkitdirectory directory multiple hidden>
+</div>
+
+<div class="work">
+  <div class="map" id="map">
+    <div class="stage" id="stage"></div>
+    <div class="splash" id="splash"><div class="card">
+      <h1>No tiles loaded</h1>
+      <p id="splashMsg">This lays a hex boarding map over a deck plan built from the
+      RPG Mobius Geomorphs. Nothing is bundled.</p>
+      <p>Run <code>python3 fetch_geomorphs.py</code> and serve this folder, or press
+      <b>Load tiles…</b> and pick the <code>geomorphs</code> folder.</p>
+    </div></div>
+  </div>
+  <aside>
+    <h2>Zones</h2>
+    <div class="zones" id="zones"></div>
+    <div class="tally" id="tally">—</div>
+  </aside>
+</div>
+<div class="credit">
+  Tiles: <b>RPG Mobius Geomorphs</b> by RPG Mobius, from the Traveller Geomorphs by Robert Pearce
+  and the PNG rendition by Eric B. Smith — <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener">CC BY-NC 4.0</a>.
+  Non-commercial use only. Hex lattice matches <code>smoreg_works/experiments/hullforms/hexgrid.mjs</code>.
+</div>
+
+<script src="geomorph-core.js"></script>
+<script>
+/* ============================================================
+   A boarding map, read off a deck plan rather than invented.
+
+   geomorphs.html builds the ship: real tiles, a real hull. This takes that
+   drawing and asks it where a player could stand.
+
+   The tiles are line art on transparency — walls and furniture are ink, floor
+   is nothing at all — so the plan rasterises into a mask where every pixel is
+   either structure or space. Flood the space from outside the hull and what is
+   left unreached is the inside, in pieces: each connected piece is somewhere a
+   body can move around without opening anything. That is a zone. Two zones
+   separated by a single wall line are a door candidate; two zones separated by
+   the hull are not.
+
+   Then the hex grid goes on top. A hexagon is a node — a place to stand, an
+   interactable, a thing to search — and it belongs to whichever zone owns most
+   of its area. Inside a zone you move freely between touching hexes; leaving
+   one means a door.
+
+   Lattice: pointy-top, axial q/r, the same six directions and the same odd-r
+   offset as smoreg_works/experiments/hullforms/hexgrid.mjs, so a map from here
+   and a hull from there are talking about the same grid. Reimplemented rather
+   than imported — that folder is a sandbox and the halves of this repo do not
+   reach into each other.
+   ============================================================ */
+
+const PX_FT = 2.4;              // raster resolution: 12 px to a 5 ft square
+const ALPHA = 40;               // above this a pixel is structure
+const LOOP_SHARE = 0.45;        // shared walls kept as doors beyond the tree
+
+/** The six neighbours of a pointy-top hexagon. */
+const HEX_DIRS = [
+  {q:1,r:0}, {q:1,r:-1}, {q:0,r:1}, {q:0,r:-1}, {q:-1,r:1}, {q:-1,r:0},
+];
+const hexKey = c => c.q + "," + c.r;
+
+let MAP = null;                 // the built map
+let SEL = null;                 // selected zone
+let zoom = 0.6;
+
+/* ---------- geometry ----------
+   A hexagon's "size" here is the distance across its flats, in feet, which is
+   what the control says: at 25 ft one 100 ft geomorph tile is four hexes wide.
+   For a pointy-top hexagon that width is √3·R. */
+function hexGeom(ft){
+  const R = ft / Math.sqrt(3);
+  return {
+    R, ft,
+    centre: c => ({x: ft * (c.q + c.r/2), y: 1.5 * R * c.r}),
+    /* Pixel to axial, then cube-round: the nearest centre, not the containing
+       bounding box, or the rows would shear. */
+    at: (x, y) => {
+      const q = (Math.sqrt(3)/3 * x - y/3) / R, r = (2/3 * y) / R;
+      let cx = q, cz = r, cy = -cx - cz;
+      let rx = Math.round(cx), ry = Math.round(cy), rz = Math.round(cz);
+      const dx = Math.abs(rx-cx), dy = Math.abs(ry-cy), dz = Math.abs(rz-cz);
+      if (dx > dy && dx > dz) rx = -ry - rz;
+      else if (dy <= dz) rz = -rx - ry;
+      return {q: rx, r: rz};
+    },
+    corners: c => {
+      const {x, y} = hexGeom(ft).centre(c);
+      const pts = [];
+      for (let i = 0; i < 6; i++){
+        const a = Math.PI / 180 * (60 * i - 30);
+        pts.push([x + R * Math.cos(a), y + R * Math.sin(a)]);
+      }
+      return pts;
+    },
+  };
+}
+
+/* ---------- raster ----------
+   Draw the plan small and read its alpha. Small because nothing here needs the
+   detail: a 400x500 ft ship is under a megapixel at 12 px to the square, and
+   every pass below walks it more than once. */
+async function raster(plan){
+  const w = Math.round(plan.W * PX_FT), h = Math.round(plan.H * PX_FT);
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext("2d", {willReadFrequently:true});
+  for (const p of plan.put){
+    if (p.tile.overlay) continue;          // vehicles are cargo, not architecture
+    const im = await loadImage(url(p.tile));
+    const iw = p.tile.px[0] / 12 * PX_FT, ih = p.tile.px[1] / 12 * PX_FT;
+    ctx.save();
+    ctx.translate(p.cx * PX_FT, p.cy * PX_FT);
+    if (p.rot) ctx.rotate(p.rot * Math.PI / 180);
+    ctx.drawImage(im, -iw/2, -ih/2, iw, ih);
+    ctx.restore();
+  }
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const ink = new Uint8Array(w * h);
+  for (let i = 0, p = 3; i < ink.length; i++, p += 4) ink[i] = data[p] > ALPHA ? 1 : 0;
+  return {w, h, ink, canvas: cv};
+}
+
+/* ---------- rooms ----------
+   Flood the empty space from the border: whatever it reaches is vacuum. What it
+   cannot reach is enclosed, and each enclosed component is a room — or a suite
+   of rooms with their doorways drawn open, which is the same thing to a body
+   walking around. Components smaller than a closet are noise from the line art
+   and get folded into structure. */
+function regions(rast){
+  const {w, h, ink} = rast;
+  const OUT = 1, FREE = 0;
+  const reg = new Int32Array(w * h).fill(-1);
+  const stack = [];
+  const push = i => { if (!ink[i] && reg[i] === -1){ reg[i] = OUT; stack.push(i); } };
+  for (let x = 0; x < w; x++){ push(x); push((h-1)*w + x); }
+  for (let y = 0; y < h; y++){ push(y*w); push(y*w + w-1); }
+  while (stack.length){
+    const i = stack.pop(), x = i % w, y = (i - x) / w;
+    if (x > 0) push(i-1);
+    if (x < w-1) push(i+1);
+    if (y > 0) push(i-w);
+    if (y < h-1) push(i+w);
+  }
+  const sizes = [0, 0];
+  let next = 2;
+  for (let i0 = 0; i0 < reg.length; i0++){
+    if (ink[i0] || reg[i0] !== -1) continue;
+    const id = next++;
+    let n = 0;
+    const st = [i0];
+    reg[i0] = id;
+    while (st.length){
+      const i = st.pop(); n++;
+      const x = i % w, y = (i - x) / w;
+      const go = j => { if (!ink[j] && reg[j] === -1){ reg[j] = id; st.push(j); } };
+      if (x > 0) go(i-1);
+      if (x < w-1) go(i+1);
+      if (y > 0) go(i-w);
+      if (y < h-1) go(i+w);
+    }
+    sizes[id] = n;
+  }
+  const MIN = Math.round(6 * PX_FT * 6 * PX_FT);   // smaller than a 6 ft closet
+  for (let i = 0; i < reg.length; i++)
+    if (reg[i] > 1 && sizes[reg[i]] < MIN) reg[i] = -1;
+  return {reg, sizes, count: next - 2};
+}
+
+/* ---------- doors ----------
+   Where two rooms are separated by one drawn wall and not by the hull. Walk the
+   structure and look across it: a short crossing with a different room on each
+   side is somewhere a door can be, and the thickness cutoff is what keeps the
+   hull — plating, tanks, the space between two hulls — from becoming a doorway. */
+function contacts(rast, reg){
+  const {w, h, ink} = rast;
+  const MAXWALL = Math.max(2, Math.round(3 * PX_FT));   // a wall, not a hull
+  const found = new Map();
+  const note = (a, b, x, y) => {
+    if (a === b) return;
+    const key = a < b ? a + ":" + b : b + ":" + a;
+    let c = found.get(key);
+    if (!c) found.set(key, c = {a:Math.min(a,b), b:Math.max(a,b), n:0, x:0, y:0});
+    c.n++; c.x += x; c.y += y;
+  };
+  for (let y = 1; y < h-1; y++){
+    for (let x = 1; x < w-1; x++){
+      const i = y*w + x;
+      if (!ink[i]) continue;
+      for (const [dx, dy] of [[1,0],[0,1]]){
+        let k = 1;
+        while (k <= MAXWALL && ink[i + (dy*k)*w + dx*k]) k++;
+        if (k > MAXWALL) continue;
+        const back = reg[i - dy*w - dx], fwd = reg[i + (dy*k)*w + dx*k];
+        if (back > 1 && fwd > 1) note(back, fwd, x, y);
+      }
+    }
+  }
+  return [...found.values()].map(c=>({...c, x:c.x/c.n, y:c.y/c.n}));
+}
+
+/* ---------- the map ---------- */
+async function build(){
+  const opts = readOptions();
+  buildPools(opts.sets);
+  fillWingForms();
+  if (!PLACEABLE.length && !AC.ready) return null;
+  const plan = layout(opts);
+
+  const rast = await raster(plan);
+  const {reg} = regions(rast);
+  const hexFt = +document.getElementById("hexft").value;
+  const geom = hexGeom(hexFt);
+
+  /* Every pixel votes for the hexagon it falls in. A hexagon belongs to the
+     room that owns most of its floor; one with no floor at all is structure or
+     vacuum and is not a place to stand. */
+  const cells = new Map();
+  for (let y = 0; y < rast.h; y++){
+    for (let x = 0; x < rast.w; x++){
+      const r = reg[y*rast.w + x];
+      const cell = geom.at(x / PX_FT, y / PX_FT);
+      const key = hexKey(cell);
+      let c = cells.get(key);
+      if (!c) cells.set(key, c = {q:cell.q, r:cell.r, votes:new Map(), floor:0, wall:0});
+      if (r > 1){ c.floor++; c.votes.set(r, (c.votes.get(r) || 0) + 1); }
+      else if (r === -1) c.wall++;
+    }
+  }
+  const byRegion = new Map();
+  for (const c of cells.values()){
+    if (!c.floor){ c.kind = c.wall ? "solid" : "void"; continue; }
+    let best = 0, bestN = 0;
+    for (const [r, n] of c.votes) if (n > bestN){ best = r; bestN = n; }
+    c.region = best; c.kind = "floor";
+    if (!byRegion.has(best)) byRegion.set(best, []);
+    byRegion.get(best).push(c);
+  }
+
+  /* A zone takes its name and trade from the tile its middle sits on: the
+     artwork already says what the room is, and the taxonomy already says what
+     that means. */
+  const zones = [];
+  const zoneOf = new Map();
+  for (const [region, list] of byRegion){
+    if (list.length < 1) continue;
+    const id = zones.length;
+    let cx = 0, cy = 0;
+    for (const c of list){ const p = geom.centre(c); cx += p.x; cy += p.y; }
+    cx /= list.length; cy /= list.length;
+    const tile = tileAt(plan, cx, cy);
+    const tax = tile ? taxOf(tile) : null;
+    const roles = tax ? tax.roles : [];
+    zones.push({
+      id, region, cells: list, cx, cy, roles,
+      area: Math.round(list.length * hexFt * hexFt * Math.sqrt(3) / 2),
+      source: tile ? tile.label : "",
+      kind: zoneKind(roles),
+      name: "", marks: [], hazard: "",
+    });
+    zoneOf.set(region, id);
+    for (const c of list) c.zone = id;
+  }
+
+  const doors = pickDoors(contacts(rast, reg), zoneOf, zones);
+  dressUp(zones, doors, plan);
+  return {plan, rast, reg, geom, hexFt, cells:[...cells.values()], zones, doors};
+}
+
+/** Which tile is under a point, in feet. Overlays are vehicles, not rooms. */
+function tileAt(plan, x, y){
+  for (let i = plan.put.length - 1; i >= 0; i--){
+    const p = plan.put[i];
+    if (p.tile.overlay) continue;
+    if (x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h) return p.tile;
+  }
+  return null;
+}
+
+const KIND_ORDER = ["command","drive","fuel","weapon","bay","green","quarters","service","vertical","airlock"];
+function zoneKind(roles){
+  for (const k of KIND_ORDER) if (roles.includes(k)) return k;
+  return "hold";
+}
+
+/* Not every shared wall is a door: a deck where every wall had one would say
+   nothing about where you can go. Keep a spanning tree so the ship is walkable,
+   then a share of the rest so it has loops — the proportion smoreg's hullforms
+   generator settled on. */
+function pickDoors(list, zoneOf, zones){
+  const edges = list
+    .map(c=>({a:zoneOf.get(c.a), b:zoneOf.get(c.b), n:c.n, x:c.x/PX_FT, y:c.y/PX_FT}))
+    .filter(e=>e.a !== undefined && e.b !== undefined && e.a !== e.b)
+    .sort((p,q)=>q.n - p.n);
+  const parent = zones.map((_, i)=>i);
+  const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
+  const doors = [];
+  for (const e of edges){
+    const ra = find(e.a), rb = find(e.b);
+    if (ra !== rb){ parent[ra] = rb; doors.push({...e, tree:true}); }
+  }
+  for (const e of edges){
+    if (doors.some(d=>d.a === e.a && d.b === e.b)) continue;
+    if (rnd() < LOOP_SHARE) doors.push({...e, tree:false});
+  }
+  for (let i = 0; i < doors.length; i++){
+    doors[i].id = i;
+    doors[i].state = doors[i].tree
+      ? (rnd() < 0.12 ? "closed" : "open")
+      : (rnd() < 0.25 ? "locked" : rnd() < 0.5 ? "closed" : "open");
+  }
+  return doors;
+}
+
+/* The seeded content pass: what the room is for decides what is in it, and the
+   artwork decided what the room is for. Nothing here invents a room. */
+const FITTINGS = {
+  command:  ["console", "nav plot", "comms set", "log core"],
+  drive:    ["reactor tap", "coolant line", "drive monitor", "toolrack"],
+  fuel:     ["fuel valve", "pump", "sample port"],
+  weapon:   ["turret seat", "ammo hoist", "fire panel"],
+  bay:      ["cargo crate", "loader", "manifest slate", "strongbox"],
+  quarters: ["footlocker", "bunk", "personal effects", "galley stores"],
+  service:  ["workbench", "spares bin", "terminal", "medkit"],
+  green:    ["hydroponic tray", "seed store", "water tank"],
+  vertical: ["lift call", "ladder well"],
+  airlock:  ["suit rack", "cycle control"],
+  hold:     ["debris", "loose panel", "stowage"],
+};
+const HAZARDS = ["vented", "fire", "flooded", "live wiring", "radiation"];
+function dressUp(zones, doors, plan){
+  const named = new Map();
+  for (const z of zones){
+    const base = z.source ? z.source.split(/[(,]/)[0].trim() : z.kind;
+    const n = (named.get(base) || 0) + 1;
+    named.set(base, n);
+    z.name = n > 1 ? base + " " + n : base;
+    const pool = FITTINGS[z.kind] || FITTINGS.hold;
+    const count = Math.min(z.cells.length, ri(0, z.cells.length > 3 ? 3 : 1));
+    const spots = shuffle(z.cells).slice(0, count);
+    for (const c of spots){
+      c.mark = pick(pool);
+      z.marks.push(c.mark);
+    }
+    if (rnd() < 0.14) z.hazard = pick(HAZARDS);
+  }
+  /* Somewhere to come aboard: an airlock if the plan drew one, else the outer
+     zone nearest the stern, which is where a boarding tube would clamp. */
+  const outer = zones.filter(z=>z.roles.includes("airlock"));
+  const entry = outer.length ? pick(outer)
+    : zones.slice().sort((a,b)=>b.cy - a.cy)[0];
+  if (entry){ entry.entry = true; entry.marks.unshift("boarding point"); }
+}
+
+/* ---------- drawing ---------- */
+function draw(){
+  const stage = document.getElementById("stage");
+  stage.textContent = "";
+  if (!MAP) return;
+  const {rast, geom, cells, zones, doors, plan} = MAP;
+  const W = rast.w / PX_FT, H = rast.h / PX_FT;      // feet
+  const px = 4 * zoom;                                // screen px per 10 ft
+  const S = px / 10;
+  stage.style.width  = W * S + "px";
+  stage.style.height = H * S + "px";
+
+  if (document.getElementById("showArt").checked){
+    const cv = rast.canvas;
+    cv.style.width = W * S + "px";
+    cv.style.height = H * S + "px";
+    cv.style.opacity = document.getElementById("showHex").checked ? "0.9" : "1";
+    stage.appendChild(cv);
+  }
+
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", W * S);
+  svg.setAttribute("height", H * S);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  stage.appendChild(svg);
+
+  if (document.getElementById("showHex").checked){
+    for (const c of cells){
+      if (c.kind !== "floor") continue;
+      const z = zones[c.zone];
+      const poly = document.createElementNS(NS, "polygon");
+      poly.setAttribute("points", geom.corners(c).map(p=>p.join(",")).join(" "));
+      poly.setAttribute("class", "hex" + (SEL === c.zone ? " sel" : ""));
+      poly.setAttribute("fill", zoneColour(z, SEL === c.zone));
+      poly.addEventListener("click", ()=>{ SEL = SEL === c.zone ? null : c.zone; draw(); listZones(); });
+      const t = document.createElementNS(NS, "title");
+      t.textContent = z.name + " — " + z.kind + (c.mark ? " · " + c.mark : "");
+      poly.appendChild(t);
+      svg.appendChild(poly);
+    }
+  }
+  for (const d of doors){
+    const line = document.createElementNS(NS, "line");
+    const a = zones[d.a], b = zones[d.b];
+    const mx = d.x, my = d.y;
+    line.setAttribute("x1", mx + (a.cx - mx) * 0.22);
+    line.setAttribute("y1", my + (a.cy - my) * 0.22);
+    line.setAttribute("x2", mx + (b.cx - mx) * 0.22);
+    line.setAttribute("y2", my + (b.cy - my) * 0.22);
+    line.setAttribute("class", "door" + (d.state === "open" ? "" : " shut"));
+    const t = document.createElementNS(NS, "title");
+    t.textContent = a.name + " ↔ " + b.name + " · " + d.state;
+    line.appendChild(t);
+    svg.appendChild(line);
+  }
+  if (document.getElementById("showNodes").checked){
+    for (const c of cells){
+      if (!c.mark) continue;
+      const p = geom.centre(c);
+      const dot = document.createElementNS(NS, "circle");
+      dot.setAttribute("cx", p.x); dot.setAttribute("cy", p.y);
+      dot.setAttribute("r", Math.max(1.2, MAP.hexFt * 0.11));
+      dot.setAttribute("fill", "#e8c15a");
+      const t = document.createElementNS(NS, "title");
+      t.textContent = c.mark;
+      dot.appendChild(t);
+      svg.appendChild(dot);
+    }
+  }
+  if (document.getElementById("showNames").checked){
+    /* Only the rooms a reader can actually take in. At 10 ft hexes a ship has
+       fifty zones and naming them all just fills the hull with type; a closet
+       still has its hex and its tooltip. */
+    const big = zones.slice().sort((a,b)=>b.cells.length - a.cells.length)
+      .slice(0, 14).map(z=>z.id);
+    for (const z of zones){
+      if (!big.includes(z.id) && !z.entry) continue;
+      const label = document.createElementNS(NS, "text");
+      label.setAttribute("x", z.cx); label.setAttribute("y", z.cy + 2);
+      label.setAttribute("class", "zlabel");
+      label.setAttribute("font-size", Math.max(4, MAP.hexFt * 0.34));
+      label.textContent = z.entry ? "▶ " + z.name : z.name;
+      svg.appendChild(label);
+    }
+  }
+  document.getElementById("splash").style.display = "none";
+}
+
+const KIND_HUE = {command:205, drive:8, fuel:35, weapon:350, bay:48, quarters:145,
+                  service:265, green:105, vertical:190, airlock:60, hold:220};
+function zoneColour(z, sel){
+  const h = KIND_HUE[z.kind] ?? 220;
+  const l = 30 + (z.id * 37 % 13);
+  return `hsl(${h} ${sel ? 75 : 45}% ${sel ? l + 14 : l}% / ${sel ? .8 : .42})`;
+}
+
+function listZones(){
+  const box = document.getElementById("zones");
+  box.textContent = "";
+  if (!MAP) return;
+  for (const z of MAP.zones.slice().sort((a,b)=>b.cells.length - a.cells.length)){
+    const row = document.createElement("div");
+    row.className = "zone" + (SEL === z.id ? " sel" : "");
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.background = zoneColour(z, true);
+    const body = document.createElement("div");
+    body.innerHTML = "<b>" + esc(z.entry ? "▶ " + z.name : z.name) + "</b>" +
+      "<small>" + z.kind + " · " + z.cells.length + " hex · " + z.area + " sq ft" +
+      (z.hazard ? " · <span style='color:var(--stamp)'>" + z.hazard + "</span>" : "") +
+      (z.marks.length ? "<br>" + esc(z.marks.join(", ")) : "") + "</small>";
+    row.append(sw, body);
+    row.onclick = ()=>{ SEL = SEL === z.id ? null : z.id; draw(); listZones(); };
+    box.appendChild(row);
+  }
+  const floor = MAP.cells.filter(c=>c.kind === "floor").length;
+  document.getElementById("tally").innerHTML =
+    "<b>" + MAP.zones.length + "</b> zones · <b>" + floor + "</b> walkable hexes<br>" +
+    "<b>" + MAP.doors.length + "</b> doors (" + MAP.doors.filter(d=>d.state === "open").length + " open)<br>" +
+    "hex <b>" + MAP.hexFt + " ft</b> · hull <b>" + MAP.plan.W + "×" + MAP.plan.H + " ft</b>";
+}
+function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+/* ---------- export ---------- */
+function mapJSON(){
+  if (!MAP) return null;
+  return {
+    meta: "geomorph hex boarding map",
+    seed: MAP.plan.seed,
+    ship: {name: MAP.plan.name, hull: MAP.plan.hull, ft: [MAP.plan.W, MAP.plan.H],
+           tiles: MAP.plan.put.filter(p=>!p.tile.overlay).length},
+    hex: {feetAcross: MAP.hexFt, lattice: "pointy-top axial q,r"},
+    zones: MAP.zones.map(z=>({
+      id: z.id, name: z.name, kind: z.kind, roles: z.roles,
+      hexes: z.cells.length, areaSqFt: z.area, hazard: z.hazard || null,
+      entry: !!z.entry, marks: z.marks, from: z.source,
+    })),
+    hexes: MAP.cells.filter(c=>c.kind === "floor").map(c=>({
+      q: c.q, r: c.r, zone: c.zone, mark: c.mark || null,
+    })),
+    doors: MAP.doors.map(d=>({id: d.id, a: d.a, b: d.b, state: d.state, loop: !d.tree})),
+    plan: MAP.plan.put.filter(p=>!p.tile.overlay).map(p=>({
+      path: p.tile.path, x: p.x, y: p.y, rot: p.rot,
+    })),
+  };
+}
+function exportJSON(){
+  const doc = mapJSON();
+  if (!doc) return;
+  const a = document.createElement("a");
+  a.download = "hexmap-" + String(doc.seed).replace(/\W+/g,"_") + "-" + doc.hex.feetAcross + "ft.json";
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], {type:"application/json"}));
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 10000);
+}
+
+/* ---------- wiring ---------- */
+function readOptions(){
+  const v = id => document.getElementById(id).value;
+  return {seed:v("seed"), beam:+v("beam"), rows:+v("rows"), hull:v("hull"),
+          sets:v("sets"), family:v("family"), q:"", spin:false, mega:true, vehic:false};
+}
+function fillWingForms(){
+  const sel = document.getElementById("family");
+  const keep = sel.value;
+  sel.textContent = "";
+  sel.appendChild(new Option("Any (seeded)", ""));
+  sel.appendChild(new Option("No wings — bare hull", "none"));
+  for (const f of WING_FORMS) sel.appendChild(new Option(f.label, f.value));
+  sel.value = [...sel.options].some(o=>o.value === keep) ? keep : "";
+}
+let building = false;
+async function regenerate(fit){
+  if (building) return;
+  building = true;
+  document.getElementById("go").textContent = "Working…";
+  try{
+    SEL = null;
+    MAP = await build();
+    if (MAP){
+      if (fit) fitZoom();
+      draw();
+      listZones();
+      writeHash();
+    }
+  } finally {
+    building = false;
+    document.getElementById("go").textContent = "Generate";
+  }
+}
+function fitZoom(){
+  const box = document.getElementById("map");
+  const W = MAP.rast.w / PX_FT, H = MAP.rast.h / PX_FT;
+  const s = Math.min((box.clientWidth - 40) / W, (box.clientHeight - 40) / H);
+  zoom = Math.max(0.1, Math.min(8, s / 0.4));
+  document.getElementById("zoom").value = Math.round(zoom * 100);
+}
+function writeHash(){
+  const p = new URLSearchParams();
+  for (const id of ["seed","hull","rows","beam","sets","family","hexft"]){
+    const v = document.getElementById(id).value;
+    if (v) p.set(id, v);
+  }
+  history.replaceState(null, "", "#" + p.toString());
+}
+function readHash(){
+  const raw = location.hash.slice(1);
+  if (!raw) return;
+  const p = new URLSearchParams(raw);
+  for (const [k, v] of p){
+    const el = document.getElementById(k);
+    if (el) el.value = v;
+  }
+}
+function randomSeed(){
+  const s = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let o = ""; for (let i=0;i<3;i++) o += s[Math.floor(Math.random()*s.length)];
+  return o + "-" + String(Math.floor(Math.random()*9000)+1000);
+}
+
+document.getElementById("go").onclick = ()=>{
+  document.getElementById("seed").value = randomSeed();
+  regenerate(true);
+};
+for (const id of ["seed","hull","rows","beam","sets","family"])
+  document.getElementById(id).onchange = ()=>regenerate(true);
+document.getElementById("hexft").oninput = e=>{
+  document.getElementById("hexlab").textContent = e.target.value + " ft";
+};
+document.getElementById("hexft").onchange = ()=>regenerate(false);
+for (const id of ["showArt","showHex","showNodes","showNames"])
+  document.getElementById(id).onchange = ()=>draw();
+document.getElementById("zoom").oninput = e=>{ zoom = +e.target.value / 100; draw(); };
+document.getElementById("json").onclick = exportJSON;
+document.getElementById("loadBtn").onclick = ()=>document.getElementById("picker").click();
+document.getElementById("picker").onchange = e=>{
+  const msg = document.getElementById("splashMsg");
+  loadFromPicker(e.target.files, t=>{ msg.textContent = t; })
+    .then(n=>{ if (n) start(); else msg.textContent = "No PNG files in that folder."; });
+};
+
+async function start(){
+  buildPools(document.getElementById("sets").value);
+  await loadTaxonomy();
+  buildPools(document.getElementById("sets").value);
+  fillWingForms();
+  readHash();
+  document.getElementById("hexlab").textContent =
+    document.getElementById("hexft").value + " ft";
+  if (!PLACEABLE.length && !AC.ready) return;
+  regenerate(true);
+}
+document.getElementById("seed").value = randomSeed();
+readHash();
+loadFromManifest().then(n=>{ if (n) start(); });
+</script>
+</body>
+</html>
