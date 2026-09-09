@@ -191,6 +191,7 @@ button[disabled]{opacity:.4; cursor:not-allowed}
       <label class="check"><input type="checkbox" id="optMega" checked> Megamorphs</label>
       <label class="check"><input type="checkbox" id="optSpin"> Rotate cores</label>
       <label class="check"><input type="checkbox" id="optSym" checked> Symmetric</label>
+      <label class="check"><input type="checkbox" id="optCaps" checked> Nose &amp; drives</label>
       <label class="check"><input type="checkbox" id="optGrid" checked> Grid</label>
     </div>
   </div>
@@ -606,6 +607,7 @@ function readOptions(){
     mega:  document.getElementById("optMega").checked,
     vehic: document.getElementById("optOverlay").checked,
     symmetric: document.getElementById("optSym").checked,
+    caps: document.getElementById("optCaps").checked,
   };
 }
 function generate(fit){
@@ -649,7 +651,7 @@ document.getElementById("go").onclick = ()=>{
   generate(true);
 };
 document.getElementById("seed").onchange = ()=>generate(true);
-for (const id of ["beam","rows","hull","sets","filter","family","profile","optOverlay","optMega","optSpin","optSym"])
+for (const id of ["beam","rows","hull","sets","filter","family","profile","optOverlay","optMega","optSpin","optSym","optCaps"])
   document.getElementById(id).onchange = ()=>{ syncControls(); generate(true); };
 
 /* Bays and megamorphs belong to the deck slab; the hull form belongs to the
@@ -664,6 +666,7 @@ function syncControls(){
   document.getElementById("optMega").disabled = ship || prof;
   document.getElementById("optSpin").disabled = ship || prof;
   document.getElementById("optSym").disabled = !prof;
+  document.getElementById("optCaps").disabled = !prof;
 }
 document.getElementById("optGrid").onchange = ()=>render();
 document.getElementById("zoom").oninput = e=>{ scale = +e.target.value/100; applyZoom(); };

@@ -136,12 +136,29 @@ const fileOf = t => t.path.split("/").pop();
 
 /* Rooms a section ought to hold, fore to aft. Scoring rather than filtering:
    a bridge tile forward if the set has one, otherwise the best thing left. */
+/* What a room is for, by the words on the tile. The same vocabulary as
+   geomorph_taxonomy.py, so a slot asking for a `command` tile and a room typed
+   `command` by the taxonomy mean the same thing. They did not for a while: the
+   layouts had moved to the taxonomy's names while this list still held the
+   original five, so every slot that asked for `command`, `bay`, `weapon` or
+   `fuel` scored nothing at all and took whatever it was offered — which is why
+   bridges stopped appearing at the bow. */
 const ROLES = {
-  bridge:  ["bridge","avionics","sensor","command","flight control","stellar cartography","comm"],
-  quarters:["stateroom","galley","lounge","medical","barrack","passenger","gym","fresher"],
-  cargo:   ["cargo","hangar","bay","hold","storage","shop","launch"],
-  drive:   ["engineering","fuel","power","drive","battery","reactor","plasma"],
-  guns:    ["gunnery","missile","weapon","turret","fire control","laser"],
+  drive:    ["engineering","drive","thruster","power plant","reactor","plasma conduit","battery"],
+  fuel:     ["fuel","intake","scoop","tank","refinery"],
+  command:  ["bridge","station","avionics","sensor","control room","cic",
+             "combat information","flight control","stellar cartography","communication"],
+  weapon:   ["gunnery","turret","missile","weapon","laser","barbette","spinal",
+             "particle accelerator","fire control"],
+  bay:      ["cargo","hangar","bay","hold","launch","shuttle","air-raft","fighter",
+             "docking","landing pad","helipad","escape pod","drop capsule"],
+  quarters: ["stateroom","barrack","low berth","passenger","galley","mess","lounge",
+             "fresher","gym","medical","surgery","suite","brig"],
+  service:  ["repair","shop","lab","office","briefing","computer","security",
+             "storage","locker","classroom","retail","utility"],
+  green:    ["arboretum","hydroponic","agricultur","animal","biosphere","pool"],
+  vertical: ["elevator","stairs","lift","vertical core","catwalk","gangway","tram"],
+  airlock:  ["airlock","iris valve","cargo door","bay door"],
 };
 function score(tile, role){
   if (!role) return 0;
@@ -360,6 +377,10 @@ function fit(tile, slot, relax){
     /* A wing turned on its end will fit a bow slot — one join, three skins — but
        it is still a wing. Shape has to agree with the job, not just the edges. */
     if (slot.want) score += tax.class === slot.want ? 3 : -3;
+    /* Where the hull changes beam, a piece that cuts the corner reads as a
+       chamfer instead of a notch. Only 23 tiles in the archive draw their hull
+       line diagonally, so this is a preference, not a requirement. */
+    if (slot.chamfer && tax.slope >= 0.45 && tax.cut > 0.12) score += 4;
     if (!best || score > best.score) best = {rot, score};
   }
   return best;
@@ -367,8 +388,15 @@ function fit(tile, slot, relax){
 
 /* Pick the best tile a pool can offer for one slot. Walks a shuffled deck so a
    plan does not repeat itself, then relaxes only if nothing fits. */
-function candidates(slot){
-  return shuffle(BYSIZE.get(slot.w + "x" + slot.h) || []).slice(0, 90);
+function candidates(slot, role){
+  const pool = BYSIZE.get(slot.w + "x" + slot.h) || [];
+  if (!role) return shuffle(pool).slice(0, 90);
+  /* Ninety tiles drawn at random from two hundred will often contain no bridge
+     at all, and then the slot that asked for one takes whatever it was shown.
+     Offer the tiles that suit the job first. */
+  const fits = [], rest = [];
+  for (const t of pool) (score(t, role) ? fits : rest).push(t);
+  return [...shuffle(fits), ...shuffle(rest)].slice(0, 90);
 }
 function bestFor(pool, slot, role, used){
   for (let relax = 0; relax <= 2; relax++){
@@ -412,7 +440,7 @@ function dealer(list){
 function layout(input){
   const opts = Object.assign({
     seed:"SALVOR", beam:2, rows:3, hull:"ship", sets:"all",
-    family:"", profile:"2-1-2", symmetric:true, q:"", spin:false, mega:true, vehic:true,
+    family:"", profile:"2-1-2", symmetric:true, caps:true, q:"", spin:false, mega:true, vehic:true,
   }, input || {});
   opts.seed = String(opts.seed).trim() || "SALVOR";
   opts.q = String(opts.q || "").trim().toLowerCase();
@@ -524,7 +552,7 @@ function layoutAdventureShip(opts, deal, place){
       wing: wings ? pick(wings) : null,
     };
     const all = [sel.head, ...sel.hull, sel.tail, sel.wing && sel.wing.star].filter(Boolean);
-    if (all.some(t=>score(t,"bridge")) && all.some(t=>score(t,"drive"))) break;
+    if (all.some(t=>score(t,"command")) && all.some(t=>score(t,"drive"))) break;
   }
 
   /* Sections are not all the same length, so stack them by their own lengths
@@ -616,7 +644,7 @@ function layoutShip(opts, deal, place){
       // The wings are a matched pair, so they are placed as one decision.
       if (slot.tag === "port"){ picks.push({slot, tile:wingPair.port, rot:0}); continue; }
       if (slot.tag === "star"){ picks.push({slot, tile:wingPair.star, rot:0}); continue; }
-      const c = bestFor(candidates(slot), slot, slot.role, used);
+      const c = bestFor(candidates(slot, slot.role), slot, slot.role, used);
       if (!c) continue;
       if (c.relax) relaxed++;
       picks.push({slot, tile:c.tile, rot:c.rot});
@@ -671,6 +699,24 @@ function layoutProfile(opts, deal, place){
       core.add((b.x/G + dx) + "," + (b.y/G + dy));
   const isCore = (gx, gy) => core.has(gx + "," + gy);
 
+  /* A hull needs a front and a back. Rimming the whole outline the same way
+     gives a ship walled in at both ends: an edge tile facing forward is a wall
+     with a room behind it, never a nose, and the drives never appear because
+     nothing ever asks for a piece that is only a stern. Cap the first and last
+     sections instead — the same [100x100] ends ship mode uses, which is where
+     the archive keeps its bridges and its engine rooms. */
+  const caps = [];
+  if (opts.caps !== false){
+    for (const b of bays.filter(b=>b.row === 0))
+      caps.push({x:b.x, y:-100, w:100, h:100, want:"cap", role:"command"});
+    for (const b of bays.filter(b=>b.row === prof.length - 1))
+      caps.push({x:b.x, y:prof.length*100, w:100, h:100, want:"cap", role:"drive"});
+  }
+  const capped = new Set();
+  for (const c of caps)
+    for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++)
+      capped.add((c.x/G + dx) + "," + (c.y/G + dy));
+
   /* Every cell that touches the hull from outside, corners included — except
      the shoulder of a step. At an inner corner the band would wrap a cell with
      hull on two sides and its own neighbours on the other two, and the archive
@@ -684,7 +730,7 @@ function layoutProfile(opts, deal, place){
     const [gx, gy] = key.split(",").map(Number);
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++){
       const k = (gx + dx) + "," + (gy + dy);
-      if (!core.has(k)) rim.add(k);
+      if (!core.has(k) && !capped.has(k)) rim.add(k);
     }
   }
   for (const key of [...rim]){
@@ -692,12 +738,17 @@ function layoutProfile(opts, deal, place){
     const f = {n:isCore(gx,gy-1), s:isCore(gx,gy+1), w:isCore(gx-1,gy), e:isCore(gx+1,gy)};
     const on = ["n","s","w","e"].filter(k=>f[k]);
     if (on.length >= 2 && !(on.length === 2 && (f.n && f.s || f.e && f.w))) rim.delete(key);
+    /* Nothing alongside a cap. A nose already carries hull on three sides, and
+       a strip of rim beside it gives the slot a second neighbour — enough to
+       make it read as a corner, so the fit test stops offering it noses. */
+    if (capped.has((gx-1) + "," + gy) || capped.has((gx+1) + "," + gy) ||
+        capped.has(gx + "," + (gy-1)) || capped.has(gx + "," + (gy+1))) rim.delete(key);
   }
 
   /* Two rim cells along the same face are one edge tile; a cell that turns a
      corner is left alone for a corner tile. */
   const used = new Set();
-  const slots = [];
+  const slots = [...caps];
   const rows = prof.length;
   for (const b of bays)
     slots.push({x:b.x, y:b.y, w:100, h:100, want:"core",
@@ -727,7 +778,10 @@ function layoutProfile(opts, deal, place){
       }
     }
     used.add(key);
-    slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner", role:"fuel"});
+    /* A corner at the top or bottom of the ship is the shape of the hull; one
+       part-way down is a change of beam, and that is where a chamfer helps. */
+    const step = gy > 0 && gy < rows*2;
+    slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner", role:"fuel", chamfer:step});
   }
   neighbours(slots);
 
@@ -769,7 +823,7 @@ function layoutProfile(opts, deal, place){
   };
   for (const slot of slots){
     if (done.has(slot)) continue;
-    const c = bestFor(candidates(slot), slot, slot.role, seen);
+    const c = bestFor(candidates(slot, slot.role), slot, slot.role, seen);
     if (!c){ relaxed++; done.add(slot); continue; }
     if (c.relax) relaxed++;
     fill(slot, c);
@@ -779,7 +833,8 @@ function layoutProfile(opts, deal, place){
     const m = mirrored(c.tile, c.rot, other);
     if (m) fill(other, m);
   }
-  return {W:(maxW*100) + 100, H:(rows*100) + 100, beam:maxW, rows, relaxed,
+  return {W:(maxW*100) + 100, H:(rows*100) + 100 + (caps.length ? 200 : 0),
+          beam:maxW, rows, relaxed,
           profile: prof.join("-"), familyLabel: prof.join("-") + " hull"};
 }
 
@@ -861,7 +916,7 @@ function layoutDeck(opts, deal, place){
   let relaxed = 0;
   const used = new Set();
   for (const slot of slots){
-    const c = bestFor(candidates(slot), slot, slot.role, used);
+    const c = bestFor(candidates(slot, slot.role), slot, slot.role, used);
     if (!c) continue;
     if (c.relax) relaxed++;
     place(c.tile, slot.x, slot.y, slot.w, slot.h, c.rot);

@@ -111,6 +111,34 @@ def shape_class(attach, filled):
     return "corner"
 
 
+def chamfer(cell_ink, skin):
+    """How diagonally the hull line crosses a piece.
+
+    A step in a hull is a right angle, and a right angle is what most of these
+    tiles draw. A few cut the corner instead — the void shrinks row by row — and
+    those are the ones that can smooth a change of beam. `slope` is the share of
+    rows where the cut gets shorter, so a true 45 degree chamfer scores 1.0;
+    `cut` is how much of the tile it takes away.
+    """
+    v = cell_ink <= 0.01
+    if "e" in skin:
+        v = v[:, ::-1]
+    if "s" in skin:
+        v = v[::-1, :]
+    if v.shape[0] < 2:
+        return 0.0, 0.0
+    runs = []
+    for y in range(v.shape[0]):
+        r = 0
+        while r < v.shape[1] and v[y, r]:
+            r += 1
+        runs.append(r)
+    if not any(runs):
+        return 0.0, 0.0
+    shorter = sum(1 for i in range(1, len(runs)) if runs[i] < runs[i - 1])
+    return shorter / (len(runs) - 1), float(v.mean())
+
+
 def classify(profile):
     n = len(profile)
     solid = sum(1 for c in profile if c == "#")
@@ -155,6 +183,7 @@ def analyse(root, tiles):
         proud = {k: v > 0.13 for k, v in out_ink.items()}
         roles, needs_skin = roles_of(t)
         filled = float((c > INK).mean())
+        slope, cut = chamfer(c, {k for k, v in sides.items() if v != "closed"})
         skin = {k for k, v in sides.items() if v != "closed"}
         source = "art" if skin else "none"
         if not skin and t["kind"] in FOLDER_SKIN:
@@ -180,6 +209,8 @@ def analyse(root, tiles):
             "class": klass,
             "source": source,
             "filled": round(filled, 3),
+            "slope": round(slope, 2),
+            "cut": round(cut, 3),
             "roles": roles,
             "needsSkin": needs_skin,
             "kind": t["kind"],
@@ -221,6 +252,11 @@ def main():
     print("\nwhere the shape came from:", dict(Counter(v["source"] for v in tax.values())))
     print("skin sides, most common:",
           Counter("+".join(v["skin"]) or "none" for v in tax.values()).most_common(8))
+    diag = [v for v in tax.values()
+            if v["slope"] >= 0.45 and 0.12 < v["cut"] < 0.60 and v["filled"] > 0.30
+            and v["class"] in ("corner", "edge", "cap")]
+    print("tiles whose hull line runs diagonally (can smooth a change of beam):",
+          len(diag), sorted({v["code"] for v in diag if v["code"]}))
     print("renamed (filename geometry disagrees with the artwork):",
           sum(1 for v in tax.values() if v["renamed"]))
 

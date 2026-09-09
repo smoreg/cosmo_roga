@@ -132,6 +132,36 @@ that do not are the interior bays, left varied on purpose. Across the keel only:
 bow and stern are not interchangeable. Turning it off in **Options** gives the
 old per-slot choice.
 
+**Smoothing a change of beam.** A step in a hull is a right angle, and a right
+angle is what nearly every tile draws. `geomorph_taxonomy.py` now measures how
+diagonally each hull line crosses its piece — `slope` is the share of rows where
+the cut gets shorter, so a true 45° chamfer scores 1.0, and `cut` is how much of
+the tile it removes. Across the whole archive only **23 tiles, 13 codes**, cut
+their corner at all:
+
+```
+AF12  50x50   45% cut, slope 1.00   9876543210   a clean 45°, port and starboard
+501   50x50   28% cut, slope 0.67   7643221000   a curve, fuel intake scoop
+609   50x50   19% cut, slope 0.56   7432111000   a shallow cut
+A103  50x100  46% cut, slope 0.47   99887766554433221100   a 100 ft taper over 50
+AF13  50x100  45% cut, slope 0.47   99887766554433221100   the same, aerofin family
+also 452, A122, A123, A130, E118-E121
+```
+
+They are almost all from the wing and aerofin families, which is consistent —
+those are the pieces drawn as tapering flanks. Corners part-way down the hull,
+where the beam changes, now prefer them; the bow and stern corners are left to
+whatever suits, since there the right angle *is* the shape of the ship.
+
+**A nose and drives.** Rimming the whole outline the same way gave a ship walled
+in at both ends: an edge tile facing forward is a wall with a room behind it,
+never a nose, and the drives never appeared because nothing asked for a piece
+that is only a stern. The first and last sections are now capped with the same
+`[100x100]` ends ship mode uses — which is where the archive keeps its bridges
+and its engine rooms — and no rim is laid alongside them, since a cap already
+carries hull on three sides and a strip beside it would make the slot read as a
+corner. Toggle in **Options**.
+
 Expect corner turrets. A convex corner takes a corner tile, and the archive's
 corner tiles are mostly fuel scoops and gun positions drawn as triangles, so a
 hull that steps twice grows four of them.
