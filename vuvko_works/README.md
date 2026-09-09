@@ -21,6 +21,39 @@ whether I read the licence text itself or only a summary.
 
 Three ways to build, all seeded, so a plan is a link.
 
+### Setting it up
+
+No artwork is in this repository — it is CC BY-NC and its authors ask that it
+not be repackaged. One command fetches it from their own hosting, unpacks it,
+indexes it and reads the tile edges:
+
+```
+cd vuvko_works
+python3 fetch_geomorphs.py              # ~116 MB from rpgmobius.com
+python3 -m http.server                  # open localhost:8000/geomorphs.html
+```
+
+Add `--adventure` for Geomorph Shipyard's own ship parts (+54 MB, optional).
+`--check` verifies the links without downloading, `--only Symbols` fetches a
+single set, `--keep-zips` keeps the archives instead of deleting them after
+unpacking. Needs Pillow and numpy for the edge reading: `pip install pillow numpy`.
+
+It takes the *Screen* colouring, not *Print* — Print is black line art for white
+paper, and these pages draw on a dark ground where it would be invisible. The
+Mobius archives sit on Google Drive behind the virus-scan interstitial, so the
+script resubmits the confirm form the way a browser does; if that ever breaks,
+`--check` says so and the links are on <https://rpgmobius.com/geomorphs>.
+
+By hand works too. Unpack the three *Screen* archives into
+
+```
+vuvko_works/geomorphs/{Geomorphs,Custom-Tiles,Symbols}/…
+```
+
+then run `python3 geomorph_manifest.py && python3 geomorph_taxonomy.py`. With no
+server at all, open the page and press **Load tiles…**, picking the `geomorphs`
+folder — that also makes PNG export work.
+
 ### Ship — the Geomorph Shipyard recipe
 
 [Geomorph Shipyard](https://gitlab.com/IvanSanchez/geomorph-shipyard) (GPL-3.0)
@@ -75,8 +108,7 @@ The `SE-`, `HG-`, `LS-`, `Sh-` parts Shipyard names are **not** in the Mobius
 repack; they are Pearce's Adventure Class ships, rendered by Eric B. Smith:
 
 ```
-curl -O https://gurpsland.no-ip.org/zip/Geomorphs/AdventureClass.zip
-unzip AdventureClass.zip -d geomorphs/AdventureClass
+python3 fetch_geomorphs.py --adventure
 ```
 
 (mirror: `https://gurpsland.sytes.net/zip/Geomorphs/`.) Choose *Adventure Class*
@@ -128,6 +160,7 @@ label (`drive`, `fuel`, `command`, `weapon`, `bay`, `quarters`, `service`,
 to open onto space: hangar mouths, airlocks, fuel scoops, turrets.
 
 ```
+python3 fetch_geomorphs.py       # downloads, unpacks, then runs both of these
 python3 geomorph_manifest.py     # index the PNGs
 python3 geomorph_taxonomy.py     # read their edges -> tiles.taxonomy.json
 ```

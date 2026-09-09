@@ -33,6 +33,8 @@
 Добавлено: `geomorphs.html` — сборщик палубных планов и корпусов из тайлов
 RPG Mobius Geomorphs (CC BY-NC 4.0). Рядом:
 
+- `fetch_geomorphs.py` — качает архивы с rpgmobius.com и gurpsland.no-ip.org,
+  распаковывает и сразу строит опись и таксономию;
 - `geomorph_manifest.py` — опись PNG-файлов;
 - `geomorph_taxonomy.py` — читает альфа-канал каждого тайла и определяет, какие
   его стороны обшивка, а какие стыкуются с соседом; результат в
@@ -40,6 +42,14 @@ RPG Mobius Geomorphs (CC BY-NC 4.0). Рядом:
 - `geomorphs-atlas.html` — атлас всех тайлов с разметкой сторон, чтобы
   классификацию можно было проверить глазами.
 
-Сама графика не лежит в репозитории: архивы качаются с rpgmobius.com и
-gurpsland.no-ip.org, распаковываются в `vuvko_works/geomorphs/` — она в
-.gitignore.
+Сама графика не лежит в репозитории — она под CC BY-NC, и авторы просят её не
+перепаковывать. Разворачивается одной командой:
+
+```
+cd vuvko_works && python3 fetch_geomorphs.py && python3 -m http.server
+# дальше http://localhost:8000/geomorphs.html
+```
+
+Скрипт качает архивы с rpgmobius.com, распаковывает в `vuvko_works/geomorphs/`
+(она в .gitignore), строит опись и таксономию. `--adventure` добавляет набор
+корабельных деталей Adventure Class, `--check` только проверяет ссылки.
