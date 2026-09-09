@@ -21,6 +21,15 @@ export const PALETTE = {
   accent: "#e0a458",
   steel: "#6f8a9a",
   bulkhead: "#5a4e42",
+
+  // Three levels of tone, and the drawn ship needs all three: **background,
+  // hull, detail**. The hull used to be filled `#141b22` against a `#0a0d10`
+  // background — a difference of five points, invisible on a screen, so the
+  // ship read as an outline over nothing and every panel and frame inside it
+  // disappeared. These two are working values, deliberately far enough apart to
+  // see; the exact ones are a question for design.
+  hull: "#1b242c",
+  plate: "#28343e",
 };
 
 const R = 13; // hex radius in px
