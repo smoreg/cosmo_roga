@@ -412,7 +412,7 @@ function dealer(list){
 function layout(input){
   const opts = Object.assign({
     seed:"SALVOR", beam:2, rows:3, hull:"ship", sets:"all",
-    family:"", profile:"2-1-2", q:"", spin:false, mega:true, vehic:true,
+    family:"", profile:"2-1-2", symmetric:true, q:"", spin:false, mega:true, vehic:true,
   }, input || {});
   opts.seed = String(opts.seed).trim() || "SALVOR";
   opts.q = String(opts.q || "").trim().toLowerCase();
@@ -746,16 +746,64 @@ function layoutProfile(opts, deal, place){
                 (inside[0] === "e" && inside[1] === "w") ? "spine" : "corner";
   }
 
+  /* A hull the same width to port and starboard should look it. The fit test
+     judges each slot alone, so the left and right corners come out as two
+     unrelated pieces — correct, and obviously arbitrary. Pairing them costs
+     nothing: pick for one side, then give the slot opposite the same tile,
+     mirrored across the keel.
+
+     Across the keel and nowhere else. A ship is symmetric side to side; bow and
+     stern are not interchangeable, and mirroring a palindromic profile fore and
+     aft would put the same piece at both ends of the ship. */
+  const xs = slots.map(s=>s.x), xe = slots.map(s=>s.x + s.w);
+  const cx = (Math.min(...xs) + Math.max(...xe)) / 2;
+  const at = new Map(slots.map(s=>[s.x + "," + s.y + "," + s.w + "," + s.h, s]));
+  const twin = s => at.get((2*cx - s.x - s.w) + "," + s.y + "," + s.w + "," + s.h);
+
   let relaxed = 0;
   const seen = new Set();
+  const done = new Set();
+  const fill = (slot, choice) => {
+    done.add(slot);
+    place(choice.tile, slot.x, slot.y, slot.w, slot.h, choice.rot);
+  };
   for (const slot of slots){
+    if (done.has(slot)) continue;
     const c = bestFor(candidates(slot), slot, slot.role, seen);
-    if (!c){ relaxed++; continue; }
+    if (!c){ relaxed++; done.add(slot); continue; }
     if (c.relax) relaxed++;
-    place(c.tile, slot.x, slot.y, slot.w, slot.h, c.rot);
+    fill(slot, c);
+    if (!opts.symmetric || slot.want === "core") continue;
+    const other = twin(slot);
+    if (!other || other === slot || done.has(other)) continue;
+    const m = mirrored(c.tile, c.rot, other);
+    if (m) fill(other, m);
   }
   return {W:(maxW*100) + 100, H:(rows*100) + 100, beam:maxW, rows, relaxed,
           profile: prof.join("-"), familyLabel: prof.join("-") + " hull"};
+}
+
+/* The same piece seen in a mirror. The archive draws many tiles twice, once
+   [Mirror]ed, and that is the true reflection — same rotation, flipped artwork.
+   Failing that, a rotation often lands on the reflected shape anyway: turning a
+   corner whose skin is north-and-west by 90 degrees gives north-and-east, which
+   is what a mirror would have given, only with the lettering the right way
+   round. Where neither works the slot is left to the fit test. */
+function mirrored(tile, rot, slot){
+  const flip = {n:"n", s:"s", e:"w", w:"e"};       // across the keel
+  const tax = taxOf(tile);
+  const want = new Set([...turn(tax.skin, rot)].map(k=>flip[k]));
+  const same = set => set.size === want.size && [...want].every(k=>set.has(k));
+  const fits = (t, r) => {
+    const [w, h] = tileFt(t, r);
+    return w === slot.w && h === slot.h && same(turn(taxOf(t).skin, r));
+  };
+  const pair = LIB.find(t=>t !== tile && t.code && t.code === tile.code &&
+    !!t.mirror !== !!tile.mirror && !t.overlay === !tile.overlay &&
+    t.px[0] === tile.px[0] && t.px[1] === tile.px[1]);
+  if (pair && fits(pair, rot)) return {tile:pair, rot};
+  for (const r of [0, 90, 180, 270]) if (fits(tile, r)) return {tile, rot:r};
+  return null;
 }
 
 /* The rectangular deck slab. Same engine: build the slots, let each one ask

@@ -121,6 +121,17 @@ four — where the bands from two wide sections meet around a narrow one. Forced
 placements are counted in the title block, so you can see which profiles the
 tiles are happy with.
 
+**Symmetric across the keel.** The fit test judges each slot alone, so the port
+and starboard corners came out as two unrelated pieces — correct, and obviously
+arbitrary. Now a choice made for one side is mirrored to the slot opposite: the
+archive draws many tiles twice, once `[Mirror]`ed, and that is the true
+reflection; failing that a rotation usually lands on the reflected shape anyway,
+since turning a corner whose skin is north-and-west by 90° gives north-and-east
+with the lettering still the right way round. Every rim pair matches — the ones
+that do not are the interior bays, left varied on purpose. Across the keel only:
+bow and stern are not interchangeable. Turning it off in **Options** gives the
+old per-slot choice.
+
 Expect corner turrets. A convex corner takes a corner tile, and the archive's
 corner tiles are mostly fuel scoops and gun positions drawn as triangles, so a
 hull that steps twice grows four of them.
@@ -313,6 +324,18 @@ one in `smoreg_works/experiments/hullforms/hexgrid.mjs`, reimplemented rather
 than imported: that folder is a sandbox, and the two halves of this repo do not
 reach into each other. A map from here and a hull from there are on the same
 grid.
+
+**Moving around.** Wheel to zoom about the pointer, drag to pan, both pages.
+A click still selects — the gesture only counts as a pan once the pointer has
+moved a few pixels. Zoom goes from a whole 600 ft hull on screen down to reading
+the lettering on a locker.
+
+**The plan is drawn from the tiles**, not from the raster the rooms were read
+off. That raster is a fifth of native resolution, which is all the room-finding
+needs and turns to mush the moment you zoom in; the tiles laid out as images
+cost no more and stay sharp at any magnification. **Plan**, **Hexes**,
+**Walls**, **Doors**, **Nodes**, **Vehicles** and **Names** each toggle
+separately, so the deck plan can be read on its own or the lattice without it.
 
 **Click any hexagon** and the inspector says what is under it: its axial `q, r`,
 the room that owns most of it and that room's trade and roles, how much of it is

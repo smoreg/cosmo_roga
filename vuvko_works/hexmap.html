@@ -34,12 +34,13 @@ button:hover{background:#fff}
 :focus-visible{outline:2px solid var(--stamp);outline-offset:2px}
 
 .work{flex:1;display:flex;min-height:0}
-.map{flex:1;overflow:auto;display:flex;background:var(--void);
+.map{flex:1;overflow:auto;display:flex;background:var(--void);cursor:grab;touch-action:none;
   background-image:linear-gradient(var(--grid) 1px,transparent 1px),
                    linear-gradient(90deg,var(--grid) 1px,transparent 1px);
   background-size:48px 48px;position:relative}
-.stage{margin:auto;position:relative;flex:none}
-.stage canvas{position:absolute;top:0;left:0;image-rendering:auto}
+.stage{margin:auto;position:relative;flex:none;transform-origin:0 0}
+.art{position:absolute;top:0;left:0}
+.art img{position:absolute;user-select:none;-webkit-user-drag:none}
 .stage svg{position:absolute;top:0;left:0;overflow:visible}
 .hex{stroke:rgba(190,210,220,.16);stroke-width:.4;cursor:pointer}
 .hex:hover{stroke:#fff;stroke-width:1.6}
@@ -128,12 +129,15 @@ code{font-family:"B612 Mono",monospace;background:var(--deck);border:1px solid v
     <div style="display:flex;gap:11px;padding-bottom:5px">
       <label class="check"><input type="checkbox" id="showArt" checked> Plan</label>
       <label class="check"><input type="checkbox" id="showHex" checked> Hexes</label>
+      <label class="check"><input type="checkbox" id="showWalls" checked> Walls</label>
+      <label class="check"><input type="checkbox" id="showDoors" checked> Doors</label>
       <label class="check"><input type="checkbox" id="showNodes" checked> Nodes</label>
+      <label class="check"><input type="checkbox" id="showVeh"> Vehicles</label>
       <label class="check"><input type="checkbox" id="showNames" checked> Names</label>
     </div>
   </div>
   <div class="spacer"></div>
-  <div class="field"><label for="zoom">Zoom</label><input type="range" id="zoom" min="10" max="800" value="60"></div>
+  <div class="field"><label for="zoom">Zoom</label><input type="range" id="zoom" min="5" max="2000" value="60"></div>
   <button id="go">Generate</button>
   <button class="ghost" id="json">Export JSON</button>
   <button class="ghost" id="loadBtn">Load tiles…</button>
@@ -166,6 +170,7 @@ code{font-family:"B612 Mono",monospace;background:var(--deck);border:1px solid v
 </div>
 
 <script src="geomorph-core.js"></script>
+<script src="pan-zoom.js"></script>
 <script>
 /* ============================================================
    A boarding map, read off a deck plan rather than invented.
@@ -207,6 +212,7 @@ let MAP = null;                 // the built map
 let SEL = null;                 // selected zone
 let HEX = null;                 // inspected hexagon
 let zoom = 0.6;
+const BASE = 0.4;               // px per foot before zoom
 
 /* ---------- geometry ----------
    A hexagon's "size" here is the distance across its flats, in feet, which is
@@ -714,17 +720,35 @@ function draw(){
   if (!MAP) return;
   const {rast, geom, cells, zones, doors, plan} = MAP;
   const W = rast.w / PX_FT, H = rast.h / PX_FT;      // feet
-  const px = 4 * zoom;                                // screen px per 10 ft
-  const S = px / 10;
+  /* Drawn once at a fixed scale; zooming is a transform on the stage, so the
+     wheel does not rebuild several hundred hexagons for every notch. */
+  const S = BASE;
   stage.style.width  = W * S + "px";
   stage.style.height = H * S + "px";
 
+  /* The plan is drawn from the tiles themselves, not from the raster that was
+     read to find the rooms. That raster is a fifth of native resolution — all
+     the room-finding needs — and blowing it up turned the deck plan to mush the
+     moment you zoomed in. The tiles laid out as images cost no more and stay
+     sharp at any magnification, because the browser resamples each from its own
+     full-resolution PNG. */
   if (document.getElementById("showArt").checked){
-    const cv = rast.canvas;
-    cv.style.width = W * S + "px";
-    cv.style.height = H * S + "px";
-    cv.style.opacity = document.getElementById("showHex").checked ? "0.9" : "1";
-    stage.appendChild(cv);
+    const art = document.createElement("div");
+    art.className = "art";
+    art.style.opacity = document.getElementById("showHex").checked ? "0.9" : "1";
+    for (const p of plan.put){
+      const im = new Image();
+      im.src = url(p.tile);
+      im.alt = p.tile.label;
+      const iw = p.tile.px[0] / 12 * S, ih = p.tile.px[1] / 12 * S;
+      im.style.width  = iw + "px";
+      im.style.height = ih + "px";
+      im.style.left   = (p.cx * S - iw/2) + "px";
+      im.style.top    = (p.cy * S - ih/2) + "px";
+      if (p.rot) im.style.transform = "rotate(" + p.rot + "deg)";
+      art.appendChild(im);
+    }
+    stage.appendChild(art);
   }
 
   const NS = "http://www.w3.org/2000/svg";
@@ -743,7 +767,10 @@ function draw(){
       poly.setAttribute("class", "hex" + (SEL === c.zone ? " sel" : "") +
         (HEX === c ? " here" : ""));
       poly.setAttribute("fill", zoneColour(z, SEL === c.zone));
-      poly.addEventListener("click", ()=>{ HEX = c; SEL = c.zone; draw(); listZones(); inspect(); });
+      poly.addEventListener("click", ()=>{
+        if (document.getElementById("map").panned) return;   // that was a pan
+        HEX = c; SEL = c.zone; draw(); listZones(); inspect();
+      });
       const t = document.createElementNS(NS, "title");
       t.textContent = z.name + " — " + z.kind + (z.sealed ? " · sealed" : "") +
         (z.marks.length ? " · " + z.marks.join(", ") : "");
@@ -753,7 +780,7 @@ function draw(){
     /* The hull and the bulkheads are edges of the lattice, drawn once each.
        An edge inside a compartment is not a wall and is left as the faint line
        of the hexagon itself. */
-    for (const w of MAP.walls){
+    if (document.getElementById("showWalls").checked) for (const w of MAP.walls){
       const line = document.createElementNS(NS, "line");
       line.setAttribute("x1", w.x1); line.setAttribute("y1", w.y1);
       line.setAttribute("x2", w.x2); line.setAttribute("y2", w.y2);
@@ -768,7 +795,7 @@ function draw(){
      the door across it needs no case analysis. A door with no touching pair of
      hexes has no edge to lie on, and is marked at both ends instead of being
      drawn somewhere wrong. */
-  for (const d of doors){
+  if (document.getElementById("showDoors").checked) for (const d of doors){
     const a = zones[d.a], b = zones[d.b];
     const label = a.name + " ↔ " + b.name + " · " + d.state;
     /* A door lies on the wall it opens: the same lattice edge, drawn over it. */
@@ -816,7 +843,19 @@ function draw(){
       svg.appendChild(label);
     }
   }
+  applyZoom();
   document.getElementById("splash").style.display = "none";
+}
+
+function applyZoom(){
+  const stage = document.getElementById("stage");
+  if (!MAP) return;
+  const W = MAP.rast.w / PX_FT, H = MAP.rast.h / PX_FT;
+  stage.style.transform = "scale(" + zoom + ")";
+  stage.style.width  = W * BASE * zoom + "px";
+  stage.style.height = H * BASE * zoom + "px";
+  const z = document.getElementById("zoom");
+  if (+z.value !== Math.round(zoom * 100)) z.value = Math.round(zoom * 100);
 }
 
 const KIND_HUE = {command:205, drive:8, fuel:35, weapon:350, bay:48, quarters:145,
@@ -949,7 +988,8 @@ function readOptions(){
   document.getElementById("profileField").style.display = hull === "profile" ? "" : "none";
   return {seed:v("seed"), beam:+v("beam"), rows:+v("rows"), hull,
           sets:v("sets"), family:v("family"), profile:v("profile"),
-          q:"", spin:false, mega:true, vehic:false};
+          q:"", spin:false, mega:true,
+          vehic:document.getElementById("showVeh").checked};
 }
 function fillWingForms(){
   const sel = document.getElementById("family");
@@ -985,8 +1025,7 @@ function fitZoom(){
   const box = document.getElementById("map");
   const W = MAP.rast.w / PX_FT, H = MAP.rast.h / PX_FT;
   const s = Math.min((box.clientWidth - 40) / W, (box.clientHeight - 40) / H);
-  zoom = Math.max(0.1, Math.min(8, s / 0.4));
-  document.getElementById("zoom").value = Math.round(zoom * 100);
+  zoom = Math.max(0.05, Math.min(20, s / BASE));
 }
 function writeHash(){
   const p = new URLSearchParams();
@@ -1021,9 +1060,12 @@ document.getElementById("hexft").oninput = e=>{
   document.getElementById("hexlab").textContent = e.target.value + " ft";
 };
 document.getElementById("hexft").onchange = ()=>regenerate(false);
-for (const id of ["showArt","showHex","showNodes","showNames"])
+document.getElementById("showVeh").onchange = ()=>regenerate(false);
+for (const id of ["showArt","showHex","showWalls","showDoors","showNodes","showNames"])
   document.getElementById(id).onchange = ()=>draw();
-document.getElementById("zoom").oninput = e=>{ zoom = +e.target.value / 100; draw(); };
+document.getElementById("zoom").oninput = e=>{ zoom = +e.target.value / 100; applyZoom(); };
+panZoom(document.getElementById("map"), {get:()=>zoom, set:z=>{ zoom = z; applyZoom(); },
+  min:0.05, max:20});
 document.getElementById("json").onclick = exportJSON;
 document.getElementById("loadBtn").onclick = ()=>document.getElementById("picker").click();
 document.getElementById("picker").onchange = e=>{

@@ -54,6 +54,7 @@ button[disabled]{opacity:.4; cursor:not-allowed}
 .work{flex:1; display:flex; min-height:0}
 .plan{
   flex:1; overflow:auto; position:relative; display:flex; background:var(--void);
+  cursor:grab; touch-action:none;
   background-image:
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
@@ -189,13 +190,14 @@ button[disabled]{opacity:.4; cursor:not-allowed}
       <label class="check"><input type="checkbox" id="optOverlay" checked> Vehicles</label>
       <label class="check"><input type="checkbox" id="optMega" checked> Megamorphs</label>
       <label class="check"><input type="checkbox" id="optSpin"> Rotate cores</label>
+      <label class="check"><input type="checkbox" id="optSym" checked> Symmetric</label>
       <label class="check"><input type="checkbox" id="optGrid" checked> Grid</label>
     </div>
   </div>
   <div class="spacer"></div>
   <div class="field">
     <label for="zoom">Zoom</label>
-    <input type="range" id="zoom" min="3" max="100" value="14">
+    <input type="range" id="zoom" min="1" max="600" value="14">
   </div>
   <button id="go">Generate</button>
   <button class="ghost" id="symbolsBtn">Symbols</button>
@@ -246,6 +248,7 @@ button[disabled]{opacity:.4; cursor:not-allowed}
 </div>
 
 <script src="geomorph-core.js"></script>
+<script src="pan-zoom.js"></script>
 <script>
 /* ============================================================
    Geomorph Assembly — builds a deck plan out of Mobius tiles.
@@ -312,6 +315,8 @@ function imgFor(p){
 function applyZoom(){
   const stage = document.getElementById("stage");
   stage.style.transform = "scale(" + scale + ")";
+  const z = document.getElementById("zoom");
+  if (+z.value !== Math.round(scale * 100)) z.value = Math.round(scale * 100);
   if (PLAN){
     stage.style.width  = PLAN.W*FT*scale + "px";
     stage.style.height = PLAN.H*FT*scale + "px";
@@ -321,7 +326,6 @@ function fitZoom(){
   const plan = document.getElementById("plan");
   if (!PLAN) return;
   scale = Math.min((plan.clientWidth-40)/(PLAN.W*FT), (plan.clientHeight-40)/(PLAN.H*FT));
-  document.getElementById("zoom").value = Math.round(scale*100);
   applyZoom();
 }
 
@@ -601,6 +605,7 @@ function readOptions(){
     spin:  document.getElementById("optSpin").checked,
     mega:  document.getElementById("optMega").checked,
     vehic: document.getElementById("optOverlay").checked,
+    symmetric: document.getElementById("optSym").checked,
   };
 }
 function generate(fit){
@@ -644,7 +649,7 @@ document.getElementById("go").onclick = ()=>{
   generate(true);
 };
 document.getElementById("seed").onchange = ()=>generate(true);
-for (const id of ["beam","rows","hull","sets","filter","family","profile","optOverlay","optMega","optSpin"])
+for (const id of ["beam","rows","hull","sets","filter","family","profile","optOverlay","optMega","optSpin","optSym"])
   document.getElementById(id).onchange = ()=>{ syncControls(); generate(true); };
 
 /* Bays and megamorphs belong to the deck slab; the hull form belongs to the
@@ -658,9 +663,12 @@ function syncControls(){
   document.getElementById("rows").disabled = prof;      // the profile is the length
   document.getElementById("optMega").disabled = ship || prof;
   document.getElementById("optSpin").disabled = ship || prof;
+  document.getElementById("optSym").disabled = !prof;
 }
 document.getElementById("optGrid").onchange = ()=>render();
 document.getElementById("zoom").oninput = e=>{ scale = +e.target.value/100; applyZoom(); };
+panZoom(document.getElementById("plan"), {get:()=>scale, set:z=>{ scale = z; applyZoom(); },
+  min:0.01, max:6});
 document.getElementById("png").onclick = exportPNG;
 document.getElementById("json").onclick = exportJSON;
 document.getElementById("openBtn").onclick = ()=>document.getElementById("jsonPicker").click();
