@@ -203,59 +203,59 @@ there rather than three ships later.
 `geomorphs.html` builds a ship. This asks the drawing where a player could
 stand.
 
-The tiles are line art on transparency: walls and furniture are ink, floor is
-nothing at all. So the plan rasterises into a mask where every pixel is either
-structure or space, at 12 px to a 5 ft square. Flood the space inward from the
-border and whatever it reaches is vacuum; what it cannot reach is enclosed, in
-pieces. **Each enclosed piece is a zone** — somewhere a body moves around
-without opening anything. Rooms whose doorways the artist drew open come out as
-one zone, which is the honest answer: if you can walk it, it is one space.
+**The rooms are the map; the hexagons are guidance.** The tiles are line art on
+transparency: walls and furniture are ink, floor is nothing at all. So the plan
+rasterises into a mask at 12 px to a 5 ft square, and flooding the space inward
+from the border separates vacuum from what it cannot reach. Each enclosed piece
+is a zone — somewhere a body moves around without opening anything. Rooms whose
+doorways the artist drew open come out as one zone, which is the honest answer:
+if you can walk it, it is one space.
 
-Then the hexagons go on. **A hexagon is a node** — a place to stand, something to
-search — and belongs to whichever zone owns most of its area. Inside a zone you
-move freely between touching hexes; leaving one costs a door.
+A hex grid then goes over the top, at a size you choose, default 50 ft. It is a
+coarse way to say roughly where something is and how far there is to walk — not
+a floor plan, and it decides nothing. Set it to 10 ft or 80 ft and the rooms,
+the doors and the contents are identical; only the overlay changes. That
+separation was worth getting right: when the zones were built from whichever
+rooms happened to win a hexagon, a galley too narrow for one vanished and took
+its doors with it, stranding the compartments beyond.
 
-**Hex size is a control**, in feet across the flats. At 25 ft a 100 ft geomorph
-tile is four hexes wide and a stateroom is one hex; at 10 ft the same ship has
-five times the nodes and small rooms come into their own; at 50 ft only the
-halls survive. The zones do not change — they are read off the artwork, not the
-lattice — but which of them are big enough to hold a hexagon does.
+**Not every enclosed space is a room.** The flood finds the inside of a drawn
+locker, the cavity between two consoles, the gap behind a bunk: on one deck 936
+of 1052 came out under 50 square feet. The cutoff is 80 — about nine feet
+square, smaller than a stateroom, bigger than a wardrobe — which leaves 68 rooms
+holding 84% of the floor.
 
-**A door is an edge between two touching hexagons**, not a point near a wall.
-The artwork says *where* — a crossing of three feet or less with a different
-zone on each side, the cutoff being what stops the hull and the fuel tanks from
-becoming doorways — and the lattice says *which two nodes*, because that pair is
-what a player walks through. On a pointy-top grid the line between two
-neighbours' centres crosses their shared edge at right angles through its
-midpoint, so the door has somewhere to be drawn and there is no case analysis.
-Where two zones touch through a wall the grid is too coarse to resolve, no such
-pair exists: the door is kept and marked at both ends rather than drawn as a
-line that would be wrong.
+**Doors belong to the wall the artwork drew them in.** A crossing of three feet
+or less with a different room on each side is somewhere a door can be; the
+thickness cutoff is what stops the hull, the fuel tanks and the space between
+two hulls from becoming doorways. Each run of touching wall is its own
+candidate — two rooms can meet in more than one place, and averaging those
+together used to put the door in the wall between them, or inside a third room.
+The door is drawn along the wall, perpendicular to the direction the probe
+crossed it. The pair of hexagons either side is recorded too, as `from` and `to`
+in the export: that is the coarse move, and it is guidance, not geometry.
 
-Each run of touching wall is its own candidate. Two rooms can meet in more than
-one place — either side of a hall, or around a corner — and averaging those
-together put the door in the wall between them, or inside a third room. Not
-every shared wall becomes a door either: a spanning tree so the ship is
-walkable, plus 45% of the rest for loops, `LOOP_SHARE` from smoreg's
-`experiments/hullforms/generate.mjs` and there for the same reason.
+Not every shared wall becomes a door — a deck where they all did would say
+nothing about where you can go — so it keeps a spanning tree, which makes the
+ship walkable, plus 45% of the rest for loops. That share is `LOOP_SHARE` from
+smoreg's `experiments/hullforms/generate.mjs`, and it is there for the same
+reason.
 
-**Sealed zones are reported, not fabricated.** Some pockets genuinely do not
-connect — a weapon mount or an air-raft bay between two hulls is reached through
-its own hatch — so rather than invent a door through a fuel tank, zones outside
-the walkable body are marked `sealed`, drawn with a dashed red edge and counted
-in the tally. The boarding point is always chosen inside the connected part.
+**Sealed rooms are reported, not fabricated.** On the deck above, 8 of 68 have
+no door: three air-raft bays, three weapon mounts, a plasma conduit — all
+reached through their own hatches — and one galley that the artwork itself draws
+shut. Widening the cutoff from 3 ft to 8 ft recovers exactly one of them and
+risks doors through fuel tanks, so the cutoff stays and the rooms are marked
+`sealed`, drawn with a dashed red edge, counted, and kept out of the choice of
+boarding point.
 
-**A hexagon has to be standable.** The ink mask is not only walls — the tiles
-draw every bunk, console and crate — so a hexagon can win a room and still be
-almost solid. One whose open floor is under a seventh of what it covers is
-furniture, not a node.
-
-**Zones name themselves** from the tile beneath their middle — "Fighter Bay
-Crossroad", "Construction Deck - Upper" — and take their trade from that tile's
-taxonomy roles. The seeded content pass then furnishes each by its trade:
-consoles and nav plots in `command`, reactor taps in `drive`, footlockers in
-`quarters`, and a hazard on about one zone in seven. Nothing invents a room; the
-artwork decided what is there, the pass only decides what is lying in it.
+**Rooms name themselves** from the tile beneath them — "Fighter Bay Crossroad",
+"Construction Deck - Upper" — and take their trade from that tile's taxonomy
+roles. The seeded content pass furnishes each by trade: consoles and nav plots
+in `command`, reactor taps in `drive`, footlockers in `quarters`, a hazard on
+about one room in seven. Things are in rooms, not in hexagons — a 50 ft hexagon
+covers a whole suite, and putting the toolrack in one would invent a position
+the artwork never gave.
 
 The lattice — pointy-top, axial `q, r`, six directions, odd-r offset — is the
 one in `smoreg_works/experiments/hullforms/hexgrid.mjs`, reimplemented rather
@@ -263,16 +263,14 @@ than imported: that folder is a sandbox, and the two halves of this repo do not
 reach into each other. A map from here and a hull from there are on the same
 grid.
 
-**Click any hexagon** and the inspector says what the generator decided about
-it: its axial `q, r`, the zone it belongs to and that zone's trade and roles,
-how much of it is open floor, what the content pass left there, whether the zone
-is sealed or hazardous, the tile the artwork drew underneath, and which doors
-lead out of that hex. Hovering gives the short version as a tooltip; the zone
-list on the right takes you to a room.
+**Click any hexagon** and the inspector says what is under it: its axial `q, r`,
+the room that owns most of it and that room's trade and roles, how much of it is
+open floor, which other rooms it also covers, what the content pass left there,
+whether anything is sealed or hazardous, the tile the artwork drew underneath,
+and the doors leading out of what it covers.
 
-*Export JSON* writes zones, hexes and doors — each door carrying the two hexes
-it joins, `from: [q, r]` and `to: [q, r]` — plus the tile provenance of each
-zone.
+*Export JSON* writes rooms, hexes and doors — each door carrying where it is in
+feet and the two hexes either side — plus the tile provenance of every room.
 
 ### Sharing the model
 

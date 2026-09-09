@@ -107,8 +107,8 @@ code{font-family:"B612 Mono",monospace;background:var(--deck);border:1px solid v
   </select></div>
   <div class="field"><label for="family">Wings</label><select id="family"><option value="">Any (seeded)</option></select></div>
   <div class="field">
-    <label for="hexft">Hex <span id="hexlab">25 ft</span></label>
-    <input type="range" id="hexft" min="10" max="60" step="5" value="25">
+    <label for="hexft">Hex overlay <span id="hexlab">50 ft</span></label>
+    <input type="range" id="hexft" min="10" max="80" step="5" value="50">
   </div>
   <div class="field"><label>Show</label>
     <div style="display:flex;gap:11px;padding-bottom:5px">
@@ -291,10 +291,23 @@ function regions(rast){
     }
     sizes[id] = n;
   }
-  const MIN = Math.round(6 * PX_FT * 6 * PX_FT);   // smaller than a 6 ft closet
+  /* Where each room is and how big it is, in pixels. The zones are built from
+     this now, not from which rooms happened to win a hexagon. */
+  const sumX = new Float64Array(next), sumY = new Float64Array(next);
+  for (let i = 0; i < reg.length; i++){
+    const r = reg[i];
+    if (r > 1){ const x = i % w; sumX[r] += x; sumY[r] += (i - x) / w; }
+  }
+  /* The flood finds every enclosed space, and most of them are not rooms: the
+     inside of a drawn locker, the cavity between two consoles, the gap behind a
+     bunk. On one deck 936 of 1052 came out under 50 square feet. Eighty — about
+     nine feet square, smaller than a stateroom and bigger than a wardrobe — cuts
+     those away and still keeps 84% of the floor. */
+  const MIN = Math.round(80 * PX_FT * PX_FT);
   for (let i = 0; i < reg.length; i++)
     if (reg[i] > 1 && sizes[reg[i]] < MIN) reg[i] = -1;
-  return {reg, sizes, count: next - 2};
+  for (let r = 2; r < next; r++) if (sizes[r] < MIN) sizes[r] = 0;   // struck off
+  return {reg, sizes, sumX, sumY, count: next - 2};
 }
 
 /* ---------- doors ----------
@@ -306,12 +319,12 @@ function contacts(rast, reg){
   const {w, h, ink} = rast;
   const MAXWALL = Math.max(2, Math.round(3 * PX_FT));   // a wall, not a hull
   const found = new Map();
-  const note = (a, b, x, y) => {
+  const note = (a, b, x, y, dx, dy) => {
     if (a === b) return;
     const key = a < b ? a + ":" + b : b + ":" + a;
     let c = found.get(key);
     if (!c) found.set(key, c = {a:Math.min(a,b), b:Math.max(a,b), pts:[]});
-    c.pts.push([x, y]);
+    c.pts.push([x, y, dx, dy]);
   };
   for (let y = 1; y < h-1; y++){
     for (let x = 1; x < w-1; x++){
@@ -322,7 +335,7 @@ function contacts(rast, reg){
         while (k <= MAXWALL && ink[i + (dy*k)*w + dx*k]) k++;
         if (k > MAXWALL) continue;
         const back = reg[i - dy*w - dx], fwd = reg[i + (dy*k)*w + dx*k];
-        if (back > 1 && fwd > 1) note(back, fwd, x, y);
+        if (back > 1 && fwd > 1) note(back, fwd, x, y, dx, dy);
       }
     }
   }
@@ -339,10 +352,10 @@ function contacts(rast, reg){
 function split(c){
   const GRID = 4;                       // px; a doorway is wider than this
   const buckets = new Map();
-  for (const [x, y] of c.pts){
-    const k = (x / GRID | 0) + "," + (y / GRID | 0);
+  for (const pt of c.pts){
+    const k = (pt[0] / GRID | 0) + "," + (pt[1] / GRID | 0);
     if (!buckets.has(k)) buckets.set(k, []);
-    buckets.get(k).push([x, y]);
+    buckets.get(k).push(pt);          // keep the crossing direction with it
   }
   const seen = new Set(), runs = [];
   for (const key of buckets.keys()){
@@ -358,9 +371,12 @@ function split(c){
         if (buckets.has(n) && !seen.has(n)){ seen.add(n); st.push(n); }
       }
     }
-    let sx = 0, sy = 0;
-    for (const [x, y] of pts){ sx += x; sy += y; }
-    runs.push({a:c.a, b:c.b, n:pts.length, x:sx/pts.length, y:sy/pts.length});
+    let sx = 0, sy = 0, ax = 0, ay = 0;
+    for (const [x, y, dx, dy] of pts){ sx += x; sy += y; ax += dx; ay += dy; }
+    /* The wall runs across the direction we crossed it, so a door drawn along
+       the wall lies perpendicular to that. */
+    runs.push({a:c.a, b:c.b, n:pts.length, x:sx/pts.length, y:sy/pts.length,
+               ax:ax/pts.length, ay:ay/pts.length});
   }
   return runs;
 }
@@ -374,15 +390,37 @@ async function build(){
   const plan = layout(opts);
 
   const rast = await raster(plan);
-  const {reg} = regions(rast);
+  const {reg, sizes, sumX, sumY} = regions(rast);
   const hexFt = +document.getElementById("hexft").value;
   const geom = hexGeom(hexFt);
 
-  /* Every pixel votes for the hexagon it falls in. A hexagon belongs to the
-     room that owns most of its floor; one with no floor at all is structure or
-     vacuum and is not a place to stand. */
+  /* The rooms are the map. Every enclosed piece of floor is a zone whatever its
+     size — a lattice laid over the ship afterwards must not decide which of its
+     compartments exist, or a galley too narrow for a hexagon vanishes and takes
+     its doors with it. */
+  const zones = [];
+  const zoneOf = new Map();
+  for (let region = 2; region < sizes.length; region++){
+    const n = sizes[region];
+    if (!n) continue;
+    const cx = sumX[region] / n / PX_FT, cy = sumY[region] / n / PX_FT;
+    const tile = tileAt(plan, cx, cy);
+    const tax = tile ? taxOf(tile) : null;
+    const roles = tax ? tax.roles : [];
+    zoneOf.set(region, zones.length);
+    zones.push({
+      id: zones.length, region, cx, cy, roles, cells: [],
+      area: Math.round(n / (PX_FT * PX_FT)),
+      source: tile ? tile.label : "",
+      kind: zoneKind(roles),
+      name: "", marks: [], hazard: "",
+    });
+  }
+
+  /* The hexagons are guidance laid on top: a coarse grid to say roughly where
+     something is and how far it is to walk, not a floor plan. A hexagon shows
+     the zone that owns most of its floor and remembers the rest. */
   const cells = new Map();
-  const perRegion = new Map();          // region -> which hexes cover it
   for (let y = 0; y < rast.h; y++){
     for (let x = 0; x < rast.w; x++){
       const r = reg[y*rast.w + x];
@@ -392,79 +430,31 @@ async function build(){
       if (!c) cells.set(key, c = {q:cell.q, r:cell.r, votes:new Map(), floor:0, wall:0});
       if (r > 1){
         c.floor++;
-        c.votes.set(r, (c.votes.get(r) || 0) + 1);
-        let m = perRegion.get(r);
-        if (!m) perRegion.set(r, m = new Map());
-        m.set(key, (m.get(key) || 0) + 1);
+        const z = zoneOf.get(r);
+        if (z !== undefined) c.votes.set(z, (c.votes.get(z) || 0) + 1);
       }
       else if (r === -1) c.wall++;
     }
   }
-  /* Ink is not only walls — the tiles draw every bunk, console and crate — so a
-     hexagon can win a room and still be almost solid. Somewhere to stand has to
-     be mostly standable: a hexagon whose open floor is under a seventh of what
-     it covers is furniture, not a node. */
-  const MIN_OPEN = 0.14;
-  const byRegion = new Map();
+  const MIN_OPEN = 0.10;
   for (const c of cells.values()){
     const covered = c.floor + c.wall;
     if (!c.floor || c.floor < covered * MIN_OPEN){
       c.kind = covered ? "solid" : "void";
       continue;
     }
-    let best = 0, bestN = 0;
-    for (const [r, n] of c.votes) if (n > bestN){ best = r; bestN = n; }
-    c.region = best; c.kind = "floor";
-    if (!byRegion.has(best)) byRegion.set(best, []);
-    byRegion.get(best).push(c);
-  }
-
-  /* A zone takes its name and trade from the tile its middle sits on: the
-     artwork already says what the room is, and the taxonomy already says what
-     that means. */
-  const zones = [];
-  const zoneOf = new Map();
-  for (const [region, list] of byRegion){
-    if (list.length < 1) continue;
-    const id = zones.length;
-    let cx = 0, cy = 0;
-    for (const c of list){ const p = geom.centre(c); cx += p.x; cy += p.y; }
-    cx /= list.length; cy /= list.length;
-    const tile = tileAt(plan, cx, cy);
-    const tax = tile ? taxOf(tile) : null;
-    const roles = tax ? tax.roles : [];
-    zones.push({
-      id, region, cells: list, cx, cy, roles,
-      area: Math.round(list.length * hexFt * hexFt * Math.sqrt(3) / 2),
-      source: tile ? tile.label : "",
-      kind: zoneKind(roles),
-      name: "", marks: [], hazard: "",
-    });
-    zoneOf.set(region, id);
-    for (const c of list) c.zone = id;
-  }
-
-  /* A room narrower than a hexagon never wins one, and if it were left without
-     a zone every door through it would be dropped and the compartments beyond
-     it stranded. The hex grid is the movement model, not the floor plan: a
-     space too small to stand a hexagon in is still floor, and belongs to the
-     hexagon covering most of it. */
-  for (const [region, hexes] of perRegion){
-    if (zoneOf.has(region)) continue;
-    let bestKey = null, bestN = 0;
-    for (const [key, n] of hexes) if (n > bestN){ bestKey = key; bestN = n; }
-    const owner = bestKey && cells.get(bestKey);
-    if (owner && owner.zone !== undefined) zoneOf.set(region, owner.zone);
+    let best = -1, bestN = 0;
+    for (const [z, n] of c.votes) if (n > bestN){ best = z; bestN = n; }
+    if (best < 0){ c.kind = "solid"; continue; }
+    c.kind = "floor";
+    c.zone = best;
+    c.zones = [...c.votes.keys()].sort((a, b)=>c.votes.get(b) - c.votes.get(a));
+    zones[best].cells.push(c);
   }
 
   const cellList = [...cells.values()];
   const doors = pickDoors(contacts(rast, reg), zoneOf, zones, cellList, geom);
   dressUp(zones, doors, plan);
-  for (const d of doors){
-    if (!d.from) continue;
-    (d.from.exits = d.from.exits || []).push(d);
-    (d.to.exits = d.to.exits || []).push(d);
-  }
   return {plan, rast, reg, geom, hexFt, cells:cellList, zones, doors};
 }
 
@@ -484,56 +474,41 @@ function zoneKind(roles){
   return "hold";
 }
 
-/* A door is an edge between two touching hexagons, not a point near a wall.
-   The wall tells us *where*; the lattice decides *which two nodes* — because
-   that pair is what a player actually walks through. On a pointy-top lattice
-   the line between two neighbours' centres crosses their shared edge at right
-   angles through its midpoint, so the door has a place to be drawn and no case
-   analysis. Where two zones touch through a wall the grid is too coarse to
-   resolve, no such pair exists: the door is kept and said as a link rather than
-   drawn as a line that would be wrong.
+/* A door belongs to the wall the artwork drew it in, not to the lattice: the
+   hexagons are guidance laid on top, and at 50 ft one of them can cover a whole
+   suite of rooms whose doors are all inside it. So a door is placed at the run
+   of wall it was found in and drawn along that wall — perpendicular to the
+   direction the probe crossed it.
 
-   Not every shared wall becomes a door either — a deck where they all did would
-   say nothing about where you can go. Keep a spanning tree so the ship is
-   walkable, then a share of the rest for loops, the proportion smoreg's
+   The pair of hexagons either side is still worth knowing, and is recorded when
+   both zones own one: that is the coarse move a player makes, and it is what
+   the export carries as from/to.
+
+   Not every shared wall becomes a door — a deck where they all did would say
+   nothing about where you can go — so keep a spanning tree, which makes the
+   ship walkable, plus a share of the rest for loops: the proportion smoreg's
    hullforms generator settled on. */
 function pickDoors(list, zoneOf, zones, cells, geom){
   const byKey = new Map(cells.map(c=>[hexKey(c), c]));
-  /** The touching pair of hexes, one in each zone, nearest a contact run. */
-  const nearestPair = (za, zb, x, y) => {
+  const hexAt = (z, x, y) => {
     let best = null;
-    for (const ha of zones[za].cells){
-      for (const d of HEX_DIRS){
-        const hb = byKey.get(hexKey({q:ha.q + d.q, r:ha.r + d.r}));
-        if (!hb || hb.zone !== zb) continue;
-        const pa = geom.centre(ha), pb = geom.centre(hb);
-        const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
-        const dist = Math.hypot(mx - x, my - y);
-        if (!best || dist < best.dist) best = {from:ha, to:hb, mx, my, dist};
-      }
+    for (const c of zones[z].cells){
+      const p = geom.centre(c);
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (!best || d < best.d) best = {c, d};
     }
-    return best;
+    return best && best.c;
   };
   const edges = [];
-  const taken = new Set();
   for (const c of list){
     const a = zoneOf.get(c.a), b = zoneOf.get(c.b);
     if (a === undefined || b === undefined || a === b) continue;
     const x = c.x / PX_FT, y = c.y / PX_FT;
-    const pair = nearestPair(a, b, x, y);
-    // One doorway per pair of hexes: several runs of wall can point at the same
-    // gap, and drawing three doors on one edge is a lie about the ship.
-    if (pair){
-      const key = hexKey(pair.from) + "|" + hexKey(pair.to);
-      const rev = hexKey(pair.to) + "|" + hexKey(pair.from);
-      if (taken.has(key) || taken.has(rev)) continue;
-      taken.add(key);
-    }
-    edges.push({a, b, n:c.n, x, y,
-      from:pair && pair.from, to:pair && pair.to,
-      mx:pair ? pair.mx : x, my:pair ? pair.my : y});
+    edges.push({a, b, n:c.n, x, y, ax:c.ax, ay:c.ay,
+                from:hexAt(a, x, y), to:hexAt(b, x, y)});
   }
-  edges.sort((p,q)=>q.n - p.n);
+  edges.sort((p, q)=>q.n - p.n);
+
   const parent = zones.map((_, i)=>i);
   const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
   const doors = [];
@@ -547,7 +522,6 @@ function pickDoors(list, zoneOf, zones, cells, geom){
   }
   for (let i = 0; i < doors.length; i++){
     doors[i].id = i;
-    doors[i].link = !doors[i].from;      // no touching hexes: said, not drawn
     doors[i].state = doors[i].tree
       ? (rnd() < 0.12 ? "closed" : "open")
       : (rnd() < 0.25 ? "locked" : rnd() < 0.5 ? "closed" : "open");
@@ -578,12 +552,15 @@ function dressUp(zones, doors, plan){
     const n = (named.get(base) || 0) + 1;
     named.set(base, n);
     z.name = n > 1 ? base + " " + n : base;
+    /* Things are in rooms, not in hexagons. A hexagon at 50 ft can cover a
+       whole suite, and putting the toolrack in one of its six neighbours-worth
+       of floor would be inventing a position the artwork never gave. */
     const pool = FITTINGS[z.kind] || FITTINGS.hold;
-    const count = Math.min(z.cells.length, ri(0, z.cells.length > 3 ? 3 : 1));
-    const spots = shuffle(z.cells).slice(0, count);
-    for (const c of spots){
-      c.mark = pick(pool);
-      z.marks.push(c.mark);
+    const count = ri(0, z.area > 900 ? 3 : z.area > 300 ? 2 : 1);
+    const seen = new Set();
+    for (let i = 0; i < count; i++){
+      const m = pick(pool);
+      if (!seen.has(m)){ seen.add(m); z.marks.push(m); }
     }
     if (rnd() < 0.14) z.hazard = pick(HAZARDS);
   }
@@ -672,62 +649,52 @@ function draw(){
   for (const d of doors){
     const a = zones[d.a], b = zones[d.b];
     const label = a.name + " ↔ " + b.name + " · " + d.state;
-    if (d.from && d.to){
-      const pa = geom.centre(d.from), pb = geom.centre(d.to);
-      const dx = pb.x - pa.x, dy = pb.y - pa.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const half = geom.R * 0.42;                       // most of the shared edge
-      const line = document.createElementNS(NS, "line");
-      line.setAttribute("x1", d.mx - dy / len * half);
-      line.setAttribute("y1", d.my + dx / len * half);
-      line.setAttribute("x2", d.mx + dy / len * half);
-      line.setAttribute("y2", d.my - dx / len * half);
-      line.setAttribute("class", "door" + (d.state === "open" ? "" : " shut"));
-      const t = document.createElementNS(NS, "title");
-      t.textContent = label;
-      line.appendChild(t);
-      svg.appendChild(line);
-    } else {
-      for (const z of [a, b]){
-        const mark = document.createElementNS(NS, "circle");
-        mark.setAttribute("cx", z.cx); mark.setAttribute("cy", z.cy - MAP.hexFt * 0.34);
-        mark.setAttribute("r", Math.max(1, MAP.hexFt * 0.09));
-        mark.setAttribute("fill", "none");
-        mark.setAttribute("stroke", "var(--door)");
-        mark.setAttribute("stroke-width", ".8");
-        const t = document.createElementNS(NS, "title");
-        t.textContent = label + " — no shared hex edge, shown as a link";
-        mark.appendChild(t);
-        svg.appendChild(mark);
-      }
-    }
+    /* Along the wall: the probe crossed it in (ax, ay), so the wall itself runs
+       across that. Length is a doorway, not a hexagon — the door is a feature of
+       the plan, and stays the same size whatever the lattice is set to. */
+    const len = Math.hypot(d.ax, d.ay) || 1;
+    const half = 5;                                   // a 10 ft doorway
+    const line = document.createElementNS(NS, "line");
+    line.setAttribute("x1", d.x - d.ay / len * half);
+    line.setAttribute("y1", d.y + d.ax / len * half);
+    line.setAttribute("x2", d.x + d.ay / len * half);
+    line.setAttribute("y2", d.y - d.ax / len * half);
+    line.setAttribute("class", "door" + (d.state === "open" ? "" : " shut"));
+    const t = document.createElementNS(NS, "title");
+    t.textContent = label;
+    line.appendChild(t);
+    svg.appendChild(line);
   }
   if (document.getElementById("showNodes").checked){
-    for (const c of cells){
-      if (!c.mark) continue;
-      const p = geom.centre(c);
-      const dot = document.createElementNS(NS, "circle");
-      dot.setAttribute("cx", p.x); dot.setAttribute("cy", p.y);
-      dot.setAttribute("r", Math.max(1.2, MAP.hexFt * 0.11));
-      dot.setAttribute("fill", "#e8c15a");
-      const t = document.createElementNS(NS, "title");
-      t.textContent = c.mark;
-      dot.appendChild(t);
-      svg.appendChild(dot);
+    for (const z of zones){
+      z.marks.forEach((mark, i)=>{
+        const a = i * 2.4;                             // fan them off the middle
+        const dot = document.createElementNS(NS, "circle");
+        dot.setAttribute("cx", z.cx + Math.cos(a) * i * 4);
+        dot.setAttribute("cy", z.cy + Math.sin(a) * i * 4);
+        dot.setAttribute("r", 2.2);
+        dot.setAttribute("fill", "#e8c15a");
+        const t = document.createElementNS(NS, "title");
+        t.textContent = z.name + " · " + mark;
+        dot.appendChild(t);
+        svg.appendChild(dot);
+      });
     }
   }
   if (document.getElementById("showNames").checked){
     /* Only the rooms a reader can actually take in. At 10 ft hexes a ship has
        fifty zones and naming them all just fills the hull with type; a closet
        still has its hex and its tooltip. */
-    const big = zones.slice().sort((a,b)=>b.cells.length - a.cells.length)
-      .slice(0, 14).map(z=>z.id);
+    /* Name the rooms worth naming. Sixty-eight compartments will not fit their
+       names on one hull, so take the biggest dozen and the way in. */
+    const big = new Set(zones.filter(z=>z.area >= 300)
+      .sort((a,b)=>b.area - a.area).slice(0, 12).map(z=>z.id));
     for (const z of zones){
-      if (!big.includes(z.id) && !z.entry) continue;
+      if (!big.has(z.id) && !z.entry) continue;
       const label = document.createElementNS(NS, "text");
       label.setAttribute("x", z.cx); label.setAttribute("y", z.cy + 2);
       label.setAttribute("class", "zlabel");
-      label.setAttribute("font-size", Math.max(4, MAP.hexFt * 0.34));
+      label.setAttribute("font-size", 11);
       label.textContent = z.entry ? "▶ " + z.name : z.name;
       svg.appendChild(label);
     }
@@ -755,7 +722,7 @@ function listZones(){
     sw.style.background = zoneColour(z, true);
     const body = document.createElement("div");
     body.innerHTML = "<b>" + esc(z.entry ? "▶ " + z.name : z.name) + "</b>" +
-      "<small>" + z.kind + " · " + z.cells.length + " hex · " + z.area + " sq ft" +
+      "<small>" + z.kind + " · " + z.area + " sq ft" +
       (z.sealed ? " · <span style='color:var(--stamp)'>sealed</span>" : "") +
       (z.hazard ? " · <span style='color:var(--stamp)'>" + z.hazard + "</span>" : "") +
       (z.marks.length ? "<br>" + esc(z.marks.join(", ")) : "") + "</small>";
@@ -768,8 +735,8 @@ function listZones(){
     "<b>" + MAP.zones.length + "</b> zones (<b>" + MAP.zones.filter(z=>z.sealed).length +
     "</b> sealed) · <b>" + floor + "</b> hexes<br>" +
     "<b>" + MAP.doors.length + "</b> doors (" + MAP.doors.filter(d=>d.state === "open").length + " open" +
-    (MAP.doors.some(d=>d.link) ? ", " + MAP.doors.filter(d=>d.link).length + " as links" : "") + ")<br>" +
-    "hex <b>" + MAP.hexFt + " ft</b> · hull <b>" + MAP.plan.W + "×" + MAP.plan.H + " ft</b>";
+    ")<br>" +
+    "hex overlay <b>" + MAP.hexFt + " ft</b> · hull <b>" + MAP.plan.W + "×" + MAP.plan.H + " ft</b>";
 }
 function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 
@@ -781,14 +748,18 @@ function inspect(){
   box.textContent = "";
   if (!HEX){ box.innerHTML = '<p class="hint">Click a hexagon to see what is in it.</p>'; return; }
   const z = MAP.zones[HEX.zone];
-  const tile = tileAt(MAP.plan, ...Object.values(MAP.geom.centre(HEX)));
+  const p = MAP.geom.centre(HEX);
+  const tile = tileAt(MAP.plan, p.x, p.y);
+  const others = (HEX.zones || []).filter(i=>i !== HEX.zone);
   const rows = [
-    ["cell", "q " + HEX.q + ", r " + HEX.r],
-    ["zone", z.name + " (#" + z.id + ")"],
+    ["cell", "q " + HEX.q + ", r " + HEX.r + " · " + MAP.hexFt + " ft"],
+    ["mostly", z.name + " (#" + z.id + ")"],
     ["kind", z.kind + (z.roles.length ? " · " + z.roles.join(", ") : "")],
     ["floor", Math.round(HEX.floor / (HEX.floor + HEX.wall) * 100) + "% open floor"],
-    ["holds", HEX.mark ? '<span class="mark">' + esc(HEX.mark) + "</span>" : "—"],
+    ["holds", z.marks.length ? '<span class="mark">' + esc(z.marks.join(", ")) + "</span>" : "—"],
   ];
+  if (others.length) rows.push(["also over",
+    others.map(i=>esc(MAP.zones[i].name)).join(", ")]);
   if (z.sealed) rows.push(["access", '<span style="color:var(--stamp)">sealed — no door from the rest of the ship</span>']);
   if (z.hazard) rows.push(["hazard", '<span style="color:var(--stamp)">' + esc(z.hazard) + "</span>"]);
   if (z.entry) rows.push(["", "boarding point"]);
@@ -798,15 +769,17 @@ function inspect(){
     "<dt>" + esc(k) + "</dt><dd>" + v + "</dd>").join("");
   box.appendChild(dl);
 
-  const exits = HEX.exits || [];
+  /* Doors out of the rooms this hexagon covers, not out of the hexagon: at
+     50 ft the lattice is guidance, and the rooms are what have doors. */
+  const covered = new Set(HEX.zones || [HEX.zone]);
+  const exits = MAP.doors.filter(d=>covered.has(d.a) || covered.has(d.b));
   const wrap = document.createElement("div");
   wrap.className = "exits";
   if (!exits.length){
-    wrap.innerHTML = '<span class="exit">no door on this hex — walk to one inside ' +
-      esc(z.name) + "</span>";
+    wrap.innerHTML = '<span class="exit">nothing leads out of what this hex covers</span>';
   } else {
     wrap.innerHTML = exits.map(d=>{
-      const other = MAP.zones[d.a === HEX.zone ? d.b : d.a];
+      const other = MAP.zones[covered.has(d.a) ? d.b : d.a];
       return '<div class="exit">→ <b>' + esc(other.name) + "</b> · " + d.state +
         (d.loop === false ? "" : "") + "</div>";
     }).join("");
@@ -829,13 +802,13 @@ function mapJSON(){
       entry: !!z.entry, sealed: !!z.sealed, marks: z.marks, from: z.source,
     })),
     hexes: MAP.cells.filter(c=>c.kind === "floor").map(c=>({
-      q: c.q, r: c.r, zone: c.zone, mark: c.mark || null,
+      q: c.q, r: c.r, zone: c.zone, over: c.zones || [c.zone],
     })),
     doors: MAP.doors.map(d=>({
       id: d.id, a: d.a, b: d.b, state: d.state, loop: !d.tree,
+      at: [Math.round(d.x), Math.round(d.y)],
       from: d.from ? [d.from.q, d.from.r] : null,
       to:   d.to   ? [d.to.q,   d.to.r]   : null,
-      link: !!d.link,
     })),
     plan: MAP.plan.put.filter(p=>!p.tile.overlay).map(p=>({
       path: p.tile.path, x: p.x, y: p.y, rot: p.rot,
