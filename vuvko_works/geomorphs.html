@@ -146,9 +146,24 @@ button[disabled]{opacity:.4; cursor:not-allowed}
     <label for="hull">Hull</label>
     <select id="hull">
       <option value="ship" selected>Ship — spine &amp; mirrored flanks</option>
+      <option value="profile">Ship — by section profile</option>
       <option value="rimmed">Deck — edges &amp; corners</option>
       <option value="capped">Deck — nose &amp; tail caps</option>
       <option value="bare">Deck — cores only</option>
+    </select>
+  </div>
+  <div class="field" id="profileField" style="display:none">
+    <label for="profile">Sections</label>
+    <select id="profile">
+      <option value="2-1-2" selected>2-1-2 — waisted</option>
+      <option value="1-2-1">1-2-1 — bulged</option>
+      <option value="1-2-3">1-2-3 — tapered</option>
+      <option value="3-2-1">3-2-1 — wedge</option>
+      <option value="3-1-3">3-1-3 — pinched</option>
+      <option value="2-2-2">2-2-2 — double hull</option>
+      <option value="1-1-2-2">1-1-2-2 — stepped</option>
+      <option value="2-3-3-2">2-3-3-2 — belly</option>
+      <option value="1-3-1">1-3-1 — cross</option>
     </select>
   </div>
   <div class="field" id="familyField">
@@ -581,6 +596,7 @@ function readOptions(){
     hull:   v("hull"),
     sets:   v("sets"),
     family: v("family"),
+    profile: v("profile"),
     q:      v("filter"),
     spin:  document.getElementById("optSpin").checked,
     mega:  document.getElementById("optMega").checked,
@@ -599,7 +615,7 @@ function generate(fit){
 }
 
 /* The whole configuration lives in the hash, so a plan you like is a link. */
-const HASH_FIELDS = ["seed","beam","rows","hull","sets","filter","family"];
+const HASH_FIELDS = ["seed","beam","rows","hull","sets","filter","family","profile"];
 function writeHash(){
   const p = new URLSearchParams();
   for (const id of HASH_FIELDS){
@@ -628,18 +644,20 @@ document.getElementById("go").onclick = ()=>{
   generate(true);
 };
 document.getElementById("seed").onchange = ()=>generate(true);
-for (const id of ["beam","rows","hull","sets","filter","family","optOverlay","optMega","optSpin"])
+for (const id of ["beam","rows","hull","sets","filter","family","profile","optOverlay","optMega","optSpin"])
   document.getElementById(id).onchange = ()=>{ syncControls(); generate(true); };
 
 /* Bays and megamorphs belong to the deck slab; the hull form belongs to the
    ship. Grey out whichever does not apply rather than quietly ignoring it. */
 function syncControls(){
-  const ship = document.getElementById("hull").value === "ship";
+  const hull = document.getElementById("hull").value;
+  const ship = hull === "ship", prof = hull === "profile";
   document.getElementById("familyField").style.display = ship ? "" : "none";
-  document.getElementById("beam").disabled = ship;
-  document.getElementById("optMega").disabled = ship;
-  document.getElementById("optSpin").disabled = ship;
-  document.getElementById("rows").previousElementSibling;
+  document.getElementById("profileField").style.display = prof ? "" : "none";
+  document.getElementById("beam").disabled = ship || prof;
+  document.getElementById("rows").disabled = prof;      // the profile is the length
+  document.getElementById("optMega").disabled = ship || prof;
+  document.getElementById("optSpin").disabled = ship || prof;
 }
 document.getElementById("optGrid").onchange = ()=>render();
 document.getElementById("zoom").oninput = e=>{ scale = +e.target.value/100; applyZoom(); };

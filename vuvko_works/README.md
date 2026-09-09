@@ -89,6 +89,42 @@ own bow fits — AF13's `[100x100]` nose continues its flanks' diagonal exactly,
 the A1xx sides meet the pointed bow assembly (`[100x50]` transition, `[50x50]` tip,
 `[25x50]` fuel cheeks) — so those get theirs and everything else uses the End cap.
 
+### Ship — by section profile
+
+Ship mode is one bay wide: a 100 ft spine with optional wings. This one takes a
+profile — `2-1-2` is two bays wide, then one, then two, a waisted hull; `1-2-3`
+tapers; `2-3-3-2` has a belly. Anything the tiles can close is allowed.
+
+Bays are 100 ft and sit on the 50 ft grid the geomorph system is cut to, so a
+section whose width has the other parity is centred half a bay across from its
+neighbours — and the corridors still meet, because the connecting stubs are at
+the quarter points of every tile edge. Counting the doorway gaps along 189 core
+tiles puts the peaks at 25 ft and 75 ft, and a 50 ft shift maps one onto the
+other. That is what makes `2-1-2` a legal hull rather than one with its middle
+third bricked up.
+
+The rim is not laid out by hand. Every 50 ft cell touching the outline becomes a
+slot, straight runs merge into the 100x50 edge tiles that exist for them, turns
+stay 50x50 for the corner tiles, and the fit test rotates each to face its skin
+outward. What a slot wants is read off how many sides face another tile: one is
+a cap, two adjacent a corner, three an edge, four a core.
+
+**What the archive will not do.** There is no interior module below 100 ft. At
+50x50 it offers 437 pieces with one joinable side and 345 with two — caps and
+corners, all hull — 4 with three, and none at all with four. So a hull that
+steps leaves shoulder cells wanting three or four joinable sides at 50 ft, and
+those tiles do not exist. Leaving the shoulder open instead costs a 50 ft recess
+in the outline and lets the pieces either side be the corners they already are:
+that took `1-2-3`, `1-3-1`, `2-2-2`, `1-1-2-2` and `2-3-3-2` to placing every
+tile legally. A symmetric pinch still forces a few — `2-1-2` one tile, `3-1-3`
+four — where the bands from two wide sections meet around a narrow one. Forced
+placements are counted in the title block, so you can see which profiles the
+tiles are happy with.
+
+Expect corner turrets. A convex corner takes a corner tile, and the archive's
+corner tiles are mostly fuel scoops and gun positions drawn as triangles, so a
+hull that steps twice grows four of them.
+
 ### Deck
 
 The rectangular slab: cores in the bays, edge strips down the flanks,

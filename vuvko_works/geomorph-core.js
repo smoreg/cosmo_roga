@@ -412,7 +412,7 @@ function dealer(list){
 function layout(input){
   const opts = Object.assign({
     seed:"SALVOR", beam:2, rows:3, hull:"ship", sets:"all",
-    family:"", q:"", spin:false, mega:true, vehic:true,
+    family:"", profile:"2-1-2", q:"", spin:false, mega:true, vehic:true,
   }, input || {});
   opts.seed = String(opts.seed).trim() || "SALVOR";
   opts.q = String(opts.q || "").trim().toLowerCase();
@@ -454,7 +454,8 @@ function layout(input){
      its own: ask for it in the Tiles list and you get Shipyard's own parts,
      otherwise the Mobius tiles build the ship. */
   const useAC = AC.ready && opts.sets === "AdventureClass";
-  const built = opts.hull !== "ship" ? layoutDeck(opts, deal, place)
+  const built = opts.hull === "profile" ? layoutProfile(opts, deal, place)
+              : opts.hull !== "ship" ? layoutDeck(opts, deal, place)
               : useAC ? layoutAdventureShip(opts, deal, place)
               : layoutShip(opts, deal, place);
 
@@ -629,6 +630,132 @@ function layoutShip(opts, deal, place){
   }
   return {W:0, H:0, family: fam ? fam.key : null, relaxed,
     familyLabel: fam ? fam.label : "no wings", beam:1, rows:opts.rows};
+}
+
+/* A hull described by its sections: "2-1-2" is two bays wide, then one, then
+   two — a waisted ship. Anything the tiles can close is allowed: "1-2-3" tapers,
+   "3-1-3" pinches to a waist, "2" is a plain double hull.
+ 
+   Bays are 100 ft and sit on the 50 ft grid the geomorph system is cut to, so a
+   section whose width has the other parity is centred half a bay across from its
+   neighbours — and the corridors still meet, because the connecting stubs are at
+   the quarter points of every tile edge, 25 ft and 75 ft, and a 50 ft shift maps
+   one onto the other. That is what makes 2-1-2 a legal hull rather than a hull
+   with its middle third bricked up.
+ 
+   The rim is not laid out by hand here. Every 50 ft cell touching the outline
+   becomes a slot; straight runs merge into the 100x50 edge tiles that exist for
+   them, turns stay 50x50 for the corner tiles, and the fit test rotates each to
+   put its skin outward. Convex corner, inner corner where a section steps in,
+   the flat of a beam — all the same rule, so the hull closes whatever shape the
+   profile asks for. */
+function parseProfile(text){
+  const parts = String(text || "").split(/[^0-9]+/).filter(Boolean)
+    .map(Number).filter(n=>n >= 1 && n <= 6);
+  return parts.length ? parts.slice(0, 12) : [1];
+}
+
+function layoutProfile(opts, deal, place){
+  const prof = parseProfile(opts.profile);
+  const maxW = Math.max(...prof);
+  const G = 50;                                   // the grid everything sits on
+
+  const bays = [];
+  prof.forEach((w, row)=>{
+    const x0 = (maxW - w) * 50;                   // centred; half a bay is fine
+    for (let i = 0; i < w; i++) bays.push({x:x0 + i*100, y:row*100, row});
+  });
+  const core = new Set();
+  for (const b of bays)
+    for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++)
+      core.add((b.x/G + dx) + "," + (b.y/G + dy));
+  const isCore = (gx, gy) => core.has(gx + "," + gy);
+
+  /* Every cell that touches the hull from outside, corners included — except
+     the shoulder of a step. At an inner corner the band would wrap a cell with
+     hull on two sides and its own neighbours on the other two, and the archive
+     has no such tile: at 50 ft it offers 437 pieces with one joinable side and
+     345 with two, all of them hull, 4 with three and none with four. The
+     interior module of this system is 100 ft and nothing smaller. Leaving the
+     shoulder open costs a 50 ft recess in the outline and lets the pieces on
+     either side be the corners they already are. */
+  const rim = new Set();
+  for (const key of core){
+    const [gx, gy] = key.split(",").map(Number);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++){
+      const k = (gx + dx) + "," + (gy + dy);
+      if (!core.has(k)) rim.add(k);
+    }
+  }
+  for (const key of [...rim]){
+    const [gx, gy] = key.split(",").map(Number);
+    const f = {n:isCore(gx,gy-1), s:isCore(gx,gy+1), w:isCore(gx-1,gy), e:isCore(gx+1,gy)};
+    const on = ["n","s","w","e"].filter(k=>f[k]);
+    if (on.length >= 2 && !(on.length === 2 && (f.n && f.s || f.e && f.w))) rim.delete(key);
+  }
+
+  /* Two rim cells along the same face are one edge tile; a cell that turns a
+     corner is left alone for a corner tile. */
+  const used = new Set();
+  const slots = [];
+  const rows = prof.length;
+  for (const b of bays)
+    slots.push({x:b.x, y:b.y, w:100, h:100, want:"core",
+      role: b.row === 0 ? "command" : b.row === rows-1 ? "drive"
+          : rnd() < 0.5 ? "bay" : "quarters"});
+
+  const faceOf = (gx, gy) => ({
+    n: isCore(gx, gy-1), s: isCore(gx, gy+1),
+    w: isCore(gx-1, gy), e: isCore(gx+1, gy),
+  });
+  for (const key of [...rim].sort()){
+    if (used.has(key)) continue;
+    const [gx, gy] = key.split(",").map(Number);
+    const f = faceOf(gx, gy);
+    const flat = ["n","s","w","e"].filter(k=>f[k]);
+    if (flat.length === 1){
+      const side = flat[0];
+      const along = (side === "n" || side === "s") ? [1, 0] : [0, 1];
+      const nk = (gx + along[0]) + "," + (gy + along[1]);
+      const nf = faceOf(gx + along[0], gy + along[1]);
+      if (rim.has(nk) && !used.has(nk) &&
+          ["n","s","w","e"].filter(k=>nf[k]).length === 1 && nf[side]){
+        used.add(key); used.add(nk);
+        slots.push({x:gx*G, y:gy*G, w:along[0] ? 100 : 50, h:along[0] ? 50 : 100,
+          want:"edge", role: side === "s" ? "command" : side === "n" ? "drive" : "weapon"});
+        continue;
+      }
+    }
+    used.add(key);
+    slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner", role:"fuel"});
+  }
+  neighbours(slots);
+
+  /* What shape a slot wants is not a guess — it is how many sides face another
+     tile. One is a cap, two adjacent a corner, three an edge, four a core. A
+     notch in the hull asks for a cap and gets one, which is why an inner corner
+     closes as readily as an outer one. */
+  for (const slot of slots){
+    if (slot.want === "core") continue;
+    const inside = SIDES.filter(k=>slot.inside[k]);
+    slot.want = inside.length === 4 ? "core"
+              : inside.length === 3 ? "edge"
+              : inside.length === 1 ? "cap"
+              : inside.length === 0 ? "island"
+              : (inside[0] === "n" && inside[1] === "s") ||
+                (inside[0] === "e" && inside[1] === "w") ? "spine" : "corner";
+  }
+
+  let relaxed = 0;
+  const seen = new Set();
+  for (const slot of slots){
+    const c = bestFor(candidates(slot), slot, slot.role, seen);
+    if (!c){ relaxed++; continue; }
+    if (c.relax) relaxed++;
+    place(c.tile, slot.x, slot.y, slot.w, slot.h, c.rot);
+  }
+  return {W:(maxW*100) + 100, H:(rows*100) + 100, beam:maxW, rows, relaxed,
+          profile: prof.join("-"), familyLabel: prof.join("-") + " hull"};
 }
 
 /* The rectangular deck slab. Same engine: build the slots, let each one ask
