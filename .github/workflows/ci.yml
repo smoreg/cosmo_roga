@@ -1,0 +1,77 @@
+name: CI
+
+# Собирает SALVOR из `smoreg_works/` и, если есть ключ, выкладывает сборку на
+# itch. Форма взята с abbradar/office-hell — там это уже работает; отличие в
+# том, что у нас монорепо лежит в подпапке и мы гоняем тесты, а не biome.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: smoreg_works
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      # Тесты перед сборкой намеренно: сборка, которая не проходит свои же
+      # инварианты, не должна доезжать до itch.
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: smoreg_works/games/salvor/dist/
+          retention-days: 7
+
+  deploy:
+    # Только с main и только когда ключ заведён. Без ключа шаг не падает, а
+    # просто не запускается — иначе каждый push краснел бы на секрете, который
+    # заводится однажды.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: itch-deploy
+    env:
+      ITCH_TARGET: vuvko/derelict-rogue
+      ITCH_CHANNEL: html5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Есть ли ключ
+        id: key
+        run: |
+          if [ -n "${{ secrets.BUTLER_API_KEY }}" ]; then
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=no" >> "$GITHUB_OUTPUT"
+            echo "BUTLER_API_KEY не заведён — сборка собрана, выкладка пропущена." >> "$GITHUB_STEP_SUMMARY"
+          fi
+        working-directory: .
+      - name: Install butler
+        if: steps.key.outputs.have == 'yes'
+        working-directory: .
+        run: |
+          curl -sL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d "$HOME/.butler"
+          chmod +x "$HOME/.butler/butler"
+          echo "$HOME/.butler" >> "$GITHUB_PATH"
+      - name: Push to itch.io
+        if: steps.key.outputs.have == 'yes'
+        working-directory: .
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          butler push dist "$ITCH_TARGET:$ITCH_CHANNEL" \
+            --userversion "${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
