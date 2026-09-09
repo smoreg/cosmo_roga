@@ -44,6 +44,7 @@ button:hover{background:#fff}
 .hex{stroke:#0e1114;stroke-width:.6;cursor:pointer}
 .hex:hover{stroke:#fff;stroke-width:1.6}
 .hex.sel{stroke:var(--stamp);stroke-width:2}
+.hex.here{stroke:#fff;stroke-width:2.4}
 .door{stroke:var(--door);stroke-width:3;stroke-linecap:round}
 .door.shut{stroke-dasharray:3 3}
 .node{fill:var(--ink);font:700 9px "B612 Mono",monospace;text-anchor:middle;pointer-events:none}
@@ -54,6 +55,16 @@ aside{width:290px;flex:none;border-left:1px solid var(--rule);background:var(--p
       display:flex;flex-direction:column;min-height:0}
 aside h2{margin:0;padding:9px 12px;border-bottom:1px solid var(--rule);font-size:12px;
   letter-spacing:.07em;text-transform:uppercase;color:var(--dim);font-weight:400}
+.inspector{padding:9px 12px;border-bottom:1px solid var(--rule);font-size:12.5px;
+  max-height:44%;overflow:auto;flex:none}
+.inspector .hint{color:var(--dim);margin:2px 0;font-size:11.5px}
+.inspector dl{display:grid;grid-template-columns:auto 1fr;gap:2px 9px;margin:0}
+.inspector dt{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.inspector dd{margin:0;font:400 12.5px/1.4 "B612 Mono",monospace;min-width:0;word-break:break-word}
+.inspector .mark{color:var(--door)}
+.inspector .exits{margin-top:6px;border-top:1px solid #20262b;padding-top:5px}
+.inspector .exit{font:400 11.5px/1.5 "B612 Mono",monospace;color:var(--dim)}
+.inspector .exit b{color:var(--ink);font-weight:400}
 .zones{overflow:auto;flex:1}
 .zone{padding:7px 12px;border-bottom:1px solid #20262b;cursor:pointer;display:flex;gap:8px;align-items:baseline}
 .zone:hover{background:#1e242a}
@@ -127,6 +138,8 @@ code{font-family:"B612 Mono",monospace;background:var(--deck);border:1px solid v
     </div></div>
   </div>
   <aside>
+    <h2>Hex</h2>
+    <div class="inspector" id="inspector"><p class="hint">Click a hexagon to see what is in it.</p></div>
     <h2>Zones</h2>
     <div class="zones" id="zones"></div>
     <div class="tally" id="tally">—</div>
@@ -178,6 +191,7 @@ const hexKey = c => c.q + "," + c.r;
 
 let MAP = null;                 // the built map
 let SEL = null;                 // selected zone
+let HEX = null;                 // inspected hexagon
 let zoom = 0.6;
 
 /* ---------- geometry ----------
@@ -296,8 +310,8 @@ function contacts(rast, reg){
     if (a === b) return;
     const key = a < b ? a + ":" + b : b + ":" + a;
     let c = found.get(key);
-    if (!c) found.set(key, c = {a:Math.min(a,b), b:Math.max(a,b), n:0, x:0, y:0});
-    c.n++; c.x += x; c.y += y;
+    if (!c) found.set(key, c = {a:Math.min(a,b), b:Math.max(a,b), pts:[]});
+    c.pts.push([x, y]);
   };
   for (let y = 1; y < h-1; y++){
     for (let x = 1; x < w-1; x++){
@@ -312,7 +326,43 @@ function contacts(rast, reg){
       }
     }
   }
-  return [...found.values()].map(c=>({...c, x:c.x/c.n, y:c.y/c.n}));
+  /* Two rooms can touch in more than one place — either side of a hall, or
+     around a corner — and averaging those together puts the door in the wall
+     between them, or inside a third room. Each run of touching wall is its own
+     candidate; a pair of rooms with two ways between gets two. */
+  const out = [];
+  for (const c of found.values()) out.push(...split(c));
+  return out;
+}
+
+/** Break one pair's contact pixels into runs, by proximity. */
+function split(c){
+  const GRID = 4;                       // px; a doorway is wider than this
+  const buckets = new Map();
+  for (const [x, y] of c.pts){
+    const k = (x / GRID | 0) + "," + (y / GRID | 0);
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push([x, y]);
+  }
+  const seen = new Set(), runs = [];
+  for (const key of buckets.keys()){
+    if (seen.has(key)) continue;
+    const pts = [], st = [key];
+    seen.add(key);
+    while (st.length){
+      const k = st.pop();
+      pts.push(...buckets.get(k));
+      const [bx, by] = k.split(",").map(Number);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++){
+        const n = (bx+dx) + "," + (by+dy);
+        if (buckets.has(n) && !seen.has(n)){ seen.add(n); st.push(n); }
+      }
+    }
+    let sx = 0, sy = 0;
+    for (const [x, y] of pts){ sx += x; sy += y; }
+    runs.push({a:c.a, b:c.b, n:pts.length, x:sx/pts.length, y:sy/pts.length});
+  }
+  return runs;
 }
 
 /* ---------- the map ---------- */
@@ -332,6 +382,7 @@ async function build(){
      room that owns most of its floor; one with no floor at all is structure or
      vacuum and is not a place to stand. */
   const cells = new Map();
+  const perRegion = new Map();          // region -> which hexes cover it
   for (let y = 0; y < rast.h; y++){
     for (let x = 0; x < rast.w; x++){
       const r = reg[y*rast.w + x];
@@ -339,13 +390,28 @@ async function build(){
       const key = hexKey(cell);
       let c = cells.get(key);
       if (!c) cells.set(key, c = {q:cell.q, r:cell.r, votes:new Map(), floor:0, wall:0});
-      if (r > 1){ c.floor++; c.votes.set(r, (c.votes.get(r) || 0) + 1); }
+      if (r > 1){
+        c.floor++;
+        c.votes.set(r, (c.votes.get(r) || 0) + 1);
+        let m = perRegion.get(r);
+        if (!m) perRegion.set(r, m = new Map());
+        m.set(key, (m.get(key) || 0) + 1);
+      }
       else if (r === -1) c.wall++;
     }
   }
+  /* Ink is not only walls — the tiles draw every bunk, console and crate — so a
+     hexagon can win a room and still be almost solid. Somewhere to stand has to
+     be mostly standable: a hexagon whose open floor is under a seventh of what
+     it covers is furniture, not a node. */
+  const MIN_OPEN = 0.14;
   const byRegion = new Map();
   for (const c of cells.values()){
-    if (!c.floor){ c.kind = c.wall ? "solid" : "void"; continue; }
+    const covered = c.floor + c.wall;
+    if (!c.floor || c.floor < covered * MIN_OPEN){
+      c.kind = covered ? "solid" : "void";
+      continue;
+    }
     let best = 0, bestN = 0;
     for (const [r, n] of c.votes) if (n > bestN){ best = r; bestN = n; }
     c.region = best; c.kind = "floor";
@@ -378,9 +444,28 @@ async function build(){
     for (const c of list) c.zone = id;
   }
 
-  const doors = pickDoors(contacts(rast, reg), zoneOf, zones);
+  /* A room narrower than a hexagon never wins one, and if it were left without
+     a zone every door through it would be dropped and the compartments beyond
+     it stranded. The hex grid is the movement model, not the floor plan: a
+     space too small to stand a hexagon in is still floor, and belongs to the
+     hexagon covering most of it. */
+  for (const [region, hexes] of perRegion){
+    if (zoneOf.has(region)) continue;
+    let bestKey = null, bestN = 0;
+    for (const [key, n] of hexes) if (n > bestN){ bestKey = key; bestN = n; }
+    const owner = bestKey && cells.get(bestKey);
+    if (owner && owner.zone !== undefined) zoneOf.set(region, owner.zone);
+  }
+
+  const cellList = [...cells.values()];
+  const doors = pickDoors(contacts(rast, reg), zoneOf, zones, cellList, geom);
   dressUp(zones, doors, plan);
-  return {plan, rast, reg, geom, hexFt, cells:[...cells.values()], zones, doors};
+  for (const d of doors){
+    if (!d.from) continue;
+    (d.from.exits = d.from.exits || []).push(d);
+    (d.to.exits = d.to.exits || []).push(d);
+  }
+  return {plan, rast, reg, geom, hexFt, cells:cellList, zones, doors};
 }
 
 /** Which tile is under a point, in feet. Overlays are vehicles, not rooms. */
@@ -399,15 +484,56 @@ function zoneKind(roles){
   return "hold";
 }
 
-/* Not every shared wall is a door: a deck where every wall had one would say
-   nothing about where you can go. Keep a spanning tree so the ship is walkable,
-   then a share of the rest so it has loops — the proportion smoreg's hullforms
-   generator settled on. */
-function pickDoors(list, zoneOf, zones){
-  const edges = list
-    .map(c=>({a:zoneOf.get(c.a), b:zoneOf.get(c.b), n:c.n, x:c.x/PX_FT, y:c.y/PX_FT}))
-    .filter(e=>e.a !== undefined && e.b !== undefined && e.a !== e.b)
-    .sort((p,q)=>q.n - p.n);
+/* A door is an edge between two touching hexagons, not a point near a wall.
+   The wall tells us *where*; the lattice decides *which two nodes* — because
+   that pair is what a player actually walks through. On a pointy-top lattice
+   the line between two neighbours' centres crosses their shared edge at right
+   angles through its midpoint, so the door has a place to be drawn and no case
+   analysis. Where two zones touch through a wall the grid is too coarse to
+   resolve, no such pair exists: the door is kept and said as a link rather than
+   drawn as a line that would be wrong.
+
+   Not every shared wall becomes a door either — a deck where they all did would
+   say nothing about where you can go. Keep a spanning tree so the ship is
+   walkable, then a share of the rest for loops, the proportion smoreg's
+   hullforms generator settled on. */
+function pickDoors(list, zoneOf, zones, cells, geom){
+  const byKey = new Map(cells.map(c=>[hexKey(c), c]));
+  /** The touching pair of hexes, one in each zone, nearest a contact run. */
+  const nearestPair = (za, zb, x, y) => {
+    let best = null;
+    for (const ha of zones[za].cells){
+      for (const d of HEX_DIRS){
+        const hb = byKey.get(hexKey({q:ha.q + d.q, r:ha.r + d.r}));
+        if (!hb || hb.zone !== zb) continue;
+        const pa = geom.centre(ha), pb = geom.centre(hb);
+        const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+        const dist = Math.hypot(mx - x, my - y);
+        if (!best || dist < best.dist) best = {from:ha, to:hb, mx, my, dist};
+      }
+    }
+    return best;
+  };
+  const edges = [];
+  const taken = new Set();
+  for (const c of list){
+    const a = zoneOf.get(c.a), b = zoneOf.get(c.b);
+    if (a === undefined || b === undefined || a === b) continue;
+    const x = c.x / PX_FT, y = c.y / PX_FT;
+    const pair = nearestPair(a, b, x, y);
+    // One doorway per pair of hexes: several runs of wall can point at the same
+    // gap, and drawing three doors on one edge is a lie about the ship.
+    if (pair){
+      const key = hexKey(pair.from) + "|" + hexKey(pair.to);
+      const rev = hexKey(pair.to) + "|" + hexKey(pair.from);
+      if (taken.has(key) || taken.has(rev)) continue;
+      taken.add(key);
+    }
+    edges.push({a, b, n:c.n, x, y,
+      from:pair && pair.from, to:pair && pair.to,
+      mx:pair ? pair.mx : x, my:pair ? pair.my : y});
+  }
+  edges.sort((p,q)=>q.n - p.n);
   const parent = zones.map((_, i)=>i);
   const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
   const doors = [];
@@ -421,6 +547,7 @@ function pickDoors(list, zoneOf, zones){
   }
   for (let i = 0; i < doors.length; i++){
     doors[i].id = i;
+    doors[i].link = !doors[i].from;      // no touching hexes: said, not drawn
     doors[i].state = doors[i].tree
       ? (rnd() < 0.12 ? "closed" : "open")
       : (rnd() < 0.25 ? "locked" : rnd() < 0.5 ? "closed" : "open");
@@ -460,11 +587,35 @@ function dressUp(zones, doors, plan){
     }
     if (rnd() < 0.14) z.hazard = pick(HAZARDS);
   }
-  /* Somewhere to come aboard: an airlock if the plan drew one, else the outer
-     zone nearest the stern, which is where a boarding tube would clamp. */
-  const outer = zones.filter(z=>z.roles.includes("airlock"));
-  const entry = outer.length ? pick(outer)
-    : zones.slice().sort((a,b)=>b.cy - a.cy)[0];
+  /* Which compartments can actually be walked to. Not every pocket connects:
+     a weapon mount or an air-raft bay between two hulls is reached through its
+     own hatch, and a wall too thick to be a doorway is not one. Rather than
+     invent a door through a fuel tank, say which spaces are sealed — they are
+     content, not an error, and a boarding party can cut. */
+  const adj = new Map(zones.map(z=>[z.id, []]));
+  for (const d of doors){ adj.get(d.a).push(d.b); adj.get(d.b).push(d.a); }
+  const seen = new Map();
+  const parts = [];
+  for (const z of zones){
+    if (seen.has(z.id)) continue;
+    const part = [], st = [z.id];
+    seen.set(z.id, parts.length);
+    while (st.length){
+      const q = st.pop(); part.push(q);
+      for (const n of adj.get(q)) if (!seen.has(n)){ seen.set(n, parts.length); st.push(n); }
+    }
+    parts.push(part);
+  }
+  parts.sort((a, b)=>b.length - a.length);
+  const main = new Set(parts[0] || []);
+  for (const z of zones) z.sealed = !main.has(z.id);
+
+  /* Come aboard somewhere you can walk out of: an airlock in the connected
+     part of the ship, else its aftmost compartment, where a tube would clamp. */
+  const open = zones.filter(z=>!z.sealed);
+  const locks = open.filter(z=>z.roles.includes("airlock"));
+  const entry = locks.length ? pick(locks)
+    : open.slice().sort((a, b)=>b.cy - a.cy)[0];
   if (entry){ entry.entry = true; entry.marks.unshift("boarding point"); }
 }
 
@@ -501,28 +652,55 @@ function draw(){
       const z = zones[c.zone];
       const poly = document.createElementNS(NS, "polygon");
       poly.setAttribute("points", geom.corners(c).map(p=>p.join(",")).join(" "));
-      poly.setAttribute("class", "hex" + (SEL === c.zone ? " sel" : ""));
+      poly.setAttribute("class", "hex" + (SEL === c.zone ? " sel" : "") +
+        (HEX === c ? " here" : ""));
       poly.setAttribute("fill", zoneColour(z, SEL === c.zone));
-      poly.addEventListener("click", ()=>{ SEL = SEL === c.zone ? null : c.zone; draw(); listZones(); });
+      if (z.sealed){ poly.setAttribute("stroke", "#c8503f"); poly.setAttribute("stroke-dasharray", "1.5 1.5"); }
+      poly.addEventListener("click", ()=>{ HEX = c; SEL = c.zone; draw(); listZones(); inspect(); });
       const t = document.createElementNS(NS, "title");
-      t.textContent = z.name + " — " + z.kind + (c.mark ? " · " + c.mark : "");
+      t.textContent = z.name + " — " + z.kind + (z.sealed ? " · sealed" : "") +
+        (c.mark ? " · " + c.mark : "");
       poly.appendChild(t);
       svg.appendChild(poly);
     }
   }
+  /* A door lies *on* the edge the two hexagons share: the segment between their
+     centres crosses that edge at right angles through its midpoint, so drawing
+     the door across it needs no case analysis. A door with no touching pair of
+     hexes has no edge to lie on, and is marked at both ends instead of being
+     drawn somewhere wrong. */
   for (const d of doors){
-    const line = document.createElementNS(NS, "line");
     const a = zones[d.a], b = zones[d.b];
-    const mx = d.x, my = d.y;
-    line.setAttribute("x1", mx + (a.cx - mx) * 0.22);
-    line.setAttribute("y1", my + (a.cy - my) * 0.22);
-    line.setAttribute("x2", mx + (b.cx - mx) * 0.22);
-    line.setAttribute("y2", my + (b.cy - my) * 0.22);
-    line.setAttribute("class", "door" + (d.state === "open" ? "" : " shut"));
-    const t = document.createElementNS(NS, "title");
-    t.textContent = a.name + " ↔ " + b.name + " · " + d.state;
-    line.appendChild(t);
-    svg.appendChild(line);
+    const label = a.name + " ↔ " + b.name + " · " + d.state;
+    if (d.from && d.to){
+      const pa = geom.centre(d.from), pb = geom.centre(d.to);
+      const dx = pb.x - pa.x, dy = pb.y - pa.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const half = geom.R * 0.42;                       // most of the shared edge
+      const line = document.createElementNS(NS, "line");
+      line.setAttribute("x1", d.mx - dy / len * half);
+      line.setAttribute("y1", d.my + dx / len * half);
+      line.setAttribute("x2", d.mx + dy / len * half);
+      line.setAttribute("y2", d.my - dx / len * half);
+      line.setAttribute("class", "door" + (d.state === "open" ? "" : " shut"));
+      const t = document.createElementNS(NS, "title");
+      t.textContent = label;
+      line.appendChild(t);
+      svg.appendChild(line);
+    } else {
+      for (const z of [a, b]){
+        const mark = document.createElementNS(NS, "circle");
+        mark.setAttribute("cx", z.cx); mark.setAttribute("cy", z.cy - MAP.hexFt * 0.34);
+        mark.setAttribute("r", Math.max(1, MAP.hexFt * 0.09));
+        mark.setAttribute("fill", "none");
+        mark.setAttribute("stroke", "var(--door)");
+        mark.setAttribute("stroke-width", ".8");
+        const t = document.createElementNS(NS, "title");
+        t.textContent = label + " — no shared hex edge, shown as a link";
+        mark.appendChild(t);
+        svg.appendChild(mark);
+      }
+    }
   }
   if (document.getElementById("showNodes").checked){
     for (const c of cells){
@@ -578,19 +756,63 @@ function listZones(){
     const body = document.createElement("div");
     body.innerHTML = "<b>" + esc(z.entry ? "▶ " + z.name : z.name) + "</b>" +
       "<small>" + z.kind + " · " + z.cells.length + " hex · " + z.area + " sq ft" +
+      (z.sealed ? " · <span style='color:var(--stamp)'>sealed</span>" : "") +
       (z.hazard ? " · <span style='color:var(--stamp)'>" + z.hazard + "</span>" : "") +
       (z.marks.length ? "<br>" + esc(z.marks.join(", ")) : "") + "</small>";
     row.append(sw, body);
-    row.onclick = ()=>{ SEL = SEL === z.id ? null : z.id; draw(); listZones(); };
+    row.onclick = ()=>{ SEL = SEL === z.id ? null : z.id; HEX = null; draw(); listZones(); inspect(); };
     box.appendChild(row);
   }
   const floor = MAP.cells.filter(c=>c.kind === "floor").length;
   document.getElementById("tally").innerHTML =
-    "<b>" + MAP.zones.length + "</b> zones · <b>" + floor + "</b> walkable hexes<br>" +
-    "<b>" + MAP.doors.length + "</b> doors (" + MAP.doors.filter(d=>d.state === "open").length + " open)<br>" +
+    "<b>" + MAP.zones.length + "</b> zones (<b>" + MAP.zones.filter(z=>z.sealed).length +
+    "</b> sealed) · <b>" + floor + "</b> hexes<br>" +
+    "<b>" + MAP.doors.length + "</b> doors (" + MAP.doors.filter(d=>d.state === "open").length + " open" +
+    (MAP.doors.some(d=>d.link) ? ", " + MAP.doors.filter(d=>d.link).length + " as links" : "") + ")<br>" +
     "hex <b>" + MAP.hexFt + " ft</b> · hull <b>" + MAP.plan.W + "×" + MAP.plan.H + " ft</b>";
 }
 function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+/* What is in this hexagon: which zone owns it, what the artwork underneath is,
+   what the content pass left here, and which doors lead out of it. Everything
+   the generator decided about one node, in one place. */
+function inspect(){
+  const box = document.getElementById("inspector");
+  box.textContent = "";
+  if (!HEX){ box.innerHTML = '<p class="hint">Click a hexagon to see what is in it.</p>'; return; }
+  const z = MAP.zones[HEX.zone];
+  const tile = tileAt(MAP.plan, ...Object.values(MAP.geom.centre(HEX)));
+  const rows = [
+    ["cell", "q " + HEX.q + ", r " + HEX.r],
+    ["zone", z.name + " (#" + z.id + ")"],
+    ["kind", z.kind + (z.roles.length ? " · " + z.roles.join(", ") : "")],
+    ["floor", Math.round(HEX.floor / (HEX.floor + HEX.wall) * 100) + "% open floor"],
+    ["holds", HEX.mark ? '<span class="mark">' + esc(HEX.mark) + "</span>" : "—"],
+  ];
+  if (z.sealed) rows.push(["access", '<span style="color:var(--stamp)">sealed — no door from the rest of the ship</span>']);
+  if (z.hazard) rows.push(["hazard", '<span style="color:var(--stamp)">' + esc(z.hazard) + "</span>"]);
+  if (z.entry) rows.push(["", "boarding point"]);
+  if (tile) rows.push(["tile", esc(tile.label)]);
+  const dl = document.createElement("dl");
+  dl.innerHTML = rows.map(([k, v]) =>
+    "<dt>" + esc(k) + "</dt><dd>" + v + "</dd>").join("");
+  box.appendChild(dl);
+
+  const exits = HEX.exits || [];
+  const wrap = document.createElement("div");
+  wrap.className = "exits";
+  if (!exits.length){
+    wrap.innerHTML = '<span class="exit">no door on this hex — walk to one inside ' +
+      esc(z.name) + "</span>";
+  } else {
+    wrap.innerHTML = exits.map(d=>{
+      const other = MAP.zones[d.a === HEX.zone ? d.b : d.a];
+      return '<div class="exit">→ <b>' + esc(other.name) + "</b> · " + d.state +
+        (d.loop === false ? "" : "") + "</div>";
+    }).join("");
+  }
+  box.appendChild(wrap);
+}
 
 /* ---------- export ---------- */
 function mapJSON(){
@@ -604,12 +826,17 @@ function mapJSON(){
     zones: MAP.zones.map(z=>({
       id: z.id, name: z.name, kind: z.kind, roles: z.roles,
       hexes: z.cells.length, areaSqFt: z.area, hazard: z.hazard || null,
-      entry: !!z.entry, marks: z.marks, from: z.source,
+      entry: !!z.entry, sealed: !!z.sealed, marks: z.marks, from: z.source,
     })),
     hexes: MAP.cells.filter(c=>c.kind === "floor").map(c=>({
       q: c.q, r: c.r, zone: c.zone, mark: c.mark || null,
     })),
-    doors: MAP.doors.map(d=>({id: d.id, a: d.a, b: d.b, state: d.state, loop: !d.tree})),
+    doors: MAP.doors.map(d=>({
+      id: d.id, a: d.a, b: d.b, state: d.state, loop: !d.tree,
+      from: d.from ? [d.from.q, d.from.r] : null,
+      to:   d.to   ? [d.to.q,   d.to.r]   : null,
+      link: !!d.link,
+    })),
     plan: MAP.plan.put.filter(p=>!p.tile.overlay).map(p=>({
       path: p.tile.path, x: p.x, y: p.y, rot: p.rot,
     })),
@@ -650,8 +877,10 @@ async function regenerate(fit){
     MAP = await build();
     if (MAP){
       if (fit) fitZoom();
+      HEX = null;
       draw();
       listZones();
+      inspect();
       writeHash();
     }
   } finally {

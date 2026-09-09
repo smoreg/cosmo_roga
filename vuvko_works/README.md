@@ -221,14 +221,34 @@ five times the nodes and small rooms come into their own; at 50 ft only the
 halls survive. The zones do not change — they are read off the artwork, not the
 lattice — but which of them are big enough to hold a hexagon does.
 
-**Doors** are found by looking across the structure: a crossing of three feet or
-less with a different zone on each side is somewhere a door can be, and the
-thickness cutoff is what stops the hull, the tanks and the space between two
-hulls from becoming doorways. Not every shared wall gets one — a deck where they
-all did would say nothing about where you can go — so it keeps a spanning tree,
-which makes the whole ship walkable, plus 45% of the rest for loops. That share
-is `LOOP_SHARE` from smoreg's `experiments/hullforms/generate.mjs`, and it is
-there for the same reason.
+**A door is an edge between two touching hexagons**, not a point near a wall.
+The artwork says *where* — a crossing of three feet or less with a different
+zone on each side, the cutoff being what stops the hull and the fuel tanks from
+becoming doorways — and the lattice says *which two nodes*, because that pair is
+what a player walks through. On a pointy-top grid the line between two
+neighbours' centres crosses their shared edge at right angles through its
+midpoint, so the door has somewhere to be drawn and there is no case analysis.
+Where two zones touch through a wall the grid is too coarse to resolve, no such
+pair exists: the door is kept and marked at both ends rather than drawn as a
+line that would be wrong.
+
+Each run of touching wall is its own candidate. Two rooms can meet in more than
+one place — either side of a hall, or around a corner — and averaging those
+together put the door in the wall between them, or inside a third room. Not
+every shared wall becomes a door either: a spanning tree so the ship is
+walkable, plus 45% of the rest for loops, `LOOP_SHARE` from smoreg's
+`experiments/hullforms/generate.mjs` and there for the same reason.
+
+**Sealed zones are reported, not fabricated.** Some pockets genuinely do not
+connect — a weapon mount or an air-raft bay between two hulls is reached through
+its own hatch — so rather than invent a door through a fuel tank, zones outside
+the walkable body are marked `sealed`, drawn with a dashed red edge and counted
+in the tally. The boarding point is always chosen inside the connected part.
+
+**A hexagon has to be standable.** The ink mask is not only walls — the tiles
+draw every bunk, console and crate — so a hexagon can win a room and still be
+almost solid. One whose open floor is under a seventh of what it covers is
+furniture, not a node.
 
 **Zones name themselves** from the tile beneath their middle — "Fighter Bay
 Crossroad", "Construction Deck - Upper" — and take their trade from that tile's
@@ -243,7 +263,16 @@ than imported: that folder is a sandbox, and the two halves of this repo do not
 reach into each other. A map from here and a hull from there are on the same
 grid.
 
-*Export JSON* writes zones, hexes, doors and the tile provenance of each zone.
+**Click any hexagon** and the inspector says what the generator decided about
+it: its axial `q, r`, the zone it belongs to and that zone's trade and roles,
+how much of it is open floor, what the content pass left there, whether the zone
+is sealed or hazardous, the tile the artwork drew underneath, and which doors
+lead out of that hex. Hovering gives the short version as a tooltip; the zone
+list on the right takes you to a room.
+
+*Export JSON* writes zones, hexes and doors — each door carrying the two hexes
+it joins, `from: [q, r]` and `to: [q, r]` — plus the tile provenance of each
+zone.
 
 ### Sharing the model
 
