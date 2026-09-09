@@ -1,0 +1,14 @@
+{
+  "name": "@jamrog/engine",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Reusable traditional-roguelike engine: FOV, Dijkstra maps, mapgen family, turn scheduling, statuses, effects, items, AI behaviours.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "dependencies": {
+    "rot-js": "^2.2.1"
+  }
+}

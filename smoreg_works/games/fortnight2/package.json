@@ -1,0 +1,17 @@
+{
+  "name": "@jamrog/fortnight2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Entry for roguetemple's Fortnight 2 (2026-09-01 .. 2026-09-15).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "zip": "npm run build && cd dist && zip -r ../fortnight2-web.zip . && cd .. && echo 'dist -> fortnight2-web.zip ready for the itch.io HTML5 upload'"
+  },
+  "dependencies": {
+    "@jamrog/engine": "*",
+    "rot-js": "^2.2.1"
+  }
+}

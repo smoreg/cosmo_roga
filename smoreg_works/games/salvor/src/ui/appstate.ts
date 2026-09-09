@@ -1,0 +1,800 @@
+import type { DoorId, RoomCommand, RoomGame, RoomId } from "@jamrog/engine";
+import { isTug } from "../content/tug.js";
+import { cycleLang, t } from "../i18n.js";
+import {
+  ACTION_KEYS,
+  doorStands,
+  roomActions,
+  tugStands,
+  waysHere,
+  type Action,
+  type Level,
+} from "./actions.js";
+import { DOOR_USE, helpPages, missingModuleLine, type UiIntent } from "./input.js";
+import { airlockRoom, travelRoute } from "./auto.js";
+import { voyageRecord } from "../systems/voyage.js";
+
+/**
+ * What the app is showing and what it wants done about the last key — as data,
+ * with no DOM anywhere near it.
+ *
+ * The overlays are the part of the game a test could never reach before: the
+ * title, the help card, the endings and the error screen used to live in `App`
+ * as private fields mutated by a switch over key events, so "`?` on the death
+ * screen loses the banner" was a thing a person had to notice in a browser.
+ * Here it is a transition between two values, and `app.ts` is what is left once
+ * the transitions are gone: listeners, a timer and a renderer.
+ */
+
+/** What is drawn in front of the schematic, if anything. */
+export type Overlay = "none" | "title" | "help" | "dead" | "won" | "lost" | "sold" | "crash";
+
+/** Overlays that mean the run, or this sortie, is over: they outrank the board. */
+const ENDINGS: ReadonlySet<Overlay> = new Set<Overlay>(["dead", "won", "lost", "sold"]);
+
+/**
+ * What the shell must do about the key the reducer just read. The reducer
+ * never touches the game itself: a turn is spent by `app.ts` calling
+ * `playerCommand`, which keeps every rule about when a turn is spent in one
+ * readable place.
+ */
+export type AppEffect =
+  /** Handled, nothing more to do. The key is still ours: swallow it. */
+  | { kind: "idle" }
+  /** Not ours. Leave the key to the browser. */
+  | { kind: "pass" }
+  | { kind: "command"; cmd: RoomCommand }
+  /** A line for the log, and no turn: a refused action, a module that burned. */
+  | { kind: "log"; text: string }
+  /** Start the auto-explore walk. The pacing timer belongs to the shell. */
+  | { kind: "explore" }
+  /**
+   * Cast off with the training prompts on: the second line of the title menu.
+   * The shell owns it because a training run is a *new run* with a flag, and
+   * making a run is the shell's job (`app.ts`, `newRun`).
+   */
+  | { kind: "training" }
+  /**
+   * Walk to a compartment the player named, a turn at a time, until something
+   * is worth a decision (`ui/auto.ts`, `makeTraveller`). The same walk the
+   * shell already runs for `o`, pointed at a destination.
+   */
+  | { kind: "travel"; to: RoomId }
+  /** One turn of closing in. `melee` is shift+tab: never spend the emitter. */
+  | { kind: "fight"; melee: boolean }
+  /** Abort a walk in progress. */
+  | { kind: "stopAuto" }
+  /** The language changed under the whole screen. Redraw, spend nothing. */
+  | { kind: "language" }
+  /** New seed, new voyage. */
+  | { kind: "newRun" };
+
+export interface AppState {
+  readonly overlay: Overlay;
+  /** True while auto-explore is walking. Any key at all ends it. */
+  readonly exploring: boolean;
+  /** The crash card's body, or undefined while the run is healthy. */
+  readonly crash: readonly string[] | undefined;
+  /**
+   * The highlighted line of the action list, counting from zero.
+   *
+   * Never a mode and never a selection the game waits on: the list is drawn
+   * with one line bright, `Enter` does that line, and every digit still does
+   * its own and takes the highlight with it (docs/tasks/G40-tug-clarity.md, 8).
+   */
+  readonly cursor: number;
+  /**
+   * Which compartment of which ship the cursor belongs to, as `ship:room`.
+   *
+   * A cursor is a position in a list, and the list is built again from nothing
+   * the moment the drone goes through a door: line 3 was `go d4` and is now
+   * `attack enforcer`. So the highlight goes back to the top whenever the
+   * compartment changes, and this is what notices that it did.
+   */
+  readonly at: string;
+  /**
+   * What the list is showing one level down, if it is showing anything: a
+   * bulkhead's own ways through it, or a tug verb's own modules.
+   *
+   * The whole of the one level the list has (`ui/actions.ts`), and the only
+   * thing about it the app remembers: a door id, or a verb. It is not a mode —
+   * no key waits for another, every letter still does what it does, and the
+   * level falls away by itself the moment the door, the verb or the compartment
+   * stops matching.
+   */
+  readonly menu: Level | undefined;
+  /**
+   * True while the list is showing where the drone can walk rather than what it
+   * can do here: the level `m` opens (docs/tasks/G48-travel-to-a-room.md).
+   *
+   * Above `menu` rather than beside it — a bulkhead is reached out of the map
+   * as readily as out of the compartment's own list, and `0` then comes back to
+   * whichever of the two it was reached from. That is two levels, and this
+   * boolean plus that door id is all either of them is: no mode, no key waiting
+   * on another, and both fall away by themselves the moment the drone moves.
+   */
+  readonly moves: boolean;
+  /**
+   * Which page of the help card is showing, counting from zero.
+   *
+   * The card outgrew the screen — thirty-eight lines of body in a forty-two row
+   * frame — so every key the game gains was a choice between its own line and
+   * somebody else's. It pages now (docs/tasks/G48-travel-to-a-room.md), `?`
+   * turns the page and closes on the last, and this is the whole of that.
+   */
+  readonly helpPage: number;
+  /**
+   * The two things a sortie can end with, as the run had them last time this
+   * looked: drones lost and hulls taken under tow.
+   *
+   * Counters and not booleans, because both happen more than once a voyage and
+   * what the screen has to notice is the *next* one. They are read off the
+   * voyage rather than pushed in by whoever caused them, which is why this
+   * works down every path the events have — a drone dying mid-walk, a hull sold
+   * at the airlock, a death the harness drives — without any of them knowing
+   * the screen exists (docs/tasks/G54-two-ships-confusion.md, 6).
+   */
+  readonly seen: SortieMarks;
+  /** The last transition's output. Recomputed on every step; never history. */
+  readonly effect: AppEffect;
+}
+
+/** Drones lost and hulls sold over the voyage so far. */
+export interface SortieMarks {
+  readonly lost: number;
+  readonly sold: number;
+}
+
+const NO_MARKS: SortieMarks = { lost: 0, sold: 0 };
+
+/**
+ * What the run has to show for itself, counted off the voyage record.
+ *
+ * Read through `voyageRecord`, which never creates one: this is asked on every
+ * key, including on ships that have no voyage at all (the hand-drawn hulls of
+ * the tests), and a question must never be the thing that starts a run.
+ */
+function marksOf(game: RoomGame): SortieMarks {
+  const voyage = voyageRecord(game);
+  if (!voyage) return NO_MARKS;
+  return {
+    lost: voyage.state.reduce((n, s) => n + s.deaths.length, 0),
+    sold: voyage.state.filter((s) => s.sold).length,
+  };
+}
+
+const IDLE: AppEffect = { kind: "idle" };
+const PASS: AppEffect = { kind: "pass" };
+
+/** Leaving the title: the same state whichever line was pressed. */
+function started(state: AppState, game: RoomGame): AppState {
+  return {
+    ...state,
+    overlay: "none",
+    exploring: false,
+    crash: undefined,
+    cursor: 0,
+    at: placeOf(game),
+    menu: undefined,
+    moves: false,
+    helpPage: 0,
+    seen: marksOf(game),
+    effect: IDLE,
+  };
+}
+
+/** A session before its first key: the run exists, the title sits in front of it. */
+export function initialState(): AppState {
+  return {
+    overlay: "title",
+    exploring: false,
+    crash: undefined,
+    cursor: 0,
+    at: "",
+    menu: undefined,
+    moves: false,
+    helpPage: 0,
+    seen: NO_MARKS,
+    effect: IDLE,
+  };
+}
+
+/**
+ * The list as the player is looking at it: the compartment, its doors, or one
+ * of those doors.
+ */
+export function listOf(game: RoomGame, state: AppState): Action[] {
+  return roomActions(game, state.menu, state.moves, state.cursor);
+}
+
+/**
+ * The compartment the highlighted line points at, if it points at one.
+ *
+ * The map's half of choosing where to walk: `m` opens the list of compartments,
+ * the arrows move the highlight, and the box the highlight belongs to lights up
+ * on the schematic — so the choice is made looking at the ship rather than at a
+ * column of names ("после m направление куда идём выбираем на карте", and
+ * "на m надо подсвечивать в какой блок идём" — the owner).
+ *
+ * Undefined on every list that is not the map, which is most of them: a row
+ * that does not point at a compartment lights nothing, rather than leaving the
+ * last lit box behind as a lie.
+ */
+export function aimedAt(game: RoomGame, state: AppState): RoomId | undefined {
+  return listOf(game, state)[state.cursor]?.leadsTo;
+}
+
+/** Lines of the list that have a key, which is as far as the cursor may go. */
+/**
+ * How far the highlight may go: every line of the list, numbered or not.
+ *
+ * It used to count numbered lines only, which is half of why an eleventh line
+ * could not be reached by anything (docs/tasks/G55-playtest-findings.md, 4).
+ * The ten digits are a window over this, moved by the arrows (`windowStart`).
+ */
+function listLength(game: RoomGame, menu: Level | undefined, moves: boolean): number {
+  return roomActions(game, menu, moves).length;
+}
+
+/**
+ * The line a digit or a click names.
+ *
+ * Position and digit are the same thing on the compartment's own list, and the
+ * mouse only ever knows the position (`ui/web/panel-html.ts`, `data-pick`). One
+ * level down they part company once: `0` is the way back however few methods
+ * the lock has, so a digit that lands past the end looks for its own key.
+ */
+function lineAt(list: readonly Action[], index: number): Action | undefined {
+  return list[index];
+}
+
+/** The line a digit names: whichever row is wearing that key right now. */
+function lineFor(list: readonly Action[], digit: number): number {
+  const key = ACTION_KEYS[digit];
+  return key === undefined ? -1 : list.findIndex((a) => a.key === key);
+}
+
+/** Where the drone is standing, in the one string the cursor is pinned to. */
+function placeOf(game: RoomGame): string {
+  return `${game.shipId}:${game.player.room ?? "?"}`;
+}
+
+/** The highlight, moved and wrapped. An empty list keeps it at the top. */
+function moved(cursor: number, delta: number, length: number): number {
+  if (length <= 0) return 0;
+  return (((cursor + delta) % length) + length) % length;
+}
+
+/**
+ * One key press, as a state transition.
+ *
+ * `game` is read, never written: the reducer asks it what can be done here and
+ * whether the run is over, and nothing else. Everything that spends a turn
+ * comes back as an effect.
+ */
+export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): AppState {
+  // `L` comes before every other rule, because it is the one control that has
+  // to work on screens where nothing else does: the title a player cannot read,
+  // and the error card they are being asked to report. It spends no turn and
+  // never dismisses anything — the screen simply comes back in another
+  // language.
+  if (intent.kind === "language") {
+    cycleLang();
+    return { ...state, effect: { kind: "language" } };
+  }
+
+  // A broken run takes exactly one key: the one that starts a new one. Every
+  // other key would ask the sim a question it has already failed to answer.
+  if (state.crash !== undefined) {
+    if (intent.kind !== "restart") return withEffect(state, PASS);
+    return newRunState();
+  }
+
+  // The title is a menu of three and an "any key" behind it: `1` casts off,
+  // `2` casts off with the training prompts on, `3` opens the help card and
+  // comes back. Anything else still starts, so nobody spends their first move
+  // on a keypress they meant as a click. (The shell drops bare modifiers before
+  // they ever get here — see `isChord`.)
+  if (state.overlay === "title") {
+    if (intent.kind === "pick" && intent.index === 2) {
+      return { ...state, overlay: "help", helpPage: 0, effect: IDLE };
+    }
+    if (intent.kind === "pick" && intent.index === 1) {
+      return { ...started(state, game), effect: { kind: "training" } };
+    }
+    return {
+      overlay: "none",
+      exploring: false,
+      crash: undefined,
+      cursor: 0,
+      at: placeOf(game),
+      menu: undefined,
+      moves: false,
+      helpPage: 0,
+      // Whatever the run has already done, the first key is not the moment to
+      // announce it: the title sits in front of a voyage that has not started.
+      seen: marksOf(game),
+      effect: IDLE,
+    };
+  }
+
+  // A sortie's own ending is a card and not a mode: any key at all puts it
+  // away and spends nothing, exactly as the title does. It is never the end of
+  // the run — the tug buys another drone if the account can carry one — so it
+  // must not sit on the screen the way `dead` and `won` do.
+  if (state.overlay === "lost" || state.overlay === "sold") {
+    return synced({ ...state, overlay: "none", effect: IDLE }, game);
+  }
+
+  // Any key aborts an explore run, and is swallowed doing it: the key that
+  // says "stop" must not also spend the turn the player is stopping for.
+  if (state.exploring) {
+    return { ...state, exploring: false, effect: { kind: "stopAuto" } };
+  }
+
+  switch (intent.kind) {
+    case "none":
+      return withEffect(state, PASS);
+    case "missing":
+      return synced({ ...state, effect: { kind: "log", text: missingModuleLine(intent.module) } }, game);
+    case "help":
+      return synced(helpTurned(state, game), game);
+    case "dismiss":
+      // Escape closes what is in front of the board first, and then takes the
+      // list back up a level: the two are never on the screen at once, so one
+      // key is enough for both and neither of them is a turn.
+      if (state.overlay === "help") return synced({ ...state, overlay: "none", helpPage: 0, effect: IDLE }, game);
+      if (state.menu !== undefined || state.moves) return upALevel(state, game);
+      return synced({ ...state, effect: IDLE }, game);
+    case "restart":
+      return newRunState();
+    case "cursor":
+      // No turn and no effect: moving the highlight is the one thing in this
+      // game that costs nothing at all.
+      return synced(
+        {
+          ...state,
+          cursor: moved(state.cursor, intent.delta, listLength(game, state.menu, state.moves)),
+          effect: IDLE,
+        },
+        game,
+      );
+    case "moves": {
+      // Where the drone can walk, or back out of it. Neither is a turn,
+      // and one key does both: `m` is the way in and the way out of a level
+      // that exists to save keystrokes, so it must not cost one to leave.
+      //
+      // `stopped` first, as every other key that changes the board does: the
+      // help card eats the press that closes it, and a run that is over has no
+      // doors to list.
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      if (isTug(game)) return nowhereToWalk(state, game);
+      return synced({ ...state, moves: !state.moves, menu: undefined, cursor: 0, effect: IDLE }, game);
+    }
+    case "confirm":
+      return chosen(state, game, state.cursor);
+    case "pick": {
+      // The digit does the line and leaves the highlight on it, so pressing a
+      // number and then `Enter` twice is not two different things. Which line
+      // wears which digit depends on where the window is (`windowStart`), so
+      // the digit is looked up rather than counted from the top — and a digit
+      // no line is wearing falls through to `chosen`, which says so and spends
+      // nothing, exactly as it did when the tenth line was the last there was.
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      const at = lineFor(listOf(game, state), intent.index);
+      return at < 0 ? chosen(state, game, -1) : chosen({ ...state, cursor: at }, game, at);
+    }
+    case "room": {
+      // A click on a box is that box's line of the move list, pressed — which
+      // is what keeps the mouse from being a second set of rules: one open door
+      // away it steps, further away it walks, and with a bulkhead in the way it
+      // opens that bulkhead's own list of methods, exactly as the row does.
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      const list = roomActions(game, undefined, true);
+      const at = list.findIndex((line) => line.leadsTo === intent.id);
+      if (at < 0) return withEffect(state, PASS);
+      return chosen({ ...state, moves: true, menu: undefined, cursor: at }, game, at);
+    }
+    case "module":
+      return act(state, game, () => ({ kind: "command", cmd: aimed(game, intent.module, intent.slot) }));
+    case "exit":
+      return act(state, game, () => leaving(game), true);
+    case "keycard":
+      return act(state, game, () => {
+        const cmd = keycardHere(game);
+        return cmd ? { kind: "command", cmd } : { kind: "log", text: t("why.door.noKeycardHere") };
+      });
+    case "command":
+      return act(state, game, () => ({ kind: "command", cmd: intent.cmd }));
+    case "explore":
+      if (isTug(game)) return nowhereToWalk(state, game);
+      return act(state, game, () => ({ kind: "explore" }), true);
+    case "fight":
+      if (isTug(game)) return nowhereToWalk(state, game);
+      return act(state, game, () => ({ kind: "fight", melee: intent.melee }));
+  }
+}
+
+/**
+ * `?`, which opens the card, turns its page, and closes it on the last one.
+ *
+ * One key for all three because there is no room for a second: every letter on
+ * the keyboard that a roguelike player might press has a meaning already or is
+ * deliberately dead (`ui/input.ts`), and the card itself says which of the
+ * three the next `?` will do (`helpFooter`).
+ */
+function helpTurned(state: AppState, game: RoomGame): AppState {
+  if (state.overlay !== "help") return { ...state, overlay: "help", helpPage: 0, effect: IDLE };
+  const pages = helpPages(isTug(game)).length;
+  if (state.helpPage + 1 < pages) return { ...state, helpPage: state.helpPage + 1, effect: IDLE };
+  return { ...state, overlay: "none", helpPage: 0, effect: IDLE };
+}
+
+/**
+ * The answer the tug gives to every key that belongs to the other mode: `m`,
+ * `o`, `Tab` and `<`.
+ *
+ * Not silence, and not a turn. The two halves of this game are played with
+ * different keys — aboard a hull walking is the game, at home there is nowhere
+ * to walk and nothing to fight (docs/tasks/G53-tug-is-a-menu.md, 2) — and a key
+ * that does nothing at all teaches nothing about which half you are in. One
+ * line in the log says it and points at the list.
+ */
+function nowhereToWalk(state: AppState, game: RoomGame): AppState {
+  return synced({ ...state, effect: { kind: "log", text: t("why.tug.noWalk") } }, game);
+}
+
+/**
+ * The two keys that never reach the game: the one the help card eats, and any
+ * of them once the run is over.
+ */
+function stopped(state: AppState, game: RoomGame): AppState | undefined {
+  if (state.overlay === "help") return synced({ ...state, overlay: "none", helpPage: 0, effect: IDLE }, game);
+  if (game.isOver()) return synced(withEffect(state, IDLE), game);
+  return undefined;
+}
+
+/**
+ * A line of the list, chosen by its digit, by the mouse or by `Enter`.
+ *
+ * Three things can be on that line and only one of them is a turn: a bulkhead
+ * that steps the list into its own methods, the line back out of them, and
+ * everything else. The two that move the list are read first and cost nothing —
+ * the turn is spent by the method the player picks once they are looking at it,
+ * which is the whole point of the level existing.
+ */
+function chosen(state: AppState, game: RoomGame, index: number): AppState {
+  const stop = stopped(state, game);
+  if (stop) return stop;
+
+  const line = lineAt(listOf(game, state), index);
+  if (line?.step === null) return upALevel(state, game);
+  if (line?.step !== undefined && line.step !== null) {
+    return synced({ ...state, menu: line.step, cursor: 0, effect: IDLE }, game);
+  }
+  return act(state, game, () => picked(line), true);
+}
+
+/**
+ * One level back up, and exactly one: out of a bulkhead's methods to whichever
+ * list that bulkhead was reached from, and out of the map to the compartment's
+ * own list. Never a turn, and never an overlay.
+ *
+ * The order is what makes `0` and `Esc` mean the same thing twice. A player who
+ * pressed `m` and then a locked door is two levels deep, and coming back up in
+ * one keystroke would drop the map they were reading — so the level that
+ * falls away is always the innermost one there is.
+ */
+function upALevel(state: AppState, game: RoomGame): AppState {
+  if (state.menu !== undefined) return synced({ ...state, menu: undefined, cursor: 0, effect: IDLE }, game);
+  return synced({ ...state, moves: false, cursor: 0, effect: IDLE }, game);
+}
+
+/**
+ * Anything that wants the game to move. The help card eats the first key that
+ * follows it, as it always has, and a run that is over spends no more turns.
+ */
+function act(state: AppState, game: RoomGame, effect: () => AppEffect, exploring = false): AppState {
+  const stop = stopped(state, game);
+  if (stop) return stop;
+  const next = effect();
+  // Only a real walk raises the flag: a refused pick is not the start of one.
+  const walking = exploring && (next.kind === "explore" || next.kind === "travel");
+  return synced({ ...state, exploring: walking, effect: next }, game);
+}
+
+/**
+ * A number off the list. A line that cannot be pressed says why and costs
+ * nothing — the same contract the engine keeps for a refused command, kept one
+ * step earlier so the machines never get the floor for a mistyped digit.
+ */
+function picked(action: Action | undefined): AppEffect {
+  if (!action) return { kind: "log", text: t("why.line.none") };
+  if (!action.enabled) return { kind: "log", text: action.why ?? t("why.notHere") };
+  // A destination rather than a command: the walk spends the turns, one at a
+  // time, and `cmd` is only its first step for whoever is not walking.
+  if (action.travel !== undefined) return { kind: "travel", to: action.travel };
+  return { kind: "command", cmd: action.cmd };
+}
+
+/**
+ * A module letter, aimed. With a bulkhead in front of the drone that this
+ * module could open, the letter is that method — pressing `p` at a locked door
+ * is the same turn as picking `power` out of that door's own list, one keystroke
+ * instead of two. With nothing to aim at, the module simply does what it does.
+ *
+ * This is what the letters are for now that the doors are not lines of the
+ * compartment's list at all: the short way round for a player who has learned
+ * them, from any level and without walking through a list to get there
+ * (`ui/actions.ts`, `waysHere`).
+ */
+function aimed(game: RoomGame, module: string, slot: number): RoomCommand {
+  const verb = DOOR_USE[module as keyof typeof DOOR_USE];
+  if (verb !== undefined) {
+    const way = waysHere(game).find((w) => w.enabled && w.verb === verb);
+    if (way) return way.cmd;
+  }
+  return { kind: "act", verb: "use", slot };
+}
+
+/**
+ * `<`, which is one key for one intention with two halves: get out.
+ *
+ * Standing at the airlock it casts off, as it always has. Anywhere else aboard
+ * a hull it walks there, by the same machinery a chosen compartment uses and
+ * with the same stops — the owner asked for it in one line, «на манер `o` и `<`
+ * должно вести к выходу», and it is DCSS's own reading: travel to the commonest
+ * destination there is, on the key already named after it.
+ *
+ * A hull with no way back says so and spends nothing. That refusal is worth a
+ * line of its own rather than the walk's generic one: the drone is not lost, it
+ * is walled in, and the difference is what the player has to solve.
+ */
+function leaving(game: RoomGame): AppEffect {
+  // The tug is not a hull to get out of: casting off is `undock`, a numbered
+  // line of its own list, and `<` says so rather than handing the sim a `leave`
+  // it will refuse in words about airlocks.
+  if (isTug(game)) return { kind: "log", text: t("why.tug.noWalk") };
+  if (game.atAirlock()) return { kind: "command", cmd: { kind: "leave" } };
+  const home = airlockRoom(game.ship);
+  if (game.roomOf(game.player).id === home) return { kind: "command", cmd: { kind: "leave" } };
+  // The tug has an airlock of its own and casting off is `undock`, a numbered
+  // line: `leave` is refused there for no turn, which is what it did before.
+  if (travelRoute(game.ship, game.roomOf(game.player).id, home) === undefined) {
+    return { kind: "log", text: t("stop.airlock.none") };
+  }
+  return { kind: "travel", to: home };
+}
+
+/**
+ * A walk that ran into something shut: the list drops into that bulkhead's own
+ * ways through it, and the player decides whether the destination is worth a
+ * torch (docs/tasks/G48-travel-to-a-room.md).
+ *
+ * The door is always one of this compartment's — the walk stops *before*
+ * stepping through it — so the level it opens is the same one a number on the
+ * compartment's list opens, and `0` comes back the same way.
+ */
+export function stoppedAt(state: AppState, game: RoomGame, door: DoorId): AppState {
+  if (!doorStands(game, door)) return state;
+  return { ...state, moves: true, menu: door, cursor: 0 };
+}
+
+/**
+ * The keycard, aimed the way a module letter is: at whichever lock in this
+ * compartment the list is already offering it for.
+ *
+ * It needs a letter of its own because it is not a module — `MODULE_KEYS` has
+ * nothing to hang it on — and it is offered last of the four ways through a
+ * lock (`systems/doors.ts`, `LOCKED_METHODS`), so on a drone that still carries
+ * a cell or a torch it is the last line of that door's list rather than the
+ * first. One key still reaches it from the compartment.
+ */
+function keycardHere(game: RoomGame): RoomCommand | undefined {
+  return waysHere(game).find((w) => w.enabled && w.verb === "key")?.cmd;
+}
+
+/**
+ * Re-read the run after a turn has been spent.
+ *
+ * The ending outranks every overlay except the help card and the error screen,
+ * and it has to be re-asserted after every key: opening and closing help on the
+ * death screen used to leave the player looking at a dead ship with no banner
+ * and no hint that shift+R starts a new run.
+ */
+export function syncStatus(state: AppState, game: RoomGame): AppState {
+  return synced(state, game);
+}
+
+/** The walk ended on its own: a stop, a refused command, or a run that is over. */
+export function walkEnded(state: AppState): AppState {
+  return { ...state, exploring: false, effect: IDLE };
+}
+
+/**
+ * The drone did not come back. Not the end of the run — the tug buys another
+ * one if the account can carry it — so it is an overlay of its own rather than
+ * `dead`, and the voyage economy (G26) is what raises it.
+ */
+export function droneLost(state: AppState): AppState {
+  return ending(state, "lost");
+}
+
+/** The ship was neutralised and sold. The other half of the same transition. */
+export function shipSold(state: AppState): AppState {
+  return ending(state, "sold");
+}
+
+function ending(state: AppState, overlay: Overlay): AppState {
+  if (state.crash !== undefined) return state;
+  return { ...state, overlay, exploring: false, effect: IDLE };
+}
+
+/**
+ * The run is over — not dead, broken. The first failure wins: the exception
+ * that broke the renderer must not overwrite the report of the one that broke
+ * the turn.
+ */
+export function crashed(state: AppState, summary: readonly string[]): AppState {
+  if (state.crash !== undefined) return state;
+  return { ...state, overlay: "crash", exploring: false, crash: summary, effect: IDLE };
+}
+
+/**
+ * The body of the error screen.
+ *
+ * The seed and the URL are the whole point of it: one pasted line reproduces
+ * the run exactly, which is worth more from a jam voter than a stack trace they
+ * will not copy. `error` is whatever was thrown — a string, an object, or
+ * nothing at all — so this never assumes an `Error`.
+ *
+ * The sortie and the hull sit on that first line beside the seed because a
+ * voyage is several ships long and a seed alone does not say which one broke:
+ * "sortie 7 · hull 2/4" is the difference between a bug in the first freighter
+ * and a bug in coming back to a hull that has already killed you once — the
+ * class of failure `tests/persistence.test.ts` exists for, and the one a bug
+ * report cannot be reproduced from without the count.
+ */
+export function crashSummary(game: RoomGame, url: string, error: unknown): string[] {
+  return [
+    t("crash.seed", { seed: game.seed, voyage: voyageLine(game), turn: game.schedule.time }),
+    "",
+    url,
+    t("crash.report"),
+    "",
+    firstLine(error),
+  ];
+}
+
+/**
+ * `sortie 7 · hull 2/4`, off the run's own record.
+ *
+ * Read structurally rather than through `systems/voyage.ts`: this card is drawn
+ * when the rules have already thrown, so it must not call back into the system
+ * that threw — and `voyageOf` would helpfully *create* a record where the
+ * missing one is the very thing worth reporting. Anything absent or the wrong
+ * shape drops out of the line instead of taking the screen down with it.
+ */
+function voyageLine(game: RoomGame): string {
+  const raw = (game.player as { data?: Record<string, unknown> } | undefined)?.data?.voyage;
+  if (typeof raw !== "object" || raw === null) return t("crash.sortie", { n: "?" });
+
+  const voyage = raw as { sortie?: unknown; current?: unknown; derelicts?: unknown };
+  const parts = [t("crash.sortie", { n: typeof voyage.sortie === "number" ? voyage.sortie : "?" })];
+  // One-based: the player counts the hull the tug is tied to as the first.
+  if (typeof voyage.current === "number") {
+    const n = voyage.current + 1;
+    const hulls = Array.isArray(voyage.derelicts) ? voyage.derelicts.length : undefined;
+    parts.push(hulls === undefined ? t("crash.hull", { n }) : t("crash.hullOf", { n, of: hulls }));
+  }
+  return parts.join(" · ");
+}
+
+/** The headline of an exception, whatever was thrown. Never more than a line. */
+export function firstLine(error: unknown): string {
+  const text = error instanceof Error ? `${error.name}: ${error.message}` : stringify(error);
+  return text.split("\n")[0]?.trim() || t("crash.unknown");
+}
+
+function stringify(error: unknown): string {
+  try {
+    return String(error);
+  } catch {
+    // A thrown object with a hostile `toString`. It has said enough.
+    return t("crash.unknown");
+  }
+}
+
+/**
+ * The highlight after the world has moved: home to the top in a new
+ * compartment, and never past the end of a list that has just got shorter.
+ *
+ * Both halves are the same rule — the cursor points at a line, and a line it no
+ * longer points at is a line `Enter` must not fire. Salvaging the last wreck in
+ * a room shortens the list under the highlight, and without the clamp the next
+ * `Enter` would say "nothing on that line" at a list with plenty on it.
+ */
+function withCursor(state: AppState, game: RoomGame): AppState {
+  const at = placeOf(game);
+  // Neither level outlives nothing: a door that opened is not a lock any more,
+  // and a compartment the drone has left takes its bulkheads and its doors with
+  // it. So the way back up is every key that changes either — the ones the task
+  // asked for by name and the ones nobody thought to name. That is also what
+  // makes walking somewhere off the map feel like one keystroke:
+  // the step lands in another compartment and the level is simply gone.
+  const moves = at === state.at && state.moves;
+  const menu = at === state.at && state.menu !== undefined && levelStands(game, state.menu)
+    ? state.menu
+    : undefined;
+  if (at !== state.at || menu !== state.menu || moves !== state.moves) {
+    return { ...state, cursor: 0, at, menu, moves };
+  }
+  const length = listLength(game, menu, moves);
+  return state.cursor < length ? state : { ...state, cursor: Math.max(0, length - 1) };
+}
+
+/** Is the level the list is one step inside still a question? Door or verb. */
+function levelStands(game: RoomGame, menu: Level): boolean {
+  return typeof menu === "string" ? tugStands(game, menu) : doorStands(game, menu);
+}
+
+function newRunState(): AppState {
+  return {
+    overlay: "none",
+    exploring: false,
+    crash: undefined,
+    cursor: 0,
+    at: "",
+    menu: undefined,
+    moves: false,
+    helpPage: 0,
+    seen: NO_MARKS,
+    effect: { kind: "newRun" },
+  };
+}
+
+function withEffect(state: AppState, effect: AppEffect): AppState {
+  return { ...state, effect };
+}
+
+function synced(state: AppState, game: RoomGame): AppState {
+  if (state.crash !== undefined) return state;
+  state = withCursor(state, game);
+  if (state.overlay === "help" || state.overlay === "title") return state;
+
+  // The two biggest things that happen to a voyage, noticed here rather than
+  // announced from the rules. Both used to be a single line of a log that
+  // scrolls: the drone died out there and the player was standing on the tug
+  // with no idea why, which is the whole of «после смерти дрона я уже не
+  // понимаю, что происходит» and of the 386 screens a sweep found where a
+  // pressed `go d9 CARGO` ended up at home with nothing said
+  // (docs/tasks/G54-two-ships-confusion.md, 6).
+  const marks = marksOf(game);
+  const raised = raisedBy(state.seen, marks);
+  state = { ...state, seen: marks };
+
+  const status = game.status;
+  // The run ending outranks the sortie ending: no drone and no money for one is
+  // not "the drone did not come back", it is the last thing that will happen.
+  if (status === "dead" && state.overlay !== "dead") return { ...state, overlay: "dead" };
+  if (status === "won" && state.overlay !== "won") return { ...state, overlay: "won" };
+  if (raised !== undefined) return ending(state, raised);
+  // A sortie's own ending stands until a key puts it away (`appReducer`).
+  if (ENDINGS.has(state.overlay) && state.overlay !== "dead" && state.overlay !== "won") return state;
+  return state;
+}
+
+/**
+ * Which card this key earned, if either: a drone that did not come back, or a
+ * hull under tow. The sale wins a tie — losing the drone that sold the ship is
+ * the price of the better news, and the better news is what a player wants the
+ * card to say.
+ */
+function raisedBy(was: SortieMarks, now: SortieMarks): Overlay | undefined {
+  if (now.sold > was.sold) return "sold";
+  if (now.lost > was.lost) return "lost";
+  return undefined;
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SALVOR</title>
+  <!-- Relative, like every other asset: itch.io serves the build from a subdirectory. -->
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <style>
+    /* Dark scrollbars: the graphic view (V) scrolls its own panel and its log. */
+    html { color-scheme: dark; }
+    html, body { margin: 0; padding: 0; background: #0a0d10; color: #b9c4cc; }
+    body { font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+           display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    #game canvas { display: block; image-rendering: pixelated; }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

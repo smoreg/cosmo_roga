@@ -1,0 +1,418 @@
+{
+  "version": 3,
+  "seed": 1,
+  "config": "shipped",
+  "inputs": [
+    {
+      "kind": "act",
+      "verb": "charter",
+      "target": 2200
+    },
+    {
+      "kind": "act",
+      "verb": "charter",
+      "target": 2200
+    },
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "attack",
+      "target": 2
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1000
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1015
+    },
+    {
+      "kind": "act",
+      "verb": "power",
+      "target": 1
+    },
+    {
+      "kind": "attack",
+      "target": 3
+    },
+    {
+      "kind": "attack",
+      "target": 3
+    },
+    {
+      "kind": "attack",
+      "target": 4
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1016
+    },
+    {
+      "kind": "act",
+      "verb": "carry",
+      "target": 1017
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1001
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1001
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1001
+    },
+    {
+      "kind": "go",
+      "door": 2
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1002
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1003
+    },
+    {
+      "kind": "go",
+      "door": 3
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1018
+    },
+    {
+      "kind": "act",
+      "verb": "shoot"
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1004
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "go",
+      "door": 3
+    },
+    {
+      "kind": "go",
+      "door": 2
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "leave"
+    },
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "attack",
+      "target": 6
+    },
+    {
+      "kind": "attack",
+      "target": 6
+    },
+    {
+      "kind": "act",
+      "verb": "buy",
+      "target": 2000
+    },
+    {
+      "kind": "act",
+      "verb": "repair",
+      "slot": 5
+    },
+    {
+      "kind": "act",
+      "verb": "graft",
+      "slot": 0
+    },
+    {
+      "kind": "act",
+      "verb": "stow",
+      "slot": 0
+    },
+    {
+      "kind": "act",
+      "verb": "fit",
+      "target": 2100
+    },
+    {
+      "kind": "act",
+      "verb": "sell",
+      "slot": 0
+    },
+    {
+      "kind": "act",
+      "verb": "order",
+      "target": 2200
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "act",
+      "verb": "fit",
+      "target": 2100
+    },
+    {
+      "kind": "go",
+      "door": 2
+    },
+    {
+      "kind": "go",
+      "door": 3
+    },
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "attack",
+      "target": 8
+    },
+    {
+      "kind": "attack",
+      "target": 8
+    },
+    {
+      "kind": "attack",
+      "target": 9
+    },
+    {
+      "kind": "attack",
+      "target": 9
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1019
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1020
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1021
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "attack",
+      "target": 6
+    },
+    {
+      "kind": "attack",
+      "target": 7
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1022
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1023
+    },
+    {
+      "kind": "go",
+      "door": 2
+    },
+    {
+      "kind": "attack",
+      "target": 10
+    },
+    {
+      "kind": "attack",
+      "target": 10
+    },
+    {
+      "kind": "attack",
+      "target": 10
+    },
+    {
+      "kind": "go",
+      "door": 3
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "go",
+      "door": 4
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1005
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "go",
+      "door": 12
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1009
+    },
+    {
+      "kind": "act",
+      "verb": "carry",
+      "target": 1010
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1011
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1011
+    },
+    {
+      "kind": "go",
+      "door": 8
+    },
+    {
+      "kind": "go",
+      "door": 3
+    },
+    {
+      "kind": "go",
+      "door": 2
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "leave"
+    },
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "attack",
+      "target": 11
+    },
+    {
+      "kind": "attack",
+      "target": 11
+    }
+  ],
+  "expect": {
+    "status": "dead",
+    "sortie": 4,
+    "ships": 2,
+    "credits": 38,
+    "deaths": 2,
+    "sold": 0,
+    "charters": 1,
+    "kills": 7,
+    "turns": 102,
+    "rig": {
+      "slots": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "exposed": null,
+      "burnedCount": 0,
+      "burned": [],
+      "scars": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  },
+  "fingerprint": "28102a24",
+  "codeSha": "ab9c03f44a359d131d605c28079a522cc019dd4c"
+}

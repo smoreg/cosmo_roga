@@ -1,0 +1,17 @@
+{
+  "name": "@jamrog/__GAME_ID__",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "__GAME_NAME__",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "zip": "npm run build && cd dist && zip -r ../__GAME_ID__-web.zip . && cd .. && echo 'dist -> __GAME_ID__-web.zip ready for an itch.io HTML5 upload'"
+  },
+  "dependencies": {
+    "@jamrog/engine": "*",
+    "rot-js": "^2.2.1"
+  }
+}

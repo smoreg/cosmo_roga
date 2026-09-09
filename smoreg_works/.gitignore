@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+build/
+*.tsbuildinfo
+*.zip
+# Intermediate PCM from `npm run music`; only the .ogg next to it ships.
+assets/audio/**/*.wav
+# Raw model output from `npm run sfx`; only the .ogg beside it ships.
+assets/audio/**/*.mp3

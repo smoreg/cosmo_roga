@@ -1,0 +1,8 @@
+{
+  "name": "@jamrog/audio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Adaptive music and sound effects for browser games: state-driven crossfades, bar-aligned transitions, stingers.",
+  "exports": { ".": "./src/index.ts" }
+}

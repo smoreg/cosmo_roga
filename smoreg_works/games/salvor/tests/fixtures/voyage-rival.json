@@ -1,0 +1,149 @@
+{
+  "version": 3,
+  "seed": 7,
+  "config": "shipped",
+  "inputs": [
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "leave"
+    },
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "leave"
+    },
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "leave"
+    },
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "leave"
+    },
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "attack",
+      "target": 2
+    },
+    {
+      "kind": "attack",
+      "target": 2
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1000
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1014
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1015
+    },
+    {
+      "kind": "act",
+      "verb": "cure",
+      "slot": 5
+    },
+    {
+      "kind": "act",
+      "verb": "cure",
+      "slot": 5
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1001
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "go",
+      "door": 4
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1004
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    }
+  ],
+  "expect": {
+    "status": "dead",
+    "sortie": 5,
+    "ships": 2,
+    "credits": 25,
+    "deaths": 1,
+    "sold": 0,
+    "charters": 0,
+    "kills": 1,
+    "turns": 37,
+    "rig": {
+      "slots": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "exposed": null,
+      "burnedCount": 0,
+      "burned": [],
+      "scars": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  },
+  "fingerprint": "b0e6b612",
+  "codeSha": "ab9c03f44a359d131d605c28079a522cc019dd4c"
+}

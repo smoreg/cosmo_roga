@@ -1,0 +1,210 @@
+{
+  "version": 3,
+  "seed": 5,
+  "config": "one-hull",
+  "inputs": [
+    {
+      "kind": "act",
+      "verb": "undock"
+    },
+    {
+      "kind": "attack",
+      "target": 2
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1000
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1018
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "act",
+      "verb": "search",
+      "target": 1002
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1001
+    },
+    {
+      "kind": "go",
+      "door": 6
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1008
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1008
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1008
+    },
+    {
+      "kind": "go",
+      "door": 13
+    },
+    {
+      "kind": "attack",
+      "target": 3
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1019
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1004
+    },
+    {
+      "kind": "go",
+      "door": 4
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1005
+    },
+    {
+      "kind": "go",
+      "door": 14
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1013
+    },
+    {
+      "kind": "attack",
+      "target": 4
+    },
+    {
+      "kind": "attack",
+      "target": 4
+    },
+    {
+      "kind": "attack",
+      "target": 4
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1014
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1020
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1012
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1012
+    },
+    {
+      "kind": "go",
+      "door": 11
+    },
+    {
+      "kind": "go",
+      "door": 2
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
+      "kind": "go",
+      "door": 1
+    },
+    {
+      "kind": "leave"
+    }
+  ],
+  "expect": {
+    "status": "won",
+    "sortie": 1,
+    "ships": 2,
+    "credits": 289,
+    "deaths": 0,
+    "sold": 1,
+    "charters": 0,
+    "kills": 4,
+    "turns": 35,
+    "rig": {
+      "slots": [
+        {
+          "kind": "cutter",
+          "integrity": 11
+        },
+        {
+          "kind": "thrusters",
+          "integrity": 11
+        },
+        null,
+        {
+          "kind": "plating",
+          "integrity": 12,
+          "base": 16,
+          "bonus": 1
+        },
+        {
+          "kind": "cell",
+          "integrity": 9,
+          "bonus": 2
+        },
+        null
+      ],
+      "exposed": null,
+      "burnedCount": 3,
+      "burned": [
+        "welder",
+        "emitter",
+        "scanner"
+      ],
+      "scars": [
+        null,
+        null,
+        "scanner",
+        null,
+        null,
+        "emitter"
+      ]
+    }
+  },
+  "fingerprint": "bb94bd20",
+  "codeSha": "ab9c03f44a359d131d605c28079a522cc019dd4c"
+}

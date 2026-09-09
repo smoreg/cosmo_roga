@@ -1,0 +1,18 @@
+{
+  "name": "@jamrog/salvor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SALVOR",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "zip": "npm run build && cd dist && zip -r ../salvor-web.zip . && cd .. && echo 'dist -> salvor-web.zip ready for an itch.io HTML5 upload'"
+  },
+  "dependencies": {
+    "@jamrog/audio": "*",
+    "@jamrog/engine": "*",
+    "rot-js": "^2.2.1"
+  }
+}

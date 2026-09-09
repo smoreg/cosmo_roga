@@ -1,0 +1,1613 @@
+{
+  "version": 3,
+  "seed": 20260908,
+  "inputs": [
+    {
+      "kind": "interact"
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "descend"
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "descend"
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 1,
+      "dy": -1
+    },
+    {
+      "kind": "descend"
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "attack",
+      "dx": 1,
+      "dy": 1
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "interact"
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "interact"
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": 1
+    },
+    {
+      "kind": "descend"
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "interact"
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "use",
+      "slot": 5
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": 0
+    },
+    {
+      "kind": "move",
+      "dx": -1,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "move",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": 0,
+      "dy": -1
+    },
+    {
+      "kind": "attack",
+      "dx": 0,
+      "dy": -1
+    }
+  ],
+  "expect": {
+    "status": "dead",
+    "depth": 5,
+    "time": 351,
+    "kills": 18,
+    "rig": {
+      "slots": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "exposed": null,
+      "burnedCount": 9,
+      "burned": [
+        "cutter",
+        "thrusters",
+        "cutter",
+        "scanner",
+        "scanner",
+        "welder",
+        "cell",
+        "plating",
+        "plating"
+      ],
+      "scars": [
+        "scanner",
+        "plating",
+        "scanner",
+        "plating",
+        "cell",
+        "welder"
+      ],
+      "bumped": false
+    }
+  },
+  "codeSha": "1675a39fd2d47646db79c8abc24a7f0ce686b45f"
+}

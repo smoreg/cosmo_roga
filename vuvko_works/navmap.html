@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DERELICT // deck scan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050d09; --ink:#2ee06a; --dim:#12insert; --dim:#155f36; --mid:#1f9950;
+  --amber:#d8a02b; --red:#e04a3a; --cyan:#3ad2c8; --plate:#0a1a12;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg)}
+body{
+  font:400 13px/1.45 "JetBrains Mono", ui-monospace, monospace;
+  color:var(--ink); padding:14px; min-height:100vh;
+}
+.grid{display:grid;grid-template-columns:1fr 300px;grid-template-rows:auto auto;
+      gap:14px;max-width:1360px;margin:0 auto}
+.panel{position:relative;border:1px solid var(--dim);padding:16px 14px 12px}
+.panel > .hd{
+  position:absolute;top:-8px;left:10px;background:var(--bg);padding:0 7px;
+  font-weight:700;color:var(--ink);letter-spacing:.06em;font-size:12px;
+}
+.panel > .hd::before{content:"[ "} .panel > .hd::after{content:" ]"}
+.panel > .rt{position:absolute;top:-8px;right:10px;background:var(--bg);
+  padding:0 7px;font-size:11px;color:var(--dim)}
+
+/* map */
+#mapwrap{min-height:430px;display:flex;align-items:center;justify-content:center}
+#map{width:100%;height:auto;display:block}
+#map text{font-family:"JetBrains Mono",monospace}
+.node{cursor:pointer}
+.node:hover circle{stroke:#fff}
+#status{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--mid);
+        margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--dim)}
+#status b{color:var(--ink);font-weight:700}
+
+/* self */
+.kv{display:flex;justify-content:space-between;gap:10px;padding:2px 0;color:var(--mid)}
+.kv b{color:var(--ink);font-weight:400}
+.bar{height:9px;border:1px solid var(--dim);margin:4px 0 10px;display:flex}
+.bar i{display:block;background:var(--ink);opacity:.85}
+.sub{text-align:center;color:var(--mid);margin:12px 0 6px;font-size:11px;
+     letter-spacing:.08em;position:relative}
+.sub::before,.sub::after{content:"";position:absolute;top:50%;width:26%;
+     border-top:1px solid var(--dim)}
+.sub::before{left:0} .sub::after{right:0}
+.inv{color:var(--mid)} .inv li{list-style:none;margin:0 0 2px}
+.inv li::before{content:"> ";color:var(--dim)}
+.inv .none{color:var(--dim)}
+
+/* logs */
+.logs{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.stream{height:172px;overflow-y:auto;padding-right:6px}
+.stream::-webkit-scrollbar{width:6px}
+.stream::-webkit-scrollbar-thumb{background:var(--dim)}
+.ln{display:flex;gap:9px;margin-bottom:3px}
+.ln .t{color:var(--dim);flex:0 0 46px}
+.ln .m{flex:1;color:var(--mid)}
+.ln.hi .m{color:var(--ink)}
+.ln.warn .m{color:var(--amber)}
+.ln.bad .m{color:var(--red)}
+#alertpanel{border-color:#4a1d18}
+#alertpanel > .hd{color:var(--red)}
+#alertpanel .ln .m{color:var(--red)}
+#alertpanel .ln .t{color:#5c241d}
+
+/* controls */
+.bar2{grid-column:1 / -1;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+      border:1px solid var(--dim);padding:9px 12px}
+select,input{font:400 12px/1 "JetBrains Mono",monospace;background:var(--plate);
+  color:var(--ink);border:1px solid var(--dim);padding:7px 9px;border-radius:0}
+button{font:700 12px/1 "JetBrains Mono",monospace;background:transparent;
+  color:var(--ink);border:1px solid var(--ink);padding:7px 14px;cursor:pointer;border-radius:0}
+button:hover{background:var(--ink);color:var(--bg)}
+:focus-visible{outline:1px solid var(--amber);outline-offset:2px}
+.legend{margin-left:auto;color:var(--dim);font-size:11px}
+.legend s{text-decoration:none;color:var(--red)}
+
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  .logs{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:no-preference){
+  @keyframes blip{0%,100%{opacity:1}50%{opacity:.35}}
+  .here{animation:blip 1.4s ease-in-out infinite}
+}
+</style>
+</head>
+<body>
+<div class="grid">
+
+  <div class="bar2">
+    <label for="hull" style="color:var(--mid)">hull</label>
+    <select id="hull">
+      <option value="random">any</option><option value="fighter">starfighter</option>
+      <option value="smallcraft">small craft</option><option value="system">system ship</option>
+      <option value="starship" selected>starship</option><option value="military">military</option>
+    </select>
+    <label for="seed" style="color:var(--mid)">seed</label>
+    <input id="seed" placeholder="auto" spellcheck="false" autocomplete="off" size="10">
+    <button id="go">scan new hull</button>
+    <span class="legend">── passable &nbsp; <s>╌╌ sealed</s> &nbsp; ◆ item &nbsp; ▣ terminal &nbsp; ▲ hazard &nbsp; ◇ way off the hull</span>
+  </div>
+
+  <div class="panel" id="mappanel">
+    <span class="hd">MAP</span><span class="rt" id="maprt">—</span>
+    <div id="status">
+      <span>hull:<b id="st-name">—</b></span>
+      <span>deck:<b id="st-deck">1</b></span>
+      <span>nodes:<b id="st-nodes">0</b></span>
+      <span>sealed:<b id="st-sealed">0</b></span>
+      <span>exits:<b id="st-exits">0</b></span>
+      <span>turn:<b id="st-turn">0</b></span>
+    </div>
+    <div id="mapwrap"><svg id="map" role="img" aria-label="Deck navigation graph"></svg></div>
+  </div>
+
+  <div class="panel">
+    <span class="hd">SELF</span>
+    <div class="kv"><span>location</span><b id="s-loc">—</b></div>
+    <div class="kv"><span>section</span><b id="s-sec">—</b></div>
+    <div class="kv"><span>integrity</span><b id="s-int">100%</b></div>
+    <div class="bar"><i id="s-intbar" style="width:100%"></i></div>
+    <div class="kv"><span>air</span><b id="s-air">100%</b></div>
+    <div class="bar"><i id="s-airbar" style="width:100%"></i></div>
+    <div class="sub">carried</div>
+    <ul class="inv" id="s-inv"><li class="none">nothing</li></ul>
+    <div class="sub">exits</div>
+    <ul class="inv" id="s-exits"><li class="none">—</li></ul>
+  </div>
+
+  <div class="logs">
+    <div class="panel"><span class="hd">LOG</span>
+      <div class="stream" id="log"></div></div>
+    <div class="panel" id="alertpanel"><span class="hd">ALERT</span>
+      <div class="stream" id="alert"></div></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   RNG
+   ============================================================ */
+let RNG=Math.random;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+const rnd=()=>RNG(), ri=(a,b)=>a+Math.floor(RNG()*(b-a+1)), pick=a=>a[Math.floor(RNG()*a.length)];
+function pickN(a,n){const c=a.slice(),o=[];while(n-->0&&c.length)o.push(c.splice(Math.floor(RNG()*c.length),1)[0]);return o;}
+function weighted(p){let t=0;for(const x of p)t+=x[1];let r=RNG()*t;
+  for(const x of p){r-=x[1];if(r<=0)return x[0];}return p[p.length-1][0];}
+
+/* ============================================================
+   POLYGON HELPERS
+   ============================================================ */
+function polyArea(p){let a=0;for(let i=0,j=p.length-1;i<p.length;j=i++)a+=(p[j][0]+p[i][0])*(p[j][1]-p[i][1]);return Math.abs(a/2);}
+function polyBBox(p){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const q of p){if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1];}
+  return{x0,y0,x1,y1,w:x1-x0,h:y1-y0,cx:(x0+x1)/2,cy:(y0+y1)/2};}
+function polyPath(p){return "M "+p.map(q=>q[0].toFixed(2)+" "+q[1].toFixed(2)).join(" L ")+" Z";}
+const rect=(x,y,w,h)=>[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];
+function sector(cx,cy,r0,r1,a0,a1,steps){steps=steps||7;const p=[];
+  for(let i=0;i<=steps;i++){const a=a0+(a1-a0)*i/steps;p.push([cx+Math.cos(a)*r0,cy+Math.sin(a)*r0]);}
+  for(let i=steps;i>=0;i--){const a=a0+(a1-a0)*i/steps;p.push([cx+Math.cos(a)*r1,cy+Math.sin(a)*r1]);}
+  return p;}
+function ringPath(cx,cy,r0,r1){const c=(r,s)=>`M ${cx-r} ${cy} A ${r} ${r} 0 1 ${s} ${cx+r} ${cy} A ${r} ${r} 0 1 ${s} ${cx-r} ${cy}`;
+  return c(r1,1)+" "+c(r0,0);}
+/* Sampled vertices of a section, cached — bboxes lie about radial cells. */
+function secPts(sec){
+  if(sec._pts) return sec._pts;
+  const pts=[];
+  for(const r of sec.rooms){
+    const step=Math.max(1,Math.floor(r.length/10));
+    for(let i=0;i<r.length;i+=step) pts.push(r[i]);
+    const b=polyBBox(r); pts.push([b.cx,b.cy]);
+  }
+  sec._pts=pts; return pts;
+}
+function secGap(A,B){
+  const pa=secPts(A), pb=secPts(B);
+  let m=1e9;
+  for(const a of pa) for(const b of pb){
+    const d=Math.hypot(a[0]-b[0],a[1]-b[1]);
+    if(d<m){m=d; if(m<0.05) return m;}
+  }
+  return m;
+}
+function bboxGap(a,b){
+  const dx=Math.max(0,Math.max(a.x0-b.x1,b.x0-a.x1));
+  const dy=Math.max(0,Math.max(a.y0-b.y1,b.y0-a.y1));
+  return Math.hypot(dx,dy);
+}
+
+function splitRect(x0,y0,w,h,depth,out,minSide){const MIN=minSide||3.2;
+  if(depth<=0||(w<MIN*2&&h<MIN*2)||(w*h<26&&rnd()<.7)){out.push(rect(x0,y0,w,h));return;}
+  const v=w>h?rnd()<.82:rnd()<.18;
+  if(v&&w>=MIN*2){const c=w*(0.34+rnd()*0.32);splitRect(x0,y0,c,h,depth-1,out,MIN);splitRect(x0+c,y0,w-c,h,depth-1,out,MIN);}
+  else if(h>=MIN*2){const c=h*(0.34+rnd()*0.32);splitRect(x0,y0,w,c,depth-1,out,MIN);splitRect(x0,y0+c,w,h-c,depth-1,out,MIN);}
+  else out.push(rect(x0,y0,w,h));}
+
+const ROOM_STYLE={cargo:"bay",hangar:"bay",fuel:"bay",engine:"bay",
+  quarters:"cabins",barracks:"cabins",lowberth:"cabins",armory:"cabins",
+  bridge:"warren",workshop:"warren",medical:"warren",labs:"warren",
+  lounge:"warren",weapons:"warren",cockpit:"warren"};
+function fillZone(x0,y0,w,h,mod,out){
+  const st=ROOM_STYLE[mod]||"warren"; if(w<1.5||h<1.5)return;
+  if(st==="bay"){ if(w>13&&rnd()<.7){const c=w*(0.4+rnd()*0.2);out.push(rect(x0,y0,c,h));out.push(rect(x0+c,y0,w-c,h));}
+    else out.push(rect(x0,y0,w,h)); }
+  else if(st==="cabins"){ const n=Math.max(1,Math.round(w/(3.2+rnd()*1.4))),cw=w/n;
+    for(let i=0;i<n;i++){ if(h>7&&rnd()<.75){const c=h*(0.42+rnd()*0.16);
+        out.push(rect(x0+i*cw,y0,cw,c));out.push(rect(x0+i*cw,y0+c,cw,h-c));}
+      else out.push(rect(x0+i*cw,y0,cw,h)); } }
+  else splitRect(x0,y0,w,h,3,out,2.8);
+}
+
+/* ============================================================
+   MODULES  (each is a "section" type on the map)
+   ============================================================ */
+const MODULES={
+  bridge:{use:"Bridge",name:"Bridge",rooms:["BRIDGE","AVIONICS","SENSOR OPS","COMPUTER CORE","PLOT ROOM"]},
+  engine:{use:"Engineering",name:"Engineering",rooms:["ENGINEERING","M-DRIVE","J-DRIVE","POWER PLANT","SWITCHGEAR"]},
+  fuel:{use:"Fuel",name:"Bunkerage",rooms:["FUEL","FUEL PROCESSOR","SCOOP INTAKE"]},
+  quarters:{use:"Staterooms",name:"Crew quarters",rooms:["STATEROOM","FRESHER","COMMON","GALLEY"]},
+  cargo:{use:"Cargo",name:"Cargo",rooms:["CARGO BAY","SPECIAL CARGO","LOADING"]},
+  lounge:{use:"Lounge",name:"Lounge",rooms:["LOUNGE","MESS","OBSERVATION","LIBRARY"]},
+  medical:{use:"Medical",name:"Medical",rooms:["MEDICAL BAY","AUTODOC","QUARANTINE"]},
+  weapons:{use:"Weapons",name:"Gunnery",rooms:["TURRET ACCESS","MAGAZINE","FIRE CONTROL"]},
+  hangar:{use:"Hangar",name:"Hangar",rooms:["HANGAR","LAUNCH BAY","VEHICLE BAY"]},
+  workshop:{use:"Workshop",name:"Workshop",rooms:["WORKSHOP","PARTS","EVA LOCKER"]},
+  labs:{use:"Labs",name:"Laboratory",rooms:["LABORATORY","SURVEY","SPECIMEN"]},
+  lowberth:{use:"Low Berths",name:"Cryogenics",rooms:["LOW BERTHS","CRYO BAY","REVIVAL"]},
+  armory:{use:"Armory",name:"Armory",rooms:["ARMORY","SECURITY","BRIG"]},
+  barracks:{use:"Barracks",name:"Barracks",rooms:["BARRACKS","BUNKS","BRIEFING"]},
+  cockpit:{use:"Bridge",name:"Cockpit",rooms:["COCKPIT","AVIONICS"]},
+  corridor:{use:"Transit",name:"Corridor",rooms:["JUNCTION","PASSAGE","LOCK"]},
+  exterior:{use:"Exterior",name:"Hull exterior",rooms:["EXTRACTION POINT"]},
+};
+
+/* Ways off the hull. Which ones a section can offer depends on what it is —
+   a hangar has a launch mouth, a fuel bunker has a scoop intake, and any
+   hull-adjacent compartment can simply be torn open. */
+const EGRESS={
+  hangar:[["LAUNCH BAY MOUTH","The bay doors stand open on the dark. A cradle sits empty."],
+          ["DROP RAMP","The ramp is down and locked. Whatever left, left in a hurry."]],
+  cargo:[["CARGO HATCH","An external loading hatch, seals blown outward."],
+         ["DOCKING COLLAR","A soft collar, still pressurised on one side."]],
+  workshop:[["EVA AIRLOCK","Outer door cycled and left open. Suit rack beside it is empty."]],
+  weapons:[["TURRET RING","The mount is gone. What remains is a hole with handholds."]],
+  fuel:[["SCOOP INTAKE","A gaping intake throat, wide enough to swim."]],
+  engine:[["DRIVE ACCESS","A maintenance gantry running out along the drive housing."]],
+  corridor:[["EMERGENCY AIRLOCK","Manual override wheel. Someone has already used it."],
+            ["DOCKING PORT","A standard port, clamps cold and unpowered."]],
+  medical:[["QUARANTINE LOCK","A sealed medical egress, hazard striping still bright."]],
+  labs:[["SAMPLE LOCK","A specimen transfer lock, outer door ajar."]],
+  hangar_default:null,
+};
+const BREACHES=[
+  ["HULL BREACH","Plating peeled outward. Something left through here, from the inside."],
+  ["HULL BREACH","A ragged tear, edges bright where the metal sheared."],
+  ["IMPACT PUNCTURE","A clean hole with melted lips. Whatever made it kept going."],
+];
+
+const CLASSES=[
+ {id:"fighter",width:[6,8],segs:[1,1],noseLen:[6,10],tailLen:[4,6],decks:1,wings:.9,
+  fill:["cockpit","weapons","fuel","engine"],names:["Light fighter","Interceptor","Heavy fighter","Fighter-bomber"]},
+ {id:"smallcraft",width:[8,12],segs:[1,2],noseLen:[6,9],tailLen:[5,8],decks:1,wings:.35,
+  fill:["cockpit","quarters","cargo","fuel","engine"],names:["Shuttle","Cargo shuttle","Orbital launch","Pinnace","Lifeboat"]},
+ {id:"system",width:[14,20],segs:[2,3],noseLen:[8,12],tailLen:[7,11],decks:2,wings:.2,
+  fill:["bridge","quarters","cargo","workshop","medical","lowberth","fuel","engine"],
+  names:["Planetary defense ship","Patrol gunboat","Orbital tender","Cryo colony ship"]},
+ {id:"starship",width:[16,24],segs:[2,4],noseLen:[9,14],tailLen:[8,13],decks:2,wings:.25,
+  fill:["bridge","quarters","lounge","cargo","medical","labs","workshop","fuel","engine"],
+  names:["Free trader","Far trader","Subsidised merchant","Aristocratic yacht","Survey scout","Mining vessel"]},
+ {id:"military",width:[20,30],segs:[3,5],noseLen:[10,16],tailLen:[9,14],decks:3,wings:.15,
+  fill:["bridge","barracks","armory","weapons","hangar","medical","workshop","fuel","engine"],
+  names:["Patrol corvette","Escort destroyer","Destroyer","Light cruiser","Fleet carrier"]},
+];
+
+/* ============================================================
+   HULL FORMS  (unchanged geometry engine; now also yields sections)
+   ============================================================ */
+const FORMS={
+axial:{label:"axial hull",
+ plan(cls){const halfW=ri(cls.width[0],cls.width[1])/2,segs=[],
+   noseLen=ri(cls.noseLen[0],cls.noseLen[1]),tailLen=ri(cls.tailLen[0],cls.tailLen[1]);let x=0;
+  segs.push({mod:halfW<5?"cockpit":"bridge",x0:0,len:noseLen,shape:"nose"});x+=noseLen;
+  const pool=cls.fill.filter(m=>!["cockpit","bridge","engine"].includes(m));
+  for(let i=0;i<ri(cls.segs[0],cls.segs[1]);i++){const len=ri(Math.round(halfW*1.1),Math.round(halfW*1.9));
+    segs.push({mod:pick(pool),x0:x,len,shape:"mid"});x+=len;}
+  const fl=Math.max(4,Math.round(halfW*1.2));segs.push({mod:"fuel",x0:x,len:fl,shape:"mid"});x+=fl;
+  segs.push({mod:"engine",x0:x,len:tailLen,shape:"tail"});x+=tailLen;
+  const corr=weighted([["axial",5],["offset",2],["double",2],["none",halfW<5?4:0]]);
+  return {halfW,segs,length:x,corr};},
+ build(s,d){const k=1-d*0.17,hw=s.halfW*k,L=s.length;
+  const nose=s.segs[0].len,tail=s.segs[s.segs.length-1].len,nw=hw*0.32,tw=hw*0.66;
+  const outline=`M 0 ${-nw} C ${nose*0.45} ${-nw}, ${nose*0.55} ${-hw}, ${nose} ${-hw}`
+   +` L ${L-tail} ${-hw} C ${L-tail*0.4} ${-hw}, ${L-tail*0.25} ${-tw}, ${L} ${-tw}`
+   +` L ${L} ${tw} C ${L-tail*0.25} ${tw}, ${L-tail*0.4} ${hw}, ${L-tail} ${hw}`
+   +` L ${nose} ${hw} C ${nose*0.55} ${hw}, ${nose*0.45} ${nw}, 0 ${nw} Z`;
+  const cw=Math.max(0.5,Math.min(1.2,s.halfW*0.22)),corridors=[],zones=[];
+  if(s.corr==="axial"){corridors.push(rect(0,-cw,L,cw*2));
+    for(const g of s.segs)zones.push({r:[g.x0,cw,g.len,hw-cw],mod:g.mod,mirror:true});}
+  else if(s.corr==="offset"){const oy=hw*0.35;corridors.push(rect(0,oy-cw,L,cw*2));
+    for(const g of s.segs){zones.push({r:[g.x0,oy+cw,g.len,hw-oy-cw],mod:g.mod});
+      zones.push({r:[g.x0,-hw,g.len,oy-cw+hw],mod:g.mod});}}
+  else if(s.corr==="double"){const oy=hw*0.55;
+    corridors.push(rect(0,oy-cw*0.8,L,cw*1.6));corridors.push(rect(0,-oy-cw*0.8,L,cw*1.6));
+    for(const g of s.segs){zones.push({r:[g.x0,-oy+cw*0.8,g.len,oy*2-cw*1.6],mod:g.mod});
+      zones.push({r:[g.x0,oy+cw*0.8,g.len,hw-oy-cw*0.8],mod:g.mod,mirror:true});}}
+  else for(const g of s.segs)zones.push({r:[g.x0,-hw,g.len,hw*2],mod:g.mod});
+  return{outline,zones,corridors,hw};}},
+
+disc:{label:"lenticular hull",
+ plan(cls){const R=ri(cls.width[0],cls.width[1])*0.85;
+  const pool=cls.fill.filter(m=>!["cockpit","bridge"].includes(m));
+  return{R,spokes:ri(4,7),innerMods:pickN(pool,6),outerMods:pickN(pool,8)};},
+ build(s,d){const R=s.R*(1-d*0.16);
+  const outline=`M ${-R} 0 A ${R} ${R} 0 1 1 ${R} 0 A ${R} ${R} 0 1 1 ${-R} 0 Z`;
+  const hubR=R*0.20,ringR=R*0.56,cw=Math.min(1.2,R*0.055),zones=[],corridors=[];
+  corridors.push({ring:[0,0,ringR-cw,ringR+cw]});
+  for(let i=0;i<s.spokes;i++){const a=(i/s.spokes)*Math.PI*2+0.2;
+    corridors.push({poly:sector(0,0,hubR,R*0.97,a-cw/R*1.1,a+cw/R*1.1,3)});}
+  zones.push({poly:sector(0,0,0,hubR,0,Math.PI*2,20),mod:"bridge",single:true});
+  for(let i=0;i<s.spokes;i++){const a0=(i/s.spokes)*Math.PI*2+0.2+cw/R*1.1,
+    a1=((i+1)/s.spokes)*Math.PI*2+0.2-cw/R*1.1;
+    zones.push({polar:[hubR+0.3,ringR-cw,a0,a1],mod:s.innerMods[i%s.innerMods.length]});
+    zones.push({polar:[ringR+cw,R*0.97,a0,a1],mod:s.outerMods[i%s.outerMods.length]});}
+  return{outline,zones,corridors,hw:R,radial:true};}},
+
+asteroid:{label:"planetoid hull",
+ plan(cls){const R=ri(cls.width[0],cls.width[1])*0.8;
+  return{R,ph:[rnd()*6.3,rnd()*6.3,rnd()*6.3],mods:pickN(cls.fill.filter(m=>m!=="cockpit"),7)};},
+ blob(R,ph,k){const p=[];for(let i=0;i<52;i++){const a=i/52*Math.PI*2;
+   const r=R*k*(0.78+0.13*Math.sin(a*2+ph[0])+0.07*Math.sin(a*3+ph[1])+0.05*Math.sin(a*5+ph[2]));
+   p.push([Math.cos(a)*r*1.25,Math.sin(a)*r]);}return p;},
+ build(s,d){const k=1-d*0.14,shell=this.blob(s.R,s.ph,k);
+  const inside=(x,y)=>{let c=false;for(let i=0,j=shell.length-1;i<shell.length;j=i++){
+    const[xi,yi]=shell[i],[xj,yj]=shell[j];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c;}return c;};
+  const zones=[],placed=[];
+  for(let t=0;t<420&&placed.length<26;t++){
+    const w=2.4+rnd()*5.0,h=2.2+rnd()*4.0,x=(rnd()*2-1)*s.R*1.15,y=(rnd()*2-1)*s.R*0.85;
+    if(!inside(x,y)||!inside(x+w,y)||!inside(x,y+h)||!inside(x+w,y+h))continue;
+    if(placed.some(q=>x<q[0]+q[2]+0.55&&x+w+0.55>q[0]&&y<q[1]+q[3]+0.55&&y+h+0.55>q[1]))continue;
+    placed.push([x,y,w,h]);
+    zones.push({r:[x,y,w,h],mod:s.mods[placed.length%s.mods.length],atomic:true});}
+  const corridors=[];
+  for(let i=0;i<ri(3,5);i++){const a=rnd()*Math.PI*2,len=s.R*(0.6+rnd()*0.55),bend=(rnd()-0.5)*1.1;
+    corridors.push({line:[[0,0],[Math.cos(a)*len*0.55,Math.sin(a)*len*0.55],
+      [Math.cos(a+bend)*len*1.25,Math.sin(a+bend)*len*0.9]],w:0.55});}
+  return{outline:polyPath(shell),zones,corridors,hw:s.R*0.95};}},
+
+catamaran:{label:"twin hull",
+ plan(cls){const hullW=Math.max(3,ri(cls.width[0],cls.width[1])*0.28);
+  return{hullW,L:ri(cls.noseLen[0],cls.noseLen[1])+ri(20,34),gap:hullW*(2.2+rnd()*1.6),
+    spans:ri(2,3),mods:pickN(cls.fill.filter(m=>m!=="cockpit"),8)};},
+ build(s,d){const k=1-d*0.15,hw=s.hullW*k,L=s.L,off=s.gap/2;let outline="";
+  for(const sg of[1,-1]){const c=sg*off;
+   outline+=`M ${L*0.06} ${c-hw*0.4} C ${L*0.02} ${c-hw}, ${L*0.14} ${c-hw}, ${L*0.2} ${c-hw}`
+    +` L ${L*0.92} ${c-hw} L ${L} ${c-hw*0.72} L ${L} ${c+hw*0.72} L ${L*0.92} ${c+hw}`
+    +` L ${L*0.2} ${c+hw} C ${L*0.14} ${c+hw}, ${L*0.02} ${c+hw*0.4}, ${L*0.06} ${c+hw*0.4} Z `;}
+  const zones=[],corridors=[],cw=Math.min(0.9,hw*0.3);let mi=0;
+  for(const sg of[1,-1]){const c=sg*off;corridors.push(rect(L*0.08,c-cw,L*0.9,cw*2));
+   const n=ri(3,4),segL=(L*0.86)/n;
+   for(let i=0;i<n;i++){zones.push({r:[L*0.1+i*segL,c+cw,segL,hw-cw],mod:s.mods[mi%s.mods.length]});
+     zones.push({r:[L*0.1+i*segL,c-hw,segL,hw-cw],mod:s.mods[mi%s.mods.length]});mi++;}}
+  const extra=[];
+  for(let i=0;i<s.spans;i++){const x=L*(0.28+i*(0.46/Math.max(1,s.spans-1||1))),sw=Math.max(2.4,hw*0.8);
+   extra.push({poly:rect(x,-off,sw,off*2)});
+   corridors.push(rect(x+sw*0.28,-off,sw*0.44,off*2));}
+  return{outline,zones,corridors,hw:off+hw,extra};}},
+
+dispersed:{label:"dispersed structure",
+ plan(cls){const pods=ri(3,6);
+  return{L:ri(30,50),pods,podR:ri(4,7),mods:pickN(cls.fill.filter(m=>m!=="cockpit"),pods+1)};},
+ build(s,d){const k=1-d*0.2,L=s.L,sp=Math.max(1.1,2.2*k),zones=[],corridors=[],extra=[];
+  corridors.push(rect(0,-sp,L,sp*2));
+  for(let i=0;i<s.pods;i++){const x=L*0.12+i*(L*0.74/s.pods),r=s.podR*k*(0.75+rnd()*0.5),
+    up=i%2===0?1:-1,cy=up*(sp+r);
+   extra.push({circle:[x+r*0.5,cy,r]});
+   zones.push({r:[x+r*0.5-r*0.62,cy-r*0.62,r*1.24,r*1.24],mod:s.mods[i%s.mods.length],atomic:true});
+   corridors.push(rect(x+r*0.5-0.55,up>0?sp:cy+r*0.62,1.1,Math.max(0.4,r*0.40)));}
+  const eb=s.podR*k*1.1;extra.push({poly:rect(L-eb*0.6,-eb,eb*1.6,eb*2)});
+  zones.push({r:[L-eb*0.5,-eb*0.85,eb*1.4,eb*1.7],mod:"engine",atomic:true});
+  return{outline:"",zones,corridors,hw:Math.max(s.podR*2.2,8),extra,noHull:true,extrasBelow:true};}},
+
+wedge:{label:"lifting body",
+ plan(cls){const span=ri(cls.width[0],cls.width[1])*1.05;
+  return{span,L:span*(1.3+rnd()*0.7),bands:ri(4,6),nose:pick(["bridge","cockpit"]),
+    mods:pickN(cls.fill.filter(m=>!["cockpit","bridge"].includes(m)),6)};},
+ build(s,d){const k=1-d*0.19,hs=s.span/2*k,L=s.L;
+  const outline=`M 0 0 L ${L*0.86} ${-hs} L ${L} ${-hs*0.72} L ${L} ${hs*0.72} L ${L*0.86} ${hs} Z`;
+  const zones=[],corridors=[],cw=Math.min(1.1,hs*0.16);
+  corridors.push(rect(L*0.1,-cw,L*0.9,cw*2));
+  const n=s.bands,x0=L*0.08;
+  for(let i=0;i<n;i++){const xa=x0+(L-x0)*i/n,xb=x0+(L-x0)*(i+1)/n;
+    const h=Math.min(hs*(xa/(L*0.86)),hs*(xb/(L*0.86)),hs);
+    zones.push({r:[xa,cw,xb-xa,Math.max(0.5,h-cw)],mod:i===0?s.nose:s.mods[i%s.mods.length],mirror:true});}
+  return{outline,zones,corridors,hw:hs};}},
+
+ring:{label:"toroidal hull",
+ plan(cls){return{R:ri(cls.width[0],cls.width[1])*0.95,thick:0.30+rnd()*0.12,spokes:ri(3,4),
+   mods:pickN(cls.fill.filter(m=>m!=="cockpit"),8)};},
+ build(s,d){const R=s.R*(1-d*0.1),inner=R*(1-s.thick),hubR=R*0.17;
+  const outline=ringPath(0,0,inner,R)+` M ${-hubR} 0 A ${hubR} ${hubR} 0 1 1 ${hubR} 0 A ${hubR} ${hubR} 0 1 1 ${-hubR} 0 Z`;
+  const zones=[],corridors=[],mid=(R+inner)/2,cw=Math.min(1.0,(R-inner)*0.17);
+  corridors.push({ring:[0,0,mid-cw,mid+cw]});
+  zones.push({poly:sector(0,0,0,hubR,0,Math.PI*2,20),mod:"bridge",single:true});
+  for(let i=0;i<s.spokes;i++){const a=(i/s.spokes)*Math.PI*2+0.35;
+    corridors.push({poly:sector(0,0,hubR,inner,a-0.055,a+0.055,3)});}
+  const cells=s.spokes*3;
+  for(let i=0;i<cells;i++){const a0=(i/cells)*Math.PI*2+0.05,a1=((i+1)/cells)*Math.PI*2-0.05;
+    zones.push({polar:[inner+0.25,mid-cw,a0,a1],mod:s.mods[i%s.mods.length]});
+    zones.push({polar:[mid+cw,R-0.25,a0,a1],mod:s.mods[(i+3)%s.mods.length]});}
+  return{outline,zones,corridors,hw:R,radial:true,evenOdd:true};}},
+};
+const FORM_WEIGHTS={
+ fighter:[["axial",4],["wedge",5]],
+ smallcraft:[["axial",5],["wedge",3],["dispersed",1]],
+ system:[["axial",3],["disc",3],["ring",2],["dispersed",2],["asteroid",2],["catamaran",2]],
+ starship:[["axial",4],["disc",2],["asteroid",2],["catamaran",2],["dispersed",1],["ring",1]],
+ military:[["axial",4],["wedge",3],["catamaran",2],["dispersed",1],["disc",1]],
+};
+
+/* ============================================================
+   SECTIONS: turn a form's zones into discrete map sections
+   ============================================================ */
+function zoneRooms(z,mod){
+  const out=[];
+  if(z.single||z.poly){out.push(z.poly);return out;}
+  if(z.polar){const[r0,r1,a0,a1]=z.polar; if(r1-r0<1.2)return out;
+    const n=Math.max(1,Math.round((a1-a0)*(r0+r1)/2/(3.0+rnd()*2.2)));
+    for(let i=0;i<n;i++){const b0=a0+(a1-a0)*i/n,b1=a0+(a1-a0)*(i+1)/n;
+      if((r1-r0)>7&&rnd()<.6){const rm=r0+(r1-r0)*(0.45+rnd()*0.2);
+        out.push(sector(0,0,r0,rm,b0,b1));out.push(sector(0,0,rm,r1,b0,b1));}
+      else out.push(sector(0,0,r0,r1,b0,b1));}
+    return out;}
+  const[x,y,w,h]=z.r; if(w<1.2||h<1.2)return out;
+  if(z.atomic){out.push(rect(x,y,w,h));return out;}
+  const rooms=[];fillZone(x,y,w,h,mod,rooms);
+  for(const r of rooms){out.push(r);
+    if(z.mirror){const b=polyBBox(r);out.push(rect(b.x0,-(b.y0+b.h),b.w,b.h));}}
+  return out;
+}
+
+/* A section = one zone's worth of rooms, plus every corridor as its own
+   transit section. Sections are what the graph is built over. */
+function buildSections(ship,deck){
+  const G=FORMS[ship.form].build(ship.p,deck);
+  const sections=[];
+  for(const z of G.zones){
+    const rooms=zoneRooms(z,z.mod);
+    if(!rooms.length)continue;
+    const area=rooms.reduce((a,r)=>a+polyArea(r),0);
+    if(area<2.2)continue;
+    sections.push({mod:z.mod,rooms,area,bbox:polyBBox([].concat(...rooms)),transit:false});
+  }
+  for(const c of G.corridors){
+    let poly=null;
+    if(c.ring){const[cx,cy,r0,r1]=c.ring;poly=sector(cx,cy,r0,r1,0,Math.PI*2,24);}
+    else if(c.line){ // give a bored tunnel a thin footprint
+      const pts=c.line,w=c.w;
+      poly=[];for(const p of pts)poly.push([p[0],p[1]-w]);
+      for(let i=pts.length-1;i>=0;i--)poly.push([pts[i][0],pts[i][1]+w]);}
+    else poly=c.poly||c;
+    const area=polyArea(poly);
+    if(area<1.5)continue;
+    sections.push({mod:"corridor",rooms:[poly],area,bbox:polyBBox(poly),transit:true,
+                   spine:c.line||null,ring:c.ring||null});
+  }
+  return {G,sections};
+}
+
+/* ============================================================
+   NODES: 1–4 per section, scaled by area
+   ============================================================ */
+function nodeCount(sec){
+  const a=sec.area;
+  if(sec.transit) return a<14?1:(a<40?2:(a<90?3:4));
+  if(a<14)return 1; if(a<38)return 2; if(a<78)return 3; return 4;
+}
+
+function placeNodes(sec,idBase){
+  const n=Math.min(4,nodeCount(sec));
+  const pts=[];
+  if(sec.ring){                     // spread around an annulus
+    const[cx,cy,r0,r1]=sec.ring,rm=(r0+r1)/2;
+    for(let i=0;i<n;i++){const a=(i/n)*Math.PI*2+0.3;
+      pts.push([cx+Math.cos(a)*rm,cy+Math.sin(a)*rm]);}
+  } else if(sec.rooms.length>=n){   // biggest rooms get the nodes
+    const sorted=sec.rooms.slice().sort((a,b)=>polyArea(b)-polyArea(a));
+    for(let i=0;i<n;i++){const b=polyBBox(sorted[i]);pts.push([b.cx,b.cy]);}
+  } else {                          // one long room, split along its axis
+    const b=sec.bbox,horiz=b.w>=b.h;
+    for(let i=0;i<n;i++){const t=(i+0.5)/n;
+      pts.push(horiz?[b.x0+b.w*t,b.cy]:[b.cx,b.y0+b.h*t]);}
+  }
+  return pts.map((p,i)=>({id:idBase+i,x:p[0],y:p[1],sec}));
+}
+
+/* ============================================================
+   SAMPLING
+   Placing a node in every compartment is unreadable. Instead:
+   guarantee coverage of the largest sections, then fill the
+   remaining budget by farthest-point sampling so the nodes that
+   survive are spread across the deck rather than clumped.
+   ============================================================ */
+const NODE_BUDGET=20;
+
+function sampleNodes(all, sections, budget){
+  if(all.length<=budget) return all;
+
+  // one node per section, biggest sections first, so nothing large vanishes
+  const bySec=new Map();
+  for(const n of all){ if(!bySec.has(n.sec)) bySec.set(n.sec,[]); bySec.get(n.sec).push(n); }
+  const ranked=[...bySec.keys()].sort((a,b)=>{
+    const pri=x=>(x.mod==="bridge"||x.mod==="cockpit")?2:(x.mod==="engine"?1.5:(x.transit?1.2:1));
+    return (b.area*pri(b))-(a.area*pri(a));
+  });
+
+  const kept=[];
+  for(const sec of ranked){
+    if(kept.length>=budget) break;
+    const ns=bySec.get(sec);
+    // the node nearest its section's centre reads as "the" room
+    let best=ns[0], bd=1e9;
+    for(const n of ns){ const d=Math.hypot(n.x-sec.bbox.cx,n.y-sec.bbox.cy); if(d<bd){bd=d;best=n;} }
+    kept.push(best);
+  }
+
+  // fill any slack with the candidates furthest from everything already kept
+  const rest=all.filter(n=>!kept.includes(n));
+  while(kept.length<budget && rest.length){
+    let bi=0, bd=-1;
+    for(let i=0;i<rest.length;i++){
+      let m=1e9;
+      for(const k of kept){ const d=Math.hypot(rest[i].x-k.x,rest[i].y-k.y); if(d<m)m=d; }
+      if(m>bd){bd=m;bi=i;}
+    }
+    kept.push(rest.splice(bi,1)[0]);
+  }
+  return kept;
+}
+
+/* ============================================================
+   EXTERIOR NODES
+   Points just off the hull you can be extracted through, or that
+   something got in through. Anchored to a section that plausibly
+   offers one, pushed outward along the hull normal.
+   ============================================================ */
+function addExterior(interior, sections, hullBBox, want){
+  const out=[];
+  const cx=hullBBox.cx, cy=hullBBox.cy;
+  const anchors=[];
+  for(const n of interior){
+    const opts=EGRESS[n.sec.mod];
+    const outward=Math.hypot(n.x-cx,n.y-cy);
+    const edgeish=outward > Math.max(hullBBox.w,hullBBox.h)*0.22;
+    if(opts || (edgeish && rnd()<0.5)) anchors.push({n,opts,outward});
+  }
+  if(!anchors.length) return out;
+  anchors.sort((a,b)=>b.outward-a.outward);          // prefer hull-adjacent
+  const chosen=[];
+  for(const a of anchors){
+    if(chosen.length>=want) break;
+    // don't cluster egress points on top of each other
+    if(chosen.some(c=>Math.hypot(c.n.x-a.n.x,c.n.y-a.n.y)<Math.max(hullBBox.w,hullBBox.h)*0.22)) continue;
+    chosen.push(a);
+  }
+  let id=Math.max(...interior.map(n=>n.id))+1;
+  for(const a of chosen){
+    const pool=a.opts||BREACHES;
+    const [label,desc]=pick(pool.length?pool:BREACHES);
+    let dx=a.n.x-cx, dy=a.n.y-cy;
+    const L=Math.hypot(dx,dy)||1; dx/=L; dy/=L;
+    const push=Math.max(3.4, Math.max(hullBBox.w,hullBBox.h)*0.10);
+    const ex={id:id++, x:a.n.x+dx*push, y:a.n.y+dy*push,
+              exterior:true, anchor:a.n,
+              sec:{mod:"exterior",rooms:[],area:4,transit:true,exterior:true,
+                   bbox:{cx:0,cy:0,x0:0,y0:0,x1:0,y1:0,w:0,h:0}}};
+    ex.c={room:label, section:"Hull exterior", desc:desc,
+          hull:null, item:(rnd()<0.3?pick(CONTENT.exterior.items):null),
+          term:null, haz:(rnd()<0.55?pick(CONTENT.exterior.haz):null),
+          extraction:true};
+    out.push(ex);
+  }
+  return out;
+}
+
+/* ============================================================
+   EDGES
+   Within-section: chain the nodes.
+   Between sections: only where the sections actually touch, and a
+   transit section must be involved unless the two are flush.
+   ============================================================ */
+function buildEdges(nodes,sections){
+  const cand=[];
+  const key=(a,b)=>a<b?a+"-"+b:b+"-"+a;
+  const seen=new Set();
+
+  // intra-section chains
+  for(const sec of sections){
+    const ns=nodes.filter(n=>n.sec===sec);
+    const isRing=!!sec.ring;
+    const lim=isRing&&ns.length>2?ns.length:ns.length-1;
+    for(let i=0;i<lim;i++){
+      const a=ns[i], b=ns[(i+1)%ns.length];
+      if(!a||!b||a===b)continue;
+      const e={a,b,kind:"internal",d:Math.hypot(b.x-a.x,b.y-a.y)};
+      if(isRing){ const[cx,cy,r0,r1]=sec.ring; e.arc={cx,cy,r:(r0+r1)/2}; e.d=e.d*0.6; }
+      cand.push(e); seen.add(key(a.id,b.id));
+    }
+  }
+  // inter-section links
+  for(let i=0;i<sections.length;i++)for(let j=i+1;j<sections.length;j++){
+    const A=sections[i],B=sections[j];
+    const gap=bboxGap(A.bbox,B.bbox);
+    const touching = gap<1.4;
+    const viaTransit = (A.transit||B.transit) && gap<2.6;
+    if(!touching && !viaTransit) continue;
+    // Take up to two links per adjacent pair. With a sampled node set the
+    // graph is otherwise almost a tree, leaving nothing that can be sealed
+    // without cutting the deck in half.
+    const pairs=[];
+    for(const na of nodes) if(na.sec===A)
+      for(const nb of nodes) if(nb.sec===B)
+        pairs.push({a:na,b:nb,d:Math.hypot(na.x-nb.x,na.y-nb.y)});
+    pairs.sort((p,q)=>p.d-q.d);
+    const used=new Set(); let made=0;
+    for(const pr of pairs){
+      if(made>=2||pr.d>10)break;
+      if(used.has(pr.a.id)||used.has(pr.b.id))continue;
+      const mx=(pr.a.x+pr.b.x)/2, my=(pr.a.y+pr.b.y)/2;
+      const near=(sec)=>{let m=1e9;for(const q of secPts(sec)){
+        const d=Math.hypot(q[0]-mx,q[1]-my); if(d<m)m=d;} return m;};
+      if(near(A)>2.5||near(B)>2.5) continue;   // the link would cross open deck
+      if(seen.has(key(pr.a.id,pr.b.id))) continue;
+      seen.add(key(pr.a.id,pr.b.id));
+      used.add(pr.a.id); used.add(pr.b.id);
+      cand.push({a:pr.a,b:pr.b,kind:A.transit||B.transit?"hatch":"door",d:pr.d});
+      made++;
+    }
+  }
+  // Proximity pass. Axial hulls chain their sections in a line, so the graph
+  // comes out almost a path with nothing to seal. Any two nodes that end up
+  // physically close probably have a bulkhead door between them; adding those
+  // creates the loops that make a sealed route a detour rather than a dead end.
+  const extra=new Map();
+  for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+    const a=nodes[i], b=nodes[j];
+    if(seen.has(key(a.id,b.id)))continue;
+    const d=Math.hypot(a.x-b.x,a.y-b.y);
+    if(d>5.5)continue;
+    if((extra.get(a.id)||0)>=1||(extra.get(b.id)||0)>=1)continue;
+    if(rnd()>0.6)continue;
+    seen.add(key(a.id,b.id));
+    extra.set(a.id,(extra.get(a.id)||0)+1);
+    extra.set(b.id,(extra.get(b.id)||0)+1);
+    cand.push({a,b,kind:"door",d});
+  }
+  return cand;
+}
+
+/* Spanning tree keeps the deck traversable; everything outside it is
+   free to be sealed, and tree edges may seal only when a detour exists. */
+function sealEdges(nodes,edges){
+  const parent=new Map(nodes.map(n=>[n.id,n.id]));
+  const find=x=>{while(parent.get(x)!==x){parent.set(x,parent.get(parent.get(x)));x=parent.get(x);}return x;};
+  const uni=(a,b)=>{const ra=find(a),rb=find(b);if(ra===rb)return false;parent.set(ra,rb);return true;};
+  const sorted=edges.slice().sort((p,q)=>p.d-q.d);
+  const tree=new Set();
+  for(const e of sorted) if(uni(e.a.id,e.b.id)) tree.add(e);
+
+  for(const e of edges){
+    e.open = tree.has(e) ? true : rnd()>0.5;
+    if(!e.open) e.seal = pick(SEALS);
+  }
+  // a few tree edges can seal too, if the graph survives without them
+  for(const e of edges){
+    if(!tree.has(e)||rnd()>0.16)continue;
+    e.open=false;
+    if(!connected(nodes,edges)){e.open=true;} else e.seal=pick(SEALS);
+  }
+  return edges;
+}
+function connected(nodes,edges){
+  if(!nodes.length)return true;
+  const adj=new Map(nodes.map(n=>[n.id,[]]));
+  for(const e of edges) if(e.open){adj.get(e.a.id).push(e.b.id);adj.get(e.b.id).push(e.a.id);}
+  const seen=new Set([nodes[0].id]),st=[nodes[0].id];
+  while(st.length){const c=st.pop();for(const nx of adj.get(c))if(!seen.has(nx)){seen.add(nx);st.push(nx);}}
+  return seen.size===nodes.length;
+}
+/* Sampling can strand a section. Join any separate components by their
+   closest pair so every node stays reachable. */
+function connectComponents(nodes,edges){
+  for(let guard=0; guard<40; guard++){
+    const adj=new Map(nodes.map(n=>[n.id,[]]));
+    for(const e of edges){adj.get(e.a.id).push(e.b.id);adj.get(e.b.id).push(e.a.id);}
+    const comp=new Map(); let c=0;
+    for(const n of nodes){
+      if(comp.has(n.id))continue;
+      const st=[n.id]; comp.set(n.id,c);
+      while(st.length){const q=st.pop();
+        for(const nx of adj.get(q)) if(!comp.has(nx)){comp.set(nx,c);st.push(nx);}}
+      c++;
+    }
+    if(c<=1) return edges;
+    let best=null;
+    for(const a of nodes) for(const b of nodes){
+      if(comp.get(a.id)===comp.get(b.id))continue;
+      const d=Math.hypot(a.x-b.x,a.y-b.y);
+      if(!best||d<best.d)best={a,b,d};
+    }
+    if(!best) return edges;
+    edges.push({a:best.a,b:best.b,kind:"hatch",d:best.d});
+  }
+  return edges;
+}
+
+const SEALS=["magnetic lock, no power","hull breach beyond, vacuum",
+  "welded shut from the far side","debris jam","emergency bulkhead down",
+  "iris valve seized","biohazard interdiction"];
+
+/* ============================================================
+   NODE CONTENT
+   What a node holds depends on its section AND where it sits:
+   against the hull, at a junction, or deep inside.
+   ============================================================ */
+const CONTENT={
+ bridge:{d:["Consoles stand in a half-ring, screens dark but warm to the touch.",
+   "The captain's couch is empty. The restraints are cut, not unbuckled.",
+   "Navigation plot still shows a course. It ends nowhere near a star."],
+  items:["nav keys","command cipher","ship's log wafer"],
+  term:["helm console","astrogation plot","master alarm panel"]},
+ cockpit:{d:["A single acceleration couch, canopy scarred by micrometeorites.",
+   "Flight controls are locked in a hard turn nobody survived."],
+  items:["flight recorder","pilot's sidearm"],term:["flight console"]},
+ engine:{d:["The plant is cold. Every readout sits at a hard zero.",
+   "Coolant has frozen mid-drip into pale stalactites.",
+   "Something has been cannibalised here — whole assemblies are missing."],
+  items:["fusion cell","coolant flask","drive coupling"],
+  term:["reactor interlock","drive diagnostic"],haz:["residual radiation","live plasma conduit"]},
+ fuel:{d:["Tank walls sweat condensate. The smell of unrefined hydrogen is everywhere.",
+   "A scoop intake gapes open to the dark. It should not be open."],
+  items:["fuel bladder"],haz:["hydrogen leak","zero-g slick"]},
+ quarters:{d:["Someone left a meal half-eaten. It has not decayed. It has dried.",
+   "Personal effects float in loose orbit around an unmade bunk.",
+   "A child's drawing is fixed to the bulkhead with medical tape."],
+  items:["personal locker key","dosimeter","holopict frame"],term:["crew terminal"]},
+ cargo:{d:["Containers stacked to the deckhead, strapping cut and swinging.",
+   "Most of the manifest is missing. The empty clamps are still latched.",
+   "One crate is open. Whatever was packed in foam is gone."],
+  items:["sealed crate","cutting torch","manifest slate"],term:["cargo manifest"]},
+ lounge:{d:["Chairs bolted to the deck face a viewport showing nothing at all.",
+   "A game is set out mid-play. The pieces have not moved."],
+  items:["bottle, unopened","music chip"],term:["library terminal"]},
+ medical:{d:["The autodoc is open and running an empty cycle.",
+   "Restraints on the surgical table are torn outward.",
+   "Sample racks are intact. One slot is conspicuously empty."],
+  items:["medkit","stim ampoule","tissue sample"],
+  term:["autodoc","patient records"],haz:["quarantine breach"]},
+ labs:{d:["Specimen jars line the bulkhead, contents unlabelled.",
+   "A centrifuge still spins. Nothing else on this deck has power."],
+  items:["specimen jar","research slate"],term:["lab array"],haz:["contaminant"]},
+ lowberth:{d:["Rows of frost-rimed berths. Most read green. Three do not.",
+   "A berth has been forced open from the inside."],
+  items:["revival kit"],term:["berth monitor"],haz:["failing berth"]},
+ armory:{d:["Weapon racks, mostly empty. The empties were taken in a hurry.",
+   "The brig door hangs open. The cell is scored with tally marks."],
+  items:["sidearm","ammunition","riot shield"],term:["armoury lock"]},
+ barracks:{d:["Bunks in threes, kit stowed with parade neatness.",
+   "A briefing board still lists a boarding roster. Half are crossed out."],
+  items:["combat webbing","ration pack"],term:["roster board"]},
+ weapons:{d:["The turret ring is exposed. Cold light comes through the gap.",
+   "Magazine feed is jammed with a round that never chambered."],
+  items:["power cell","targeting chip"],term:["fire control"],haz:["unspent ordnance"]},
+ hangar:{d:["A launch cradle sits empty, umbilicals torn free.",
+   "One small craft remains, hull painted over with something illegible."],
+  items:["EVA suit","docking clamp key","drone chassis"],
+  term:["launch control"],haz:["depressurised bay"]},
+ workshop:{d:["Tools are racked in exact order. One outline is empty.",
+   "A part has been fabricated and left in the cradle, still warm."],
+  items:["welder","spare parts","multitool"],term:["fabricator"]},
+ exterior:{d:["Outside the hull. Handholds and nothing else between you and the dark."],
+  items:["salvage tag","tethered toolbag"],term:["external service panel"],
+  haz:["vacuum","no tether point"]},
+ corridor:{d:["A run of decking, handrails scored by decades of gloves.",
+   "The passage bends here. Emergency lighting only.",
+   "A junction. Signage points four ways; two of them are welded over."],
+  items:["emergency lamp","fire extinguisher"],term:["damage control panel"]},
+};
+const HULL_FLAVOUR=["A viewport looks out on the dark.","The outer plating groans here.",
+  "An airlock cycles indicator sits amber.","Frost creeps in from the hull skin."];
+
+function contentFor(node,hullBBox){
+  const c=CONTENT[node.sec.mod]||CONTENT.corridor;
+  const mod=MODULES[node.sec.mod];
+  const outer = Math.min(
+    Math.abs(node.y-hullBBox.y0),Math.abs(node.y-hullBBox.y1),
+    Math.abs(node.x-hullBBox.x0),Math.abs(node.x-hullBBox.x1)) < 3.2;
+  const o={
+    room: pick(mod.rooms),
+    section: mod.name,
+    desc: pick(c.d),
+    hull: outer ? pick(HULL_FLAVOUR) : null,
+    item: null, term: null, haz: null,
+  };
+  if(c.items && rnd()<(node.sec.transit?0.22:0.55)) o.item=pick(c.items);
+  if(c.term  && rnd()<0.34) o.term=pick(c.term);
+  if(c.haz   && rnd()<0.30) o.haz=pick(c.haz);
+  if(outer && !o.haz && rnd()<0.18) o.haz="micrometeorite scarring";
+  return o;
+}
+
+/* ============================================================
+   BUILD ONE DECK MAP
+   ============================================================ */
+function buildMap(cls,seedText){
+  const formId=weighted(FORM_WEIGHTS[cls.id]);
+  const ship={cls,form:formId,p:FORMS[formId].plan(cls),decks:cls.decks};
+  const {G,sections}=buildSections(ship,0);
+  let cand=[],id=0;
+  for(const sec of sections){const ns=placeNodes(sec,id);id+=ns.length;cand=cand.concat(ns);}
+  if(cand.length<3) return null;
+  const hullBBox=polyBBox([].concat(...sections.map(s=>[[s.bbox.x0,s.bbox.y0],[s.bbox.x1,s.bbox.y1]])));
+
+  // reserve part of the budget for ways off the hull
+  const wantExt=Math.min(4, Math.max(1, Math.round(cand.length/14)));
+  const interior=sampleNodes(cand, sections, Math.max(4, NODE_BUDGET-wantExt));
+  const liveSecs=[...new Set(interior.map(n=>n.sec))];
+
+  let edges=buildEdges(interior,liveSecs);
+  const exterior=addExterior(interior, liveSecs, hullBBox, wantExt);
+  for(const ex of exterior)
+    edges.push({a:ex.anchor,b:ex,kind:ex.c.room.includes("BREACH")||ex.c.room.includes("PUNCTURE")?"breach":"lock",
+                d:Math.hypot(ex.x-ex.anchor.x,ex.y-ex.anchor.y)});
+  const nodes=interior.concat(exterior);
+  if(!connected(nodes,edges.map(e=>({...e,open:true})))){
+    // stitch orphans to their nearest neighbour so no node is unreachable
+    for(const n of nodes){
+      if(edges.some(e=>e.a===n||e.b===n))continue;
+      let best=null;
+      for(const m of nodes) if(m!==n){const d=Math.hypot(m.x-n.x,m.y-n.y);
+        if(!best||d<best.d)best={m,d};}
+      if(best)edges.push({a:n,b:best.m,kind:"hatch",d:best.d});
+    }
+  }
+  edges=connectComponents(nodes,edges);
+  edges=sealEdges(nodes,edges);
+  for(const n of nodes) if(!n.exterior) n.c=contentFor(n,hullBBox);
+  return {ship,G,sections,nodes,edges,hullBBox,
+          exits:exterior.length,form:FORMS[formId].label};
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const GLYPH={item:"◆",term:"▣",haz:"▲",plain:"•"};
+function glyphFor(n){return n.c.item?"item":n.c.term?"term":n.c.haz?"haz":"plain";}
+
+function renderMap(M){
+  const svg=document.getElementById("map");
+  let b={...M.hullBBox};
+  for(const n of M.nodes){                       // exterior nodes sit off-hull
+    b.x0=Math.min(b.x0,n.x-2); b.x1=Math.max(b.x1,n.x+2);
+    b.y0=Math.min(b.y0,n.y-2); b.y1=Math.max(b.y1,n.y+2);
+  }
+  b.w=b.x1-b.x0; b.h=b.y1-b.y0;
+  const pad=4;
+  const NR=Math.max(0.62, Math.min(1.25, Math.max(b.w,b.h)/58));
+  const W=b.w+pad*2, H=b.h+pad*2;
+  const T=(x,y)=>[(x-b.x0+pad).toFixed(2),(y-b.y0+pad).toFixed(2)];
+  const g=[];
+
+  // dim deck plate beneath the graph
+  const dim=[];
+  if(M.G.outline) dim.push(`<path d="${M.G.outline}" fill="#08150e" fill-rule="evenodd" stroke="#12electric" stroke-width="0.3"/>`);
+  for(const sec of M.sections){
+    for(const r of sec.rooms)
+      dim.push(`<path d="${polyPath(r)}" fill="${sec.transit?"#0a1c13":"#081109"}" `
+             + `stroke="#14services" stroke-width="0.14"/>`);
+  }
+  g.push(`<g transform="translate(${-b.x0+pad},${-b.y0+pad})" opacity="0.95">`
+       + dim.join("").replace(/#12electric|#14services/g,"#13502f") + `</g>`);
+
+  // edges
+  for(const e of M.edges){
+    const[x1,y1]=T(e.a.x,e.a.y), [x2,y2]=T(e.b.x,e.b.y);
+    if(e.arc){
+      const r=e.arc.r.toFixed(2);
+      const a1=Math.atan2(e.a.y-e.arc.cy,e.a.x-e.arc.cx);
+      const a2=Math.atan2(e.b.y-e.arc.cy,e.b.x-e.arc.cx);
+      let da=a2-a1; while(da<-Math.PI)da+=Math.PI*2; while(da>Math.PI)da-=Math.PI*2;
+      const sweep=da>0?1:0;
+      const dp=`M ${x1} ${y1} A ${r} ${r} 0 0 ${sweep} ${x2} ${y2}`;
+      g.push(e.open
+        ? `<path d="${dp}" fill="none" stroke="#2ee06a" stroke-width="0.22" opacity="0.8"/>`
+        : `<path d="${dp}" fill="none" stroke="#e04a3a" stroke-width="0.24" stroke-dasharray="0.8 0.6" opacity="0.75"/>`);
+      continue;
+    }
+    if(e.kind==="breach"||e.kind==="lock"){
+      const col=e.kind==="breach"?"#d8a02b":"#3ad2c8";
+      g.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" `
+           + `stroke-width="0.3" opacity="${e.open?0.95:0.5}" `
+           + `${e.open?"":'stroke-dasharray="0.8 0.6" '}/>`);
+      continue;
+    }
+    if(e.open)
+      g.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#2ee06a" `
+           + `stroke-width="${e.kind==="internal"?0.16:0.26}" opacity="${e.kind==="internal"?0.65:1}"/>`);
+    else
+      g.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#e04a3a" `
+           + `stroke-width="0.24" stroke-dasharray="0.8 0.6" opacity="0.75"/>`);
+  }
+
+  // nodes
+  for(const n of M.nodes){
+    const[x,y]=T(n.x,n.y);
+    const kind=glyphFor(n);
+    const here = n.id===STATE.at;
+    const vis = STATE.seen.has(n.id);
+    const col = n.exterior ? "#3ad2c8"
+              : (kind==="haz"?"#d8a02b":(kind==="item"?"#3ad2c8":"#2ee06a"));
+    const r=(here?NR*1.35:NR);
+    // exterior points are diamonds so they read as "off the hull" at a glance
+    const shape = n.exterior
+      ? `<path d="M ${x} ${(+y-r*1.25).toFixed(2)} L ${(+x+r*1.25).toFixed(2)} ${y} `
+        + `L ${x} ${(+y+r*1.25).toFixed(2)} L ${(+x-r*1.25).toFixed(2)} ${y} Z" `
+        + `fill="#050d09" stroke="${here?"#fff":col}" stroke-width="${(NR*0.26).toFixed(2)}" `
+        + `opacity="${vis?1:0.6}"/>`
+      : `<circle cx="${x}" cy="${y}" r="${r.toFixed(2)}" fill="#050d09" stroke="${here?"#fff":col}" `
+        + `stroke-width="${(here?NR*0.34:NR*0.24).toFixed(2)}" opacity="${vis?1:0.5}"/>`;
+    g.push(`<g class="node${here?" here":""}" data-id="${n.id}" role="button" tabindex="0" `
+         + `aria-label="${n.c.room}">` + shape
+         + (vis?`<text x="${x}" y="${(+y+NR*0.4).toFixed(2)}" font-size="${(NR*1.15).toFixed(2)}" fill="${col}" `
+              + `text-anchor="middle">${n.exterior?"◇":GLYPH[kind]}</text>`:"")
+         + `</g>`);
+  }
+
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  svg.style.maxWidth = Math.round(Math.min(920, W*17))+"px";
+  svg.innerHTML=g.join("");
+  svg.querySelectorAll(".node").forEach(el=>{
+    const go=()=>travel(+el.dataset.id);
+    el.addEventListener("click",go);
+    el.addEventListener("keydown",ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();go();}});
+  });
+}
+
+/* ============================================================
+   GAME STATE
+   ============================================================ */
+const STATE={at:0,turn:0,seen:new Set(),inv:[],air:100,integ:100,M:null};
+
+function logLine(stream,msg,cls){
+  const el=document.getElementById(stream);
+  const d=document.createElement("div");
+  d.className="ln"+(cls?" "+cls:"");
+  d.innerHTML=`<span class="t">${String(STATE.turn).padStart(6,"0")}</span><span class="m"></span>`;
+  d.querySelector(".m").textContent=msg;
+  el.appendChild(d); el.scrollTop=el.scrollHeight;
+}
+
+function nodeById(id){return STATE.M.nodes.find(n=>n.id===id);}
+function edgesAt(id){return STATE.M.edges.filter(e=>e.a.id===id||e.b.id===id);}
+function other(e,id){return e.a.id===id?e.b:e.a;}
+
+function describe(n,first){
+  logLine("log",`── ${n.c.room} · ${n.c.section}`,"hi");
+  logLine("log",n.c.desc);
+  if(n.c.hull) logLine("log",n.c.hull);
+  if(n.c.term) logLine("log",`Terminal present: ${n.c.term}.`);
+  if(n.c.item) logLine("log",`You can see: ${n.c.item}.`);
+  if(n.c.extraction) logLine("log","This is a way off the hull. Extraction possible here.","hi");
+  if(n.c.haz){ logLine("alert",`${n.c.haz.toUpperCase()} — ${n.c.room}`); }
+}
+
+function travel(id){
+  if(!STATE.M) return;
+  if(id===STATE.at){ take(); return; }
+  const e=edgesAt(STATE.at).find(x=>other(x,STATE.at).id===id);
+  if(!e){ logLine("log","No route from here. Move to an adjacent node.","warn"); return; }
+  if(!e.open){ logLine("log",`Blocked: ${e.seal}.`,"warn");
+               logLine("alert",`ROUTE SEALED — ${e.seal}`); return; }
+  STATE.turn++; STATE.at=id;
+  const n=nodeById(id);
+  const firstVisit=!STATE.seen.has(id);
+  STATE.seen.add(id);
+  STATE.air=Math.max(0,STATE.air-ri(1,3));
+  if(n.c.haz && firstVisit){ STATE.integ=Math.max(0,STATE.integ-ri(4,11)); }
+  if(firstVisit) describe(n,true);
+  else logLine("log",`${n.c.room}. Nothing new.`);
+  paint();
+}
+
+function take(){
+  const n=nodeById(STATE.at);
+  if(!n.c.item){ logLine("log","Nothing here to take."); return; }
+  STATE.turn++; STATE.inv.push(n.c.item);
+  logLine("log",`Taken: ${n.c.item}.`,"hi");
+  n.c.item=null; paint();
+}
+
+function paint(){
+  const M=STATE.M, n=nodeById(STATE.at);
+  document.getElementById("s-loc").textContent=n.c.room;
+  document.getElementById("s-sec").textContent=n.c.section;
+  document.getElementById("s-int").textContent=STATE.integ+"%";
+  document.getElementById("s-air").textContent=STATE.air+"%";
+  document.getElementById("s-intbar").style.width=STATE.integ+"%";
+  document.getElementById("s-airbar").style.width=STATE.air+"%";
+  document.getElementById("st-turn").textContent=STATE.turn;
+
+  const inv=document.getElementById("s-inv");
+  inv.innerHTML = STATE.inv.length
+    ? STATE.inv.map(i=>`<li></li>`).join("")
+    : `<li class="none">nothing</li>`;
+  if(STATE.inv.length) [...inv.children].forEach((li,i)=>li.textContent=STATE.inv[i]);
+
+  const ex=document.getElementById("s-exits");
+  const list=edgesAt(STATE.at).map(e=>{
+    const o=other(e,STATE.at);
+    return {t:`${o.c.room} — ${e.open?e.kind:"SEALED"}`,open:e.open};
+  });
+  ex.innerHTML = list.length ? list.map(()=>`<li></li>`).join("") : `<li class="none">—</li>`;
+  [...ex.children].forEach((li,i)=>{ if(!list[i])return;
+    li.textContent=list[i].t; if(!list[i].open) li.style.color="var(--red)"; });
+
+  renderMap(M);
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+function generate(seedText){
+  const sel=document.getElementById("hull").value;
+  if(!seedText) seedText=Math.floor(Math.random()*0xFFFFFF).toString(36).toUpperCase();
+  let M=null, attempt=0;
+  while(!M && attempt<8){
+    RNG=mulberry32(hashStr(seedText+"|"+sel+"|"+attempt));
+    const pool = sel==="random"?CLASSES:CLASSES.filter(c=>c.id===sel);
+    M=buildMap(pick(pool),seedText);
+    attempt++;
+  }
+  if(!M){ logLine("log","Scan failed — no viable deck. Reseeding.","bad"); return; }
+
+  STATE.M=M; STATE.turn=0; STATE.seen=new Set(); STATE.inv=[];
+  STATE.air=100; STATE.integ=100;
+  // start at a hull-adjacent transit node where a boarding party would cut in
+  const entry = M.nodes.filter(n=>n.sec.transit)[0] || M.nodes[0];
+  STATE.at=entry.id; STATE.seen.add(entry.id);
+
+  const name=pick(M.ship.cls.names)+" "+String.fromCharCode(65+ri(0,25))+"-"+ri(100,999);
+  document.getElementById("st-name").textContent=name;
+  document.getElementById("st-nodes").textContent=M.nodes.length;
+  document.getElementById("st-sealed").textContent=M.edges.filter(e=>!e.open).length;
+  document.getElementById("st-exits").textContent=M.exits;
+  document.getElementById("maprt").textContent=M.form+" · deck 1/"+M.ship.decks;
+  document.getElementById("seed").value=seedText;
+  document.getElementById("log").innerHTML="";
+  document.getElementById("alert").innerHTML="";
+
+  logLine("log",`Deck scan complete. ${M.nodes.length} compartments mapped, `
+    +`${M.edges.filter(e=>!e.open).length} routes sealed.`,"hi");
+  logLine("log",`Hull reads as ${M.form}. Boarding at ${entry.c.room}.`);
+  logLine("alert","NO LIFE SIGNS. POWER TRACE: INTERMITTENT.");
+  describe(entry,true);
+  paint();
+  history.replaceState(null,"","#"+encodeURIComponent(sel+":"+seedText));
+}
+
+document.getElementById("go").addEventListener("click",()=>
+  generate(document.getElementById("seed").value.trim()||null));
+document.getElementById("hull").addEventListener("change",()=>generate(null));
+
+(function boot(){
+  const h=decodeURIComponent(location.hash.slice(1));
+  if(h.includes(":")){const p=h.split(":");
+    const o=[...document.querySelectorAll("#hull option")].find(x=>x.value===p[0]);
+    if(o)document.getElementById("hull").value=p[0];
+    generate(p.slice(1).join(":"));
+  } else generate(null);
+})();
+</script>
+</body>
+</html>

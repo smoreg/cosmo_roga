@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deck Plan Registry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=B612:ital,wght@0,400;0,700;1,400&family=B612+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#edefec; --ink:#16191b; --rule:#8e9a9b; --faint:#ccd3d1;
+  --panel:#e3e7e4; --stamp:#a8322a; --hull:#f7f8f7;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:#d3d8d5; color:var(--ink);
+  font:400 15px/1.5 "B612", system-ui, sans-serif;
+  padding:20px 16px 60px;
+}
+.wrap{max-width:1180px;margin:0 auto}
+
+/* ---- console bar ---- */
+.console{
+  display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;
+  background:var(--panel);border:1px solid var(--rule);
+  padding:14px 16px;margin-bottom:18px;
+}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12.5px;letter-spacing:.01em;color:#4a5254}
+select,input[type=text]{
+  font:400 14px/1 "B612 Mono",ui-monospace,monospace;
+  padding:8px 10px;background:var(--hull);color:var(--ink);
+  border:1px solid var(--rule);border-radius:0;min-width:190px;
+}
+button{
+  font:700 14px/1 "B612",sans-serif;padding:9px 18px;cursor:pointer;
+  background:var(--ink);color:var(--paper);border:1px solid var(--ink);border-radius:0;
+}
+button.ghost{background:transparent;color:var(--ink)}
+button:hover{background:#2e3538;color:var(--paper)}
+button.ghost:hover{background:var(--ink)}
+:focus-visible{outline:2px solid var(--stamp);outline-offset:2px}
+.spacer{flex:1}
+
+/* ---- drawing sheet ---- */
+.sheet{
+  background:var(--paper);border:1px solid var(--rule);
+  padding:10px;position:relative;
+}
+.sheet svg{display:block;width:100%;max-width:100%;height:auto;background:var(--paper);margin:0 auto}
+
+/* ---- title block ---- */
+.titleblock{
+  display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;
+  border:1px solid var(--ink);border-bottom:none;margin-top:-1px;
+}
+.tb{border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);padding:8px 11px;min-width:0}
+.tb:last-child{border-right:none}
+.tb .k{font-size:11px;color:#5a6264;margin-bottom:3px}
+.tb .v{font:700 17px/1.25 "B612",sans-serif;overflow-wrap:break-word}
+.tb .v.mono{font-family:"B612 Mono",monospace;font-size:15px}
+.tb.wide .v{font-size:21px}
+
+/* ---- spec panels ---- */
+.specs{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--ink);border-top:none}
+.spec{padding:14px 16px;border-right:1px solid var(--ink)}
+.spec:last-child{border-right:none}
+.spec h2{
+  font:700 13px/1 "B612",sans-serif;margin:0 0 10px;
+  padding-bottom:6px;border-bottom:1px solid var(--rule);color:#3d4547;
+}
+.row{display:flex;gap:10px;padding:4px 0;font-size:14.5px}
+.row .k{flex:0 0 96px;color:#5a6264}
+.row .v{flex:1;font-family:"B612 Mono",monospace;font-size:13.5px}
+.spec p{margin:0 0 9px;font-size:14px}
+.spec ul{margin:0 0 9px;padding-left:17px;font-size:14px}
+.spec li{margin-bottom:3px}
+.spec .note{font-style:italic;color:#4a5254}
+.stamp{
+  display:inline-block;margin-top:4px;padding:3px 9px;
+  border:2px solid var(--stamp);color:var(--stamp);
+  font:700 12px/1.2 "B612 Mono",monospace;transform:rotate(-1.5deg);
+}
+.hint{font-size:12.5px;color:#4f5658;margin:14px 2px 0}
+.hint code{font-family:"B612 Mono",monospace;background:var(--panel);padding:1px 5px}
+
+@media (max-width:820px){
+  .titleblock{grid-template-columns:1fr 1fr}
+  .specs{grid-template-columns:1fr}
+  .spec{border-right:none;border-bottom:1px solid var(--ink)}
+  select,input[type=text]{min-width:0;width:100%}
+  .field{flex:1 1 140px}
+}
+@media print{
+  body{background:#fff;padding:0}
+  .console,.hint{display:none}
+  .sheet{border:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="console">
+    <div class="field">
+      <label for="hull">Hull class</label>
+      <select id="hull">
+        <option value="random">Any class</option>
+        <option value="fighter">Starfighter</option>
+        <option value="smallcraft">Small craft</option>
+        <option value="system">System ship</option>
+        <option value="starship">Starship</option>
+        <option value="military">Military</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="seed">Seed</label>
+      <input type="text" id="seed" placeholder="auto" autocomplete="off" spellcheck="false">
+    </div>
+    <button id="go">Generate ship</button>
+    <div class="spacer"></div>
+    <button class="ghost" id="svg">Download drawing</button>
+    <button class="ghost" id="print">Print sheet</button>
+  </div>
+
+  <div class="sheet"><svg id="plan" viewBox="0 0 1600 900" role="img" aria-label="Starship deck plan"></svg></div>
+
+  <div class="titleblock">
+    <div class="tb wide"><div class="k">Vessel</div><div class="v" id="t-name">—</div></div>
+    <div class="tb"><div class="k">Classification</div><div class="v" id="t-type">—</div></div>
+    <div class="tb"><div class="k">Displacement</div><div class="v mono" id="t-tons">—</div></div>
+    <div class="tb"><div class="k">Drawing no.</div><div class="v mono" id="t-seed">—</div></div>
+  </div>
+
+  <div class="specs">
+    <div class="spec">
+      <h2>Powerplant and drives</h2>
+      <div class="row"><div class="k">Reactor</div><div class="v" id="s-reactor">—</div></div>
+      <div class="row"><div class="k">Drive</div><div class="v" id="s-drive">—</div></div>
+      <div class="row"><div class="k">Endurance</div><div class="v" id="s-auto">—</div></div>
+      <div class="row"><div class="k">Complement</div><div class="v" id="s-crew">—</div></div>
+      <div id="s-desc"></div>
+    </div>
+    <div class="spec">
+      <h2>Hull, screens and armament</h2>
+      <div id="s-arm"></div>
+    </div>
+  </div>
+
+  <p class="hint">
+    Deck plans are drawn procedurally — no external art. To use real Traveller geomorphs instead,
+    see <code>adaptGeomorphs()</code> near the end of this file: the geomorph filenames
+    (<code>Sh-001 [50x50] [41-dTons] Cargo Bay.png</code>) already encode grid size and displacement,
+    so the loader needs no manifest.
+  </p>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   1. SEEDED RANDOMNESS
+   Every drawing is reproducible from its seed, so a ship can be
+   shared or re-rolled exactly. The URL hash carries the seed.
+   ============================================================ */
+let RNG = Math.random;
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+const rnd  = ()=>RNG();
+const ri   = (a,b)=>a+Math.floor(RNG()*(b-a+1));
+const pick = a=>a[Math.floor(RNG()*a.length)];
+function pickN(a,n){const c=a.slice();const o=[];while(n-->0&&c.length)o.push(c.splice(Math.floor(RNG()*c.length),1)[0]);return o;}
+function weighted(pairs){
+  let t=0;for(const p of pairs)t+=p[1];
+  let r=RNG()*t;
+  for(const p of pairs){r-=p[1];if(r<=0)return p[0];}
+  return pairs[pairs.length-1][0];
+}
+
+/* ============================================================
+   2. MODULE LIBRARY
+   Modelled on Geomorph Shipyard's part schema: each module knows
+   its footprint, its displacement, and what it is FOR. The `use`
+   field is what makes structural validation possible.
+   Grid unit = one 1.5 m square. Tonnage ≈ 0.41 dTon per square.
+   ============================================================ */
+const MODULES = {
+  bridge:   {use:"Bridge",      rooms:["BRIDGE","AVIONICS","SENSOR OPS","COMPUTER CORE","PLOT ROOM"]},
+  engine:   {use:"Engineering", rooms:["ENGINEERING","M-DRIVE","J-DRIVE","POWER PLANT","SWITCHGEAR"]},
+  fuel:     {use:"Fuel",        rooms:["FUEL","FUEL","FUEL PROCESSOR","SCOOP INTAKE"]},
+  quarters: {use:"Staterooms",  rooms:["STATEROOM","STATEROOM","FRESHER","COMMON","GALLEY"]},
+  cargo:    {use:"Cargo",       rooms:["CARGO BAY","CARGO","SPECIAL CARGO","LOADING"]},
+  lounge:   {use:"Lounge",      rooms:["LOUNGE","MESS","OBSERVATION","LIBRARY"]},
+  medical:  {use:"Medical",     rooms:["MEDICAL BAY","AUTODOC","QUARANTINE"]},
+  weapons:  {use:"Weapons",     rooms:["TURRET ACCESS","MAGAZINE","FIRE CONTROL","GUNNERY"]},
+  hangar:   {use:"Hangar",      rooms:["HANGAR","LAUNCH BAY","VEHICLE BAY","REPAIR AREA"]},
+  workshop: {use:"Workshop",    rooms:["WORKSHOP","PARTS","EVA LOCKER","REPAIR AREA"]},
+  labs:     {use:"Labs",        rooms:["LABORATORY","SURVEY","SPECIMEN"]},
+  lowberth: {use:"Low Berths",  rooms:["LOW BERTHS","CRYO BAY","REVIVAL"]},
+  armory:   {use:"Armory",      rooms:["ARMORY","SECURITY","BRIG"]},
+  barracks: {use:"Barracks",    rooms:["BARRACKS","BUNKS","BRIEFING"]},
+  cockpit:  {use:"Bridge",      rooms:["COCKPIT","AVIONICS"]},
+};
+
+/* ============================================================
+   3. HULL CLASSES
+   The dropdown bucket. Unlike the site this is modelled on,
+   tonnage is NOT stored here — it is derived from the drawing.
+   These only bound the geometry and gate the prose tables.
+   ============================================================ */
+const CLASSES = [
+  { id:"fighter",  bucket:"fighter",   label:"Starfighter",
+    width:[6,8],   segs:[1,1], noseLen:[6,10], tailLen:[4,6], decks:1,
+    wings:0.9, armed:1.0, ftl:0.2, hangarOk:false,
+    fill:["cockpit","weapons","fuel","engine"],
+    names:["Light fighter","Interceptor","Heavy fighter","Fighter-bomber","Strike fighter"] },
+
+  { id:"smallcraft", bucket:"smallcraft", label:"Small craft",
+    width:[8,12],  segs:[1,2], noseLen:[6,9], tailLen:[5,8], decks:1,
+    wings:0.35, armed:0.35, ftl:0.05, hangarOk:false,
+    fill:["cockpit","quarters","cargo","fuel","engine"],
+    names:["Shuttle","Cargo shuttle","Orbital launch","Pinnace","Ship's boat","Lifeboat"] },
+
+  { id:"system",   bucket:"system",    label:"System ship",
+    width:[14,20], segs:[2,3], noseLen:[8,12], tailLen:[7,11], decks:2,
+    wings:0.2, armed:0.6, ftl:0.0, hangarOk:true,
+    fill:["bridge","quarters","cargo","workshop","medical","lowberth","fuel","engine"],
+    names:["Planetary defense ship","Patrol gunboat","Orbital tender","System monitor","Cryo colony ship"] },
+
+  { id:"starship", bucket:"starship",  label:"Starship",
+    width:[16,24], segs:[2,4], noseLen:[9,14], tailLen:[8,13], decks:2,
+    wings:0.25, armed:0.45, ftl:0.92, hangarOk:true,
+    fill:["bridge","quarters","lounge","cargo","medical","labs","workshop","fuel","engine"],
+    names:["Free trader","Far trader","Subsidised merchant","Aristocratic yacht","Survey scout",
+           "Mining vessel","Express courier","Expedition ship"] },
+
+  { id:"military", bucket:"military",  label:"Military",
+    width:[20,30], segs:[3,5], noseLen:[10,16], tailLen:[9,14], decks:3,
+    wings:0.15, armed:1.0, ftl:0.98, hangarOk:true,
+    fill:["bridge","barracks","armory","weapons","hangar","medical","workshop","fuel","engine"],
+    names:["Patrol corvette","Escort destroyer","Destroyer","Light cruiser","Armoured cruiser",
+           "Fleet carrier","Assault transport"] },
+];
+
+/* ============================================================
+   4. PROSE TABLES
+   ============================================================ */
+const REACTORS = [
+  ["Fission reactor",22,"Induced fission, cheap and proven, but the waste has to go somewhere."],
+  ["Fusion reactor",22,"Sustained fusion delivers bulk power without the fission hazards."],
+  ["Cold fusion reactor",20,"Fusion held at low temperature. A cleaner, quieter generation of plant."],
+  ["Antimatter reactor",14,"Matter and antimatter annihilate; output dwarfs any fusion plant."],
+  ["Zero-point reactor",9,"Draws energy out of the vacuum. Nothing generates power more efficiently."],
+  ["Solar reactor",5,"Sail arrays capture external thrust, so the ship carries neither engine nor fuel."],
+  ["Dark matter reactor",4,"Somehow draws power directly from dark matter, in defiance of the textbooks."],
+];
+const FTL = [
+  ["Jump drive","Opens a portal into hyperspace, where the space-time relation runs differently."],
+  ["Warp drive","Distorts the space immediately around the hull to exceed light."],
+  ["Fold drive","Folds space for instantaneous transit. Enormous draw, long recharge."],
+  ["Hyperdrive","Runs the interstellar hyperplanes between the edges of star systems."],
+  ["Curvature drive","Enters a hostile adjacent dimension and reappears on the new coordinates."],
+  ["Light drive","Renders hull and crew as waves, reassembling them at the destination."],
+  ["Bridge drive","Holds a transit corridor open, so the route can be altered in flight."],
+];
+const SUB = [
+  ["Impulse thrusters","High-burn thrusters, very fast, but strictly below light."],
+  ["Ion thrusters","Electric drives working on ion beams, needing no propellant."],
+  ["Plasma thrusters","Ionisation-induced plasma jets, strong on sublight agility."],
+  ["Combustion thrusters","Simple chemical thrusters burning a stored propellant."],
+];
+/* Reactors that dictate their own drive — the coupling observed in the original. */
+const COUPLED = {
+  "Dark matter reactor":["Dark matter drive","Fusion-fed dark matter thrusters, unmatched under light."],
+  "Solar reactor":["Photon sail","Reflective sheets riding the light pressure of a nearby star."],
+};
+const HULLS = [
+  "Standard hull — will enter atmosphere, clumsily and under protest.",
+  "Atmospheric hull — shaped to fly inside a gravity well.",
+  "Dispersed structure — no aerodynamics at all. Atmospheric entry is a serious risk.",
+  "Reinforced hull — the same construction, done properly, with no shortcuts.",
+  "Double hull — a second pressure cylinder inside the first.",
+  "Ultra-dense hull — heavy shielding against tachyon and quantum weapons.",
+  "Planetoid hull — a hollowed asteroid wrapped around the ship.",
+  "Crystal laminate — ultra-hard alloy coating over the inner plating.",
+];
+const SCREENS = [
+  "Light energy screens — modest deflection at a modest power draw.",
+  "Deflector array — absorbs a limited weight of fire before it overloads.",
+  "Two-layer screen — trades peak strength for wider coverage.",
+  "Thermal screen — holds off extreme heat, including a close stellar pass.",
+  "Psionic barrier — raised from the crew's own psychic energy, when they can be found.",
+];
+const TURRETS = [
+  ["Laser turret","Focused coherent light. The workhorse mount of every navy."],
+  ["Plasma launcher","Lobs contained plasma that splashes on impact."],
+  ["Rail gun","A magnetically accelerated slug. No propellant, enormous kinetic load."],
+  ["Heavy ion cannon","Ionised particles that disrupt electronics, or disable them outright."],
+  ["Missile rack","Guided ordnance, effective well past visual range."],
+];
+const BAYS = [
+  ["Blaster cannon bay","Massed cannon under a single fire control system."],
+  ["Torpedo bay","Heavy ship-killers with deep magazines."],
+  ["Meson cannon bay","Particles that decay inside the target hull, past the armour entirely."],
+];
+const SPINAL = [
+  ["Tachyon lance","A spinal weapon running the length of the keel."],
+  ["Solar pulse projector","Discharges a captured stellar pulse along one axis only."],
+];
+const DEFENCES = [
+  ["Sand caster","Throws a cloud of sand to scatter laser fire and blind sensors."],
+  ["Flak battery","Fragmentation rounds burst close in to shred strike craft."],
+  ["Point defence turret","Fast-tracking mounts dedicated to missiles and fighters."],
+  ["Jammer suite","Electronic warfare against locks and guidance."],
+];
+const COMPUTERS = ["Trigger control","Evasion","Jump plotting","Manoeuvre assist",
+                   "Library","Electronic warfare","Damage control"];
+const SENSORS = [
+  ["LIDAR","Ranges objects off a laser emitter. Standard for traffic and docking."],
+  ["Radar","Planetary technology adapted to deep space for detection and tracking."],
+  ["Densitometer","Reads mass distribution straight through a hull."],
+  ["Neutrino sensor","Picks powerplants out of the dark at long range."],
+];
+const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X",
+               "XI","XII","XIII","XIV","XV","XVI","XVII","XVIII","XIX","XX"];
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/* ============================================================
+   GEOMETRY ENGINE
+   Seven hull forms, each with its own circulation topology.
+   A form returns polygons in grid squares; the renderer never
+   assumes a spine, a centreline, or a rectangular room.
+   ============================================================ */
+
+/* ---------- polygon helpers ---------- */
+function polyArea(p){
+  let a = 0;
+  for (let i = 0, j = p.length-1; i < p.length; j = i++)
+    a += (p[j][0]+p[i][0]) * (p[j][1]-p[i][1]);
+  return Math.abs(a/2);
+}
+function polyBBox(p){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for (const q of p){ if(q[0]<x0)x0=q[0]; if(q[0]>x1)x1=q[0];
+                      if(q[1]<y0)y0=q[1]; if(q[1]>y1)y1=q[1]; }
+  return {x0,y0,x1,y1,w:x1-x0,h:y1-y0,cx:(x0+x1)/2,cy:(y0+y1)/2};
+}
+function polyPath(p){
+  return "M " + p.map(q => q[0].toFixed(2)+" "+q[1].toFixed(2)).join(" L ") + " Z";
+}
+const rect = (x,y,w,h) => [[x,y],[x+w,y],[x+w,y+h],[x,y+h]];
+
+/* Polar cell: an annular sector, used by every radial form. */
+function sector(cx,cy,r0,r1,a0,a1,steps){
+  steps = steps || 7;
+  const p = [];
+  for (let i=0;i<=steps;i++){ const a=a0+(a1-a0)*i/steps; p.push([cx+Math.cos(a)*r0, cy+Math.sin(a)*r0]); }
+  for (let i=steps;i>=0;i--){ const a=a0+(a1-a0)*i/steps; p.push([cx+Math.cos(a)*r1, cy+Math.sin(a)*r1]); }
+  return p;
+}
+function ringPath(cx,cy,r0,r1){
+  const c = (r,s) => `M ${cx-r} ${cy} A ${r} ${r} 0 1 ${s} ${cx+r} ${cy} A ${r} ${r} 0 1 ${s} ${cx-r} ${cy}`;
+  return c(r1,1) + " " + c(r0,0);          // even-odd donut
+}
+
+/* Recursive binary subdivision — now one room style among several. */
+function splitRect(x0,y0,w,h,depth,out,minSide){
+  const MIN = minSide || 3.2;
+  if (depth<=0 || (w<MIN*2 && h<MIN*2) || (w*h<26 && rnd()<.7)){ out.push(rect(x0,y0,w,h)); return; }
+  const v = w>h ? rnd()<.82 : rnd()<.18;
+  if (v && w>=MIN*2){ const c=w*(0.34+rnd()*0.32);
+    splitRect(x0,y0,c,h,depth-1,out,MIN); splitRect(x0+c,y0,w-c,h,depth-1,out,MIN); }
+  else if (h>=MIN*2){ const c=h*(0.34+rnd()*0.32);
+    splitRect(x0,y0,w,c,depth-1,out,MIN); splitRect(x0,y0+c,w,h-c,depth-1,out,MIN); }
+  else out.push(rect(x0,y0,w,h));
+}
+
+/* Room styles. A bay is one big volume; cabins are a dense row;
+   warren is irregular. Which style applies depends on the module,
+   so a cargo hold never looks like a stateroom block. */
+const ROOM_STYLE = {
+  cargo:"bay", hangar:"bay", fuel:"bay", engine:"bay",
+  quarters:"cabins", barracks:"cabins", lowberth:"cabins",
+  bridge:"warren", workshop:"warren", medical:"warren", labs:"warren",
+  lounge:"warren", weapons:"warren", armory:"cabins", cockpit:"warren",
+};
+function fillZone(x0,y0,w,h,mod,out){
+  const style = ROOM_STYLE[mod] || "warren";
+  if (w<1.5||h<1.5) return;
+  if (style==="bay"){
+    if (w>13 && rnd()<.7){ const c=w*(0.4+rnd()*0.2);
+      out.push(rect(x0,y0,c,h)); out.push(rect(x0+c,y0,w-c,h)); }
+    else out.push(rect(x0,y0,w,h));
+  } else if (style==="cabins"){
+    const n = Math.max(1, Math.round(w/(3.2+rnd()*1.4)));
+    const cw = w/n;
+    for (let i=0;i<n;i++){
+      if (h>7 && rnd()<.75){ const c=h*(0.42+rnd()*0.16);
+        out.push(rect(x0+i*cw,y0,cw,c)); out.push(rect(x0+i*cw,y0+c,cw,h-c)); }
+      else out.push(rect(x0+i*cw,y0,cw,h));
+    }
+  } else {
+    splitRect(x0,y0,w,h,3,out,2.8);
+  }
+}
+
+/* ============================================================
+   HULL FORMS
+   Each returns {outline, zones, corridors, deckShrink}.
+   zones: [{poly|rect, mod}] to be filled with rooms
+   corridors: paths carved through afterwards
+   ============================================================ */
+const FORMS = {
+
+/* --- 1. AXIAL: nose-spine-tail. The classic, but the corridor
+       may now run offset to port, doubled, or not at all. --- */
+axial: {
+  label:"axial hull",
+  plan(cls){
+    const halfW = ri(cls.width[0],cls.width[1])/2;
+    const segs=[], noseLen=ri(cls.noseLen[0],cls.noseLen[1]), tailLen=ri(cls.tailLen[0],cls.tailLen[1]);
+    let x=0;
+    segs.push({mod: halfW<5?"cockpit":"bridge", x0:0, len:noseLen, shape:"nose"}); x+=noseLen;
+    const pool = cls.fill.filter(m=>!["cockpit","bridge","engine"].includes(m));
+    for (let i=0;i<ri(cls.segs[0],cls.segs[1]);i++){
+      const len=ri(Math.round(halfW*1.1),Math.round(halfW*1.9));
+      segs.push({mod:pick(pool),x0:x,len,shape:"mid"}); x+=len;
+    }
+    const fl=Math.max(4,Math.round(halfW*1.2));
+    segs.push({mod:"fuel",x0:x,len:fl,shape:"mid"}); x+=fl;
+    segs.push({mod:"engine",x0:x,len:tailLen,shape:"tail"}); x+=tailLen;
+    // circulation: single axial, offset to port, or two side passages
+    const corr = weighted([["axial",5],["offset",2],["double",2],["none",halfW<5?4:0]]);
+    return {halfW, segs, length:x, corr,
+            wings: rnd()<cls.wings ? {x0:noseLen+2, len:Math.max(5,Math.round(halfW*1.3)),
+                                       span:Math.max(3,Math.round(halfW*0.6))} : null};
+  },
+  build(s,d){
+    const k=1-d*0.17, hw=s.halfW*k, L=s.length;
+    const nose=s.segs[0].len, tail=s.segs[s.segs.length-1].len;
+    const nw=hw*0.32, tw=hw*0.66;
+    const outline = `M 0 ${-nw} C ${nose*0.45} ${-nw}, ${nose*0.55} ${-hw}, ${nose} ${-hw}`
+      + ` L ${L-tail} ${-hw} C ${L-tail*0.4} ${-hw}, ${L-tail*0.25} ${-tw}, ${L} ${-tw}`
+      + ` L ${L} ${tw} C ${L-tail*0.25} ${tw}, ${L-tail*0.4} ${hw}, ${L-tail} ${hw}`
+      + ` L ${nose} ${hw} C ${nose*0.55} ${hw}, ${nose*0.45} ${nw}, 0 ${nw} Z`;
+
+    const cw = Math.max(0.5, Math.min(1.2, s.halfW*0.22));
+    const corridors=[]; const zones=[];
+    if (s.corr==="axial"){
+      corridors.push(rect(0,-cw,L,cw*2));
+      for (const g of s.segs){ zones.push({r:[g.x0,cw,g.len,hw-cw],mod:g.mod,mirror:true}); }
+    } else if (s.corr==="offset"){
+      const oy = hw*0.35;
+      corridors.push(rect(0,oy-cw,L,cw*2));
+      for (const g of s.segs){
+        zones.push({r:[g.x0,oy+cw,g.len,hw-oy-cw],mod:g.mod});
+        zones.push({r:[g.x0,-hw,g.len,oy-cw+hw],mod:g.mod});
+      }
+    } else if (s.corr==="double"){
+      const oy = hw*0.55;
+      corridors.push(rect(0,oy-cw*0.8,L,cw*1.6));
+      corridors.push(rect(0,-oy-cw*0.8,L,cw*1.6));
+      for (const g of s.segs){
+        zones.push({r:[g.x0,-oy+cw*0.8,g.len,oy*2-cw*1.6],mod:g.mod});
+        zones.push({r:[g.x0,oy+cw*0.8,g.len,hw-oy-cw*0.8],mod:g.mod,mirror:true});
+      }
+    } else {
+      for (const g of s.segs) zones.push({r:[g.x0,-hw,g.len,hw*2],mod:g.mod});
+    }
+    return {outline, zones, corridors, hw, extra:this.wings(s)};
+  },
+  wings(s){
+    if (!s.wings) return [];
+    const w=s.wings, out=[];
+    for (const sign of [1,-1]){
+      const y0 = sign===1 ? s.halfW*0.97 : -(s.halfW*0.97+w.span);
+      out.push({poly: sign===1
+        ? [[w.x0,y0],[w.x0+w.len,y0],[w.x0+w.len*0.72,y0+w.span],[w.x0+w.len*0.16,y0+w.span]]
+        : [[w.x0,y0+w.span],[w.x0+w.len,y0+w.span],[w.x0+w.len*0.72,y0],[w.x0+w.len*0.16,y0]],
+        label:"FUEL / GEAR"});
+    }
+    return out;
+  }
+},
+
+/* --- 2. DISC: a saucer. Ring corridor, radial spokes, hub core.
+       Nothing about it is axial. --- */
+disc: {
+  label:"lenticular hull",
+  plan(cls){
+    const R = ri(cls.width[0],cls.width[1])*0.85;
+    const pool = cls.fill.filter(m=>!["cockpit","bridge"].includes(m));
+    return {R, spokes:ri(4,7), hub:"bridge",
+            innerMods: pickN(pool, 6), outerMods: pickN(pool, 8), corr:"ring"};
+  },
+  build(s,d){
+    const R = s.R*(1-d*0.16);
+    const outline = `M ${-R} 0 A ${R} ${R} 0 1 1 ${R} 0 A ${R} ${R} 0 1 1 ${-R} 0 Z`;
+    const hubR = R*0.20, ringR = R*0.56, cw = Math.min(1.2, R*0.055);
+    const zones=[], corridors=[];
+    corridors.push({ring:[0,0,ringR-cw,ringR+cw]});
+    for (let i=0;i<s.spokes;i++){
+      const a = (i/s.spokes)*Math.PI*2 + 0.2;
+      corridors.push({poly: sector(0,0,hubR,R*0.97,a-cw/R*1.1,a+cw/R*1.1,3)});
+    }
+    zones.push({poly: sector(0,0,0,hubR,0,Math.PI*2,20), mod:s.hub, single:true});
+    for (let i=0;i<s.spokes;i++){
+      const a0=(i/s.spokes)*Math.PI*2+0.2+cw/R*1.1, a1=((i+1)/s.spokes)*Math.PI*2+0.2-cw/R*1.1;
+      zones.push({polar:[hubR+0.3, ringR-cw, a0, a1], mod:s.innerMods[i%s.innerMods.length]});
+      zones.push({polar:[ringR+cw, R*0.97, a0, a1], mod:s.outerMods[i%s.outerMods.length]});
+    }
+    return {outline, zones, corridors, hw:R, radial:true};
+  }
+},
+
+/* --- 3. ASTEROID: a hollowed rock. Irregular chambers, branching
+       tunnels, no symmetry whatsoever. --- */
+asteroid: {
+  label:"planetoid hull",
+  plan(cls){
+    const R = ri(cls.width[0],cls.width[1])*0.8;
+    const ph = [rnd()*6.3, rnd()*6.3, rnd()*6.3];
+    return {R, ph, mods: pickN(cls.fill.filter(m=>m!=="cockpit"), 7)};
+  },
+  blob(R,ph,k){
+    const p=[];
+    for (let i=0;i<52;i++){
+      const a=i/52*Math.PI*2;
+      const r=R*k*(0.78 + 0.13*Math.sin(a*2+ph[0]) + 0.07*Math.sin(a*3+ph[1]) + 0.05*Math.sin(a*5+ph[2]));
+      p.push([Math.cos(a)*r*1.25, Math.sin(a)*r]);
+    }
+    return p;
+  },
+  build(s,d){
+    const k=1-d*0.14;
+    const shell = this.blob(s.R,s.ph,k);
+    const inside = (x,y)=>{                       // point-in-polygon
+      let c=false;
+      for(let i=0,j=shell.length-1;i<shell.length;j=i++){
+        const [xi,yi]=shell[i],[xj,yj]=shell[j];
+        if(((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) c=!c;
+      }
+      return c;
+    };
+    const zones=[], placed=[];
+    for (let t=0;t<420 && placed.length<26;t++){
+      const w=2.4+rnd()*5.0, h=2.2+rnd()*4.0;
+      const x=(rnd()*2-1)*s.R*1.15, y=(rnd()*2-1)*s.R*0.85;
+      if(!inside(x,y)||!inside(x+w,y)||!inside(x,y+h)||!inside(x+w,y+h)) continue;
+      if(placed.some(q=>x<q[0]+q[2]+0.55 && x+w+0.55>q[0] && y<q[1]+q[3]+0.55 && y+h+0.55>q[1])) continue;
+      placed.push([x,y,w,h]);
+      zones.push({r:[x,y,w,h], mod:s.mods[placed.length%s.mods.length]});
+    }
+    // tunnels bored outward from the centre
+    const corridors=[];
+    for (let i=0;i<ri(3,5);i++){
+      const a=rnd()*Math.PI*2, len=s.R*(0.6+rnd()*0.55), bend=(rnd()-0.5)*1.1, cw=0.55;
+      const mx=Math.cos(a)*len*0.55, my=Math.sin(a)*len*0.55;
+      const ex=Math.cos(a+bend)*len*1.25, ey=Math.sin(a+bend)*len*0.9;
+      corridors.push({line:[[0,0],[mx,my],[ex,ey]], w:cw});
+    }
+    return {outline: polyPath(shell), zones, corridors, hw:s.R*0.95, irregular:true};
+  }
+},
+
+/* --- 4. CATAMARAN: twin hulls on transverse spans. Two separate
+       circulation loops joined by connecting bridges. --- */
+catamaran: {
+  label:"twin hull",
+  plan(cls){
+    const hullW = Math.max(3, ri(cls.width[0],cls.width[1])*0.28);
+    const L = ri(cls.noseLen[0],cls.noseLen[1]) + ri(20,34);
+    const gap = hullW*(2.2+rnd()*1.6);
+    const pool = cls.fill.filter(m=>!["cockpit"].includes(m));
+    return {hullW, L, gap, spans:ri(2,3), mods:pickN(pool,8)};
+  },
+  build(s,d){
+    const k=1-d*0.15, hw=s.hullW*k, L=s.L, off=s.gap/2;
+    let outline="";
+    for (const sign of [1,-1]){
+      const c = sign*off;
+      outline += `M ${L*0.06} ${c-hw*0.4} C ${L*0.02} ${c-hw}, ${L*0.14} ${c-hw}, ${L*0.2} ${c-hw}`
+              +  ` L ${L*0.92} ${c-hw} L ${L} ${c-hw*0.72} L ${L} ${c+hw*0.72} L ${L*0.92} ${c+hw}`
+              +  ` L ${L*0.2} ${c+hw} C ${L*0.14} ${c+hw}, ${L*0.02} ${c+hw*0.4}, ${L*0.06} ${c+hw*0.4} Z `;
+    }
+    const zones=[], corridors=[];
+    const cw=Math.min(0.9,hw*0.3);
+    let mi=0;
+    for (const sign of [1,-1]){
+      const c=sign*off;
+      corridors.push(rect(L*0.08,c-cw,L*0.9,cw*2));
+      const n=ri(3,4), segL=(L*0.86)/n;
+      for(let i=0;i<n;i++){
+        zones.push({r:[L*0.1+i*segL, c+cw, segL, hw-cw], mod:s.mods[mi%s.mods.length]});
+        zones.push({r:[L*0.1+i*segL, c-hw, segL, hw-cw], mod:s.mods[mi%s.mods.length]});
+        mi++;
+      }
+    }
+    // transverse connecting spans
+    const extra=[];
+    for(let i=0;i<s.spans;i++){
+      const x=L*(0.28+i*(0.46/Math.max(1,s.spans-1||1)));
+      const sw=Math.max(2.4,hw*0.8);
+      extra.push({poly: rect(x, -off, sw, off*2), label:i===0?"TRANSFER":""});
+      corridors.push(rect(x+sw*0.28, -off, sw*0.44, off*2));
+    }
+    return {outline, zones, corridors, hw:off+hw, extra};
+  }
+},
+
+/* --- 5. DISPERSED: a truss spine with pods hung off it. Not
+       pressurised end to end, so there is no through corridor. --- */
+dispersed: {
+  label:"dispersed structure",
+  plan(cls){
+    const L = ri(30,50), pods = ri(3,6);
+    const pool = cls.fill.filter(m=>!["cockpit"].includes(m));
+    return {L, pods, podR: ri(4,7), mods: pickN(pool, pods+1)};
+  },
+  build(s,d){
+    const k=1-d*0.2, L=s.L, sp=Math.max(1.1, 2.2*k);
+    const zones=[], corridors=[], extra=[];
+    // the truss itself is the only continuous structure
+    corridors.push(rect(0,-sp,L,sp*2));
+    const bays = s.pods;
+    for (let i=0;i<bays;i++){
+      const x = L*0.12 + i*(L*0.74/bays);
+      const r = s.podR*k*(0.75+rnd()*0.5);
+      const up = i%2===0 ? 1 : -1;
+      const cy = up*(sp+r);
+      extra.push({circle:[x+r*0.5, cy, r]});
+      zones.push({r:[x+r*0.5-r*0.62, cy-r*0.62, r*1.24, r*1.24], mod:s.mods[i%s.mods.length], clipCircle:[x+r*0.5,cy,r]});
+      corridors.push(rect(x+r*0.5-0.55, up>0 ? sp : cy+r*0.62, 1.1, Math.max(0.4, r*0.40)));
+    }
+    // drive block aft
+    const eb = s.podR*k*1.1;
+    extra.push({poly: rect(L-eb*0.6, -eb, eb*1.6, eb*2)});
+    zones.push({r:[L-eb*0.5, -eb*0.85, eb*1.4, eb*1.7], mod:"engine"});
+    const outline = "";     // dispersed hulls have no single silhouette
+    return {outline, zones, corridors, hw:Math.max(s.podR*2.2, 8), extra, noHull:true, extrasBelow:true};
+  }
+},
+
+/* --- 6. WEDGE: a delta planform. Rooms in transverse bands that
+       narrow toward the apex. --- */
+wedge: {
+  label:"lifting body",
+  plan(cls){
+    const span = ri(cls.width[0],cls.width[1])*1.05;
+    const L = span*(1.3+rnd()*0.7);
+    const pool = cls.fill.filter(m=>!["cockpit","bridge"].includes(m));
+    return {span, L, bands:ri(4,6), nose:pick(["bridge","cockpit"]), mods:pickN(pool,6)};
+  },
+  build(s,d){
+    const k=1-d*0.19, hs=s.span/2*k, L=s.L;
+    const outline = `M 0 0 L ${L*0.86} ${-hs} L ${L} ${-hs*0.72} L ${L} ${hs*0.72} L ${L*0.86} ${hs} Z`;
+    const zones=[], corridors=[];
+    const cw=Math.min(1.1,hs*0.16);
+    corridors.push(rect(L*0.1,-cw,L*0.9,cw*2));
+    const n=s.bands, x0=L*0.08;
+    for(let i=0;i<n;i++){
+      const xa=x0+(L-x0)*i/n, xb=x0+(L-x0)*(i+1)/n;
+      const ha=hs*(xa/(L*0.86)), hb=hs*(xb/(L*0.86));
+      const h=Math.min(ha,hb,hs);
+      const mod = i===0 ? s.nose : s.mods[i%s.mods.length];
+      zones.push({r:[xa,cw,xb-xa,Math.max(0.5,h-cw)],mod,mirror:true});
+    }
+    return {outline, zones, corridors, hw:hs};
+  }
+},
+
+/* --- 7. RING: a spun torus with a hub. Circulation is the ring
+       itself; spokes carry lifts, not corridors. --- */
+ring: {
+  label:"toroidal hull",
+  plan(cls){
+    const R = ri(cls.width[0],cls.width[1])*0.95;
+    const pool = cls.fill.filter(m=>!["cockpit"].includes(m));
+    return {R, thick:0.30+rnd()*0.12, spokes:ri(3,4), mods:pickN(pool,8)};
+  },
+  build(s,d){
+    const R=s.R*(1-d*0.1), inner=R*(1-s.thick), hubR=R*0.17;
+    const outline = ringPath(0,0,inner,R) + " " + `M ${-hubR} 0 A ${hubR} ${hubR} 0 1 1 ${hubR} 0 A ${hubR} ${hubR} 0 1 1 ${-hubR} 0 Z`;
+    const zones=[], corridors=[];
+    const mid=(R+inner)/2, cw=Math.min(1.0,(R-inner)*0.17);
+    corridors.push({ring:[0,0,mid-cw,mid+cw]});
+    zones.push({poly: sector(0,0,0,hubR,0,Math.PI*2,20), mod:"bridge", single:true});
+    const n = s.spokes;
+    for(let i=0;i<n;i++){
+      const a=(i/n)*Math.PI*2+0.35;
+      corridors.push({poly: sector(0,0,hubR,inner,a-0.055,a+0.055,3)});
+    }
+    const cells = n*3;
+    for(let i=0;i<cells;i++){
+      const a0=(i/cells)*Math.PI*2+0.05, a1=((i+1)/cells)*Math.PI*2-0.05;
+      zones.push({polar:[inner+0.25, mid-cw, a0, a1], mod:s.mods[i%s.mods.length]});
+      zones.push({polar:[mid+cw, R-0.25, a0, a1], mod:s.mods[(i+3)%s.mods.length]});
+    }
+    return {outline, zones, corridors, hw:R, radial:true, evenOdd:true};
+  }
+},
+
+};
+
+/* Which forms suit which class. A fighter is never a torus. */
+const FORM_WEIGHTS = {
+  fighter:    [["axial",4],["wedge",5]],
+  smallcraft: [["axial",5],["wedge",3],["dispersed",1]],
+  system:     [["axial",3],["disc",3],["ring",2],["dispersed",2],["asteroid",2],["catamaran",2]],
+  starship:   [["axial",4],["disc",2],["asteroid",2],["catamaran",2],["dispersed",1],["ring",1]],
+  military:   [["axial",4],["wedge",3],["catamaran",2],["dispersed",1],["disc",1]],
+};
+
+/* ============================================================
+   RENDERING
+   Forms hand back polygons; this layer fills zones with rooms,
+   carves corridors, and labels whatever is large enough.
+   ============================================================ */
+const TON_PER_SQ = 0.41;
+
+function zoneRooms(z, mod){
+  const out=[];
+  if (z.single){ const b=polyBBox(z.poly); out.push({poly:z.poly, fw:b.w*0.72, fh:b.h*0.72}); return out; }
+  if (z.poly){ const b=polyBBox(z.poly); out.push({poly:z.poly, fw:b.w*0.8, fh:b.h*0.8}); return out; }
+  if (z.polar){                               // radial cell, split by angle
+    const [r0,r1,a0,a1]=z.polar;
+    if (r1-r0 < 1.2) return out;
+    const n = Math.max(1, Math.round((a1-a0)*(r0+r1)/2 / (3.0+rnd()*2.2)));
+    for (let i=0;i<n;i++){
+      const b0=a0+(a1-a0)*i/n, b1=a0+(a1-a0)*(i+1)/n;
+      // usable label width is the chord at the INNER radius, not the bbox
+      const cell=(ra,rb)=>({poly:sector(0,0,ra,rb,b0,b1),
+                            fw:2*ra*Math.sin((b1-b0)/2), fh:rb-ra});
+      if ((r1-r0)>7 && rnd()<.6){
+        const rm=r0+(r1-r0)*(0.45+rnd()*0.2);
+        out.push(cell(r0,rm)); out.push(cell(rm,r1));
+      } else out.push(cell(r0,r1));
+    }
+    return out;
+  }
+  const [x,y,w,h]=z.r;
+  if (w<1.2||h<1.2) return out;
+  const rooms=[]; fillZone(x,y,w,h,mod,rooms);
+  for (const r of rooms){
+    const b=polyBBox(r);
+    out.push({poly:r, fw:b.w, fh:b.h});
+    if (z.mirror) out.push({poly:rect(b.x0,-(b.y0+b.h),b.w,b.h), fw:b.w, fh:b.h});
+  }
+  return out;
+}
+
+function buildDeck(ship, d, uid){
+  const form = FORMS[ship.form];
+  const G = form.build(ship.p, d);
+  const g=[]; const labels=[]; let area=0;
+  const clip = "c"+uid+"-"+d;
+
+  if (!G.noHull && G.outline){
+    g.push(`<clipPath id="${clip}" clip-rule="evenodd"><path d="${G.outline}"/></clipPath>`);
+    g.push(`<g clip-path="url(#${clip})">`);
+    g.push(`<path d="${G.outline}" fill="var(--hull)" fill-rule="evenodd"/>`);
+  } else {
+    g.push(`<g>`);
+  }
+
+  // Structures that CONTAIN rooms must be laid down first, or they
+  // paint over their own interiors.
+  const below=[], above=[];
+  for (const e of (G.extra||[])) (G.extrasBelow ? below : above).push(e);
+  const drawExtra = (list) => { for (const e of list){
+    if (e.circle){ const [cx,cy,r]=e.circle;
+      g.push(`<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${r.toFixed(2)}" `
+           + `fill="var(--hull)" stroke="var(--ink)" stroke-width="0.38"/>`);
+      area += Math.PI*r*r*0.75;
+    } else if (e.poly){
+      g.push(`<path d="${polyPath(e.poly)}" fill="var(--hull)" stroke="var(--ink)" stroke-width="0.38"/>`);
+      area += polyArea(e.poly);
+      if (e.label){ const b=polyBBox(e.poly);
+        const sz=Math.min(0.8,b.w/(e.label.length*0.66),b.h*0.4);
+        if (sz>=0.4) labels.push({x:b.cx,y:b.cy,t:e.label,s:sz}); }
+    }
+  }};
+  drawExtra(below);
+
+  // rooms
+  for (const z of G.zones){
+    const mod = z.mod;
+    const names = pickN(MODULES[mod].rooms, MODULES[mod].rooms.length);
+    let ni=0;
+    for (const R of zoneRooms(z, mod)){
+      const poly = R.poly, b = polyBBox(poly);
+      area += polyArea(poly);
+      const hatch = (mod==="fuel") || (mod==="cargo" && rnd()<.45);
+      g.push(`<path d="${polyPath(poly)}" fill="${hatch?`url(#h${uid})`:"none"}" `
+           + `${hatch?'fill-opacity="0.45" ':""}stroke="var(--ink)" stroke-width="0.17"/>`);
+      if (R.fw>=4.0 && R.fh>=2.4){
+        const t=names[ni++%names.length];
+        const size=Math.min(0.88, R.fw/(t.length*0.62), R.fh*0.45);
+        if (size>=0.44) labels.push({x:b.cx,y:b.cy,t,s:size});
+      }
+    }
+  }
+
+  // corridors, carved over the rooms
+  for (const c of G.corridors){
+    if (c.ring){ const [cx,cy,r0,r1]=c.ring;
+      g.push(`<path d="${ringPath(cx,cy,r0,r1)}" fill="var(--hull)" fill-rule="evenodd" `
+           + `stroke="var(--ink)" stroke-width="0.19"/>`);
+      area += Math.PI*(r1*r1-r0*r0);
+    } else if (c.line){
+      const dpath="M "+c.line.map(p=>p[0].toFixed(2)+" "+p[1].toFixed(2)).join(" L ");
+      g.push(`<path d="${dpath}" fill="none" stroke="var(--ink)" stroke-width="${(c.w*2+0.34).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round"/>`);
+      g.push(`<path d="${dpath}" fill="none" stroke="var(--hull)" stroke-width="${(c.w*2).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round"/>`);
+    } else {
+      const poly = c.poly || c;
+      g.push(`<path d="${polyPath(poly)}" fill="var(--hull)" stroke="var(--ink)" stroke-width="0.19"/>`);
+      area += polyArea(poly);
+    }
+  }
+
+  if (!G.noHull && G.outline){
+    g.push(`</g>`);
+    g.push(`<path d="${G.outline}" fill="none" fill-rule="evenodd" stroke="var(--ink)" stroke-width="0.42"/>`);
+  } else g.push(`</g>`);
+
+  drawExtra(above);
+  return {svg:g.join(""), labels, area, hw:G.hw};
+}
+
+
+/* ============================================================
+   SPEC ROLLS — gated by the hull that was actually drawn
+   ============================================================ */
+function spec(ship, tons){
+  const cls = ship.cls;
+  const armed = rnd() < cls.armed;
+
+  const rk = weighted(REACTORS.map(r => [r[0], r[1]]));
+  const reactor = REACTORS.find(r => r[0] === rk);
+
+  let drive, driveNotes = [];
+  const thruster = ri(1, 9);
+  if (COUPLED[rk]){
+    const c = COUPLED[rk];
+    drive = c[0] + " " + pick(ROMAN) + " (sublight)";
+    driveNotes.push(c[1]);
+    if (rnd() < cls.ftl){
+      const f = pick(FTL);
+      drive += " with " + f[0].toLowerCase() + " tender " + ri(1,6) + " (superluminal)";
+      driveNotes.push(f[1]);
+    }
+  } else if (rnd() < cls.ftl){
+    const f = pick(FTL);
+    drive = f[0] + " " + pick(ROMAN) + " (superluminal), thrusters " + thruster + " (sublight)";
+    driveNotes.push(f[1]);
+  } else {
+    const sb = pick(SUB);
+    drive = sb[0] + " " + pick(ROMAN) + " (sublight)";
+    driveNotes.push(sb[1]);
+  }
+
+  const uses = ship.uses || [];
+  const weeks = Math.round(3 + Math.log10(Math.max(tons,10)) * ri(2,7));
+  const endurance = uses.includes("Low Berths") && rnd() < .5
+    ? ri(80,1400) + " years" : weeks + (weeks === 1 ? " week" : " weeks");
+
+  const beds = uses.filter(u => ["Staterooms","Barracks","Low Berths"].includes(u)).length;
+  const crew = tons < 40 ? ri(1,2) : Math.max(2, Math.round(tons/45) + beds*ri(2,6));
+  const gunners = armed ? Math.max(1, Math.round(tons/400)) : 0;
+  const complement = crew + " crew" + (gunners ? ", " + gunners + " gunners" : "");
+
+  const arm = {hull:pickN(HULLS, ri(1,3)), screen:pick(SCREENS), mounts:[], defences:[]};
+  if (armed){
+    const n = tons < 100 ? 1 : (tons < 1000 ? 2 : 3);
+    for (const t of pickN(TURRETS, n)){
+      const qty = tons < 1000 ? ri(1,2) : ri(2,6);
+      arm.mounts.push({q:qty, kind:(tons>=1000?"Heavy deck turret":"Turret"), w:t[0], d:t[1]});
+    }
+    if (tons >= 1000){const bb = pick(BAYS); arm.mounts.push({q:1, kind:"Bay", w:bb[0], d:bb[1]});}
+    if (tons >= 4000){const sp2 = pick(SPINAL); arm.mounts.push({q:1, kind:"Spinal mount", w:sp2[0], d:sp2[1]});}
+    arm.defences = pickN(DEFENCES, tons < 1000 ? 1 : 2);
+  }
+
+  const type = pick(cls.names);
+  const code = rnd() < .5
+    ? LETTERS[ri(0,25)] + "." + ri(10,499) + " " + pick(ROMAN)
+    : Array.from({length:pick([1,1,3])},()=>LETTERS[ri(0,25)]).join("") + "-" + ri(10,999);
+
+  return {
+    name: type + " " + code, type: type, tons: tons, armed: armed,
+    reactor: rk, reactorNote: reactor[2],
+    drive: drive, driveNotes: driveNotes,
+    endurance: endurance, complement: complement,
+    computers: pickN(COMPUTERS, ri(2,4)),
+    sensors: pickN(SENSORS, ri(1,2)),
+    facilities: uses.slice(), form: FORMS[ship.form].label, arm: arm,
+  };
+}
+
+/* ============================================================
+   ASSEMBLY: pick a form, plan it, validate, re-roll if unsound
+   ============================================================ */
+function assemble(cls, tries){
+  tries = tries===undefined ? 12 : tries;
+  const formId = weighted(FORM_WEIGHTS[cls.id]);
+  const p = FORMS[formId].plan(cls);
+  const ship = {cls, form:formId, p, decks:cls.decks};
+  const mods = new Set();
+  const G = FORMS[formId].build(p, 0);
+  for (const z of G.zones) mods.add(MODULES[z.mod].use);
+  if (["dispersed","disc","ring","asteroid"].includes(formId)) mods.add("Fuel");
+  const ok = mods.has("Bridge") && (mods.has("Engineering")||formId!=="axial") && mods.has("Fuel");
+  if (!ok && tries>1) return assemble(cls, tries-1);
+  ship.uses = Array.from(mods);
+  return ship;
+}
+
+function render(ship, seed){
+  const svg=document.getElementById("plan");
+  const uid=(seed>>>0).toString(36);
+  const decks=ship.decks, gap=4.5;
+  const built=[]; let area=0;
+  for(let d=0; d<decks; d++){ const B=buildDeck(ship,d,uid); built.push(B); area+=B.area; }
+
+  let maxHw=0, totalH=0;
+  for(const B of built){ maxHw=Math.max(maxHw,B.hw); totalH+=B.hw*2+gap; }
+
+  const padX=6, padY=5;
+  let body=""; let yCursor=padY+built[0].hw;
+  const shift = (ship.form==="axial"||ship.form==="wedge"||ship.form==="catamaran"||ship.form==="dispersed")
+                ? 0 : maxHw*1.15;
+  for(let d=0; d<decks; d++){
+    const B=built[d];
+    body+=`<g transform="translate(${padX+shift}, ${yCursor})">`+B.svg;
+    for(const l of B.labels)
+      body+=`<text x="${l.x.toFixed(2)}" y="${(l.y+l.s*0.34).toFixed(2)}" font-size="${l.s.toFixed(2)}" `
+          + `font-family="B612 Mono, monospace" fill="var(--ink)" text-anchor="middle">${l.t}</text>`;
+    body+=`<text x="${(-shift+0.4).toFixed(2)}" y="${(-B.hw-1.1).toFixed(2)}" `
+        + `font-size="${Math.min(1.15, maxHw/9).toFixed(2)}" font-family="B612, sans-serif" `
+        + `font-weight="700" fill="var(--ink)">Deck ${d+1}${d===0?" — main":""}</text></g>`;
+    yCursor += B.hw*2 + gap;
+  }
+
+  const W = svgExtent(ship, maxHw) + padX*2;
+  const sbY = yCursor-gap+2.2;
+  body+=`<g transform="translate(${padX}, ${sbY})" font-family="B612 Mono, monospace">`
+     +  `<path d="M0 0 H10 M0 -0.5 V0.5 M10 -0.5 V0.5 M5 -0.35 V0.35" stroke="var(--ink)" stroke-width="0.12"/>`
+     +  `<text x="0" y="1.5" font-size="0.9" fill="var(--ink)">0</text>`
+     +  `<text x="10" y="1.5" font-size="0.9" fill="var(--ink)" text-anchor="middle">15 m</text></g>`;
+
+  const H=Math.max(totalH+padY*2, sbY+3.5);
+  const u=Math.max(8, Math.min(26, 1150/W));
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.style.maxWidth = Math.round(W*u)+"px";
+  svg.innerHTML =
+    `<defs><pattern id="h${uid}" width="0.8" height="0.8" patternUnits="userSpaceOnUse" `
+    + `patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="0.8" `
+    + `stroke="var(--rule)" stroke-width="0.18"/></pattern></defs>` + body;
+  return area;
+}
+
+/* Forms differ wildly in aspect, so measure rather than assume. */
+function svgExtent(ship, maxHw){
+  const p=ship.p;
+  switch(ship.form){
+    case "axial":     return p.length + maxHw*0.3;
+    case "wedge":     return p.L + maxHw*0.3;
+    case "catamaran": return p.L + maxHw*0.3;
+    case "dispersed": return p.L + maxHw*0.3;
+    default:          return maxHw*2.5;
+  }
+}
+
+/* ============================================================
+   8. PANEL COPY
+   ============================================================ */
+function paint(sp, ship, seedText){
+  const $ = id => document.getElementById(id);
+  $("t-name").textContent = sp.name;
+  $("t-type").textContent = sp.type;
+  $("t-tons").textContent = sp.tons.toLocaleString() + " dTon";
+  $("t-seed").textContent = seedText;
+  $("s-reactor").textContent = sp.reactor;
+  $("s-drive").textContent   = sp.drive;
+  $("s-auto").textContent    = sp.endurance;
+  $("s-crew").textContent    = sp.complement;
+
+  let d = `<p class="note">${sp.reactorNote}</p>`;
+  for (const n of sp.driveNotes) d += `<p class="note">${n}</p>`;
+  d += `<p><strong>Computer</strong><br>${sp.computers.join(" · ")}</p>`;
+  d += "<ul>" + sp.sensors.map(s => `<li><strong>${s[0]}</strong> — ${s[1]}</li>`).join("") + "</ul>";
+  d += `<p><strong>Compartments fitted</strong><br>${sp.facilities.join(", ")}</p>`;
+  $("s-desc").innerHTML = d;
+
+  let a = "<ul>" + sp.arm.hull.map(h => `<li>${h}</li>`).join("")
+        + `<li>${sp.arm.screen}</li></ul>`;
+  if (!sp.armed){
+    a += `<p class="note">No offensive mounts fitted. The plan shows no turret rings, `
+       + `so none can be added without a yard refit.</p>`;
+  } else {
+    a += "<ul>" + sp.arm.mounts.map(m =>
+        `<li><strong>${m.q>1?"×"+m.q+" ":""}${m.kind} (${m.w})</strong> — ${m.d}</li>`).join("") + "</ul>";
+    a += "<ul>" + sp.arm.defences.map(d2 =>
+        `<li><strong>${d2[0]}</strong> — ${d2[1]}</li>`).join("") + "</ul>";
+  }
+  a += `<div class="stamp">${sp.armed ? "ARMED — LICENCE REQUIRED" : "CIVIL REGISTRY"}</div>`;
+  $("s-arm").innerHTML = a;
+}
+
+/* ============================================================
+   9. WIRING
+   ============================================================ */
+let last = null;
+
+function generate(seedText){
+  const sel = document.getElementById("hull").value;
+  if (!seedText){
+    seedText = Math.floor(Math.random()*0xFFFFFF).toString(36).toUpperCase().padStart(4,"0");
+  }
+  const seed = hashStr(seedText + "|" + sel);
+  RNG = mulberry32(seed);
+
+  const pool = sel === "random" ? CLASSES : CLASSES.filter(c => c.id === sel);
+  const cls = pick(pool);
+  const ship = assemble(cls);
+  // Draw first, then measure the drawing, then roll the stats to fit it.
+  const area = render(ship, seed);
+  const tons = Math.max(6, Math.round(area * TON_PER_SQ * ship.decks));
+  const sp = spec(ship, tons);
+  paint(sp, ship, seedText);
+  document.getElementById("seed").value = seedText;
+  history.replaceState(null, "", "#" + encodeURIComponent(sel + ":" + seedText));
+  last = {ship, sp, seedText};
+}
+
+document.getElementById("go").addEventListener("click", () => generate(
+  document.getElementById("seed").value.trim() || null));
+document.getElementById("hull").addEventListener("change", () => generate(null));
+document.getElementById("print").addEventListener("click", () => window.print());
+document.getElementById("svg").addEventListener("click", () => {
+  const svg = document.getElementById("plan").cloneNode(true);
+  // inline the CSS custom properties so the file stands alone
+  const css = {"var(--ink)":"#16191b","var(--hull)":"#f7f8f7",
+               "var(--faint)":"#ccd3d1","var(--rule)":"#8e9a9b"};
+  let s = new XMLSerializer().serializeToString(svg);
+  for (const k in css) s = s.split(k).join(css[k]);
+  s = s.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+  const url = URL.createObjectURL(new Blob([s], {type:"image/svg+xml"}));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = (last ? last.sp.name.replace(/[^\w-]+/g,"_") : "deckplan") + ".svg";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// restore from the URL hash so a drawing number is shareable
+function fromHash(){
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h.includes(":")){
+    const parts = h.split(":");
+    const opt = [...document.querySelectorAll("#hull option")].find(o => o.value === parts[0]);
+    if (opt) document.getElementById("hull").value = parts[0];
+    generate(parts.slice(1).join(":"));
+  } else {
+    generate(null);
+  }
+}
+fromHash();
+window.addEventListener("hashchange", () => {
+  const h = decodeURIComponent(location.hash.slice(1));
+  const cur = document.getElementById("hull").value + ":" +
+              document.getElementById("seed").value;
+  if (h !== cur) fromHash();
+});
+
+/* ============================================================
+   10. OPTIONAL: REAL GEOMORPH ARTWORK
+   ------------------------------------------------------------
+   Robert Pearce's Starship Geomorphs are distributed free from
+   travellerrpgblog.blogspot.com, but they are his artwork and are
+   not bundled here. Download them yourself, then wire them in.
+
+   The filenames are self-describing, so no manifest is needed:
+
+       Sh-001 [50x50] [41-dTons] Cargo Bay - Empty.png
+       ^code   ^px     ^tonnage   ^what it is
+
+   Parse that and you have the same schema Geomorph Shipyard uses
+   (code, sizeX, sizeY, tons, use). Then replace drawDeck()'s
+   generated <rect> rooms with <image> elements placed on the same
+   grid — the layout maths above is already in grid squares, which
+   is the unit the geomorphs are cut to.
+   ============================================================ */
+function parseGeomorphFilename(fn){
+  const m = fn.match(/^([A-Za-z]+)-(\d+)\s*\[(\d+)x(\d+)\]\s*\[([\d.]+)-dTons\]\s*(.+?)\.png$/i);
+  if (!m) return null;
+  return {
+    code:  m[1] + "-" + m[2],
+    klass: m[1],                    // SEF nose, SEA tail, Sh short, LS side …
+    sizeX: Math.round(+m[3] / 5),   // px → grid squares
+    sizeY: Math.round(+m[4] / 5),
+    tons:  parseFloat(m[5]),
+    label: m[6].trim(),
+  };
+}
+
+function adaptGeomorphs(fileList){
+  // Usage: <input type="file" multiple webkitdirectory> then pass input.files
+  const lib = {};
+  for (const f of fileList){
+    const p = parseGeomorphFilename(f.name);
+    if (!p) continue;
+    p.url = URL.createObjectURL(f);
+    (lib[p.klass] = lib[p.klass] || {})[p.code] = p;
+  }
+  return lib;   // shape matches Geomorph Shipyard's parts_library
+}
+window.adaptGeomorphs = adaptGeomorphs;
+window.parseGeomorphFilename = parseGeomorphFilename;
+</script>
+</body>
+</html>

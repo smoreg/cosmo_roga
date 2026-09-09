@@ -1,0 +1,30 @@
+{
+  "name": "jamrog-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Roguelike engine plus the games built on it.",
+  "workspaces": [
+    "packages/*",
+    "games/*",
+    "!games/_template"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w games/salvor",
+    "build": "npm run typecheck && npm run build -w games/salvor",
+    "preview": "npm run preview -w games/salvor",
+    "zip": "npm run zip -w games/salvor",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --build --force",
+    "new-game": "node scripts/new-game.mjs",
+    "music": "node games/salvor/music/scripts/render.mjs",
+    "sfx": "node games/salvor/music/scripts/sfx.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}
