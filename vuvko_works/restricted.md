@@ -86,6 +86,25 @@ product.
 PNGs into a redistributed package — link to his blog and have users download
 them, which is what Shipyard does.
 
+**Correction, 2026-09-09.** The repack does carry a licence, and it is not
+ambiguous. The three *RPG Mobius Geomorphs* archives
+(<https://rpgmobius.com>, colourised from Smith's PNGs) each ship a full
+`license.txt` and a `readme.txt` saying: "These files, as with Robert's original
+work and Eric's work, are released under Creative Commons Attribution
+Non-Commercial 4.0 International License." Read the licence text itself, in the
+archive, not a summary.
+
+So for those tiles the position is better *and* tighter than the paragraphs
+above suggest: a real grant, no need to ask — but **non-commercial is a licence
+term, not a preference**, and it binds anything built from them. That kills
+their use in a paid or ad-funded release, which is the case Pearce's informal
+"make it freely available" note left open. Attribution and share-alike-free
+adaptation are fine; see [ATTRIBUTION.md](ATTRIBUTION.md) for the notice.
+
+`geomorphs.html` assembles deck plans out of these tiles and prints that notice
+under every plan. It bundles nothing — the archives and the unpacked folder are
+gitignored.
+
 ---
 
 ## rolegenerator.com spaceship module

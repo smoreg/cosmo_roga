@@ -26,6 +26,20 @@
 
 ## vuvko_works
 
-Как прислано, без правок: `shipyard.html` (генератор дек-планов), `navmap.html`
-(навигационный граф), `shipgen.py`, и разбор источников — `open-licensed.md`,
-`restricted.md`, `ATTRIBUTION.md`, `design-notes-connectivity.md`.
+`shipyard.html` (генератор дек-планов), `navmap.html` (навигационный граф),
+`shipgen.py`, и разбор источников — `open-licensed.md`, `restricted.md`,
+`ATTRIBUTION.md`, `design-notes-connectivity.md`.
+
+Добавлено: `geomorphs.html` — сборщик палубных планов и корпусов из тайлов
+RPG Mobius Geomorphs (CC BY-NC 4.0). Рядом:
+
+- `geomorph_manifest.py` — опись PNG-файлов;
+- `geomorph_taxonomy.py` — читает альфа-канал каждого тайла и определяет, какие
+  его стороны обшивка, а какие стыкуются с соседом; результат в
+  `tiles.taxonomy.json` (метаданные, графики там нет, поэтому файл в репозитории);
+- `geomorphs-atlas.html` — атлас всех тайлов с разметкой сторон, чтобы
+  классификацию можно было проверить глазами.
+
+Сама графика не лежит в репозитории: архивы качаются с rpgmobius.com и
+gurpsland.no-ip.org, распаковываются в `vuvko_works/geomorphs/` — она в
+.gitignore.

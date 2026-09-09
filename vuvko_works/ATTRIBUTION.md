@@ -4,7 +4,13 @@
 
 `shipyard.html` and `navmap.html` contain **no third-party content**. Deck plans
 are drawn procedurally; all room names, descriptions, items and hazards are
-original text. No geomorph artwork is bundled. Nothing below is required today.
+original text.
+
+`geomorphs.html` *draws* third-party artwork but does not carry any: it reads a
+copy of the RPG Mobius Geomorphs that you download and unpack yourself, and the
+archives and the unpacked folder are gitignored. The notice it needs is below
+and is already printed under the plan in the page itself. **CC BY-NC — anything
+built with those tiles has to stay non-commercial.**
 
 Keep this file updated as you pull material in.
 
@@ -90,6 +96,55 @@ Deck plan tiles from Starship Geomorphs by Robert Pearce
 
 **Get written permission before any commercial use**, and do not redistribute
 the image files — link users to Pearce's blog to download them.
+
+---
+
+## If you use the RPG Mobius Geomorphs (CC BY-NC 4.0) — required by `geomorphs.html`
+
+The Mobius repack ships an explicit licence, which the loose Starship Geomorphs
+downloads did not. Checked 2026-09-09 in `license.txt` and `readme.txt` inside
+all three archives:
+
+```
+Deck plan tiles: RPG Mobius Geomorphs by RPG Mobius (rpgmobius.com), a
+recolouring of the PNG rendition by Eric B. Smith (gurpsland.no-ip.org/geomorphs)
+of the Starship Geomorphs by Robert Pearce (travellerrpgblog.blogspot.com).
+Licensed CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+Tiles arranged by this generator; the artwork itself is unmodified.
+```
+
+If you also unpack Eric B. Smith's **Adventure Class** geomorphs
+(`gurpsland.no-ip.org/zip/Geomorphs/AdventureClass.zip`) — the SE/HG/LS/Sh ship
+parts — the same CC BY-NC 4.0 terms apply, minus the Mobius recolouring:
+
+```
+Ship parts: Adventure Class Geomorphs by Robert Pearce, PNG rendition by
+Eric B. Smith (gurpsland.no-ip.org/geomorphs). CC BY-NC 4.0.
+```
+
+Three conditions come with it:
+
+- **Non-commercial only.** Not "free to download" — the licence forbids use
+  primarily aimed at commercial advantage. A paid or ad-funded game is out.
+- **Say you changed it.** Arranging tiles into a plan makes Adapted Material;
+  the line above does that.
+- **Do not repackage the PNGs** into anything you distribute. Point people at
+  rpgmobius.com and have them download it, which is what the page does.
+
+---
+
+## If you take design from Geomorph Shipyard (GPL-3.0)
+
+<https://gitlab.com/IvanSanchez/geomorph-shipyard> · Iván Sánchez Ortega
+
+`geomorphs.html` reads no code from it. What it takes is *how the problem is
+solved* — that a ship is one fore end, one hull centre, one aft end and one
+mirrored pair of sides placed centred on the hull, and that its saved-file
+format is worth speaking. Ideas and file formats are not the licensed thing;
+its source is, and none of it is copied here. If you ever paste code across,
+the whole page becomes GPL-3.0 and has to ship its source.
+
+No notice is required for reading it. Credit it anyway — the page does.
 
 ---
 
