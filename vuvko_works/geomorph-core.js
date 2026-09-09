@@ -400,14 +400,25 @@ function candidates(slot, role){
 }
 function bestFor(pool, slot, role, used){
   for (let relax = 0; relax <= 2; relax++){
-    let best = null;
+    const scored = [];
+    let top = -Infinity;
     for (const tile of pool){
       const f = fit(tile, slot, relax);
       if (!f) continue;
-      const s = f.score + score(tile, role) * 3 - (used.has(tile.path) ? 4 : 0) + rnd();
-      if (!best || s > best.s) best = {tile, rot:f.rot, s, relax};
+      const s = f.score + score(tile, role) * 3 - (used.has(tile.path) ? 4 : 0);
+      scored.push({tile, rot:f.rot, s, relax});
+      if (s > top) top = s;
     }
-    if (best){ used.add(best.tile.path); return best; }
+    if (!scored.length) continue;
+    /* Take one of the good ones, not the best one. Scores come in steps — three
+       for the shape, three per role word, two per side of skin facing space — so
+       a great many tiles tie, and picking the single maximum handed one tile
+       every stern in the archive: 760, six seeds running. Anything within a
+       point of the top answers the question just as well. */
+    const near = scored.filter(c=>c.s >= top - 1.01);
+    const chosen = near[Math.floor(rnd() * near.length)];
+    used.add(chosen.tile.path);
+    return chosen;
   }
   return null;
 }
@@ -705,12 +716,18 @@ function layoutProfile(opts, deal, place){
      nothing ever asks for a piece that is only a stern. Cap the first and last
      sections instead — the same [100x100] ends ship mode uses, which is where
      the archive keeps its bridges and its engine rooms. */
+  /* One bay wide, centred, whatever the section behind it. A wide end has to be
+     built out of corner blocks, and the archive holds thirteen of those at
+     100x100 with exactly one engine room in the lot — which is why every 2-bay
+     stern came out as the same tile twice, six seeds running. A single bay is a
+     cap, and there are seventy of those, twenty with a bridge and ten with
+     drives. It also gives the hull a point at each end, which is what ships
+     look like. */
   const caps = [];
   if (opts.caps !== false){
-    for (const b of bays.filter(b=>b.row === 0))
-      caps.push({x:b.x, y:-100, w:100, h:100, want:"cap", role:"command"});
-    for (const b of bays.filter(b=>b.row === prof.length - 1))
-      caps.push({x:b.x, y:prof.length*100, w:100, h:100, want:"cap", role:"drive"});
+    const mid = (maxW - 1) * 50;
+    caps.push({x:mid, y:-100, w:100, h:100, want:"cap", role:"command"});
+    caps.push({x:mid, y:prof.length*100, w:100, h:100, want:"cap", role:"drive"});
   }
   const capped = new Set();
   for (const c of caps)

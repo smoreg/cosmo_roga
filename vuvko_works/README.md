@@ -162,6 +162,29 @@ and its engine rooms — and no rim is laid alongside them, since a cap already
 carries hull on three sides and a strip beside it would make the slot read as a
 corner. Toggle in **Options**.
 
+**The cap is one bay wide, centred**, whatever the section behind it, and the
+reason is in the inventory:
+
+| footprint and shape | tiles | with drives | with a bridge |
+|---|---|---|---|
+| 100x100 cap — a one-bay end | **70** | 10 | 20 |
+| 100x100 corner — a two-bay end | **13** | **1** | 0 |
+| 200x100 edge or cap — a wide end | 2 | 0 | 0 |
+
+A wide end has to be built from corner blocks, and the archive holds thirteen of
+those with exactly one engine room among them and no bridge at all — so a
+two-bay stern came out as the same tile twice for every seed, `760 Engineering
+Hull Breach`, six seeds running. That was not the tile-picking being timid; it
+was a pool of one. A single centred bay draws from the seventy caps instead, so
+the ends vary, come out as a bridge and an engine room, and the hull comes to a
+point at each end, which is what ships look like.
+
+Picking is no longer winner-take-all either. Scores come in steps — three for
+the shape, three per role word, two per side of skin facing space — so a great
+many tiles tie exactly, and taking the single maximum let one tile own a slot
+while the seed changed nothing. Anything within a point of the top is now
+equally eligible.
+
 Expect corner turrets. A convex corner takes a corner tile, and the archive's
 corner tiles are mostly fuel scoops and gun positions drawn as triangles, so a
 hull that steps twice grows four of them.
