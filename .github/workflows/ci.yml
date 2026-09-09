@@ -42,7 +42,12 @@ jobs:
     concurrency:
       group: itch-deploy
     env:
-      ITCH_TARGET: vuvko/derelict-rogue
+      # Куда выкладывать. Переменной, а не константой: ключ butler принадлежит
+      # одному аккаунту, а страница может принадлежать другому — и тогда itch
+      # отвечает `400 invalid game`, что читается как «страницы нет», хотя она
+      # есть. Меняется без правки кода:
+      #   gh variable set ITCH_TARGET --repo smoreg/cosmo_roga --body "smoreg/salvor"
+      ITCH_TARGET: ${{ vars.ITCH_TARGET || 'vuvko/derelict-rogue' }}
       ITCH_CHANNEL: html5
     steps:
       - uses: actions/download-artifact@v4
