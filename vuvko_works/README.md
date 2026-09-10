@@ -121,16 +121,33 @@ four — where the bands from two wide sections meet around a narrow one. Forced
 placements are counted in the title block, so you can see which profiles the
 tiles are happy with.
 
+**Plating alongside plating is not a doorway.** The fit test demanded that any
+side facing another tile be joinable — right for a wall between two rooms, wrong
+for two pieces of hull meeting, which is what a hull is made of. It forced 50 ft
+gaps beside every nose and at every step, since no tile could satisfy both
+sides, and the vacuum flooded in through them: on one hull the bow band came out
+83% *outside* with 1% floor, so the boarding map simply had no hexagons over the
+front of the ship. A slot now distinguishes a compartment through a side from
+plating alongside it, and only the first is owed a join. Every profile places
+with nothing forced, including the symmetric pinches that used to cost two and
+four tiles.
+
 **Symmetric across the keel.** The fit test judges each slot alone, so the port
 and starboard corners came out as two unrelated pieces — correct, and obviously
 arbitrary. Now a choice made for one side is mirrored to the slot opposite: the
 archive draws many tiles twice, once `[Mirror]`ed, and that is the true
 reflection; failing that a rotation usually lands on the reflected shape anyway,
 since turning a corner whose skin is north-and-west by 90° gives north-and-east
-with the lettering still the right way round. Every rim pair matches — the ones
-that do not are the interior bays, left varied on purpose. Across the keel only:
-bow and stern are not interchangeable. Turning it off in **Options** gives the
-old per-slot choice.
+with the lettering still the right way round. Across the keel only: bow and stern are not
+interchangeable.
+
+It covers the interior too. Mirroring only the rim left the hull symmetric and
+the rooms behind it arbitrary — measured over hex sizes 15 to 45 ft, the lattice
+mirrored 86-97% of the time while the *kind* of room opposite matched only
+61-88%. With the bays mirrored as well that becomes 92-100% and 91-99%. What is
+left is the raster: a `[Mirror]` drawing is not a pixel-for-pixel reflection, so
+a room boundary can land a pixel to one side and a hexagon on the edge flips
+with it. Turn it off in **Options** for a ship whose two sides differ.
 
 **Smoothing a change of beam.** A step in a hull is a right angle, and a right
 angle is what nearly every tile draws. `geomorph_taxonomy.py` now measures how

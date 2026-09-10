@@ -332,18 +332,20 @@ function tileFt(t, rot){
 /* Work out which sides of each slot face another slot rather than open space. */
 function neighbours(slots){
   for (const a of slots){
-    a.inside = {n:false, s:false, e:false, w:false};
+    a.inside = {n:false, s:false, e:false, w:false};   // any tile at all
+    a.room   = {n:false, s:false, e:false, w:false};   // a compartment, specifically
     for (const b of slots){
       if (a === b) continue;
       const overlapX = Math.min(a.x+a.w, b.x+b.w) - Math.max(a.x, b.x);
       const overlapY = Math.min(a.y+a.h, b.y+b.h) - Math.max(a.y, b.y);
+      const note = side => { a.inside[side] = true; if (b.want === "core") a.room[side] = true; };
       if (overlapX > 0){
-        if (b.y + b.h === a.y) a.inside.n = true;
-        if (b.y === a.y + a.h) a.inside.s = true;
+        if (b.y + b.h === a.y) note("n");
+        if (b.y === a.y + a.h) note("s");
       }
       if (overlapY > 0){
-        if (b.x + b.w === a.x) a.inside.w = true;
-        if (b.x === a.x + a.w) a.inside.e = true;
+        if (b.x + b.w === a.x) note("w");
+        if (b.x === a.x + a.w) note("e");
       }
     }
   }
@@ -363,8 +365,15 @@ function fit(tile, slot, relax){
     const skin = turn(tax.skin, rot), attach = turn(tax.attach, rot);
     let ok = true, score = 0;
     for (const side of SIDES){
-      if (slot.inside[side]){
+      if (slot.room && slot.room[side]){
+        // A compartment is through there: this side has to be joinable.
         if (!attach.has(side)){ ok = false; break; }
+      } else if (slot.inside[side]){
+        /* Plating alongside plating. Two hull pieces meeting is what a hull is
+           made of, and demanding the join be walkable is what forced the gaps
+           beside a nose and at every step — gaps the vacuum then flooded in
+           through, which is why the ends of a ship went uncovered. */
+        if (skin.has(side)) score += 0.5;
       } else if (skin.has(side)) {
         score += 2;                       // the skin faces space, as it should
       }
@@ -754,12 +763,7 @@ function layoutProfile(opts, deal, place){
     const [gx, gy] = key.split(",").map(Number);
     const f = {n:isCore(gx,gy-1), s:isCore(gx,gy+1), w:isCore(gx-1,gy), e:isCore(gx+1,gy)};
     const on = ["n","s","w","e"].filter(k=>f[k]);
-    if (on.length >= 2 && !(on.length === 2 && (f.n && f.s || f.e && f.w))) rim.delete(key);
-    /* Nothing alongside a cap. A nose already carries hull on three sides, and
-       a strip of rim beside it gives the slot a second neighbour — enough to
-       make it read as a corner, so the fit test stops offering it noses. */
-    if (capped.has((gx-1) + "," + gy) || capped.has((gx+1) + "," + gy) ||
-        capped.has(gx + "," + (gy-1)) || capped.has(gx + "," + (gy+1))) rim.delete(key);
+    if (on.length >= 3) rim.delete(key);       // a pocket no tile can furnish
   }
 
   /* Two rim cells along the same face are one edge tile; a cell that turns a
@@ -807,7 +811,7 @@ function layoutProfile(opts, deal, place){
      notch in the hull asks for a cap and gets one, which is why an inner corner
      closes as readily as an outer one. */
   for (const slot of slots){
-    if (slot.want === "core") continue;
+    if (slot.want === "core" || slot.want === "cap") continue;
     const inside = SIDES.filter(k=>slot.inside[k]);
     slot.want = inside.length === 4 ? "core"
               : inside.length === 3 ? "edge"
@@ -844,7 +848,11 @@ function layoutProfile(opts, deal, place){
     if (!c){ relaxed++; done.add(slot); continue; }
     if (c.relax) relaxed++;
     fill(slot, c);
-    if (!opts.symmetric || slot.want === "core") continue;
+    /* The interior too, when symmetry is asked for. Leaving the bays varied
+       kept the hull symmetric and the rooms behind it arbitrary: the lattice
+       mirrored at 86-97% while the *kind* of room opposite matched only 61-88%
+       of the time. Turn it off for a ship whose two sides differ. */
+    if (!opts.symmetric) continue;
     const other = twin(slot);
     if (!other || other === slot || done.has(other)) continue;
     const m = mirrored(c.tile, c.rot, other);
