@@ -405,6 +405,9 @@ function fit(tile, slot, relax){
        chamfer instead of a notch. Only 23 tiles in the archive draw their hull
        line diagonally, so this is a preference, not a requirement. */
     if (slot.chamfer && tax.slope >= 0.45 && tax.cut > 0.12) score += 4;
+    /* A fuel intake scoop faces the way the ship is going. Putting one on the
+       stern is the sort of thing only a generator does. */
+    if (slot.aft && /intake|scoop/.test(tile.search)) score -= 6;
     if (!best || score > best.score) best = {rot, score};
   }
   return best;
@@ -475,7 +478,7 @@ function dealer(list){
 function layout(input){
   const opts = Object.assign({
     seed:"SALVOR", beam:2, rows:3, hull:"ship", sets:"all",
-    family:"", profile:"2-1-2", symmetric:true, caps:true, q:"", spin:false, mega:true, vehic:true,
+    family:"", profile:"2-1-2", symmetric:true, caps:true, rim:"none", q:"", spin:false, mega:true, vehic:true,
   }, input || {});
   opts.seed = String(opts.seed).trim() || "SALVOR";
   opts.q = String(opts.q || "").trim().toLowerCase();
@@ -758,6 +761,14 @@ function layoutProfile(opts, deal, place){
     for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++)
       capped.add((c.x/G + dx) + "," + (c.y/G + dy));
 
+  /* The 50 ft border is optional, and off by default. Wrapping a hull in edge
+     and corner tiles gives it a rim of half-rooms, which a standard deck plan
+     does not have — the core tiles are closed compartments already — and the
+     archive's corner pieces are mostly fuel scoops and gun positions, which is
+     how intake scoops came to be on the back of a ship. "sides" plates the
+     flanks and leaves the ends to the caps; "full" is the old behaviour. */
+  const wantRim = opts.rim || "none";
+
   /* Every cell that touches the hull from outside, corners included — except
      the shoulder of a step. At an inner corner the band would wrap a cell with
      hull on two sides and its own neighbours on the other two, and the archive
@@ -795,8 +806,12 @@ function layoutProfile(opts, deal, place){
     n: isCore(gx, gy-1), s: isCore(gx, gy+1),
     w: isCore(gx-1, gy), e: isCore(gx+1, gy),
   });
-  for (const key of [...rim].sort()){
+  const lastRow = prof.length * 2;              // in half-bay cells
+  for (const key of (wantRim === "none" ? [] : [...rim].sort())){
     if (used.has(key)) continue;
+    const [kx, ky] = key.split(",").map(Number);
+    // "sides" leaves the bow and stern faces to the caps.
+    if (wantRim === "sides" && (ky < 0 || ky >= lastRow)) continue;
     const [gx, gy] = key.split(",").map(Number);
     const f = faceOf(gx, gy);
     const flat = ["n","s","w","e"].filter(k=>f[k]);
@@ -809,7 +824,8 @@ function layoutProfile(opts, deal, place){
           ["n","s","w","e"].filter(k=>nf[k]).length === 1 && nf[side]){
         used.add(key); used.add(nk);
         slots.push({x:gx*G, y:gy*G, w:along[0] ? 100 : 50, h:along[0] ? 50 : 100,
-          want:"edge", role: side === "s" ? "command" : side === "n" ? "drive" : "weapon"});
+          want:"edge", aft: side === "n",
+          role: side === "s" ? "command" : side === "n" ? "drive" : "weapon"});
         continue;
       }
     }
@@ -817,7 +833,8 @@ function layoutProfile(opts, deal, place){
     /* A corner at the top or bottom of the ship is the shape of the hull; one
        part-way down is a change of beam, and that is where a chamfer helps. */
     const step = gy > 0 && gy < rows*2;
-    slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner", role:"fuel", chamfer:step});
+    slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner", role:"fuel",
+      chamfer:step, aft: gy >= lastRow});
   }
   neighbours(slots);
 

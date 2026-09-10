@@ -179,6 +179,15 @@ and its engine rooms — and no rim is laid alongside them, since a cap already
 carries hull on three sides and a strip beside it would make the slot read as a
 corner. Toggle in **Options**.
 
+**The 50 ft border is optional, and off by default.** Wrapping a hull in edge
+and corner tiles gives it a rim of half-rooms, which a standard deck plan does
+not have — the core tiles are closed compartments already. It is also where the
+fuel scoops came from: the archive's corner pieces are mostly scoops and gun
+positions, so a border put intake scoops on the back of the ship. **Border** in
+the console: `none` is a bare hull, `sides` plates the flanks and leaves the ends
+to the caps, `full` is the old behaviour. An intake scoop is now also scored
+down on any aft-facing slot, since a scoop faces the way the ship is going.
+
 **The cap is one bay wide, centred**, whatever the section behind it, and the
 reason is in the inventory:
 
@@ -380,6 +389,22 @@ because the tile draws it with its door shut. Widening the cutoff from 3 ft to
 8 ft recovers exactly one room and risks doors through fuel tanks, so the cutoff
 stays and those rooms are marked `sealed`, drawn with a dashed red edge, counted,
 and kept out of the choice of boarding point.
+
+**Reading rooms off the drawing needs 4 px to the foot.** At 2.4 the room
+finder was quietly wrong: tiles land on fractional offsets, canvas smoothing
+averages a hull line across two pixels, and below the ink threshold the line
+simply is not there. One break is enough — the vacuum walks in and the
+compartments behind come out as space. A bridge that measures 51% enclosed on
+its own read 8% in a plan, and the front of the ship had no hexagons over it.
+At 4 px to the foot with a lower threshold it reads 50%.
+
+**Dangling connections are sealed; margins are not.** A tile carries corridor
+stubs at its edges, openings drawn to meet the tile next door, and where there
+is no tile next door they are holes. But a wing, a fuel wedge or the taper of a
+nose is drawn inset in its box, and that blank part of the box is space — seal
+it and hexagons appear over nothing. The taxonomy already read each edge cell by
+cell, `#` where structure reaches the boundary and `.` where the hull has curved
+away, so the `#` cells are closed and the `.` cells left open.
 
 **The outline of the tiles is the outline of the ship.** A geomorph carries
 corridor stubs at its edges — openings drawn to meet the tile next door — and
