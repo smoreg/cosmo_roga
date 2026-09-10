@@ -378,7 +378,17 @@ function fit(tile, slot, relax){
     const [w, h] = tileFt(tile, rot);
     if (w !== slot.w || h !== slot.h) continue;
     const skin = turn(tax.skin, rot), attach = turn(tax.attach, rot);
+    /* Where a tile's art spills past its own box — a pod door, a turret, a
+       scoop hanging into the margin — the artist has claimed that ground. A
+       neighbour there would be drawn through. Those sides face space or they
+       face nothing. */
+    const proud = turn(tax.proud || [], rot);
     let ok = true, score = 0;
+    for (const side of SIDES){
+      if (proud.has(side) && slot.inside[side]){ ok = false; break; }
+    }
+    if (!ok && relax < 2) continue;
+    ok = true;
     for (const side of SIDES){
       if (slot.room && slot.room[side]){
         // A compartment is through there: this side has to be joinable.
@@ -436,14 +446,41 @@ function candidates(slot, role){
   for (const t of pool) (score(t, role) ? fits : rest).push(t);
   return [...shuffle(fits), ...shuffle(rest)].slice(0, 90);
 }
+/* Some things a ship has exactly one of. Nothing stopped the bow cap, every bay
+   of the first row and the whole bow strip all asking for a bridge, so a wide
+   hull came out with four of them and the mirror pass doubled that again. A
+   spent role stops being asked for, and tiles that answer it are scored down so
+   a second one does not slip in on shape alone. */
+const ROLE_LIMIT = {command: 1};
+/* What counts against the limit is narrower than what answers the role. A
+   hangar with a launch control in it is somewhere to steer a fighter from, not
+   a second bridge, and counting it as one used the ship's allowance up on the
+   wrong tile. */
+const LIMIT_TEST = {command: t => /\bbridge\b/.test(t.search)};
+let SPENT = {};
+
+function overBudget(tile){
+  let n = 0;
+  for (const role in ROLE_LIMIT)
+    if ((SPENT[role] || 0) >= ROLE_LIMIT[role] && LIMIT_TEST[role](tile)) n += 20;
+  return n;
+}
+function spend(tile){
+  for (const role in ROLE_LIMIT)
+    if (LIMIT_TEST[role](tile)) SPENT[role] = (SPENT[role] || 0) + 1;
+}
+
 function bestFor(pool, slot, role, used){
+  // Asking for what has already been fitted just wastes the slot.
+  if (role && ROLE_LIMIT[role] && (SPENT[role] || 0) >= ROLE_LIMIT[role]) role = null;
   for (let relax = 0; relax <= 2; relax++){
     const scored = [];
     let top = -Infinity;
     for (const tile of pool){
       const f = fit(tile, slot, relax);
       if (!f) continue;
-      const s = f.score + score(tile, role) * 3 - (used.has(tile.path) ? 4 : 0);
+      const s = f.score + score(tile, role) * 3 - (used.has(tile.path) ? 4 : 0)
+              - overBudget(tile);
       scored.push({tile, rot:f.rot, s, relax});
       if (s > top) top = s;
     }
@@ -456,6 +493,7 @@ function bestFor(pool, slot, role, used){
     const near = scored.filter(c=>c.s >= top - 1.01);
     const chosen = near[Math.floor(rnd() * near.length)];
     used.add(chosen.tile.path);
+    spend(chosen.tile);
     return chosen;
   }
   return null;
@@ -492,6 +530,7 @@ function layout(input){
     family:"", profile:"2-1-2", symmetric:true, caps:true, rim:"none", q:"", spin:false, mega:true, vehic:true,
   }, input || {});
   opts.seed = String(opts.seed).trim() || "SALVOR";
+  SPENT = {};                       // one bridge to a ship, counted afresh
   opts.q = String(opts.q || "").trim().toLowerCase();
   const seed = opts.seed;
   RNG = mulberry32(hashStr(seed));
@@ -937,21 +976,31 @@ function layoutProfile(opts, deal, place){
     done.add(slot);
     place(choice.tile, slot.x, slot.y, slot.w, slot.h, choice.rot);
   };
+  const mirrorFill = (slot, choice) => { spend(choice.tile); fill(slot, choice); };
   for (const slot of slots){
     if (done.has(slot)) continue;
     const c = bestFor(candidates(slot, slot.role), slot, slot.role, seen);
     if (!c){ relaxed++; done.add(slot); continue; }
     if (c.relax) relaxed++;
     fill(slot, c);
-    /* The interior too, when symmetry is asked for. Leaving the bays varied
-       kept the hull symmetric and the rooms behind it arbitrary: the lattice
-       mirrored at 86-97% while the *kind* of room opposite matched only 61-88%
-       of the time. Turn it off for a ship whose two sides differ. */
-    if (!opts.symmetric) continue;
+    /* The hull is mirrored outright — a ship the same width to port and
+       starboard should look it. The rooms behind it are a soft lock: mirrored
+       most of the time, so the plan reads as one ship, but free often enough
+       that the two sides are not a tracing of each other. "full" forces every
+       bay, "hull" leaves the interior alone, "off" mirrors nothing. */
+    const sym = opts.symmetric === true ? "full" : opts.symmetric || "soft";
+    if (sym === "off") continue;
+    if (slot.want === "core"){
+      if (sym === "hull") continue;
+      if (sym === "soft" && rnd() > 0.7) continue;
+    }
     const other = twin(slot);
     if (!other || other === slot || done.has(other)) continue;
     const m = mirrored(c.tile, c.rot, other);
-    if (m) fill(other, m);
+    /* Reflecting a bridge gives a ship two bridges. Where the mirror would
+       spend a role the ship has already used up, leave that slot to the fit
+       test — the hull stays symmetric, the pair of rooms does not. */
+    if (m && !overBudget(m.tile)) mirrorFill(other, m);
   }
   return {W:(maxW*100) + 100, H:(rows*100) + 100 + (caps.length ? 200 : 0),
           beam:maxW, rows, relaxed, family: fam ? fam.key : null,

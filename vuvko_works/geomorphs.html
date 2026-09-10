@@ -199,7 +199,13 @@ button[disabled]{opacity:.4; cursor:not-allowed}
       <label class="check"><input type="checkbox" id="optOverlay" checked> Vehicles</label>
       <label class="check"><input type="checkbox" id="optMega" checked> Megamorphs</label>
       <label class="check"><input type="checkbox" id="optSpin"> Rotate cores</label>
-      <label class="check"><input type="checkbox" id="optSym" checked> Symmetric</label>
+      <label class="check" style="gap:5px">Symmetry
+        <select id="optSym" style="min-width:0;padding:3px 5px;font-size:11.5px">
+          <option value="soft" selected>soft</option>
+          <option value="full">full</option>
+          <option value="hull">hull only</option>
+          <option value="off">off</option>
+        </select></label>
       <label class="check"><input type="checkbox" id="optCaps" checked> Nose &amp; drives</label>
       <label class="check"><input type="checkbox" id="optGrid" checked> Grid</label>
     </div>
@@ -617,7 +623,7 @@ function readOptions(){
     spin:  document.getElementById("optSpin").checked,
     mega:  document.getElementById("optMega").checked,
     vehic: document.getElementById("optOverlay").checked,
-    symmetric: document.getElementById("optSym").checked,
+    symmetric: document.getElementById("optSym").value,
     caps: document.getElementById("optCaps").checked,
   };
 }

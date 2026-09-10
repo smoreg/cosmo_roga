@@ -1100,7 +1100,7 @@ function readOptions(){
   document.getElementById("profileField").style.display = hull === "profile" ? "" : "none";
   document.getElementById("rimField").style.display = hull === "profile" ? "" : "none";
   return {seed:v("seed"), beam:+v("beam"), rows:+v("rows"), hull,
-          sets:v("sets"), family:v("family"), profile:v("profile"), rim:v("rim"),
+          sets:v("sets"), family:v("family"), profile:v("profile"), rim:v("rim"), symmetric:"soft",
           q:"", spin:false, mega:true,
           vehic:document.getElementById("showVeh").checked};
 }

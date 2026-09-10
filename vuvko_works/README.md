@@ -132,6 +132,22 @@ plating alongside it, and only the first is owed a join. Every profile places
 with nothing forced, including the symmetric pinches that used to cost two and
 four tiles.
 
+**One bridge to a ship.** Nothing stopped the bow cap, every bay of the first
+row and the whole bow strip all asking for a bridge, so a wide hull came out
+with three or four and the mirror pass doubled that again. A role can now have a
+budget; `command` has one. What counts against it is narrower than what answers
+it — a hangar with a launch control in it is somewhere to fly a fighter from,
+not a second bridge, and counting it used the allowance on the wrong tile — so
+the limit tests for the word itself. Twelve hulls across four profiles: one
+bridge each, at the bow.
+
+**Where a tile spills past its box, nothing goes beside it.** A pod door, a
+turret, a scoop drawn out into the margin is the artist claiming that ground,
+and a neighbour there gets drawn through. 543 of 1792 tiles spill on at least
+one side — 438 on one, 88 on two, 16 on three, one on all four — and those sides
+now face space or nothing at all. Nine plans, no spill with anything against it,
+and nothing left unplaceable by the rule.
+
 **Symmetric across the keel.** The fit test judges each slot alone, so the port
 and starboard corners came out as two unrelated pieces — correct, and obviously
 arbitrary. Now a choice made for one side is mirrored to the slot opposite: the
@@ -141,13 +157,16 @@ since turning a corner whose skin is north-and-west by 90° gives north-and-east
 with the lettering still the right way round. Across the keel only: bow and stern are not
 interchangeable.
 
-It covers the interior too. Mirroring only the rim left the hull symmetric and
-the rooms behind it arbitrary — measured over hex sizes 15 to 45 ft, the lattice
-mirrored 86-97% of the time while the *kind* of room opposite matched only
-61-88%. With the bays mirrored as well that becomes 92-100% and 91-99%. What is
-left is the raster: a `[Mirror]` drawing is not a pixel-for-pixel reflection, so
-a room boundary can land a pixel to one side and a hexagon on the edge flips
-with it. Turn it off in **Options** for a ship whose two sides differ.
+The rooms behind it are a **soft lock**, which is the default: mirrored most of
+the time, so the plan reads as one ship, but free often enough that the two
+sides are not a tracing of each other. `full` forces every bay, `hull` leaves the
+interior alone, `off` mirrors nothing. Measured on a 2-3-3-2 hull, as
+lattice/kind: full 99/97 to 100/100, soft 94/85 to 99/98, hull 96/52 to 98/97,
+off 94/49 to 96/90.
+
+A bridge is never mirrored whatever the setting — reflecting one gives a ship two
+bridges, so where the mirror would spend a role the ship has used up, that slot
+goes back to the fit test. The hull stays symmetric; the pair of rooms does not.
 
 **Smoothing a change of beam.** A step in a hull is a right angle, and a right
 angle is what nearly every tile draws. `geomorph_taxonomy.py` now measures how
