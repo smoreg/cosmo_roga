@@ -167,6 +167,7 @@ code{font-family:"B612 Mono",monospace;background:var(--deck);border:1px solid v
   Tiles: <b>RPG Mobius Geomorphs</b> by RPG Mobius, from the Traveller Geomorphs by Robert Pearce
   and the PNG rendition by Eric B. Smith — <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener">CC BY-NC 4.0</a>.
   Non-commercial use only. Hex lattice matches <code>smoreg_works/experiments/hullforms/hexgrid.mjs</code>.
+  <span id="build" style="float:right;opacity:.65"></span>
 </div>
 
 <script src="geomorph-core.js"></script>
@@ -288,7 +289,22 @@ async function raster(plan){
   const data = ctx.getImageData(0, 0, w, h).data;
   const ink = new Uint8Array(w * h);
   for (let i = 0, p = 3; i < ink.length; i++, p += 4) ink[i] = data[p] > ALPHA ? 1 : 0;
-  return {w, h, ink, canvas: cv};
+
+  /* Where the ship is, tile by tile. A geomorph carries corridor stubs at its
+     edges — openings drawn to meet the tile next door — and where there is no
+     tile next door they are holes. A bare spine has one every hundred feet down
+     both sides, so flooding from the border poured straight into the ship and
+     its rooms came out as vacuum: 4% floor at the bow, 12% amidships. The
+     outline of the tiles is the outline of the ship, so the flood is not
+     allowed across it. */
+  const covered = new Uint8Array(w * h);
+  for (const p of plan.put){
+    if (p.tile.overlay) continue;
+    const x0 = Math.max(0, Math.round(p.x * PX_FT)), x1 = Math.min(w, Math.round((p.x + p.w) * PX_FT));
+    const y0 = Math.max(0, Math.round(p.y * PX_FT)), y1 = Math.min(h, Math.round((p.y + p.h) * PX_FT));
+    for (let y = y0; y < y1; y++) covered.fill(1, y*w + x0, y*w + x1);
+  }
+  return {w, h, ink, covered, canvas: cv};
 }
 
 /* ---------- rooms ----------
@@ -298,11 +314,12 @@ async function raster(plan){
    walking around. Components smaller than a closet are noise from the line art
    and get folded into structure. */
 function regions(rast){
-  const {w, h, ink} = rast;
-  const OUT = 1, FREE = 0;
+  const {w, h, ink, covered} = rast;
+  const OUT = 1;
   const reg = new Int32Array(w * h).fill(-1);
   const stack = [];
-  const push = i => { if (!ink[i] && reg[i] === -1){ reg[i] = OUT; stack.push(i); } };
+  // Vacuum spreads outside the ship, never into it.
+  const push = i => { if (!ink[i] && !covered[i] && reg[i] === -1){ reg[i] = OUT; stack.push(i); } };
   for (let x = 0; x < w; x++){ push(x); push((h-1)*w + x); }
   for (let y = 0; y < h; y++){ push(y*w); push(y*w + w-1); }
   while (stack.length){
@@ -1107,6 +1124,7 @@ async function start(){
 }
 document.getElementById("seed").value = randomSeed();
 readHash();
+stampBuild(document.getElementById("build"));
 loadFromManifest().then(n=>{ if (n) start(); });
 </script>
 </body>

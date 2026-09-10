@@ -10,6 +10,21 @@
  * passes them to layout(); what comes back is geometry.
  */
 
+/* Which build you are looking at. Baked so it works from file://, and checked
+   against the file's own Last-Modified when served, because "I reloaded and it
+   is still wrong" needs an answer that does not depend on me remembering to
+   bump a number. */
+const BUILD = "2026-09-10";
+function stampBuild(el){
+  if (!el) return;
+  el.textContent = "build " + BUILD;
+  fetch("geomorph-core.js", {method:"HEAD"}).then(r=>{
+    const t = r.headers.get("Last-Modified");
+    if (t) el.textContent = "build " + BUILD + " · core " +
+      new Date(t).toISOString().slice(0, 16).replace("T", " ") + "Z";
+  }).catch(()=>{});
+}
+
 const FT = 12;                 // px per foot at native scale (60px / 5ft)
 const IMG = FT*5/60;           // image px -> plan px (1:1 while FT is 12)
 const SETS = ["Geomorphs","Custom-Tiles","Symbols","AdventureClass"];

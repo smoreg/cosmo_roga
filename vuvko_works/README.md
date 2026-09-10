@@ -381,6 +381,21 @@ because the tile draws it with its door shut. Widening the cutoff from 3 ft to
 stays and those rooms are marked `sealed`, drawn with a dashed red edge, counted,
 and kept out of the choice of boarding point.
 
+**The outline of the tiles is the outline of the ship.** A geomorph carries
+corridor stubs at its edges — openings drawn to meet the tile next door — and
+where there is no tile next door, they are holes. Ship mode lays a bare 100 ft
+spine with a stub every hundred feet down both sides, so flooding from the
+border poured straight in and the compartments came out as vacuum: 4% floor at
+the bow, 12% amidships, and no hexagons over the front third of the ship. The
+flood is now stopped at the union of the tile footprints, which is where the
+hull is whether or not a tile drew plating there. Bow band: 3 hexagons to 13,
+4% floor to 30%; and ship mode measures 99% lattice and 96% kind symmetric,
+where before the leak had eaten the two sides unevenly.
+
+**Which build am I looking at?** Bottom right of both pages, and it does not
+depend on anyone remembering to bump a number: the baked date, then the
+`Last-Modified` of `geomorph-core.js` as the server reports it.
+
 **Rooms name themselves** from the tile beneath them — "Fighter Bay Crossroad",
 "Construction Deck - Upper" — and take their trade from that tile's taxonomy
 roles. The seeded content pass furnishes each by trade: consoles and nav plots

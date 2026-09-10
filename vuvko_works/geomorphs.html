@@ -246,6 +246,7 @@ button[disabled]{opacity:.4; cursor:not-allowed}
   and the PNG rendition by Eric B. Smith — <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener">CC BY-NC 4.0</a>.
   Non-commercial use only; the artwork is not redistributed with this page.
   Assembly code is original. 60 px = one 5 ft square.
+  <span id="build" style="float:right;opacity:.65"></span>
 </div>
 
 <script src="geomorph-core.js"></script>
@@ -701,6 +702,7 @@ function randomSeed(){
 document.getElementById("seed").value = randomSeed();
 readHash();
 syncControls();
+stampBuild(document.getElementById("build"));
 loadFromManifest().then(n=>{ if (n) ready(); });
 </script>
 </body>
