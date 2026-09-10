@@ -110,6 +110,13 @@ code{font-family:"B612 Mono",monospace;background:var(--deck);border:1px solid v
     <option value="Custom-Tiles">Custom tiles only</option>
     <option value="AdventureClass">Adventure Class</option>
   </select></div>
+  <div class="field" id="rimField" style="display:none"><label for="rim">Border</label>
+    <select id="rim">
+      <option value="steps" selected>Chamfer the beam changes</option>
+      <option value="none">None — bare hull</option>
+      <option value="sides">Sides plated</option>
+      <option value="full">All round</option>
+    </select></div>
   <div class="field" id="profileField" style="display:none"><label for="profile">Sections</label>
     <select id="profile">
       <option value="2-1-2" selected>2-1-2 — waisted</option>
@@ -1091,8 +1098,9 @@ function readOptions(){
   const v = id => document.getElementById(id).value;
   const hull = v("hull");
   document.getElementById("profileField").style.display = hull === "profile" ? "" : "none";
+  document.getElementById("rimField").style.display = hull === "profile" ? "" : "none";
   return {seed:v("seed"), beam:+v("beam"), rows:+v("rows"), hull,
-          sets:v("sets"), family:v("family"), profile:v("profile"), rim:"none",
+          sets:v("sets"), family:v("family"), profile:v("profile"), rim:v("rim"),
           q:"", spin:false, mega:true,
           vehic:document.getElementById("showVeh").checked};
 }
@@ -1134,7 +1142,7 @@ function fitZoom(){
 }
 function writeHash(){
   const p = new URLSearchParams();
-  for (const id of ["seed","hull","rows","beam","sets","family","profile","hexft"]){
+  for (const id of ["seed","hull","rows","beam","sets","family","profile","rim","hexft"]){
     const v = document.getElementById(id).value;
     if (v) p.set(id, v);
   }
@@ -1159,7 +1167,7 @@ document.getElementById("go").onclick = ()=>{
   document.getElementById("seed").value = randomSeed();
   regenerate(true);
 };
-for (const id of ["seed","hull","rows","beam","sets","family","profile"])
+for (const id of ["seed","hull","rows","beam","sets","family","profile","rim"])
   document.getElementById(id).onchange = ()=>regenerate(true);
 document.getElementById("hexft").oninput = e=>{
   document.getElementById("hexlab").textContent = e.target.value + " ft";

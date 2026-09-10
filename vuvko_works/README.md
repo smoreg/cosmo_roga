@@ -189,7 +189,10 @@ angle, and a piece whose hull line runs diagonally turns it into a taper. So
 **Border** defaults to `steps` — the shoulder cells at a change of beam and
 nothing else. Seven tiles in the archive can take a neighbour on two adjacent
 sides *and* cut the corner (`501`, `609`, `AF12`, `E510`, `E511`, `E828`), and a
-shoulder slot is scored strongly toward them. `none` leaves the hull bare,
+shoulder slot is offered those first — seven in nine hundred is thin enough that
+a sample of ninety missed them half the time, and a step came out square for no
+better reason than that. Sixty shoulders across four profiles and five seeds now
+take a diagonal, all sixty. `none` leaves the hull bare,
 `sides` plates the flanks, `full` is all the way round. An intake scoop is also
 scored down on any aft-facing slot, since a scoop faces the way the ship is
 going.

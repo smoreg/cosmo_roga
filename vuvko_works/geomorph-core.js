@@ -417,6 +417,17 @@ function fit(tile, slot, relax){
    plan does not repeat itself, then relaxes only if nothing fits. */
 function candidates(slot, role){
   const pool = BYSIZE.get(slot.w + "x" + slot.h) || [];
+  /* Seven tiles in nine hundred cut their corner diagonally, so a sample of
+     ninety misses them half the time and the shoulder of a step came out square
+     for no better reason than that. Offer them first where one is wanted. */
+  if (slot.chamfer){
+    const diag = [], rest = [];
+    for (const t of pool){
+      const x = taxOf(t);
+      (x.slope >= 0.45 && x.cut > 0.12 ? diag : rest).push(t);
+    }
+    return [...shuffle(diag), ...shuffle(rest)].slice(0, 90);
+  }
   if (!role) return shuffle(pool).slice(0, 90);
   /* Ninety tiles drawn at random from two hundred will often contain no bridge
      at all, and then the slot that asked for one takes whatever it was shown.
@@ -849,7 +860,11 @@ function layoutProfile(opts, deal, place){
     /* A corner at the top or bottom of the ship is the shape of the hull; one
        part-way down is a change of beam, and that is where a chamfer helps. */
     const step = gy > 0 && gy < rows*2;
-    slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner", role:"fuel",
+    /* No role on a shoulder. Asking for "fuel" as well as a diagonal handed all
+       four corners of a hull to the same Fuel Deck tile; the shape is what
+       matters here and the archive has seven pieces that can do it. */
+    slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner",
+      role: wantRim === "steps" ? null : "fuel",
       chamfer:step, aft: gy >= lastRow});
   }
   /* Wings, if a form is chosen or the seed asks for one: a matched Port and
