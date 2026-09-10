@@ -13,6 +13,7 @@ import { CROWD, MAX_MACHINES, machineAboard } from "../content/monsters.js";
 import { SYSTEM_GLYPH } from "../content/objectives.js";
 import { isTug } from "../content/tug.js";
 import { nextShipId } from "../twist/rig.js";
+import { notePost } from "./alert.js";
 import { placeHazards } from "./hazards.js";
 
 /**
@@ -396,6 +397,7 @@ function machineById(game: RoomGame, id: string): MonsterKind | undefined {
 function spawn(game: RoomGame, room: Room, kind: MonsterKind | undefined): void {
   if (!kind || crowded(game, room)) return;
   const machine = spawnMonsterIn(kind, room.id);
+  notePost(machine);
   game.schedule.admit(machine);
   game.entities.push(machine);
 }

@@ -13,6 +13,7 @@ import {
 import { BLOOM_KIND, CRAWLER, CROWD } from "../content/monsters.js";
 import { t } from "../i18n.js";
 import { nextShipId } from "../twist/rig.js";
+import { notePost } from "./alert.js";
 import { type RoomItem } from "./populate.js";
 
 /**
@@ -68,6 +69,7 @@ function brood(game: RoomGame, hatchery: Entity): Entity[] {
 function hatch(game: RoomGame, hatchery: Entity, room: number): void {
   const crawler = spawnMonsterIn(CRAWLER, room);
   (crawler.data ??= {}).hatchedBy = hatchery.id;
+  notePost(crawler);
   game.schedule.admit(crawler);
   game.entities.push(crawler);
   if (game.visible.has(room)) {

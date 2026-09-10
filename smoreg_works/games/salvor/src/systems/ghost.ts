@@ -13,6 +13,7 @@ import {
 } from "@jamrog/engine";
 import { MODULES, type ModuleId } from "../content/modules.js";
 import { CROWD } from "../content/monsters.js";
+import { notePost } from "./alert.js";
 import { t } from "../i18n.js";
 import { addWreck, capOf, type Rig, type WreckSource } from "../twist/rig.js";
 
@@ -292,6 +293,7 @@ function raise(game: RoomGame, death: Death): void {
   if (room === undefined) return;
   const ghost = spawnMonsterIn(ghostKind(death.rig), room);
   ghost.data = { ...(ghost.data ?? {}), ghostRig: copyRig(death.rig) };
+  notePost(ghost);
   game.schedule.admit(ghost);
   game.entities.push(ghost);
 }

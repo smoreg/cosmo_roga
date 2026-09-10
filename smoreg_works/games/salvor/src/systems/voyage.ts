@@ -62,6 +62,7 @@ import {
   capOf,
   graft as graftOn,
   install,
+  installAt,
   removeSlot,
   rigFrom,
   rigOf,
@@ -342,7 +343,7 @@ export interface Voyage {
    * that spends charges keeps its count through the hold: stowing a coil and
    * fitting it again is not a recharge (`twist/rig.ts`, `Carried`).
    */
-  hold: Array<{ kind: ModuleId; integrity: number; charges?: number }>;
+  hold: Array<{ kind: ModuleId; integrity: number; charges?: number; base?: number }>;
   /** The drone on the rails, or nothing at all — which is half of losing. */
   hull?: HullId;
   /** Keycards the drone is carrying. Written by `systems/doors.ts`, read here. */
@@ -863,9 +864,12 @@ function autoFit(game: RoomGame): void {
     if (slot < 0) break;
     // The module as the hold kept it, integrity and charges alike: a coil
     // comes out with the count it went in with, never recharged.
-    const out: Slot = { kind: held.kind, integrity: held.integrity };
-    if (moduleKind(held.kind).charges !== undefined) out.charges = held.charges ?? moduleKind(held.kind).charges;
-    rig.slots[slot] = out;
+    // Built by the rack's own hand rather than here: a slot assembled by this
+    // file went in unclamped and without its `base`, so a hull's sturdier copy
+    // came back as integrity above its own cap — and the rack drew that as a
+    // negative repeat count and took the screen down with it (found by the
+    // swarm on seed 7, step 115).
+    installAt(rig, slot, held.kind, held.integrity, held.charges, held.base);
     fitted.push(held);
   }
   if (fitted.length === 0) return;
@@ -1062,7 +1066,7 @@ export function stowSlot(game: RoomGame, slot: number): Outcome {
   // not carrying one: handing the sick module to the hold would put the mark on
   // whatever moves up into the slot.
   if (infectedSlot(game) === slot) clearVirus(game.player);
-  voyage.hold.push(carriedFrom(module.kind, module.integrity, module.charges));
+  voyage.hold.push(carriedFrom(module.kind, module.integrity, module.charges, module.base));
   applyDerived(game.player);
   game.log.add(
     t("log.hold.stow", { module: moduleName(module.kind), integrity: module.integrity, max }),
@@ -1123,7 +1127,7 @@ export function fitFromHold(game: RoomGame, i: number): Outcome {
   if (!rig || voyage.hull === undefined) return FAIL(t("why.hold.noDrone"));
   if (!held) return FAIL(t("why.hold.none"));
 
-  const slot = install(rig, held.kind, held.integrity, held.charges);
+  const slot = install(rig, held.kind, held.integrity, held.charges, held.base);
   if (slot === undefined) return FAIL(t("why.rack.full"));
 
   voyage.hold.splice(i, 1);
@@ -1217,7 +1221,7 @@ function unload(game: RoomGame): void {
   const room = Math.max(0, HOLD_LIMIT - voyage.hold.length);
   if (room === 0) return;
   const landed = carried.slice(0, room);
-  voyage.hold.push(...landed.map((c) => carriedFrom(c.kind, c.integrity, c.charges)));
+  voyage.hold.push(...landed.map((c) => carriedFrom(c.kind, c.integrity, c.charges, c.base)));
   setCarried(game.player, carried.slice(room));
   game.log.add(
     t("log.carry.home", { n: landed.length }),

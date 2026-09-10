@@ -27,7 +27,7 @@ import {
 } from "../content/objectives.js";
 import { t } from "../i18n.js";
 import { addWreck, hostilesIn, registerDamageVeto } from "../twist/rig.js";
-import { raiseAlert } from "./alert.js";
+import { notePost, raiseAlert } from "./alert.js";
 import { rivalState, type RivalState } from "./rivalstate.js";
 import { roomList, type ShipSystem } from "./populate.js";
 import { shipState } from "./shipstate.js";
@@ -212,6 +212,7 @@ function spawn(game: RoomGame, st: RivalState): void {
 
   const self = spawnMonsterIn(rivalKind(), room);
   self.data = { loot: pickLoot(rng), work: 0, lastHp: self.hp };
+  notePost(self);
   game.schedule.admit(self);
   game.entities.push(self);
   st.alive = true;

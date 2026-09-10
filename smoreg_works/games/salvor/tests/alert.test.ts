@@ -30,6 +30,7 @@ import {
   DOOR_PERIOD,
   HUNTER_LEVEL,
   MAX_LEVEL,
+  PERIOD,
   SCUTTLE_PERIOD,
   SCUTTLE_WARN,
   alertState,
@@ -692,6 +693,33 @@ describe("no compartment holds more than CROWD machines", () => {
     game.reapDead();
     wait(game, 1);
     expect(game.ship.roomAt(hunter.room!).label).toBe("r2");
+  });
+
+  it("holds a hunter born after this round's stamp: it does not walk into a full compartment on its first move", () => {
+    // Seed 70, turn 352 on a live run: the hunter was dispatched inside
+    // `afterPlayerTurn`, after the round's posts were stamped, and acted in
+    // the same round with no "where from" — so nothing held it at the door.
+    // The ladder raises at the top of the alert's own hook, which is exactly
+    // that moment; r2 is full, and the hunter has to cross it to reach r1.
+    for (let s = 0; s < 30; s++) {
+      const game = secondShip(OPEN_WALKED, 8400 + s);
+      for (let i = 0; i < CROWD; i++) put(game, "r2", INERT);
+      const st = alertState(game);
+      st.level = HUNTER_LEVEL - 1;
+      st.turnsAboard = PERIOD - 1;
+      // A slow drone — iced, or on a burned drive — gives the machines two
+      // rounds to its one, which is what let the hunter move in the round it
+      // was born in.
+      game.player.speed = 50;
+      wait(game, 1);
+      const hunter = enforcers(game)[0];
+      expect(hunter, `seed ${8400 + s}: no hunter woke up`).toBeDefined();
+      for (let turn = 0; turn < 6; turn++) {
+        expect(crowdedTo(game), `seed ${8400 + s}, turn ${turn}`).toBeLessThanOrEqual(CROWD);
+        expect(game.ship.roomAt(hunter!.room!).label, `seed ${8400 + s}, turn ${turn}`).not.toBe("r2");
+        wait(game, 1);
+      }
+    }
   });
 
   it("holds on two hundred careful voyages, whatever the ladder and the muster do", () => {

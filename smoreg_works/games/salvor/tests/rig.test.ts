@@ -35,7 +35,10 @@ import {
   type HackTarget,
   type Rig,
   blamedOn,
-} from "../src/twist/rig.js";
+
+  carriedFrom,
+  installAt,
+  rigFrom,} from "../src/twist/rig.js";
 
 /**
  * A sortie on a hand-drawn ship. The graph is written out so the tests read as
@@ -760,5 +763,33 @@ describe("replay", () => {
     expect(game.inputs).toHaveLength(turns);
     expect(game.player.energy).toBe(energy);
     expect(rig(game).exposed).toBe(marker);
+  });
+});
+
+describe("a module's own ceiling survives the hold and the arms", () => {
+  /**
+   * The swarm's first finding, 10.09: a hull's sturdier copy (SPARK's CUTTER is
+   * 13 against the catalogue's 11) went into the hold, came back through
+   * `autoFit`, and landed in a slot whose cap was the catalogue's — so the rack
+   * drew `"▯".repeat(11 - 13)` and the screen died with `RangeError`. The
+   * ceiling travels with the module now, and nothing can hold integrity above
+   * its own cap.
+   */
+  it("keeps the hull's better cap when a module is carried", () => {
+    const held = carriedFrom("cutter", 13, undefined, 13);
+    expect(held.base).toBe(13);
+    const rig = rigFrom([null, null, null], 3);
+    const slot = install(rig, held.kind, held.integrity, held.charges, held.base)!;
+    expect(capOf(rig.slots[slot]!)).toBe(13);
+    expect(rig.slots[slot]!.integrity).toBe(13);
+  });
+
+  it("never lands integrity above the cap, whatever it is handed", () => {
+    const rig = rigFrom([null], 1);
+    install(rig, "cutter", 99);
+    expect(rig.slots[0]!.integrity).toBeLessThanOrEqual(capOf(rig.slots[0]!));
+    installAt(rig, 0, "cutter", 99, undefined, 13);
+    expect(rig.slots[0]!.integrity).toBe(13);
+    expect(capOf(rig.slots[0]!)).toBe(13);
   });
 });

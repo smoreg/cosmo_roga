@@ -952,6 +952,10 @@
       "target": 22
     },
     {
+      "kind": "attack",
+      "target": 22
+    },
+    {
       "kind": "go",
       "door": 4
     },
@@ -966,6 +970,10 @@
     {
       "kind": "attack",
       "target": 12
+    },
+    {
+      "kind": "attack",
+      "target": 14
     },
     {
       "kind": "attack",
@@ -1029,12 +1037,12 @@
       "target": 27
     },
     {
-      "kind": "go",
-      "door": 2
+      "kind": "attack",
+      "target": 27
     },
     {
-      "kind": "attack",
-      "target": 25
+      "kind": "go",
+      "door": 2
     },
     {
       "kind": "attack",
@@ -1057,51 +1065,32 @@
       "door": 4
     },
     {
+      "kind": "attack",
+      "target": 29
+    },
+    {
+      "kind": "attack",
+      "target": 29
+    },
+    {
       "kind": "go",
       "door": 4
     },
     {
       "kind": "go",
       "door": 2
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "leave"
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "go",
-      "door": 3
-    },
-    {
-      "kind": "act",
-      "verb": "undock"
-    },
-    {
-      "kind": "go",
-      "door": 1
     }
   ],
   "expect": {
     "status": "dead",
-    "sortie": 8,
+    "sortie": 7,
     "ships": 3,
-    "credits": 10,
+    "credits": 7,
     "deaths": 3,
     "sold": 0,
     "charters": 0,
-    "kills": 19,
-    "turns": 304,
+    "kills": 21,
+    "turns": 298,
     "rig": {
       "slots": [
         null,
@@ -1124,6 +1113,6 @@
       ]
     }
   },
-  "fingerprint": "1663a476",
-  "codeSha": "f89a64674454cd6212217c4897fe73f7f0bb0443"
+  "fingerprint": "0cda7a02",
+  "codeSha": "e8b06aea95261ab6ca8ff39b866f233ba6af03d6"
 }

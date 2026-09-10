@@ -52,7 +52,7 @@ import { canSeeDrone } from "./sight.js";
 export const MAX_LEVEL = 5;
 /** Turns aboard between time-driven raises. The run's first derelict is the tutorial. */
 const PERIOD_FIRST_SHIP = 80;
-const PERIOD = 40;
+export const PERIOD = 40;
 /**
  * A compartment this loud anywhere aboard raises the alert. The engine rates a
  * fight at 9 and a step through a door at 3 (`rooms/game.ts`), so fighting is
@@ -392,6 +392,7 @@ function wake(game: RoomGame, rng: Rng, level: number, sent: boolean): void {
 
   const machine = spawnMonsterIn(kind, room);
   harden(machine, level);
+  notePost(machine);
   // Not noise: a sound made here would settle into the field next turn and trip
   // the alert's own noise rule, so the gauge would keep raising itself.
   if (sent) rememberRoom(machine, game.roomOf(game.player).id);
@@ -445,6 +446,7 @@ function sendEnforcer(game: RoomGame, level: number): void {
 
 function dispatchTo(game: RoomGame, kind: MonsterKind, room: RoomId): Entity {
   const machine = spawnMonsterIn(kind, room);
+  notePost(machine);
   rememberRoom(machine, game.roomOf(game.player).id);
   game.schedule.admit(machine);
   game.entities.push(machine);
@@ -489,8 +491,23 @@ const POST = "post";
 
 function stampPosts(game: RoomGame): void {
   for (const e of game.entities) {
-    if (e.id !== game.player.id && e.faction !== game.player.faction) (e.data ??= {})[POST] = e.room;
+    if (e.id !== game.player.id && e.faction !== game.player.faction) notePost(e);
   }
+}
+
+/**
+ * Where a machine stands right now, written down for `holdAtTheDoor`.
+ *
+ * Every place a machine is put onto the ship calls this the moment it is —
+ * the ladder and the muster here, the bloom's hatch, the ghost's rise, the
+ * rival's boarding, the deck's own placing — because a machine born after
+ * this round's stamp and moving in the same round has no "where from", and
+ * a fourth machine with no where-from walked straight into a full
+ * compartment on a live run (seed 70, turn 352: the hunter, dispatched in
+ * `afterPlayerTurn` after the stamp, acting before the next one).
+ */
+export function notePost(machine: Entity): void {
+  (machine.data ??= {})[POST] = machine.room;
 }
 
 function holdAtTheDoor(game: RoomGame, actor: Entity): void {
@@ -499,7 +516,7 @@ function holdAtTheDoor(game: RoomGame, actor: Entity): void {
   if (typeof was === "number" && now !== undefined && was !== now && isAlive(actor)) {
     if (hostilesIn(game, now).length > CROWD) actor.room = was;
   }
-  (actor.data ??= {})[POST] = actor.room;
+  notePost(actor);
 }
 
 /**
@@ -814,6 +831,7 @@ function shipAnswers(game: RoomGame): void {
     // No standing order: these are posted, not dispatched. They are waiting
     // where you have to walk, which is the whole of the threat.
     const machine = spawnMonsterIn(kind, room);
+    notePost(machine);
     game.schedule.admit(machine);
     game.entities.push(machine);
     placed++;

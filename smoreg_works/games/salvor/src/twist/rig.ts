@@ -172,9 +172,18 @@ export function rigFrom(slots: ReadonlyArray<Slot | null>, size = SLOT_COUNT): R
  * over knows — the hold, the drone's arms, a pile off a rack. Absent means the
  * kind's own count: a crate is full, and so is a machine's scrap.
  */
-function makeSlot(kind: ModuleId, integrity: number, charges?: number): Slot {
+function makeSlot(kind: ModuleId, integrity: number, charges?: number, base?: number): Slot {
   const k = moduleKind(kind);
-  const slot: Slot = { kind, integrity: clamp(integrity, 1, k.integrity) };
+  // A hull's own copy of a module is sturdier than the catalogue's (SPARK's
+  // CUTTER is 13 against 11), and that ceiling travels with the module: the
+  // hold and the drone's arms hand it back with the same `base` it left with.
+  // Clamping to the catalogue instead did two bad things at once — it silently
+  // shaved points off a module the player had paid for, and it let a slot exist
+  // whose integrity was above its own cap, which the rack drew as
+  // `"▯".repeat(-2)` and the screen could not survive.
+  const cap = Math.max(base ?? k.integrity, k.integrity);
+  const slot: Slot = { kind, integrity: clamp(integrity, 1, cap) };
+  if (cap !== k.integrity) slot.base = cap;
   if (k.charges !== undefined) slot.charges = charges ?? k.charges;
   return slot;
 }
@@ -209,16 +218,29 @@ export function findSlotAs(rig: Rig, kind: ModuleId): number | null {
 }
 
 /** Put a salvaged module in the first empty slot. Returns its index. */
-export function install(rig: Rig, kind: ModuleId, integrity: number, charges?: number): number | undefined {
+export function install(
+  rig: Rig,
+  kind: ModuleId,
+  integrity: number,
+  charges?: number,
+  base?: number,
+): number | undefined {
   const i = rig.slots.findIndex((s) => s === null);
   if (i < 0) return undefined;
-  installAt(rig, i, kind, integrity, charges);
+  installAt(rig, i, kind, integrity, charges, base);
   return i;
 }
 
 /** Bolt a module into this slot, whatever was there. The swap's half. */
-function installAt(rig: Rig, i: number, kind: ModuleId, integrity: number, charges?: number): void {
-  rig.slots[i] = makeSlot(kind, integrity, charges);
+export function installAt(
+  rig: Rig,
+  i: number,
+  kind: ModuleId,
+  integrity: number,
+  charges?: number,
+  base?: number,
+): void {
+  rig.slots[i] = makeSlot(kind, integrity, charges, base);
   rig.scars[i] = null;
 }
 
@@ -725,6 +747,13 @@ export interface Carried {
   kind: ModuleId;
   integrity: number;
   /**
+   * The ceiling this particular copy has, when a hull gave it a better one than
+   * the catalogue. Carried so that a module does not lose points by being put
+   * down and picked up again — and so that a slot never comes back with more
+   * integrity than cap, which used to break the rack's own drawing.
+   */
+  base?: number;
+  /**
    * Charges left, for a module that spends them. Carried along so that taking
    * a coil off the rack and putting it back is not a recharge — a spent EMP in
    * the arms is a spent EMP on the rails.
@@ -733,8 +762,14 @@ export interface Carried {
 }
 
 /** One armful, with its charges when the thing has any. */
-export function carriedFrom(kind: ModuleId, integrity: number, charges?: number): Carried {
+export function carriedFrom(
+  kind: ModuleId,
+  integrity: number,
+  charges?: number,
+  base?: number,
+): Carried {
   const out: Carried = { kind, integrity };
+  if (base !== undefined && base !== moduleKind(kind).integrity) out.base = base;
   if (charges !== undefined) out.charges = charges;
   return out;
 }
@@ -900,7 +935,7 @@ function swapIn(game: RoomGame, rig: Rig, wreck: Wreck, slot: number): Outcome {
   const carrying = carriedBy(game.player);
   let key: Key;
   if (carrying.length < CARRY_LIMIT) {
-    setCarried(game.player, [...carrying, carriedFrom(out.kind, out.integrity, out.charges)]);
+    setCarried(game.player, [...carrying, carriedFrom(out.kind, out.integrity, out.charges, out.base)]);
     key = "log.swap.carried";
   } else {
     // The drone's own part, laid down: sealed as far as the ship's virus is
