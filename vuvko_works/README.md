@@ -372,11 +372,29 @@ about one room in seven. Things are in rooms, not in hexagons — a 50 ft hexago
 covers a whole suite, and putting the toolrack in one would invent a position
 the artwork never gave.
 
-The lattice — pointy-top, axial `q, r`, six directions, odd-r offset — is the
-one in `smoreg_works/experiments/hullforms/hexgrid.mjs`, reimplemented rather
-than imported: that folder is a sandbox, and the two halves of this repo do not
-reach into each other. A map from here and a hull from there are on the same
-grid.
+**The lattice is flat-top, and column 0 runs down the keel.**
+
+A pointy-top hexagon has vertical edges but no vertical *run* of cells: its
+neighbours are east, west and four diagonals, so you can walk athwartships and
+never straight down the ship. Turned a sixth, north and south become
+neighbours — and every hull here is drawn bow-up, so that is the axis that
+matters. A 2-1-2 hull comes out with a contiguous nine-hexagon column down its
+centreline where before there was none.
+
+The lattice is then anchored on the ship's centreline instead of the corner of
+the drawing. That is what makes the overlay symmetric rather than merely lucky:
+a hexagon sits *on* the axis, the columns either side are ±1, ±2, and reflecting
+across the keel is `(q, r) → (−q, r + q)`, which maps the lattice exactly onto
+itself. Measured on a 2-1-2 hull: 51 of 52 hexagons have their mirror in the
+lattice, and the reflection puts centres on top of each other to the foot. The
+odd one out is the ship, not the grid — interior bays are still varied, so a
+room can exist to port and not to starboard.
+
+This is where the two halves of the repo part company. `hexlayout.ts` and
+`hullforms/hexgrid.mjs` are pointy-top, and I had matched them deliberately;
+their hexagons draw a *graph*, where corridors run level and diagonal and never
+vertical, while these sit on a *ship* that runs vertically. A map from here and
+a hull from there are no longer on the same grid.
 
 **Moving around.** Wheel to zoom about the pointer, drag to pan, both pages.
 A click still selects — the gesture only counts as a pan once the pointer has

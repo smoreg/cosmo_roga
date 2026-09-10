@@ -1,0 +1,1141 @@
+{
+ "meta": "geomorph hex boarding map",
+ "seed": "V2S-2395",
+ "ship": {
+  "name": "Hollow Compass — Cutter",
+  "hull": "profile",
+  "ft": [
+   300,
+   500
+  ],
+  "tiles": 16
+ },
+ "hex": {
+  "feetAcross": 35,
+  "lattice": "pointy-top axial q,r"
+ },
+ "zones": [
+  {
+   "id": 0,
+   "name": "Bridge",
+   "kind": "command",
+   "roles": [
+    "command",
+    "weapon",
+    "quarters",
+    "service"
+   ],
+   "hexes": 13,
+   "areaSqFt": 5432,
+   "hazard": null,
+   "entry": false,
+   "sealed": false,
+   "marks": [
+    "console",
+    "comms set",
+    "log core"
+   ],
+   "from": "Bridge (35 Stations, Briefing, Lounge, 2x Gunnery)"
+  },
+  {
+   "id": 1,
+   "name": "Combat Information Center",
+   "kind": "command",
+   "roles": [
+    "command",
+    "weapon",
+    "quarters",
+    "service"
+   ],
+   "hexes": 12,
+   "areaSqFt": 7254,
+   "hazard": null,
+   "entry": false,
+   "sealed": false,
+   "marks": [
+    "console",
+    "log core"
+   ],
+   "from": "Combat Information Center (CIC), Sensor Control, Fire Control, Office, Briefing Room, Security, Computer Room, Lounge, Fresher, Stellar Cartography"
+  },
+  {
+   "id": 2,
+   "name": "Combat Information Center 2",
+   "kind": "command",
+   "roles": [
+    "command",
+    "weapon",
+    "quarters",
+    "service"
+   ],
+   "hexes": 0,
+   "areaSqFt": 98,
+   "hazard": null,
+   "entry": false,
+   "sealed": false,
+   "marks": [
+    "console"
+   ],
+   "from": "Combat Information Center (CIC), Sensor Control, Fire Control, Office, Briefing Room, Security, Computer Room, Lounge, Fresher, Stellar Cartography"
+  },
+  {
+   "id": 3,
+   "name": "7 Stations",
+   "kind": "command",
+   "roles": [
+    "fuel",
+    "command"
+   ],
+   "hexes": 2,
+   "areaSqFt": 239,
+   "hazard": null,
+   "entry": false,
+   "sealed": true,
+   "marks": [],
+   "from": "7 Stations"
+  },
+  {
+   "id": 4,
+   "name": "7 Stations 2",
+   "kind": "command",
+   "roles": [
+    "fuel",
+    "command"
+   ],
+   "hexes": 1,
+   "areaSqFt": 239,
+   "hazard": null,
+   "entry": false,
+   "sealed": false,
+   "marks": [],
+   "from": "7 Stations"
+  },
+  {
+   "id": 5,
+   "name": "Staterooms",
+   "kind": "quarters",
+   "roles": [
+    "quarters"
+   ],
+   "hexes": 11,
+   "areaSqFt": 7095,
+   "hazard": null,
+   "entry": false,
+   "sealed": false,
+   "marks": [
+    "galley stores",
+    "personal effects",
+    "bunk"
+   ],
+   "from": "Staterooms, Galley & Mess, Lounge, Gym, Medical"
+  },
+  {
+   "id": 6,
+   "name": "Dropship Bay",
+   "kind": "command",
+   "roles": [
+    "command",
+    "bay",
+    "service"
+   ],
+   "hexes": 11,
+   "areaSqFt": 9407,
+   "hazard": null,
+   "entry": false,
+   "sealed": false,
+   "marks": [],
+   "from": "Dropship Bay (40-dTon Nirvana-Class Dropship, Cargo Hold, Flight Control, Repair Shop)"
+  },
+  {
+   "id": 7,
+   "name": "Weapons Bay - Missiles",
+   "kind": "weapon",
+   "roles": [
+    "weapon",
+    "bay",
+    "quarters"
+   ],
+   "hexes": 6,
+   "areaSqFt": 2369,
+   "hazard": null,
+   "entry": false,
+   "sealed": false,
+   "marks": [
+    "fire panel",
+    "turret seat"
+   ],
+   "from": "Weapons Bay - Missiles (20-dTon Ship's Boat, 2x Gunnery, 2x Missile Control, Staterooms)"
+  },
+  {
+   "id": 8,
+   "name": "Weapons Bay - Missiles 2",
+   "kind": "weapon",
+   "roles": [
+    "weapon",
+    "bay",
+    "quarters"
+   ],
+   "hexes": 6,
+   "areaSqFt": 2369,
+   "hazard": null,
+   "entry": false,
+   "sealed": false,
+   "marks": [
+    "turret seat"
+   ],
+   "from": "Weapons Bay - Missiles (20-dTon Ship's Boat, 2x Gunnery, 2x Missile Control, Staterooms)"
+  },
+  {
+   "id": 9,
+   "name": "Plasma Conduit",
+   "kind": "drive",
+   "roles": [
+    "drive",
+    "service"
+   ],
+   "hexes": 7,
+   "areaSqFt": 4117,
+   "hazard": null,
+   "entry": true,
+   "sealed": false,
+   "marks": [
+    "boarding point"
+   ],
+   "from": "Plasma Conduit, Engineering, Offices, Shop"
+  },
+  {
+   "id": 10,
+   "name": "Plasma Conduit 2",
+   "kind": "drive",
+   "roles": [
+    "drive",
+    "service"
+   ],
+   "hexes": 7,
+   "areaSqFt": 2643,
+   "hazard": null,
+   "entry": false,
+   "sealed": true,
+   "marks": [
+    "drive monitor",
+    "reactor tap"
+   ],
+   "from": "Plasma Conduit, Engineering, Offices, Shop"
+  }
+ ],
+ "hexes": [
+  {
+   "q": 4,
+   "r": 0,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 5,
+   "r": 0,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 3,
+   "r": 1,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 4,
+   "r": 1,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 5,
+   "r": 1,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 2,
+   "r": 2,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 3,
+   "r": 2,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 4,
+   "r": 2,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 5,
+   "r": 2,
+   "zone": 0,
+   "over": [
+    0
+   ]
+  },
+  {
+   "q": 1,
+   "r": 3,
+   "zone": 0,
+   "over": [
+    0,
+    1
+   ]
+  },
+  {
+   "q": 2,
+   "r": 3,
+   "zone": 0,
+   "over": [
+    0,
+    1
+   ]
+  },
+  {
+   "q": 3,
+   "r": 3,
+   "zone": 0,
+   "over": [
+    0,
+    1
+   ]
+  },
+  {
+   "q": 4,
+   "r": 3,
+   "zone": 0,
+   "over": [
+    0,
+    1
+   ]
+  },
+  {
+   "q": 1,
+   "r": 4,
+   "zone": 1,
+   "over": [
+    1
+   ]
+  },
+  {
+   "q": 2,
+   "r": 4,
+   "zone": 1,
+   "over": [
+    1
+   ]
+  },
+  {
+   "q": 3,
+   "r": 4,
+   "zone": 1,
+   "over": [
+    1
+   ]
+  },
+  {
+   "q": 4,
+   "r": 4,
+   "zone": 1,
+   "over": [
+    1
+   ]
+  },
+  {
+   "q": 0,
+   "r": 5,
+   "zone": 1,
+   "over": [
+    1
+   ]
+  },
+  {
+   "q": 1,
+   "r": 5,
+   "zone": 1,
+   "over": [
+    1
+   ]
+  },
+  {
+   "q": 2,
+   "r": 5,
+   "zone": 1,
+   "over": [
+    1,
+    2
+   ]
+  },
+  {
+   "q": 3,
+   "r": 5,
+   "zone": 1,
+   "over": [
+    1
+   ]
+  },
+  {
+   "q": -3,
+   "r": 6,
+   "zone": 3,
+   "over": [
+    3
+   ]
+  },
+  {
+   "q": -2,
+   "r": 6,
+   "zone": 3,
+   "over": [
+    3
+   ]
+  },
+  {
+   "q": -1,
+   "r": 6,
+   "zone": 5,
+   "over": [
+    5
+   ]
+  },
+  {
+   "q": 0,
+   "r": 6,
+   "zone": 1,
+   "over": [
+    1,
+    5
+   ]
+  },
+  {
+   "q": 1,
+   "r": 6,
+   "zone": 1,
+   "over": [
+    1,
+    5
+   ]
+  },
+  {
+   "q": 2,
+   "r": 6,
+   "zone": 1,
+   "over": [
+    1,
+    6
+   ]
+  },
+  {
+   "q": 3,
+   "r": 6,
+   "zone": 1,
+   "over": [
+    1,
+    6
+   ]
+  },
+  {
+   "q": 5,
+   "r": 6,
+   "zone": 4,
+   "over": [
+    4,
+    7
+   ]
+  },
+  {
+   "q": -3,
+   "r": 7,
+   "zone": 8,
+   "over": [
+    8,
+    3
+   ]
+  },
+  {
+   "q": -2,
+   "r": 7,
+   "zone": 5,
+   "over": [
+    5,
+    8
+   ]
+  },
+  {
+   "q": -1,
+   "r": 7,
+   "zone": 5,
+   "over": [
+    5
+   ]
+  },
+  {
+   "q": 0,
+   "r": 7,
+   "zone": 5,
+   "over": [
+    5,
+    1
+   ]
+  },
+  {
+   "q": 1,
+   "r": 7,
+   "zone": 6,
+   "over": [
+    6,
+    5,
+    1
+   ]
+  },
+  {
+   "q": 2,
+   "r": 7,
+   "zone": 6,
+   "over": [
+    6,
+    1
+   ]
+  },
+  {
+   "q": 3,
+   "r": 7,
+   "zone": 6,
+   "over": [
+    6
+   ]
+  },
+  {
+   "q": 4,
+   "r": 7,
+   "zone": 7,
+   "over": [
+    7,
+    6,
+    4
+   ]
+  },
+  {
+   "q": 5,
+   "r": 7,
+   "zone": 7,
+   "over": [
+    7
+   ]
+  },
+  {
+   "q": -4,
+   "r": 8,
+   "zone": 8,
+   "over": [
+    8
+   ]
+  },
+  {
+   "q": -3,
+   "r": 8,
+   "zone": 8,
+   "over": [
+    8,
+    5
+   ]
+  },
+  {
+   "q": -2,
+   "r": 8,
+   "zone": 5,
+   "over": [
+    5
+   ]
+  },
+  {
+   "q": -1,
+   "r": 8,
+   "zone": 5,
+   "over": [
+    5
+   ]
+  },
+  {
+   "q": 0,
+   "r": 8,
+   "zone": 5,
+   "over": [
+    5,
+    6
+   ]
+  },
+  {
+   "q": 1,
+   "r": 8,
+   "zone": 6,
+   "over": [
+    6
+   ]
+  },
+  {
+   "q": 2,
+   "r": 8,
+   "zone": 6,
+   "over": [
+    6
+   ]
+  },
+  {
+   "q": 3,
+   "r": 8,
+   "zone": 6,
+   "over": [
+    6,
+    7
+   ]
+  },
+  {
+   "q": 4,
+   "r": 8,
+   "zone": 7,
+   "over": [
+    7
+   ]
+  },
+  {
+   "q": 5,
+   "r": 8,
+   "zone": 7,
+   "over": [
+    7
+   ]
+  },
+  {
+   "q": -4,
+   "r": 9,
+   "zone": 8,
+   "over": [
+    8
+   ]
+  },
+  {
+   "q": -3,
+   "r": 9,
+   "zone": 5,
+   "over": [
+    5,
+    8
+   ]
+  },
+  {
+   "q": -2,
+   "r": 9,
+   "zone": 5,
+   "over": [
+    5
+   ]
+  },
+  {
+   "q": -1,
+   "r": 9,
+   "zone": 5,
+   "over": [
+    5
+   ]
+  },
+  {
+   "q": 0,
+   "r": 9,
+   "zone": 6,
+   "over": [
+    6,
+    5
+   ]
+  },
+  {
+   "q": 1,
+   "r": 9,
+   "zone": 6,
+   "over": [
+    6
+   ]
+  },
+  {
+   "q": 2,
+   "r": 9,
+   "zone": 6,
+   "over": [
+    6
+   ]
+  },
+  {
+   "q": 3,
+   "r": 9,
+   "zone": 7,
+   "over": [
+    7,
+    6
+   ]
+  },
+  {
+   "q": 4,
+   "r": 9,
+   "zone": 7,
+   "over": [
+    7
+   ]
+  },
+  {
+   "q": -5,
+   "r": 10,
+   "zone": 8,
+   "over": [
+    8
+   ]
+  },
+  {
+   "q": -4,
+   "r": 10,
+   "zone": 8,
+   "over": [
+    8,
+    5
+   ]
+  },
+  {
+   "q": -3,
+   "r": 10,
+   "zone": 5,
+   "over": [
+    5
+   ]
+  },
+  {
+   "q": -2,
+   "r": 10,
+   "zone": 9,
+   "over": [
+    9,
+    5
+   ]
+  },
+  {
+   "q": -1,
+   "r": 10,
+   "zone": 9,
+   "over": [
+    9,
+    5,
+    6
+   ]
+  },
+  {
+   "q": 0,
+   "r": 10,
+   "zone": 9,
+   "over": [
+    9,
+    6
+   ]
+  },
+  {
+   "q": 1,
+   "r": 10,
+   "zone": 6,
+   "over": [
+    6,
+    9
+   ]
+  },
+  {
+   "q": 2,
+   "r": 10,
+   "zone": 6,
+   "over": [
+    6
+   ]
+  },
+  {
+   "q": -3,
+   "r": 11,
+   "zone": 9,
+   "over": [
+    9
+   ]
+  },
+  {
+   "q": -2,
+   "r": 11,
+   "zone": 9,
+   "over": [
+    9
+   ]
+  },
+  {
+   "q": -1,
+   "r": 11,
+   "zone": 9,
+   "over": [
+    9
+   ]
+  },
+  {
+   "q": 0,
+   "r": 11,
+   "zone": 9,
+   "over": [
+    9
+   ]
+  },
+  {
+   "q": -3,
+   "r": 12,
+   "zone": 10,
+   "over": [
+    10,
+    9
+   ]
+  },
+  {
+   "q": -2,
+   "r": 12,
+   "zone": 10,
+   "over": [
+    10,
+    9
+   ]
+  },
+  {
+   "q": -1,
+   "r": 12,
+   "zone": 10,
+   "over": [
+    10,
+    9
+   ]
+  },
+  {
+   "q": 0,
+   "r": 12,
+   "zone": 10,
+   "over": [
+    10,
+    9
+   ]
+  },
+  {
+   "q": -3,
+   "r": 13,
+   "zone": 10,
+   "over": [
+    10
+   ]
+  },
+  {
+   "q": -2,
+   "r": 13,
+   "zone": 10,
+   "over": [
+    10
+   ]
+  },
+  {
+   "q": -1,
+   "r": 13,
+   "zone": 10,
+   "over": [
+    10
+   ]
+  }
+ ],
+ "doors": [
+  {
+   "id": 0,
+   "a": 6,
+   "b": 9,
+   "state": "open",
+   "loop": false,
+   "at": [
+    166,
+    288
+   ],
+   "from": [
+    0,
+    9
+   ],
+   "to": [
+    0,
+    10
+   ]
+  },
+  {
+   "id": 1,
+   "a": 0,
+   "b": 1,
+   "state": "open",
+   "loop": false,
+   "at": [
+    114,
+    106
+   ],
+   "from": [
+    1,
+    4
+   ],
+   "to": [
+    2,
+    3
+   ]
+  },
+  {
+   "id": 2,
+   "a": 1,
+   "b": 5,
+   "state": "open",
+   "loop": false,
+   "at": [
+    131,
+    197
+   ],
+   "from": [
+    0,
+    7
+   ],
+   "to": [
+    1,
+    6
+   ]
+  },
+  {
+   "id": 3,
+   "a": 6,
+   "b": 7,
+   "state": "open",
+   "loop": false,
+   "at": [
+    245,
+    212
+   ],
+   "from": [
+    3,
+    7
+   ],
+   "to": [
+    4,
+    7
+   ]
+  },
+  {
+   "id": 4,
+   "a": 5,
+   "b": 6,
+   "state": "open",
+   "loop": false,
+   "at": [
+    140,
+    212
+   ],
+   "from": [
+    0,
+    7
+   ],
+   "to": [
+    1,
+    7
+   ]
+  },
+  {
+   "id": 5,
+   "a": 4,
+   "b": 7,
+   "state": "open",
+   "loop": false,
+   "at": [
+    271,
+    197
+   ],
+   "from": [
+    4,
+    7
+   ],
+   "to": [
+    5,
+    6
+   ]
+  },
+  {
+   "id": 6,
+   "a": 5,
+   "b": 8,
+   "state": "open",
+   "loop": false,
+   "at": [
+    44,
+    288
+   ],
+   "from": [
+    -4,
+    10
+   ],
+   "to": [
+    -3,
+    9
+   ]
+  },
+  {
+   "id": 7,
+   "a": 5,
+   "b": 9,
+   "state": "open",
+   "loop": true,
+   "at": [
+    131,
+    288
+   ],
+   "from": [
+    -1,
+    9
+   ],
+   "to": [
+    -1,
+    10
+   ]
+  },
+  {
+   "id": 8,
+   "a": 1,
+   "b": 6,
+   "state": "closed",
+   "loop": true,
+   "at": [
+    149,
+    197
+   ],
+   "from": [
+    1,
+    6
+   ],
+   "to": [
+    1,
+    7
+   ]
+  }
+ ],
+ "plan": [
+  {
+   "path": "Geomorphs/100x100 End/701 [100x100] Bridge (35 Stations, Briefing, Lounge, 2x Gunnery).png",
+   "x": 100,
+   "y": 0,
+   "rot": 0
+  },
+  {
+   "path": "Geomorphs/100x100 End/713 [100x100] [Mirror] Engineering (Office, Briefing, Fuel Intake, Staterooms, Repair Shop, Jump Drive, Maneuver Drive, Powerplant).png",
+   "x": 100,
+   "y": 400,
+   "rot": 0
+  },
+  {
+   "path": "Custom-Tiles/100x100 Core/E116 [100x100] Combat Information Center (CIC), Sensor Control, Fire Control, Office, Briefing Room, Security, Computer Room, Lounge, Fresher, Stellar Cartography.png",
+   "x": 100,
+   "y": 100,
+   "rot": 0
+  },
+  {
+   "path": "Custom-Tiles/100x100 Core/VC11 [100x100] Staterooms, Galley & Mess, Lounge, Gym, Medical.png",
+   "x": 50,
+   "y": 200,
+   "rot": 0
+  },
+  {
+   "path": "Geomorphs/100x100 Core/164 [100x100] (1) Dropship Bay (40-dTon Nirvana-Class Dropship, Cargo Hold, Flight Control, Repair Shop).png",
+   "x": 150,
+   "y": 200,
+   "rot": 0
+  },
+  {
+   "path": "Custom-Tiles/100x100 Core/E115 [100x100] Plasma Conduit, Engineering, Offices, Shop.png",
+   "x": 100,
+   "y": 300,
+   "rot": 0
+  },
+  {
+   "path": "Custom-Tiles/Bridge/Bridge, Pointed Nose, Fuel Intake/E744 [50x50] 7 Stations.png",
+   "x": 0,
+   "y": 150,
+   "rot": 0
+  },
+  {
+   "path": "Custom-Tiles/Bridge/Bridge, Pointed Nose, Fuel Intake/E744 [50x50] 7 Stations.png",
+   "x": 250,
+   "y": 150,
+   "rot": 0
+  },
+  {
+   "path": "Geomorphs/100x50 Edge/358 [100x50] Weapons Bay - Missiles (20-dTon Ship's Boat, 2x Gunnery, 2x Missile Control, Staterooms).png",
+   "x": 0,
+   "y": 200,
+   "rot": 270
+  },
+  {
+   "path": "Geomorphs/100x50 Edge/358 [100x50] Weapons Bay - Missiles (20-dTon Ship's Boat, 2x Gunnery, 2x Missile Control, Staterooms).png",
+   "x": 250,
+   "y": 200,
+   "rot": 90
+  },
+  {
+   "path": "Custom-Tiles/Bridge/Bridge, Pointed Nose, Fuel Intake, Gunnery x 2/E719 [50x50] 4 Stations.png",
+   "x": 0,
+   "y": 300,
+   "rot": 180
+  },
+  {
+   "path": "Custom-Tiles/Bridge/Bridge, Pointed Nose, Fuel Intake, Gunnery x 2/E719 [50x50] 4 Stations.png",
+   "x": 250,
+   "y": 300,
+   "rot": 180
+  },
+  {
+   "path": "Custom-Tiles/Bridge/Bridge, Pointed Nose, Fuel Intake/E712 [50x50] 2 Stations.png",
+   "x": 50,
+   "y": 100,
+   "rot": 270
+  },
+  {
+   "path": "Custom-Tiles/Bridge/Bridge, Pointed Nose, Fuel Intake/E712 [50x50] 2 Stations.png",
+   "x": 200,
+   "y": 100,
+   "rot": 90
+  },
+  {
+   "path": "Custom-Tiles/Bridge/Bridge, Pointed Nose, Fuel Intake/E706 [50x50] 2 Stations.png",
+   "x": 50,
+   "y": 350,
+   "rot": 270
+  },
+  {
+   "path": "Custom-Tiles/Bridge/Bridge, Pointed Nose, Fuel Intake/E706 [50x50] 2 Stations.png",
+   "x": 200,
+   "y": 350,
+   "rot": 90
+  }
+ ]
+}

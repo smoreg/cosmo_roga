@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boarding Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0e1114; --deck:#12161a; --ink:#dfe6e6; --dim:#8e9a9b; --rule:#39434a;
+  --panel:#181d22; --stamp:#c8503f; --door:#e8c15a; --grid:#1d242a;
+  --drone:#6fc3d6; --ship:#c8503f; --node:#5fbf9b; --spawn:#d4574a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--void);color:var(--ink);font:400 14px/1.5 "B612",system-ui,sans-serif;
+     display:flex;flex-direction:column;overflow:hidden}
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;background:var(--panel);
+     border-bottom:1px solid var(--rule);padding:10px 14px;flex:none}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+select,input[type=text],input[type=number]{font:400 13px/1 "B612 Mono",monospace;padding:6px 8px;
+  background:var(--deck);color:var(--ink);border:1px solid var(--rule);border-radius:0}
+input[type=number]{width:64px}
+button{font:700 13px/1 "B612",sans-serif;padding:8px 14px;cursor:pointer;background:var(--ink);
+  color:var(--void);border:1px solid var(--ink);border-radius:0}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule)}
+button.ghost:hover{background:var(--rule)}
+button:hover{background:#fff}
+button:disabled{opacity:.4;cursor:not-allowed}
+.spacer{flex:1}
+:focus-visible{outline:2px solid var(--stamp);outline-offset:2px}
+.status{font:400 12px/1.45 "B612 Mono",monospace;color:var(--dim);text-align:right;white-space:pre}
+.status b{color:var(--ink)}
+.status .win{color:var(--node)} .status .loss{color:var(--stamp)}
+
+.work{flex:1;display:flex;min-height:0}
+.map{flex:1;overflow:auto;background:var(--void);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:48px 48px;position:relative}
+.map svg{display:block;margin:16px auto}
+.side{width:330px;flex:none;border-left:1px solid var(--rule);background:var(--panel);
+  overflow:auto;padding:12px 14px}
+.side h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+  margin:16px 0 6px;font-weight:700}
+.side h2:first-child{margin-top:0}
+.side .empty{color:var(--dim);font-style:italic}
+table.kv{width:100%;border-collapse:collapse;font:400 12px/1.5 "B612 Mono",monospace}
+table.kv td{padding:2px 0;vertical-align:top}
+table.kv td:first-child{color:var(--dim);width:38%;padding-right:8px}
+.tag{display:inline-block;font:700 10px/1 "B612 Mono",monospace;text-transform:uppercase;
+  letter-spacing:.05em;padding:3px 5px;border:1px solid var(--rule);margin:0 3px 3px 0}
+.hpbar{height:6px;background:var(--deck);border:1px solid var(--rule);margin:4px 0 8px}
+.hpbar i{display:block;height:100%;background:var(--node)}
+.hpbar.hurt i{background:var(--door)} .hpbar.bad i{background:var(--stamp)}
+.wpn{display:flex;gap:8px;align-items:center;margin:4px 0}
+.wpn button{flex:1;text-align:left;padding:7px 9px;font:700 12px/1.3 "B612 Mono",monospace}
+.fore{font:400 11px/1.4 "B612 Mono",monospace;color:var(--dim);margin:2px 0 10px}
+.fore b{color:var(--ink)}
+
+.logwrap{flex:none;border-top:1px solid var(--rule);background:var(--panel);display:flex;flex-direction:column}
+.loghead{display:flex;align-items:center;gap:10px;padding:6px 14px;cursor:pointer;user-select:none}
+.loghead h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0}
+.loghead .last{font:400 12px/1 "B612 Mono",monospace;color:var(--ink);flex:1;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log{height:190px;overflow:auto;padding:0 14px 10px;font:400 12px/1.55 "B612 Mono",monospace}
+.logwrap.shut .log{display:none}
+.log div{display:flex;gap:8px}
+.log .t{color:var(--rule);flex:none;width:26px;text-align:right}
+.log .k{color:var(--dim);flex:none;width:64px}
+.log .m{flex:1;white-space:pre-wrap}
+.log .kind-fight .k,.log .kind-kill .k,.log .kind-over .k{color:var(--stamp)}
+.log .kind-strike .m{color:var(--dim)}
+.log .kind-turn{margin-top:6px}
+.log .kind-turn .m{color:var(--ink);font-weight:700}
+.log .kind-door .k,.log .kind-zoc .k{color:var(--door)}
+.log .kind-spawn .k,.log .kind-econ .k{color:var(--node)}
+.log .kind-over .m{color:var(--stamp);font-weight:700}
+
+.note{padding:20px;color:var(--dim);max-width:60ch;line-height:1.6}
+.note code{background:var(--deck);padding:1px 4px;color:var(--ink)}
+polygon.hex{cursor:pointer}
+
+/* The attack chooser. A mask under it catches the click that dismisses it, so
+   the map behind cannot be operated while a decision is pending. */
+#popmask{position:fixed;inset:0;z-index:40;background:rgba(8,10,12,.35)}
+#pop{position:fixed;z-index:41;width:290px;background:var(--panel);
+  border:1px solid var(--rule);box-shadow:0 10px 34px rgba(0,0,0,.6);padding:12px 13px}
+#pop h3{margin:0;font-size:13px;font-weight:700;letter-spacing:.02em}
+#pop .sub{font:400 11px/1.4 "B612 Mono",monospace;color:var(--dim);margin:2px 0 10px}
+#pop .wpn button{width:100%}
+#pop .foot{display:flex;gap:8px;align-items:center;margin-top:4px}
+#pop .foot .fore{margin:0;flex:1}
+#pop .foot button{padding:6px 10px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="field"><label for="map">Map</label>
+    <select id="map">
+      <option value="hexmap-V2S_2395-35ft.json">Hollow Compass — 35 ft</option>
+      <option value="hexmap-V2S_2395-25ft.json">Hollow Compass — 25 ft</option>
+    </select></div>
+  <div class="field"><label for="seed">Seed</label><input type="text" id="seed" value="boarding-1" size="10"></div>
+  <div class="field"><label for="income">Income/node</label><input type="number" id="income" value="1" min="0" max="9" step="0.25"></div>
+  <div class="field"><label for="shp">Spawner HP</label><input type="number" id="shp" value="12" min="1" max="99"></div>
+  <div class="field"><label for="nhp">Node HP</label><input type="number" id="nhp" value="6" min="1" max="99"></div>
+  <button id="new">New mission</button>
+  <button id="end" class="ghost">End turn</button>
+  <input type="file" id="file" accept=".json" style="display:none">
+  <button id="pick" class="ghost" title="For when the page is opened from file:// and cannot fetch">Load map…</button>
+  <div class="spacer"></div>
+  <div class="status" id="status"></div>
+</div>
+
+<div class="work">
+  <div class="map" id="board"><div class="note" id="note">Loading the map…</div></div>
+  <div class="side" id="side"></div>
+</div>
+
+<div id="popmask" hidden></div>
+<div id="pop" hidden></div>
+
+<div class="logwrap" id="logwrap">
+  <div class="loghead" id="loghead">
+    <h2>Log</h2><span class="last" id="loglast"></span><span style="color:var(--dim)" id="logtoggle">hide</span>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+
+<script src="rules.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+const el = (n, a) => { const e = document.createElementNS(SVGNS, n);
+  for (const k in (a||{})) e.setAttribute(k, a[k]); return e; };
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+let M = null, sel = null, hover = null, pendingTarget = null;
+
+const KIND_FILL = {
+  command:"#18222e", quarters:"#241f2b", drive:"#2b2119", weapon:"#2a1a1a",
+  service:"#16211f", bay:"#1a2430",
+};
+const fillFor = z => KIND_FILL[z && z.kind] || "#1a2020";
+
+/* ---------- loading ---------- */
+async function load(name){
+  try {
+    const r = await fetch("../example-derelict/" + name, {cache:"no-store"});
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch (e){ return null; }
+}
+async function newMission(doc){
+  if (!doc) doc = await load($("map").value);
+  if (!doc){
+    $("board").innerHTML = '<div class="note"><b>The map could not be fetched.</b><br><br>' +
+      'This page was opened from <code>file://</code>, where <code>fetch</code> is refused. ' +
+      'Either serve the folder — <code>python3 -m http.server</code> from <code>vuvko_works</code>, ' +
+      'then open <code>localhost:8000/prototype/boarding.html</code> — or press ' +
+      '<b>Load map…</b> and pick a JSON from <code>example-derelict/</code>.</div>';
+    return;
+  }
+  window.__doc = doc;
+  closePop();
+  M = Rules.buildMission(doc, {
+    seed: $("seed").value,
+    income: +$("income").value,
+    spawnerHp: +$("shp").value,
+    nodeHp: +$("nhp").value,
+  });
+  sel = null; hover = null; pendingTarget = null;
+  draw(); paintSide(); paintLog(); paintStatus();
+}
+/* ---------- geometry ---------- */
+function bounds(){
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const c of M.cells.values())
+    for (const [x, y] of M.geom.corners(c)){
+      if (x < x0) x0 = x; if (y < y0) y0 = y;
+      if (x > x1) x1 = x; if (y > y1) y1 = y;
+    }
+  const pad = M.hexFt * 0.9;
+  return {x0:x0-pad, y0:y0-pad, w:x1-x0+2*pad, h:y1-y0+2*pad};
+}
+/* The two corners a pair of neighbouring hexes share. */
+function sharedEdge(a, b){
+  const A = M.geom.corners(a), B = M.geom.corners(b), out = [];
+  for (const p of A) for (const q of B)
+    if (Math.hypot(p[0]-q[0], p[1]-q[1]) < M.hexFt * 0.02){ out.push(p); break; }
+  return out.length === 2 ? out : null;
+}
+
+/* ---------- reachability, for the tint under a selected drone ---------- */
+function reachSet(u){
+  const out = new Map([[Rules.hexKey(u), 0]]);
+  const q = [{q:u.q, r:u.r, left:u.mp}];
+  while (q.length){
+    const c = q.shift();
+    if (c.left <= 0) continue;
+    for (const d of Rules.HEX_DIRS){
+      const n = {q:c.q + d.q, r:c.r + d.r};
+      const probe = {q:c.q, r:c.r, mp:c.left, side:u.side, acted:u.acted, hp:u.hp};
+      const chk = Rules.stepCheck(M, probe, n);
+      if (chk.kind !== "move" || chk.opens) continue;
+      const cost = 1, left = c.left - cost;
+      const k = Rules.hexKey(n);
+      if (out.has(k) && out.get(k) >= left) continue;
+      out.set(k, left);
+      if (!chk.stops) q.push({q:n.q, r:n.r, left});
+    }
+  }
+  out.delete(Rules.hexKey(u));
+  return out;
+}
+
+/* ---------- draw ---------- */
+function draw(){
+  if (!M) return;
+  const b = bounds();
+  const scale = 2.4;                 // pixels per foot, so a hex is ~60-84px across
+  const svg = el("svg", {width: b.w * scale, height: b.h * scale,
+                         viewBox: b.x0 + " " + b.y0 + " " + b.w + " " + b.h});
+  const gHex = el("g"), gWall = el("g"), gDoor = el("g"),
+        gMark = el("g"), gUnit = el("g"), gArrow = el("g");
+
+  const reach = sel ? reachSet(sel) : new Map();
+
+  for (const c of M.cells.values()){
+    const z = M.zones.get(c.zone);
+    const pts = M.geom.corners(c).map(p => p.join(",")).join(" ");
+    const p = el("polygon", {points:pts, fill:fillFor(z), stroke:"#26313a",
+                             "stroke-width":M.hexFt*0.012, class:"hex"});
+    p.dataset.q = c.q; p.dataset.r = c.r;
+    gHex.appendChild(p);
+    if (reach.has(Rules.hexKey(c)))
+      gHex.appendChild(el("polygon", {points:pts, fill:"var(--drone)", opacity:"0.13",
+                                      "pointer-events":"none"}));
+    if (sel && sel.q === c.q && sel.r === c.r)
+      gHex.appendChild(el("polygon", {points:pts, fill:"none", stroke:"#fff",
+                          "stroke-width":M.hexFt*0.05, "pointer-events":"none"}));
+  }
+
+  /* Hull and bulkheads: an edge with no neighbour, or a room boundary the
+     artwork gave no door. This is what makes the deck a graph. */
+  const drawn = new Set();
+  for (const c of M.cells.values()){
+    for (const d of Rules.HEX_DIRS){
+      const n = {q:c.q + d.q, r:c.r + d.r};
+      const k = Rules.edgeKey(c, n);
+      if (drawn.has(k)) continue;
+      const nb = Rules.cellAt(M, n);
+      const door = M.doorByEdge.get(k);
+      let stroke = null, w = 0;
+      if (!nb){ stroke = "#4a565f"; w = M.hexFt * 0.05; }
+      else if (nb.zone !== c.zone && !door){ stroke = "#5b6a74"; w = M.hexFt * 0.055; }
+      if (!stroke) continue;
+      drawn.add(k);
+      const seg = nb ? sharedEdge(c, n) : sharedEdgeOuter(c, d);
+      if (!seg) continue;
+      gWall.appendChild(el("line", {x1:seg[0][0], y1:seg[0][1], x2:seg[1][0], y2:seg[1][1],
+                            stroke, "stroke-width":w, "stroke-linecap":"round",
+                            "pointer-events":"none"}));
+    }
+  }
+  for (const dr of M.doors){
+    const seg = sharedEdge(dr.from, dr.to);
+    if (!seg) continue;
+    const [a, c2] = seg;
+    const w = M.hexFt * 0.075;
+    if (dr.state === "closed"){
+      gDoor.appendChild(el("line", {x1:a[0], y1:a[1], x2:c2[0], y2:c2[1],
+                            stroke:"var(--door)", "stroke-width":w, "stroke-linecap":"round",
+                            "pointer-events":"none"}));
+    } else {
+      /* open: the leaf is drawn back against the jambs, so the gap is the way through */
+      const f = t => [a[0] + (c2[0]-a[0])*t, a[1] + (c2[1]-a[1])*t];
+      for (const [t0, t1] of [[0, 0.3], [0.7, 1]]){
+        const p0 = f(t0), p1 = f(t1);
+        gDoor.appendChild(el("line", {x1:p0[0], y1:p0[1], x2:p1[0], y2:p1[1],
+                              stroke:"var(--door)", "stroke-width":w, "stroke-linecap":"round",
+                              "pointer-events":"none"}));
+      }
+    }
+  }
+
+  for (const o of M.objects){
+    if (o.hp <= 0) continue;
+    const {x, y} = M.geom.centre(o);
+    const R = M.hexFt * 0.26;
+    if (o.kind === "spawner"){
+      gMark.appendChild(el("polygon", {points:[[x,y-R],[x+R,y],[x,y+R],[x-R,y]].map(p=>p.join(",")).join(" "),
+        fill:"var(--spawn)", stroke:"#1a0f0d", "stroke-width":M.hexFt*0.02, "pointer-events":"none"}));
+    } else {
+      gMark.appendChild(el("rect", {x:x-R*0.8, y:y-R*0.8, width:R*1.6, height:R*1.6,
+        fill:"var(--node)", stroke:"#0d1a15", "stroke-width":M.hexFt*0.02, "pointer-events":"none"}));
+    }
+    const t = el("text", {x, y: y + R*1.9, "text-anchor":"middle", fill:"var(--dim)",
+      "font-size":M.hexFt*0.19, "font-family":"B612 Mono, monospace", "pointer-events":"none"});
+    t.textContent = o.hp + "/" + o.maxHp;
+    gMark.appendChild(t);
+  }
+
+  for (const u of M.units){
+    if (u.hp <= 0) continue;
+    const {x, y} = M.geom.centre(u);
+    const R = M.hexFt * 0.30;
+    const col = u.side === "drone" ? "var(--drone)" : "var(--ship)";
+    gUnit.appendChild(el("circle", {cx:x, cy:y, r:R, fill:col, opacity: u.acted ? 0.45 : 1,
+      stroke:"#0b0e10", "stroke-width":M.hexFt*0.025, "pointer-events":"none"}));
+    const lab = el("text", {x, y:y + M.hexFt*0.07, "text-anchor":"middle", fill:"#0b0e10",
+      "font-size":M.hexFt*0.26, "font-weight":"700",
+      "font-family":"B612 Mono, monospace", "pointer-events":"none"});
+    lab.textContent = u.side === "drone" ? "D" + (u.id + 1) : u.type[0].toUpperCase();
+    gUnit.appendChild(lab);
+    const hp = el("text", {x, y:y - R*1.25, "text-anchor":"middle", fill:"var(--ink)",
+      "font-size":M.hexFt*0.19, "font-family":"B612 Mono, monospace", "pointer-events":"none"});
+    hp.textContent = u.hp + "/" + u.maxHp;
+    gUnit.appendChild(hp);
+  }
+
+  if (sel && hover) drawArrow(gArrow);
+
+  svg.append(gHex, gWall, gDoor, gMark, gUnit, gArrow);
+  svg.addEventListener("click", onClick);
+  svg.addEventListener("mousemove", onMove);
+  svg.addEventListener("mouseleave", () => { hover = null; draw(); });
+  const wrap = $("board");
+  wrap.innerHTML = "";
+  wrap.appendChild(svg);
+}
+/* An outer hull edge has no neighbour to share corners with, so take the two
+   corners of this hex that face that direction. */
+function sharedEdgeOuter(c, d){
+  const pts = M.geom.corners(c);
+  const cen = M.geom.centre(c);
+  const nc = M.geom.centre({q:c.q + d.q, r:c.r + d.r});
+  const mid = {x:(cen.x + nc.x)/2, y:(cen.y + nc.y)/2};
+  const near = pts.map((p, i) => ({p, i, d:Math.hypot(p[0]-mid.x, p[1]-mid.y)}))
+                  .sort((a, b) => a.d - b.d).slice(0, 2);
+  return [near[0].p, near[1].p];
+}
+
+/* ---------- the hover arrow ---------- */
+function drawArrow(g){
+  if (Rules.hexDist(sel, hover) !== 1) return;
+  const chk = Rules.stepCheck(M, sel, hover);
+  const a = M.geom.centre(sel), b = M.geom.centre(hover);
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+  const ux = dx/len, uy = dy/len, px = -uy, py = ux;
+  const t0 = len * 0.30, t1 = len * 0.80, head = M.hexFt * 0.30, half = M.hexFt * 0.115;
+  const P = (t, o) => [a.x + ux*t + px*o, a.y + uy*t + py*o];
+  const poly = [P(t0, half), P(t1-head, half), P(t1-head, half*2.1), P(t1, 0),
+                P(t1-head, -half*2.1), P(t1-head, -half), P(t0, -half)];
+  const ok = chk.kind === "move", atk = chk.kind === "attack" && !chk.blocked;
+  const fill = atk ? "var(--stamp)" : ok ? "#ffffff" : "#5b6a74";
+  g.appendChild(el("polygon", {points:poly.map(p=>p.join(",")).join(" "), fill,
+    opacity: (ok || atk) ? 0.92 : 0.5, stroke:"#0b0e10",
+    "stroke-width":M.hexFt*0.014, "pointer-events":"none"}));
+  if (!ok && !atk){
+    const m = P(len*0.55, 0), s = M.hexFt * 0.17;
+    for (const [sx, sy] of [[1,1],[1,-1]])
+      g.appendChild(el("line", {x1:m[0]-s*sx, y1:m[1]-s*sy, x2:m[0]+s*sx, y2:m[1]+s*sy,
+        stroke:"var(--stamp)", "stroke-width":M.hexFt*0.055,
+        "stroke-linecap":"round", "pointer-events":"none"}));
+  }
+}
+
+/* ---------- input ---------- */
+function hexFromEvent(e){
+  const t = e.target;
+  if (!t || !t.dataset || t.dataset.q === undefined) return null;
+  return {q:+t.dataset.q, r:+t.dataset.r};
+}
+function onMove(e){
+  const c = hexFromEvent(e);
+  const k = c ? Rules.hexKey(c) : null;
+  const prev = hover ? Rules.hexKey(hover) : null;
+  if (k === prev) return;
+  hover = c;
+  if (sel) draw();
+}
+function onClick(e){
+  const c = hexFromEvent(e);
+  if (!c || !M) return;
+  const u = Rules.unitAt(M, c);
+
+  if (sel && Rules.hexDist(sel, c) === 1 && !M.over){
+    const chk = Rules.stepCheck(M, sel, c);
+    if (chk.kind === "move"){
+      Rules.stepMove(M, sel, c);
+      pendingTarget = null;
+      if (sel.mp <= 0) { /* keep it selected so its state is readable */ }
+      draw(); paintSide(); paintLog(); paintStatus();
+      return;
+    }
+    if (chk.kind === "attack" && !chk.blocked){
+      pendingTarget = chk.target || chk.object;
+      openAttackPopup(e.target);
+      return;
+    }
+  }
+
+  /* Clicking one of yours takes control of it. Clicking anything else only
+     inspects, so you can read the map without losing the drone you were
+     moving. Escape clears the selection. */
+  if (u && u.side === "drone" && !M.over){ sel = u; pendingTarget = null; }
+  window.__inspect = c;
+  draw(); paintSide();
+}
+
+/* The chooser is a popup rather than a panel section because it is a decision
+   that blocks the turn: it should sit over the thing it is about, and go away
+   the moment it is answered or dismissed. */
+function openAttackPopup(anchorEl){
+  const t = pendingTarget;
+  if (!t) return;
+  const lines = sel.weapons.map((w, i) => {
+    const f = Rules.forecast(sel, i, t);
+    const answer = t.weapons
+      ? (f.counter
+          ? "<b>" + f.taken.toFixed(1) + "</b> taken — it answers with " + esc(f.counter.name)
+          : "<b>0</b> taken — no " + w.cls + " weapon, it cannot answer")
+      : "<b>0</b> taken — it cannot answer";
+    return '<div class="wpn"><button data-atk="' + i + '">' + esc(w.name) +
+           " &middot; " + w.dmg + "-" + w.strikes +
+           (t.weapons ? " " + w.cls : "") + "</button></div>" +
+           '<div class="fore">expect <b>' + f.dealt.toFixed(1) + "</b> dealt, " + answer +
+           (f.kill ? " &middot; <b>can kill outright</b>" : "") + "</div>";
+  }).join("");
+
+  const pop = $("pop");
+  pop.innerHTML = "<h3>Attack " + esc(t.name) + "</h3>" +
+    '<div class="sub">' + (t.weapons ? esc(Rules.ROSTER[t.type].name) : (t.kind === "spawner" ? "spawn zone" : "resource node")) +
+    " &middot; " + t.hp + "/" + t.maxHp + " hp</div>" + lines +
+    '<div class="foot"><div class="fore">every strike is an independent ' +
+    Math.round(Rules.HIT_CHANCE * 100) + '%</div>' +
+    '<button class="ghost" data-cancel>Cancel</button></div>';
+
+  pop.hidden = false; $("popmask").hidden = false;
+  place(pop, anchorEl);
+  pop.querySelectorAll("[data-atk]").forEach(b =>
+    b.onclick = () => doAttack(+b.dataset.atk));
+  pop.querySelector("[data-cancel]").onclick = closePop;
+  const first = pop.querySelector("[data-atk]");
+  if (first) first.focus();
+}
+/* Beside the hex it is about, nudged back inside the window. */
+function place(pop, anchorEl){
+  const r = anchorEl && anchorEl.getBoundingClientRect
+    ? anchorEl.getBoundingClientRect()
+    : {left:innerWidth/2, top:innerHeight/2, right:innerWidth/2, bottom:innerHeight/2};
+  const w = pop.offsetWidth, h = pop.offsetHeight, gap = 12;
+  let x = r.right + gap, y = r.top;
+  if (x + w > innerWidth - 8) x = r.left - w - gap;
+  if (x < 8) x = 8;
+  if (y + h > innerHeight - 8) y = innerHeight - h - 8;
+  if (y < 8) y = 8;
+  pop.style.left = x + "px";
+  pop.style.top = y + "px";
+}
+function closePop(){
+  $("pop").hidden = true; $("popmask").hidden = true;
+  pendingTarget = null;
+}
+const popOpen = () => !$("pop").hidden;
+
+function doAttack(idx){
+  if (!sel || !pendingTarget) return;
+  Rules.attack(M, sel, idx, pendingTarget);
+  closePop();
+  if (sel.hp <= 0) sel = null;
+  draw(); paintSide(); paintLog(); paintStatus();
+}
+
+/* ---------- inspector ---------- */
+function paintSide(){
+  const s = $("side");
+  if (!M){ s.innerHTML = ""; return; }
+  const c = window.__inspect;
+  let h = "";
+
+  if (sel) h += "<h2>Selected</h2>" + unitBlock(sel, true);
+
+  if (c){
+    const cell = Rules.cellAt(M, c);
+    h += "<h2>Hex</h2>";
+    if (!cell) h += '<p class="empty">Outside the map.</p>';
+    else {
+      const z = M.zones.get(cell.zone);
+      h += '<table class="kv">' +
+        row("axial", "q " + c.q + ", r " + c.r) +
+        row("room", esc(z.name)) +
+        row("kind", esc(z.kind)) +
+        row("roles", (z.roles||[]).map(r => '<span class="tag">' + esc(r) + "</span>").join("")) +
+        row("area", z.areaSqFt + " sq ft, " + z.hexes + " hexes") +
+        (cell.over.length > 1
+          ? row("also over", cell.over.filter(i => i !== cell.zone)
+              .map(i => esc(M.zones.get(i).name)).join(", ")) : "") +
+        (z.hazard ? row("hazard", '<span style="color:var(--stamp)">' + esc(z.hazard) + "</span>") : "") +
+        (z.entry ? row("access", '<span style="color:var(--node)">boarding point</span>') : "") +
+        (z.marks && z.marks.length ? row("contents", z.marks.map(esc).join(", ")) : "") +
+        "</table>";
+      const edges = [];
+      for (const d of Rules.HEX_DIRS){
+        const n = {q:c.q + d.q, r:c.r + d.r};
+        if (!Rules.cellAt(M, n)) continue;
+        const e = Rules.edgeInfo(M, c, n);
+        if (e.door) edges.push("door d" + e.door.id + " — " + e.door.state +
+                               (e.door.loop ? " (loop)" : " (tree)"));
+        else if (!e.ok) edges.push("bulkhead toward " + esc(M.zones.get(Rules.cellAt(M, n).zone).name));
+      }
+      if (edges.length) h += '<div class="fore">' + edges.join("<br>") + "</div>";
+      const o = Rules.objectAt(M, c);
+      if (o){
+        h += "<h2>" + (o.kind === "spawner" ? "Spawn zone" : "Resource node") + "</h2>" +
+          "<b>" + esc(o.name) + "</b>" + bar(o.hp, o.maxHp) +
+          '<div class="fore">' + (o.kind === "spawner"
+            ? "Builds hostiles from the shared pool. Destroy all three to win."
+            : "Pays +" + M.income + " into the pool each turn while it stands.") + "</div>";
+      }
+      const u = Rules.unitAt(M, c);
+      if (u && u !== sel) h += "<h2>Unit</h2>" + unitBlock(u, false);
+      if (!u && !o && cell) h += "";
+    }
+  }
+  if (!h) h = '<p class="empty">Click a hex to read it. Click one of your drones to take control — then click an adjacent hex to step, or an adjacent hostile to attack. Right-click clears the selection.</p>';
+  s.innerHTML = h;
+}
+const row = (k, v) => "<tr><td>" + k + "</td><td>" + v + "</td></tr>";
+function bar(hp, max){
+  const pct = Math.max(0, hp / max) * 100;
+  const cls = pct > 60 ? "" : pct > 30 ? " hurt" : " bad";
+  return '<div class="hpbar' + cls + '"><i style="width:' + pct + '%"></i></div>';
+}
+function unitBlock(u, mine){
+  let h = "<b>" + esc(u.name) + "</b> &middot; " + esc(Rules.ROSTER[u.type].name) + bar(u.hp, u.maxHp) +
+    '<table class="kv">' + row("hp", u.hp + " / " + u.maxHp) +
+    row("move", u.mp + " / " + u.maxMp + (u.acted ? " (acted)" : "")) +
+    row("side", u.side === "drone" ? "yours" : "the ship") + "</table>";
+  h += '<div class="fore">' + u.weapons.map(w =>
+      "<b>" + esc(w.name) + "</b> " + w.dmg + "-" + w.strikes + " " + w.cls).join("<br>") + "</div>";
+  const zoc = Rules.inEnemyZOC(M, u.side, u);
+  if (zoc) h += '<div class="fore" style="color:var(--door)">In ' + esc(zoc.name) +
+                "'s zone of control.</div>";
+  return h;
+}
+
+/* ---------- status and log ---------- */
+function paintStatus(){
+  if (!M){ $("status").innerHTML = ""; return; }
+  const sp = Rules.liveSpawners(M).length, nd = Rules.liveNodes(M).length;
+  const dr = Rules.drones(M);
+  const num = x => (Math.round(x * 100) / 100).toString();
+  let h = "turn <b>" + M.turn + "</b>  pool <b>" + num(M.pool) + "</b> (+" + num(nd * M.income) + "/turn)\n" +
+    "spawn zones <b>" + sp + "</b>  nodes <b>" + nd + "</b>  hostiles <b>" + Rules.hostiles(M).length + "</b>\n" +
+    "drones <b>" + dr.map(u => u.hp + "/" + u.maxHp + " mp" + u.mp).join("  ") + "</b>";
+  if (M.over === "win") h += '\n<span class="win">MISSION COMPLETE</span>';
+  if (M.over === "loss") h += '\n<span class="loss">BOTH DRONES LOST</span>';
+  $("status").innerHTML = h;
+  $("end").disabled = !!M.over;
+}
+function paintLog(){
+  if (!M) return;
+  const box = $("log");
+  box.innerHTML = M.log.map(l =>
+    '<div class="kind-' + l.kind + '"><span class="t">' + l.turn + '</span>' +
+    '<span class="k">' + l.kind + '</span><span class="m">' + esc(l.text) + "</span></div>").join("");
+  box.scrollTop = box.scrollHeight;
+  const last = M.log[M.log.length - 1];
+  $("loglast").textContent = last ? last.text : "";
+}
+
+/* Right-click drops whatever the page is holding: the open chooser first, then
+   the selected drone and the inspected hex. Only inside the board and the
+   chooser, so the browser's own menu still works over the log and the panel. */
+function clearFocus(){
+  if (popOpen()){ closePop(); paintSide(); return; }
+  sel = null; pendingTarget = null; hover = null;
+  window.__inspect = null;
+  draw(); paintSide();
+}
+document.addEventListener("contextmenu", e => {
+  if (!e.target.closest("#board, #pop, #popmask")) return;
+  e.preventDefault();
+  clearFocus();
+});
+
+/* ---------- wiring ---------- */
+$("new").onclick = () => newMission(null);
+$("map").onchange = () => newMission(null);
+$("end").onclick = () => {
+  if (!M || M.over) return;
+  closePop();
+  Rules.endTurn(M);
+  sel = null; pendingTarget = null;
+  draw(); paintSide(); paintLog(); paintStatus();
+};
+$("popmask").onclick = () => { closePop(); paintSide(); };
+$("loghead").onclick = () => {
+  const w = $("logwrap");
+  w.classList.toggle("shut");
+  $("logtoggle").textContent = w.classList.contains("shut") ? "show" : "hide";
+};
+$("pick").onclick = () => $("file").click();
+$("file").onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { try { newMission(JSON.parse(rd.result)); } catch (err){ alert("Not a map JSON: " + err.message); } };
+  rd.readAsText(f);
+};
+document.addEventListener("keydown", e => {
+  const tag = e.target && e.target.tagName;
+  if (tag === "INPUT" || tag === "SELECT") return;
+  if (e.key === "Escape"){ clearFocus(); }
+  if (e.key === " " && M && !M.over){ e.preventDefault(); $("end").click(); }
+});
+newMission(null);
+</script>
+</body>
+</html>

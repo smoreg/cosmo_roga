@@ -2,8 +2,9 @@
 
 Before any borrowed mechanic, a plain reading of what `geomorphs.html` and
 `hexmap.html` hand a tactical layer, and which design doors that opens and shuts.
-Written 2026-09-09, before the reference reading, so it can be checked against
-it rather than bent to fit.
+Written 2026-09-09, before the reference reading, so it can be checked against it
+rather than bent to fit. Revised 2026-09-10: the hex size is settled at 30 ft and
+the per-compartment sub-grid idea is withdrawn.
 
 ## The export is already a wargame map
 
@@ -38,40 +39,50 @@ to fabricate access. A game should read that as *treasure behind a wall* — a
 room you can only enter by cutting, by an airlock and a spacewalk, or not at
 all. Reported gaps become content.
 
-## The hex/room split is the first real fork
+## The hex/room split — resolved at 30 ft
 
-The README is emphatic: **the rooms are the map; the hexagons are guidance.**
-The hex overlay is decorative at 50 ft, and rooms are the thing with doors,
-contents and hazards. A hex can straddle several rooms (`over` is a list).
+The README is emphatic: **the rooms are the map; the hexagons are guidance.** The
+overlay is decorative at 50 ft, rooms are the thing with doors and contents, and a
+hex can straddle several rooms (`over` is a list).
 
-A Wesnoth-like tactical layer needs the opposite: the hex must be the atom, one
-occupant per hex, terrain defined per hex. So one of three:
+A Wesnoth-like layer wants the opposite — one occupant per hex, terrain per hex.
+The first draft of this note proposed cutting the deck into per-compartment hex
+fields at 10 ft. **That was wrong, and the reason is a combat argument, not a
+spatial one.**
 
-**A. Fine hexes.** Drop the overlay to 10 ft and every hex belongs to one room.
-Firmly Wesnoth. Cost: a deck of 68 rooms becomes thousands of hexes — far too
-big for three drones, and the coarse-position philosophy is thrown away.
+At 10 ft a hex is a slice of corridor, and Wesnoth's rule that you may only attack
+an adjacent hex becomes a rifle with a ten-foot reach — absurd on sight. The fix is
+not to give weapons ranges; it is to **make the hex big enough that adjacency is
+already a believable engagement distance.** Thirty feet apart is an ordinary
+distance to shoot someone across a compartment, so the combat model can be kept
+whole and the geometry stops fighting the fiction.
 
-**B. Room graph, no hexes.** Fight on the room adjacency graph, doors as edges.
-This is `navmap.html`'s model and it is what the fiction wants — Duskers-shaped,
-a drone is *in the galley*, not on a coordinate. Cost: throws away the hex work,
-and loses flanking, facing, and the whole spatial texture of positioning.
+**So: 30 ft**, or 35 — the overlay size is a control on the page, so this is a
+tuning number rather than an architectural one. One hex is a compartment-sized chunk
+of ship or a stretch of corridor. Some consequences follow directly and none of them are optional:
 
-**C. Room-scoped hexes** — one deck's worth of rooms is cut down to a handful of
-*compartments*, and each compartment is a small local hex field, 10 ft, twenty
-or thirty hexes. Doors are the only links between fields. You fight inside a
-compartment on hexes; you travel between compartments through doors.
+- **The whole deck is one hex field.** No per-compartment sub-grids. At 30 ft a hex
+  is larger than most rooms in the export — the sample deck's cutoff for a room at
+  all is 80 sq ft against a hex's ~780 — so cutting the deck into local fields
+  would be cutting it below the resolution of its own atoms.
+- **Rooms become an overlay on the lattice rather than a container for it.** A hex
+  knows which rooms it covers (`over`), what trades they are, and what is in them.
+  That is content and identity; the lattice is position.
+- **Doors are edges, and the generator already builds them that way.** `hexmap.html`
+  puts a door *on* the lattice edge two hexes share. A door is therefore a property
+  of a move between two hexes, not an object standing in one — which is exactly what
+  a chokepoint should be.
+- **Attacks stay adjacent-only.** That is the point of the size, not a casualty of
+  it. Which means **line of sight is not needed for combat at all** — the largest
+  missing piece named below turns out to be optional for the fight, and is required
+  only for knowing where things are. See the design draft.
 
-C is the one worth prototyping. It keeps both halves honest: the hex grid does
-the job it is good at (a firefight in one room, positioning, cover, ZOC) and the
-room graph does the job *it* is good at (routes, chokepoints, sealing, sensor
-range, "where is it now"). It also fixes the scale problem by never rendering
-the whole ship at combat resolution — a mission is six to ten compartments, not
-sixty-eight rooms.
-
-The open question C raises: what is the cost of a door? If crossing a door is
-one move point, a door is not a chokepoint, it is a hallway. It should probably
-cost most of a turn to pass, be blockable by one body, and be the natural place
-for overwatch.
+**One thing to watch.** The generator notes, at `hexmap.html:530`, that where two
+rooms touch only *inside* a single hexagon there is no lattice edge between them and
+so no door to place. Coarser hexes swallow more doors this way. 30 ft is finer than
+the current 50 ft default, so this gets better rather than worse — but the mission
+generator must count the doors it loses and say so, the way the tile placer counts
+forced placements, rather than letting a compartment quietly become unreachable.
 
 ## Terrain we already have, for free
 
@@ -88,9 +99,11 @@ Nothing in the pipeline was built for combat, but three fields do combat work:
 
 ## What is missing and must be authored
 
-- **Line of sight.** The rasteriser knows where the ink is; nothing yet traces
-  a ray through it. This is the largest missing piece and it is the one that
-  makes or breaks a stealth-adjacent game.
+- **Line of sight — for sensing, not for shooting.** The rasteriser knows where the
+  ink is; nothing yet traces a ray through it. With adjacent-only combat this is no
+  longer needed to resolve an attack, which removes it from the critical path. It is
+  still wanted at room granularity for what a drone can *observe*, which is a much
+  cheaper problem than a per-ray firing solution.
 - **Vertical.** Everything is one deck. `vertical` roles exist but no generator
   stacks decks or links them. Multi-deck is a whole second project — the first
   game should be one deck and say so.

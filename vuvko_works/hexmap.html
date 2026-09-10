@@ -202,7 +202,8 @@ const PX_FT = 2.4;              // raster resolution: 12 px to a 5 ft square
 const ALPHA = 40;               // above this a pixel is structure
 const LOOP_SHARE = 0.45;        // shared walls kept as doors beyond the tree
 
-/** The six neighbours of a pointy-top hexagon. */
+/** The six neighbours in axial coordinates. Orientation changes where these
+    land on screen, not which cells are adjacent. */
 const HEX_DIRS = [
   {q:1,r:0}, {q:1,r:-1}, {q:0,r:1}, {q:0,r:-1}, {q:-1,r:1}, {q:-1,r:0},
 ];
@@ -215,18 +216,35 @@ let zoom = 0.6;
 const BASE = 0.4;               // px per foot before zoom
 
 /* ---------- geometry ----------
-   A hexagon's "size" here is the distance across its flats, in feet, which is
-   what the control says: at 25 ft one 100 ft geomorph tile is four hexes wide.
-   For a pointy-top hexagon that width is √3·R. */
-function hexGeom(ft){
+   Flat-top hexagons, and the keel down column q = 0.
+
+   A pointy-top lattice has vertical edges but no vertical *run* of cells: its
+   neighbours are east, west and four diagonals, so you can walk athwartships
+   and never straight down the ship. Turn the hexagon a sixth and north and
+   south become neighbours, which is the axis every one of these hulls is drawn
+   along. (smoreg's hexlayout.ts and hullforms are pointy-top, and this is where
+   the two part company: their hexagons draw a graph, these ones sit on a ship.)
+
+   The lattice is then anchored on the ship's centreline rather than on the
+   corner of the drawing, so column 0 runs down the keel and the columns either
+   side are ±1, ±2. A hull that is symmetric gets an overlay that is symmetric,
+   by construction: reflecting across the keel is (q, r) → (−q, r + q), which
+   maps the lattice exactly onto itself.
+
+   "Size" is the distance across the flats, in feet — what the control says — so
+   at 25 ft one 100 ft geomorph tile is four hexagons deep. For a flat-top
+   hexagon that is √3·R, measured up and down; corner to corner across is 2R. */
+function hexGeom(ft, ox, oy){
   const R = ft / Math.sqrt(3);
+  ox = ox || 0; oy = oy || 0;
+  const centre = c => ({x: ox + 1.5 * R * c.q, y: oy + ft * (c.r + c.q/2)});
   return {
-    R, ft,
-    centre: c => ({x: ft * (c.q + c.r/2), y: 1.5 * R * c.r}),
+    R, ft, ox, oy, centre,
     /* Pixel to axial, then cube-round: the nearest centre, not the containing
-       bounding box, or the rows would shear. */
-    at: (x, y) => {
-      const q = (Math.sqrt(3)/3 * x - y/3) / R, r = (2/3 * y) / R;
+       bounding box, or the columns would shear. */
+    at: (px, py) => {
+      const x = px - ox, y = py - oy;
+      const q = (2/3 * x) / R, r = (-x/3 + Math.sqrt(3)/3 * y) / R;
       let cx = q, cz = r, cy = -cx - cz;
       let rx = Math.round(cx), ry = Math.round(cy), rz = Math.round(cz);
       const dx = Math.abs(rx-cx), dy = Math.abs(ry-cy), dz = Math.abs(rz-cz);
@@ -234,11 +252,13 @@ function hexGeom(ft){
       else if (dy <= dz) rz = -rx - ry;
       return {q: rx, r: rz};
     },
+    /** The cell opposite, across the keel. */
+    mirror: c => ({q: -c.q, r: c.r + c.q}),
     corners: c => {
-      const {x, y} = hexGeom(ft).centre(c);
+      const {x, y} = centre(c);
       const pts = [];
       for (let i = 0; i < 6; i++){
-        const a = Math.PI / 180 * (60 * i - 30);
+        const a = Math.PI / 180 * (60 * i);
         pts.push([x + R * Math.cos(a), y + R * Math.sin(a)]);
       }
       return pts;
@@ -412,7 +432,8 @@ async function build(){
   const rast = await raster(plan);
   const {reg, sizes, sumX, sumY} = regions(rast);
   const hexFt = +document.getElementById("hexft").value;
-  const geom = hexGeom(hexFt);
+  /* Column 0 on the keel, not on the corner of the picture. */
+  const geom = hexGeom(hexFt, (rast.w / PX_FT) / 2, 0);
 
   /* The rooms are the map. Every enclosed piece of floor is a zone whatever its
      size — a lattice laid over the ship afterwards must not decide which of its
@@ -491,9 +512,8 @@ async function build(){
       const outside = !n || n.kind !== "floor";
       if (!outside && n.zone === c.zone) continue;          // same room: open floor
       if (!outside && (n.q < c.q || (n.q === c.q && n.r < c.r))) continue;  // once per edge
-      const pa = geom.centre(c), pb = outside
-        ? {x: pa.x + geom.ft * (d.q + d.r/2), y: pa.y + 1.5 * geom.R * d.r}
-        : geom.centre(n);
+      const pa = geom.centre(c);
+      const pb = geom.centre({q: c.q + d.q, r: c.r + d.r});
       const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
       const ex = pb.x - pa.x, ey = pb.y - pa.y;
       const len = Math.hypot(ex, ey) || 1;
