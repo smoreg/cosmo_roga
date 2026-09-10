@@ -259,6 +259,27 @@ describe("the tile contact sheet", () => {
 
     cases.push(
       row(
+        "Предмет поручения",
+        "Консоль и посылка по чартеру — один знак, разные подписи. Тайла у звёздочки не было до 10.09.",
+        alone(
+          pick(
+            "freighter",
+            (r) => (r.things ?? []).some((t) => t.glyph === "*"),
+            (game) => {
+              // The errand item is placed by a charter at run time, not by the
+              // generator, so the sheet puts one where a charter would: the
+              // same bucket the schematic reads (`CONTENT_KEYS`).
+              const room = game.ship.rooms.find((r) => r.id !== game.ship.entry);
+              if (room) room.data.items = [{ id: "console", kind: "console" }];
+            },
+          ),
+        ),
+        scale,
+      ),
+    );
+
+    cases.push(
+      row(
         "Опасность: дым",
         "Дым — одна сплошная масса. Отсек, в который не видно ни снаружи, ни изнутри.",
         alone(pick("quarantine", (r) => (r.things ?? []).some((t) => t.glyph === "≈"), armed("smoke"))),

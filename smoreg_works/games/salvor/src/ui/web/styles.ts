@@ -414,4 +414,31 @@ export const WEB_CSS = `
 .card .hint{color:var(--fg-dim); margin-top:14px;}
 .card.good{border-top-color:var(--good);} .card.good .h{color:var(--good);}
 .card.bad{border-top-color:var(--bad);} .card.bad .h{color:var(--bad);}
+
+/* ------------------------------------------------------------ the start screen
+   G84. The terminal spends rows on the name because rows are all a grid has;
+   here it is a type size, and the menu is a real three-column grid so the keys
+   line up without a padded string. Amber stays what rule 1 above says it is —
+   the key you are being asked to press — so the ring rows mark what they are
+   *on* with the bright token and leave the rest dim, exactly as the terminal does. */
+.card.title{max-width:min(760px,94vw); text-align:center;}
+.card.title .head, .card.title .hint, .card.title .keys{text-align:center;}
+.title-name{color:var(--accent); font-size:44px; font-weight:600; letter-spacing:.22em;
+  line-height:1.1; margin-bottom:10px;}
+.title-tag{color:var(--fg); font-size:15px; margin-bottom:6px;}
+.title-menu{display:inline-grid; grid-template-columns:auto auto auto; gap:2px 14px;
+  text-align:left; margin:10px 0 4px;}
+/* The row generates no box of its own, so the pointer and the hover live on
+   its three cells. Amber is spoken for (rule 1), so a row under the cursor
+   brightens its own ground rather than borrowing the signal colour. */
+.title-row{display:contents;}
+.title-row > span{cursor:pointer; padding:1px 4px; margin:-1px -4px;}
+.title-row:hover > span{background:var(--line);}
+.title-row:hover .title-label{color:var(--bright);}
+.title-key{color:var(--accent); font-weight:600;}
+.title-label{color:var(--fg);}
+.title-value{color:var(--soft);}
+.title-on{color:var(--bright); font-weight:600;}
+.title-off{color:var(--fg-dim);}
+.title-foot{color:var(--fg-dim); font-size:11px; margin-top:16px;}
 `;

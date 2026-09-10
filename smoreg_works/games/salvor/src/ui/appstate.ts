@@ -21,6 +21,15 @@ import { HISTORY_ROWS, historyPages } from "./logline.js";
 import { airlockRoom, passableForPlayer, travelRoute } from "./auto.js";
 import { doorLevel, doorWays, doorWaysStand, doorsStand, sealBehind, soleWay } from "./doorlist.js";
 import { voyageRecord } from "../systems/voyage.js";
+import {
+  DEFAULT_TITLE,
+  seedOf,
+  seedTyped,
+  titleRowAt,
+  titleRowOfPick,
+  type TitleRowKind,
+  type TitleSettings,
+} from "./title.js";
 
 /**
  * What the app is showing and what it wants done about the last key — as data,
@@ -91,8 +100,27 @@ export type AppEffect =
   | { kind: "stopAuto" }
   /** The language changed under the whole screen. Redraw, spend nothing. */
   | { kind: "language" }
-  /** New seed, new voyage. */
-  | { kind: "newRun" };
+  /**
+   * New seed, new voyage.
+   *
+   * `seed` is the number the start screen was told to use, and undefined for
+   * "draw one" — which is what `shift+R` has always meant and what an empty
+   * seed row means (G84). The shell owns the drawing because `Math.random()` is
+   * not allowed anywhere the rules can see (`.claude/CLAUDE.md`).
+   */
+  | { kind: "newRun"; seed?: number }
+  /**
+   * The next drawing round the cycle, and the sound on or off: the two rows of
+   * the start screen a letter answers to on the keyboard (`V`, `S`) and a click
+   * cannot.
+   *
+   * Effects rather than reducer state for the same reason the keys are read
+   * before `toIntent` at all — both are DOM-layer settings the sim must never
+   * be told about — and the shell answers for them (`ui/app.ts`, `cycleView`
+   * and `flipSound`). Never a turn.
+   */
+  | { kind: "view" }
+  | { kind: "sound" };
 
 /**
  * A walk that stopped a door short of something and handed the decision over:
@@ -216,6 +244,28 @@ export interface AppState {
    * the screen exists (docs/tasks/G54-two-ships-confusion.md, 6).
    */
   readonly seen: SortieMarks;
+  /**
+   * What the start screen's menu says about the view, the sound and the seed
+   * (G84).
+   *
+   * Mirrored here rather than owned here: `V`, `S` and the URL are the shell's,
+   * because none of the three is a fact the sim or a save file has any business
+   * knowing. What the reducer needs is only that the menu can name them, so the
+   * shell writes them in with `withSettings` whenever one changes and the title
+   * reads them like any other piece of state.
+   */
+  readonly settings: TitleSettings;
+  /**
+   * The digits typed into the seed row so far, or undefined when it is not
+   * being typed into.
+   *
+   * The one place in the game where a key means a character rather than a verb,
+   * and it is deliberately the narrowest mode there is: it exists only on the
+   * title, it is announced by the row it is on, `Esc` leaves it and `Enter`
+   * ends it. A run cannot start from under it, so nothing about a turn or a
+   * replay can reach it.
+   */
+  readonly seedText: string | undefined;
   /** The last transition's output. Recomputed on every step; never history. */
   readonly effect: AppEffect;
 }
@@ -251,6 +301,7 @@ const PASS: AppEffect = { kind: "pass" };
 function started(state: AppState, game: RoomGame): AppState {
   return {
     ...state,
+    seedText: undefined,
     overlay: "none",
     exploring: false,
     ask: undefined,
@@ -270,9 +321,17 @@ function started(state: AppState, game: RoomGame): AppState {
   };
 }
 
-/** A session before its first key: the run exists, the title sits in front of it. */
-export function initialState(): AppState {
+/**
+ * A session before its first key: the run exists, the title sits in front of it.
+ *
+ * `settings` is what the shell resolved off the URL and the store before the
+ * first frame — the view, the sound, the seed of the run behind the title. A
+ * test that does not care passes nothing and gets the defaults.
+ */
+export function initialState(settings: TitleSettings = DEFAULT_TITLE): AppState {
   return {
+    settings,
+    seedText: undefined,
     overlay: "title",
     exploring: false,
     ask: undefined,
@@ -290,6 +349,76 @@ export function initialState(): AppState {
     seen: NO_MARKS,
     effect: IDLE,
   };
+}
+
+/**
+ * The shell's own three settings, written into the state so the menu can name
+ * them. Never a turn and never anything else: `V`, `S` and a new seed each
+ * change one field and redraw.
+ */
+export function withSettings(state: AppState, settings: TitleSettings): AppState {
+  return { ...state, settings, effect: IDLE };
+}
+
+/** The row a `pick` presses, if any: the four the menu gives a digit to. */
+function pickedRow(intent: UiIntent): TitleRowKind | undefined {
+  return intent.kind === "pick" ? titleRowOfPick(intent.index) : undefined;
+}
+
+/**
+ * One row of the start screen, whichever way it was reached.
+ *
+ * Written once for the digit and the click, so a mouse cannot end up with a
+ * menu of its own: the four numbered rows do what their key does, and the three
+ * lettered ones hand the shell the setting it owns (`ui/app.ts`).
+ */
+function titleRow(state: AppState, game: RoomGame, row: TitleRowKind): AppState {
+  switch (row) {
+    case "voyage":
+      return started(state, game);
+    case "training":
+      return { ...started(state, game), effect: { kind: "training" } };
+    case "help":
+      return { ...state, overlay: "help", helpPage: 0, effect: IDLE };
+    case "seed":
+      return { ...state, seedText: "", effect: IDLE };
+    case "lang":
+      cycleLang();
+      return { ...state, effect: { kind: "language" } };
+    case "view":
+      return { ...state, effect: { kind: "view" } };
+    case "sound":
+      return { ...state, effect: { kind: "sound" } };
+  }
+}
+
+/**
+ * A key while the seed row is being typed into.
+ *
+ * The narrowest mode in the game, and the rules are the four a text field has:
+ * a digit is a character, `Backspace` rubs one out, `Enter` ends it, `Esc`
+ * leaves it as it was. Everything else is swallowed — the whole point of
+ * pressing `4` is that the next `q` is not "any key casts off" — and nothing
+ * here can spend a turn, because there is no turn to spend in front of a run
+ * that has not started.
+ */
+function typingSeed(state: AppState, intent: UiIntent): AppState {
+  if (intent.kind === "dismiss") return { ...state, seedText: undefined, effect: IDLE };
+  if (intent.kind === "erase") {
+    return { ...state, seedText: state.seedText!.slice(0, -1), effect: IDLE };
+  }
+  if (intent.kind === "confirm") {
+    const seed = seedOf(state.seedText!);
+    // An empty field is the random option: `Enter` on it draws a ship rather
+    // than doing nothing, so "another one, whichever" needs no key of its own.
+    return { ...state, seedText: undefined, effect: { kind: "newRun", ...(seed === undefined ? {} : { seed }) } };
+  }
+  if (intent.kind === "pick") {
+    const digit = ACTION_KEYS[intent.index];
+    if (digit === undefined) return withEffect(state, IDLE);
+    return { ...state, seedText: seedTyped(state.seedText!, digit), effect: IDLE };
+  }
+  return withEffect(state, IDLE);
 }
 
 /**
@@ -409,41 +538,31 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
   // other key would ask the sim a question it has already failed to answer.
   if (state.crash !== undefined) {
     if (intent.kind !== "restart") return withEffect(state, PASS);
-    return newRunState();
+    return newRunState(state);
   }
 
-  // The title is a menu of three and an "any key" behind it: `1` casts off,
-  // `2` casts off with the training prompts on, `3` opens the help card and
-  // comes back. Anything else still starts, so nobody spends their first move
-  // on a keypress they meant as a click. (The shell drops bare modifiers before
-  // they ever get here — see `isChord`.)
+  // The start screen: a menu where every row is a key, and an "any key" behind
+  // the four numbered ones. `1` casts off, `2` casts off with the training
+  // prompts on, `3` opens the help card and comes back, `4` types a seed.
+  // Anything else still starts, so nobody spends their first move on a keypress
+  // they meant as a click — which is also the gesture a browser wants before it
+  // will play a sound. (`L`, `V`, `S` and `` ` `` never reach here: the shell
+  // reads them first, and bare modifiers are dropped by `isChord`.)
   if (state.overlay === "title") {
-    if (intent.kind === "pick" && intent.index === 2) {
-      return { ...state, overlay: "help", helpPage: 0, effect: IDLE };
-    }
-    if (intent.kind === "pick" && intent.index === 1) {
-      return { ...started(state, game), effect: { kind: "training" } };
-    }
-    return {
-      overlay: "none",
-      exploring: false,
-      ask: undefined,
-      warned: undefined,
-      crash: undefined,
-      cursor: 0,
-      at: placeOf(game),
-      menu: undefined,
-      moves: false,
-      doors: false,
-      helpPage: 0,
-      logPage: 0,
-      codex: [],
-      codexAt: 0,
-      // Whatever the run has already done, the first key is not the moment to
-      // announce it: the title sits in front of a voyage that has not started.
-      seen: marksOf(game),
-      effect: IDLE,
-    };
+    if (state.seedText !== undefined) return typingSeed(state, intent);
+    // A digit names a key and a click names a row, and on this screen the two
+    // reach further apart than they do in the action list: four rows wear a
+    // digit, seven can be clicked. `L`, `V` and `S` are the other three, and
+    // the mouse has no way to press a letter.
+    const row = intent.kind === "line" ? titleRowAt(intent.index) : pickedRow(intent);
+    if (row !== undefined) return titleRow(state, game, row);
+    // A click that landed on no row at all changes nothing. It must not cast
+    // off: "any key starts" is a promise about the keyboard, and a mouse that
+    // began a run by missing a menu line would be the opposite of one.
+    if (intent.kind === "line") return withEffect(state, IDLE);
+    // Whatever the run has already done, the first key is not the moment to
+    // announce it: the title sits in front of a voyage that has not started.
+    return started(state, game);
   }
 
   // A sortie's own ending is a card and not a mode: any key at all puts it
@@ -462,6 +581,10 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
 
   switch (intent.kind) {
     case "none":
+    // `Backspace` is only ever a character rubbed out of the seed row, and
+    // that row lives on the title, which never reaches this switch. Off the
+    // title the key belongs to the browser, exactly as it always did.
+    case "erase":
       return withEffect(state, PASS);
     case "missing":
       return synced({ ...state, effect: { kind: "log", text: missingModuleLine(intent.module) } }, game);
@@ -487,7 +610,7 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       if (state.menu !== undefined || state.moves || state.doors) return upALevel(state, game);
       return synced({ ...state, effect: IDLE }, game);
     case "restart":
-      return newRunState();
+      return newRunState(state);
     case "page":
       // The sideways arrows, which do one thing and only in front of a card.
       // Anywhere else they are the dead keys they have always been, and the
@@ -1122,8 +1245,18 @@ function levelStands(game: RoomGame, menu: Level, doors: boolean): boolean {
   return doors ? doorWaysStand(game, menu) : doorStands(game, menu);
 }
 
-function newRunState(): AppState {
+/**
+ * `shift+R`: a fresh run, from any screen.
+ *
+ * The settings come across because they are not the run: a player who chose
+ * Spanish, the honeycomb and no sound has not asked for any of that back when
+ * they ask for another ship. The seed is the exception and is corrected by the
+ * shell, which is the only thing that knows what the new one turned out to be.
+ */
+function newRunState(state: AppState): AppState {
   return {
+    settings: state.settings,
+    seedText: undefined,
     overlay: "none",
     exploring: false,
     ask: undefined,

@@ -41,9 +41,10 @@ import { PANEL_WIDTH, contactsBlock, panelBlocks } from "../src/ui/panel.js";
 import { BANNER_WIDTH, bannerLine } from "../src/ui/schematic-input.js";
 import { htmlOf, screenHtml } from "../src/ui/web/index.js";
 import { initialState } from "../src/ui/appstate.js";
-import { charterHelp, keyHelp, listHelp, ruleHelp, titleLines } from "../src/ui/input.js";
+import { charterHelp, keyHelp, listHelp, ruleHelp } from "../src/ui/input.js";
+import { DEFAULT_TITLE, titleLines, titleScreen } from "../src/ui/title.js";
 import { ENGINE_KEYS, logText } from "../src/ui/logline.js";
-import { BOX_PAD_X, helpBody, helpBox, langRow, titleBox } from "../src/ui/render.js";
+import { BOX_PAD_X, helpBody, helpBox, titleBox } from "../src/ui/render.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
 
 /**
@@ -239,11 +240,13 @@ describe("choosing a language", () => {
     expect([cycleLang(), cycleLang(), cycleLang()]).toEqual(["es", "ru", "en"]);
   });
 
-  it("shows the ring on the title card, in codes nobody translates", () => {
+  it("shows the ring on the start screen, in codes nobody translates", () => {
     for (const lang of LANGS) {
       setLang(lang);
-      expect(langRow()).toBe("L  EN · ES · RU");
-      expect(langRow().length + BOX_PAD_X).toBeLessThanOrEqual(titleBox().width);
+      const row = titleScreen(DEFAULT_TITLE).items.find((item) => item.key === "L");
+      expect(row?.options?.map((o) => o.text)).toEqual(["EN", "ES", "RU"]);
+      expect(row?.options?.filter((o) => o.on).map((o) => o.text)).toEqual([lang.toUpperCase()]);
+      expect(row!.label.length + BOX_PAD_X).toBeLessThanOrEqual(titleBox().width);
     }
   });
 });
@@ -611,14 +614,12 @@ describe("pressing the key changes the words and nothing else", () => {
     expect(panel).toContain(RU["module.plating"]);
     expect(panel).not.toContain("ACTIONS");
 
-    expect(titleLines()).toEqual([
-      RU["title.name"],
-      RU["title.pitch.1"],
-      RU["title.pitch.2"],
-      RU["title.pitch.3"],
-      RU["title.keys"],
-      RU["title.start"],
-    ]);
+    const title = titleLines();
+    expect(title).toContain(RU["title.name"]);
+    expect(title).toContain(RU["title.tagline"]);
+    expect(title).toContain(RU["title.start"]);
+    expect(title).toContain(RU["title.keys.1"]);
+    expect(title.join("\n")).toContain(RU["title.menu.voyage"]);
     for (const block of [keyHelp(), ruleHelp(), listHelp(), charterHelp()]) {
       expect(block.join("\n")).toMatch(/[А-Яа-яЁё]/);
     }

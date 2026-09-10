@@ -187,16 +187,34 @@ export function linesSince(lines: readonly LogLine[], heard: number): readonly L
  */
 export class SalvorSfx {
   private readonly voices = new Map<SfxId, HTMLAudioElement>();
-  private readonly enabled: boolean;
+  private readonly volume: number;
+  private enabled: boolean;
 
   constructor(enabled: boolean, volume = 0.7) {
+    this.volume = volume;
     this.enabled = enabled && typeof Audio !== "undefined";
-    if (!this.enabled) return;
+    if (this.enabled) this.load();
+  }
+
+  /**
+   * Sound on or off, from the start screen's own row (`S`, G84).
+   *
+   * The voices are built on the first enable rather than in the constructor,
+   * because a session that opened with `?sound=off` should not have fetched
+   * thirteen files to keep them silent — and one that turns the sound on later
+   * still has to get them.
+   */
+  setEnabled(on: boolean): void {
+    this.enabled = on && typeof Audio !== "undefined";
+    if (this.enabled && this.voices.size === 0) this.load();
+  }
+
+  private load(): void {
     for (const [id, url] of Object.entries(URLS) as Array<[SfxId, string]>) {
       try {
         const el = new Audio(url);
         el.preload = "auto";
-        el.volume = volume;
+        el.volume = this.volume;
         this.voices.set(id, el);
       } catch {
         // An effect that cannot be constructed is simply silent.

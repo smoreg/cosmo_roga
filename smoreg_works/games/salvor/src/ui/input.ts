@@ -86,6 +86,15 @@ export type UiIntent =
   | { kind: "history"; delta: number }
   /** `L`, on any screen: round the ring of languages. Never a turn. */
   | { kind: "language" }
+  /**
+   * `Backspace`: rub out the last character of something being typed.
+   *
+   * The one thing in the game that is typed is the seed on the start screen
+   * (G84), and it is the reason this exists at all: a digit entered by mistake
+   * had no way back except `Esc` and starting the number again. Everywhere else
+   * the key is left to the browser, as it always was.
+   */
+  | { kind: "erase" }
   | { kind: "restart" }
   | { kind: "dismiss" }
   /** Walk on until something is worth a decision. */
@@ -280,6 +289,7 @@ export function toIntent(e: KeyLike, rig?: Rig): UiIntent {
   // (docs/gui-guides.md, §5, "Lookback").
   if (e.key === "PageUp") return { kind: "history", delta: 1 };
   if (e.key === "PageDown") return { kind: "history", delta: -1 };
+  if (e.key === "Backspace") return { kind: "erase" };
   if (e.key === "Escape") return { kind: "dismiss" };
   if (e.key === "r" && (e.ctrlKey === true || e.metaKey === true)) return { kind: "none" }; // browser reload
   if (e.key === "R") return { kind: "restart" };
@@ -509,24 +519,10 @@ export function helpHeadings(): string[] {
   ];
 }
 
-/**
- * The title card. Plain text, like the other blocks the renderer draws, so it
- * can be read by a test that has no DOM.
- *
- * Six lines: the name, the three of the pitch (design-doc.md, "Питч"), the
- * keys, and the one instruction. The pitch carries the loop as well as the
- * twist — a drone that burns is half the game, buying the next one is the other
- * half — because a voter who bounces off the title card never sees either.
- * That first key press is also the gesture a browser wants before it will let
- * anything play sound.
- */
-const TITLE_KEYS = [
-  "title.name", "title.pitch.1", "title.pitch.2", "title.pitch.3", "title.keys", "title.start",
-] as const satisfies readonly Key[];
-
-export function titleLines(): string[] {
-  return TITLE_KEYS.map((k) => t(k));
-}
+// The start screen moved out to `ui/title.ts` in G84: it is a menu of settings
+// now rather than six centred lines, and it needs to know what the view, the
+// sound and the seed currently are — which is not something this file, the key
+// table, has any business holding.
 
 // ------------------------------------------------ what is going on here (G72)
 

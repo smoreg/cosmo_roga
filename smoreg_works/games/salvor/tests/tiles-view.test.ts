@@ -8,10 +8,18 @@ import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { DERELICTS, buildDerelict } from "../src/content/derelicts.js";
 import { TILE_BY_GLYPH, TILE_IDS, ZONE_IDS } from "../src/tiles/sprites.js";
 import { HAZARDS, HAZARD_IDS } from "../src/content/hazards.js";
+import { MONSTERS } from "../src/content/monsters.js";
+import { hazardStore, markHazard, type HazardRecord } from "../src/systems/hazardstate.js";
 import { hullArtOf } from "../src/content/hulls-art.js";
 import { hexSvgOf } from "../src/ui/web/hex-svg.js";
 import type { DoorState, RoomState, SchematicDoor, SchematicInput, SchematicRoom } from "../src/ui/schematic.js";
-import { bannerLine, schematicInputOf } from "../src/ui/schematic-input.js";
+import {
+  BUCKET_GLYPH,
+  ONLINE_GLYPH,
+  VENTED_GLYPH,
+  bannerLine,
+  schematicInputOf,
+} from "../src/ui/schematic-input.js";
 import { svgOf } from "../src/ui/web/schematic-svg.js";
 import { PICTOGRAM_KINDS, zoneIdOf } from "../src/ui/web/tiles.js";
 
@@ -843,3 +851,155 @@ describe("the hazard marks", () => {
     expect(defs).not.toContain("fill=\"#");
   });
 });
+
+// ================================ every mark the schematic can put on a deck
+
+/**
+ * The rule the owner asked for in one sentence — «пусть у всего есть значки» —
+ * and the reason it is two tests rather than a list.
+ *
+ * A list of marks goes stale silently: `*` was on the deck for a day with no
+ * drawing behind it, because bodies, crates and errand items only started
+ * wearing their bucket's mark when `BUCKET_GLYPH` was written, and nothing
+ * connected that table to this one. So the first test reads the tables the
+ * schematic draws from, and the second walks two hundred generated hulls and
+ * collects what actually came out. Either alone would have missed something:
+ * the tables know nothing of a mark a card carries itself, and a walk sees only
+ * what its seeds happened to place.
+ */
+
+/**
+ * The one mark on the schematic that is deliberately not a picture: the
+ * airlock's own label.
+ *
+ * A rule rather than a list, because it is one — anything shaped like `a1` is a
+ * door's name, and a door's name is what the player types. A picture cannot be
+ * typed, so the set has no drawing for any of them and never should. The
+ * generator writes exactly `a1` today (`rooms/gen/shipgen.ts`); a fixture may
+ * name others, and a second airlock would arrive under the same rule.
+ */
+const NOT_DRAWN = (glyph: string): boolean => /^a\d+$/.test(glyph);
+
+describe("every mark the tables can produce", () => {
+  it("has a drawing of its own", () => {
+    const drawable: Array<[string, string]> = [
+      ...Object.entries(BUCKET_GLYPH).map(([bucket, glyph]): [string, string] => [glyph, `the ${bucket} bucket`]),
+      [ONLINE_GLYPH, "a system already up"],
+      [VENTED_GLYPH, "a compartment open to space"],
+      ...HAZARD_IDS.map((id): [string, string] => [HAZARDS[id].glyph, `the ${id} hazard`]),
+      ...MONSTERS.map((m): [string, string] => [m.ch, `the machine ${m.id}`]),
+      // Two marks whose only statement is a literal inside `systems/`, which
+      // this task may not touch. Named here so that renaming either leaves a
+      // failing test rather than a blank space on the map.
+      ["G", "the ghost of a run that ended here"],
+      ["r", "the rival's drone"],
+    ];
+    // A guard on the list itself: a table renamed out from under this test
+    // would leave it iterating nothing and passing.
+    expect(drawable.length).toBeGreaterThan(20);
+    for (const [glyph, why] of drawable) {
+      expect(TILE_BY_GLYPH[glyph], `${glyph} — ${why} — has no tile`).toBeDefined();
+    }
+  });
+
+  it("covers the errand item, which is the one the deck had before the set did", () => {
+    expect(BUCKET_GLYPH.items).toBe("*");
+    expect(TILE_BY_GLYPH["*"]).toBe("thing.parcel");
+  });
+});
+
+describe("every mark two hundred generated hulls actually drew", () => {
+  it("has a drawing, or is the airlock's own label", () => {
+    const seen = new Map<string, string>();
+    for (const spec of DERELICTS) {
+      for (let seed = 1; seed <= 25; seed++) {
+        for (const depth of [1, 3, 5]) {
+          const built = buildDerelict(spec, depth, new Rng(seed), { flags: new Set(), shipIndex: 1 });
+          const config: Omit<RoomGameConfig, "seed"> = {
+            ...GAME_CONFIG,
+            content: SALVOR,
+            firstShip: () => built.ship,
+            firstShipId: "1",
+          };
+          const game = new RoomGame({ ...config, seed });
+          // The states a fresh hull is not in yet, armed the way the game arms
+          // them: a hazard of each kind, a vented compartment, and half of
+          // everything searched or online. Without this the walk sees a hull on
+          // its first turn and none of what a sortie turns it into.
+          for (const id of HAZARD_IDS) {
+            const kind = HAZARDS[id];
+            const rec = kind.on === "door" ? doorRecord(game, id) : roomRecord(game, id);
+            if (rec) {
+              hazardStore(game).push(rec);
+              markHazard(game.ship, rec);
+            }
+          }
+          let flip = false;
+          for (const r of game.ship.rooms) {
+            for (const key of ["bodies", "crates", "systems", "items"] as const) {
+              const list = r.data[key];
+              if (!Array.isArray(list)) continue;
+              for (const raw of list) {
+                if (typeof raw === "object" && raw !== null) {
+                  flip = !flip;
+                  (raw as Record<string, unknown>).searched = flip;
+                  (raw as Record<string, unknown>).online = flip;
+                }
+              }
+            }
+            if (r.kind === "cargo") r.hazard = "vented";
+          }
+          for (const r of game.ship.rooms) {
+            game.player.room = r.id;
+            game.refreshSight();
+            for (const box of schematicInputOf(game).rooms) {
+              for (const thing of box.things ?? []) {
+                if (!seen.has(thing.glyph)) seen.set(thing.glyph, `${spec.id}/${seed}/d${depth}: ${thing.name}`);
+              }
+            }
+          }
+        }
+      }
+    }
+    // The tug too: it has its own compartments and its own content.
+    for (let seed = 1; seed <= 40; seed++) {
+      const game = newGame(seed);
+      for (const r of game.ship.rooms) {
+        game.player.room = r.id;
+        game.refreshSight();
+        for (const box of schematicInputOf(game).rooms) {
+          for (const thing of box.things ?? []) {
+            if (!seen.has(thing.glyph)) seen.set(thing.glyph, `tug/${seed}: ${thing.name}`);
+          }
+        }
+      }
+    }
+
+    expect(seen.size).toBeGreaterThan(15);
+    for (const [glyph, where] of seen) {
+      if (NOT_DRAWN(glyph)) continue;
+      expect(TILE_BY_GLYPH[glyph], `${glyph} (${where}) is drawn on the map and has no tile`).toBeDefined();
+    }
+    // And the exemption is real rather than a hole somebody widened: the
+    // airlock's label is a door's name, which the player types, and the set has
+    // no drawing for any of the four on purpose.
+    for (const label of ["a1", "a2", "a9"]) {
+      expect(NOT_DRAWN(label)).toBe(true);
+      expect(TILE_BY_GLYPH[label]).toBeUndefined();
+    }
+    // And the rule lets nothing else through: it exempts door names, not marks.
+    for (const glyph of ["*", "X", "%", "†", "+", "~", "❄", "a", "A"]) {
+      expect(NOT_DRAWN(glyph), `${glyph} must not be exempt`).toBe(false);
+    }
+  });
+});
+
+function roomRecord(game: RoomGame, id: (typeof HAZARD_IDS)[number]): HazardRecord | undefined {
+  const room = game.ship.rooms.find((r) => r.id !== game.ship.entry && r.hazard === "none");
+  return room === undefined ? undefined : { id, room: room.id, known: true };
+}
+
+function doorRecord(game: RoomGame, id: (typeof HAZARD_IDS)[number]): HazardRecord | undefined {
+  const door = game.ship.doors.find((d) => d.a !== d.b && d.trap === undefined);
+  return door === undefined ? undefined : { id, door: door.id, known: true };
+}

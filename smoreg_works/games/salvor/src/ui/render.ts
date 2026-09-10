@@ -1,7 +1,7 @@
 import * as ROT from "rot-js";
 import type { LogLine, RoomGame } from "@jamrog/engine";
 import { isTug } from "../content/tug.js";
-import { LANGS, currentLang, t } from "../i18n.js";
+import { t } from "../i18n.js";
 import { rigOf } from "../twist/rig.js";
 import { voyageProgress, voyageRecord } from "../systems/voyage.js";
 import {
@@ -12,8 +12,16 @@ import {
   helpHeadings,
   helpPages,
   keyHelp,
-  titleLines,
 } from "./input.js";
+import {
+  DEFAULT_TITLE,
+  KEY_W,
+  LABEL_W,
+  itemMark,
+  itemText,
+  titleScreen,
+  type TitleScreen,
+} from "./title.js";
 import { HISTORY_ROWS, historyPages, logFades, logText, type LogFade } from "./logline.js";
 import {
   NO_FLASH,
@@ -107,26 +115,106 @@ export function codexBox(heading: string, body: readonly string[], footer: strin
   return { ...boxFor(lines, 0), height: body.length + 6 };
 }
 
+/** What a row of the terminal's title is, so the renderer can colour it. */
+export type TitleRole = "name" | "tagline" | "head" | "menu" | "hint" | "keys" | "foot" | "blank";
+
+export interface TitleRow {
+  readonly role: TitleRole;
+  readonly text: string;
+  /**
+   * The option a ring row is currently on — `RU`, `honeycomb` — so the frame
+   * can light it without knowing what a language or a view is.
+   */
+  readonly mark?: string;
+}
+
+const BLANK: TitleRow = { role: "blank", text: "" };
+
 /**
- * The title card. Its height is fixed rather than counted: the six lines are
- * spread over twelve rows with air between them (see `drawTitle`).
+ * The title screen, laid out for a terminal: a frame, a name in block letters,
+ * and a menu in columns (`ui/title.ts` decides what it says).
+ *
+ * Rows rather than a draw call, for the same reason the schematic and the panel
+ * are rows: the layout is then arithmetic a test can do, so "does the Spanish
+ * menu fit ninety-five columns" is a number and not a screenshot.
  */
-export function titleBox(): BoxSize {
-  return { ...boxFor(titleLines(), 0), height: 12 };
+export function titleRows(screen: TitleScreen): TitleRow[] {
+  const body: TitleRow[] = [
+    ...nameBanner(screen.name).map((text) => ({ role: "name" as const, text })),
+    BLANK,
+    { role: "tagline", text: screen.tagline },
+    BLANK,
+    { role: "head", text: screen.menuHead },
+    ...screen.items.map((item) => ({ role: "menu" as const, text: itemText(item), mark: itemMark(item) })),
+    BLANK,
+    ...screen.hints.map((text) => ({ role: "hint" as const, text })),
+    BLANK,
+    { role: "head", text: screen.keysHead },
+    ...screen.keys.map((text) => ({ role: "keys" as const, text })),
+    BLANK,
+    { role: "foot", text: screen.foot },
+  ];
+  // The two headings rule off to whatever the widest row turned out to be, so
+  // a long translation widens the frame instead of poking out of it.
+  const width = body.reduce((m, row) => Math.max(m, row.text.length), 0);
+  return body.map((row) => (row.role === "head" ? { ...row, text: ruledOff(row.text, width) } : row));
 }
 
-/** The row of the title frame the language ring is written on. */
-export const TITLE_LANG_ROW = 9;
-
-/** The last row of the title frame a line is written on. */
-export const TITLE_LAST_ROW = 10;
-
-/** `L  EN · ES · RU`, and the prefix before it. Language-neutral by design. */
-export const LANG_PREFIX = "L  ";
-
-export function langRow(): string {
-  return LANG_PREFIX + LANGS.map((l) => l.toUpperCase()).join(" · ");
+function ruledOff(head: string, width: number): string {
+  const dashes = width - head.length - 1;
+  return dashes > 0 ? `${head} ${"─".repeat(dashes)}` : head;
 }
+
+/** The title's frame, measured off its own rows. One row of air top and bottom. */
+export function titleBox(screen: TitleScreen = titleScreen(DEFAULT_TITLE)): BoxSize {
+  return boxFor(titleRows(screen).map((row) => row.text), 2);
+}
+
+/** Rows that sit in the middle of the frame rather than against its left pad. */
+const CENTRED: ReadonlySet<TitleRole> = new Set<TitleRole>(["name", "tagline", "foot"]);
+
+function titleColour(role: TitleRole): string {
+  if (role === "name" || role === "hint") return THEME.accent;
+  if (role === "head") return THEME.zone;
+  if (role === "keys") return THEME.soft;
+  if (role === "foot") return THEME.fgDim;
+  return THEME.fg;
+}
+
+/**
+ * `SALVOR` in block letters, five rows tall.
+ *
+ * The owner asked for the name «крупно», and a terminal has one way to be
+ * large: spend rows on it. A name with a letter this table has no block for
+ * falls back to the plain string — the game is called SALVOR in all three
+ * languages (`content/i18n`), and a fourth that renames it should get a small
+ * title rather than a broken one.
+ */
+export function nameBanner(name: string): string[] {
+  const glyphs = [...name.toUpperCase()].map((ch) => BLOCK_LETTERS[ch]);
+  if (glyphs.some((g) => g === undefined)) return [name];
+  const rows: string[] = [];
+  for (let y = 0; y < BLOCK_HEIGHT; y++) rows.push(glyphs.map((g) => g![y]!).join(" "));
+  return rows;
+}
+
+const BLOCK_HEIGHT = 5;
+
+/**
+ * Five rows of five columns per letter, and only the letters the name needs.
+ *
+ * A full alphabet would be forty rows of art nothing draws; the fallback above
+ * is what covers everything else.
+ */
+const BLOCK_LETTERS: Record<string, readonly string[] | undefined> = {
+  S: ["█████", "█    ", "█████", "    █", "█████"],
+  A: ["█████", "█   █", "█████", "█   █", "█   █"],
+  L: ["█    ", "█    ", "█    ", "█    ", "█████"],
+  V: ["█   █", "█   █", "█   █", " █ █ ", "  █  "],
+  O: ["█████", "█   █", "█   █", "█   █", "█████"],
+  R: ["█████", "█   █", "█████", "█  █ ", "█   █"],
+  " ": ["     ", "     ", "     ", "     ", "     "],
+};
 
 /**
  * The four endings, as the word written across the screen, the sentence under
@@ -262,7 +350,7 @@ export class Renderer {
     this.display.clear();
     // The title is the whole screen: a derelict nobody has boarded yet.
     if (overlay === "title") {
-      this.drawTitle();
+      this.drawTitle(state);
       return;
     }
     if (isTug(game)) this.drawBoard(game);
@@ -387,50 +475,39 @@ export class Renderer {
   }
 
   /**
-   * The title card, centred on an empty screen.
+   * The start screen, on an otherwise empty terminal.
    *
-   * The layout is written out row by row rather than looped, because the six
-   * lines are not a list: the name, the pitch and the prompt each want their
-   * own colour and their own air around them (src/ui/input.ts, TITLE_LINES).
+   * A loop over `titleRows` rather than a row-by-row script, because the screen
+   * is now a menu and a menu is a list: a row added to `ui/title.ts` appears
+   * here without this file being told, and the frame measures itself off
+   * whatever the rows came out as (G84).
    */
-  private drawTitle(): void {
-    const lines = titleLines();
-    const { width: w, height: h } = titleBox();
+  private drawTitle(state: AppState): void {
+    const screen = titleScreen(state.settings, state.seedText);
+    const rows = titleRows(screen);
+    const { width: w, height: h } = titleBox(screen);
     const x0 = (SCREEN_WIDTH - w) >> 1;
     const y0 = (SCREEN_HEIGHT - h) >> 1;
     this.box(x0, y0, w, h);
-
-    const centred = (row: number, text: string, fg: string): void => {
-      this.putLine(x0 + ((w - text.length) >> 1), y0 + row, text, fg);
-    };
-    centred(2, lines[0]!, THEME.accent);
-    centred(4, lines[1]!, THEME.fg);
-    centred(5, lines[2]!, THEME.fg);
-    centred(6, lines[3]!, THEME.fg);
-    centred(8, lines[4]!, THEME.zone);
-    this.drawLangRow(x0 + ((w - langRow().length) >> 1), y0 + TITLE_LANG_ROW);
-    centred(TITLE_LAST_ROW, lines[5]!, THEME.accent);
+    rows.forEach((row, i) => this.drawTitleRow(row, x0 + 3, y0 + 1 + i, w - 6));
   }
 
   /**
-   * `L  EN · ES · RU`, with the one that is on lit up.
+   * One row of the start screen: its own colour, its key glyph in the accent,
+   * and the ring option it is on lit up.
    *
-   * The tags are the ISO codes and are never translated: a player looking for
-   * their own language is looking for the two letters they already know, and a
-   * row that renamed itself would be a row they cannot find from the outside.
+   * The mark is found in the row's own text rather than measured out, so the
+   * one thing this method knows about a language or a view is that it is a
+   * string somewhere to the right of the label column.
    */
-  private drawLangRow(x0: number, y: number): void {
-    this.putLine(x0, y, LANG_PREFIX, THEME.fgDim);
-    let x = x0 + LANG_PREFIX.length;
-    LANGS.forEach((lang, i) => {
-      if (i > 0) {
-        this.putLine(x, y, " · ", THEME.fgDim);
-        x += 3;
-      }
-      const tag = lang.toUpperCase();
-      this.putLine(x, y, tag, lang === currentLang() ? THEME.accent : THEME.fgDim);
-      x += tag.length;
-    });
+  private drawTitleRow(row: TitleRow, x: number, y: number, w: number): void {
+    if (row.role === "blank") return;
+    const at = CENTRED.has(row.role) ? x + ((w - row.text.length) >> 1) : x;
+    this.putLine(at, y, row.text, titleColour(row.role));
+    if (row.role === "menu") this.putLine(at, y, row.text.slice(0, 1), THEME.accent);
+    if (row.mark === undefined) return;
+    const found = row.text.indexOf(row.mark, KEY_W + LABEL_W);
+    if (found >= 0) this.putLine(at + found, y, row.mark, THEME.bright);
   }
 
   private drawHelp(game: RoomGame, page: number): void {

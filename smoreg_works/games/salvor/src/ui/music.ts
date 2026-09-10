@@ -184,6 +184,18 @@ export class SalvorMusic {
   }
 
   /**
+   * Sound on or off, from the start screen's own row (`S`, G84).
+   *
+   * Re-enabling has to ask for the track again: `begin` fires once per session
+   * and did nothing the first time if the sound was off, so without this the
+   * key would turn the volume up on silence.
+   */
+  setEnabled(on: boolean): void {
+    this.music.setEnabled(on);
+    if (on && this.started) void this.music.to(TRACK, "immediate");
+  }
+
+  /**
    * Milliseconds from now to the track's next beat, or undefined when there is
    * no track playing to ask.
    *

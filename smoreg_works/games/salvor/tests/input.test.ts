@@ -12,7 +12,6 @@ import {
   missingModuleLine,
   ruleHelp,
   shipHelp,
-  titleLines,
   tugHelp,
   toIntent,
   urlHelp,
@@ -20,7 +19,7 @@ import {
 } from "../src/ui/input.js";
 import { t } from "../src/i18n.js";
 import { findSlot, makeStartingRig, type Rig } from "../src/twist/rig.js";
-import { TITLE_LAST_ROW, helpBody, helpBox, titleBox } from "../src/ui/render.js";
+import { helpBody, helpBox } from "../src/ui/render.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
 import { DEFAULT_LANG, LANGS, setLang } from "../src/i18n.js";
 
@@ -426,40 +425,5 @@ describe("the cards fit their frames", () => {
     for (let i = 0; i < pages; i++) {
       expect(helpFooter(i, pages).length, helpFooter(i, pages)).toBeLessThanOrEqual(helpBox(false).inner);
     }
-  });
-
-  it("keeps the title card on the screen, whole", () => {
-    expect(titleBox().width).toBeLessThanOrEqual(SCREEN_WIDTH);
-    expect(titleBox().height).toBeLessThanOrEqual(SCREEN_HEIGHT);
-    for (const line of titleLines()) expect(line.length, line).toBeLessThanOrEqual(titleBox().inner);
-  });
-
-  it("has a row inside the frame for each of the six title lines", () => {
-    expect(titleLines()).toHaveLength(6);
-    expect(titleLines().length).toBeLessThanOrEqual(titleBox().height - 2);
-    expect(TITLE_LAST_ROW).toBeLessThanOrEqual(titleBox().height - 2);
-    expect(TITLE_LAST_ROW).toBeGreaterThanOrEqual(titleLines().length - 1);
-  });
-
-  it("says what the game is on the title, in the doc's own words", () => {
-    const pitch = titleLines().join(" ");
-    expect(pitch).toContain("modules");
-    // The title is a menu of three and an "any key" behind it. It is the one
-    // screen a player meets before they can read anything, so the three lines
-    // have to be numbered and the keys that are *not* a choice — the language
-    // and the view — must not read as ones that also start the run.
-    expect(pitch).toContain("1 NEW VOYAGE");
-    expect(pitch).toContain("2 TRAINING");
-    expect(pitch).toContain("3 HELP");
-    expect(pitch).toContain("any other key casts off");
-    expect(pitch).toContain("L language");
-    // The three lines of design-doc.md's "Питч": a tug, a drone with no hit
-    // points, and the loop that follows from it — the hit that burns what you
-    // used, and buying the next drone.
-    expect(pitch).toContain("tug");
-    expect(pitch).toContain("no hit points");
-    expect(pitch).toContain("burns what you just used");
-    expect(pitch).toContain("Buy the next one");
-    // And the help is one of the three, so nobody has to press `?` to find `?`.
   });
 });

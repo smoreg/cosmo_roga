@@ -55,6 +55,20 @@ function must(value, what) {
 }
 
 /**
+ * What each hazard is called in the catalogue files.
+ *
+ * The id is not a word — `frost` next to `ящик` and `повреждён` reads as a
+ * missing translation — and the game's own word is an i18n key this generator
+ * has no business resolving. So it is stated here, and `must` makes a hazard
+ * added without one fail the build rather than print its id.
+ */
+const HAZARD_WORD = {
+  frost: "мороз",
+  smoke: "дым",
+  mine: "мина на двери",
+};
+
+/**
  * Every tile the set has, in the order the atlas lays them out.
  *
  * `glyph` is the character the game draws today, and it is what lets a view
@@ -102,6 +116,10 @@ function catalogue() {
     ["crate", "ящик", PALETTE.fg, "X"],
     ["scrap", "лом", PALETTE.soft, "%"],
     ["body", "тело", PALETTE.soft, "†"],
+    // Not amber, whatever an errand feels like: amber means "a decision is
+    // required here" and the set bans it outright (docs/tiles-design.md, 2.4).
+    // A thing you pick up wears what the crate wears.
+    ["parcel", "предмет поручения", PALETTE.fg, "*"],
     ["keycard", "ключ-карта", PALETTE.fg, null],
     ["vented", "вентилированный отсек", PALETTE.bad, "~"],
     ["system", "система корабля", PALETTE.warn, "+"],
@@ -137,7 +155,7 @@ function catalogue() {
     add(
       `hazard.${hazard.id}`,
       "hazard",
-      hazard.id,
+      must(HAZARD_WORD[hazard.id], `a word for hazard ${hazard.id}`),
       must(HAZARDS[hazard.id], `sprite for hazard ${hazard.id}`),
       PALETTE.bad,
       hazard.glyph,
@@ -205,6 +223,151 @@ function atlas(tiles, size, maskOf) {
   });
 
   return { width, height, rows, count: drawn.length, png: encodePng(width, height, pixels), rects };
+}
+
+// ------------------------------------------------- the set as readable text
+//
+// The owner's ask, in his words: «сделай в папке с тайлами текстовое описание
+// тайлам, чтобы переиспользовать их легко, если что». So the set has to be
+// re-drawable, and portable to another project, without opening this generator
+// or the module it writes.
+//
+// `tiles.txt` is the one that does that: every mask printed as the '#' and '.'
+// it is authored as, so a tile can be copied out by hand or fed to another
+// pipeline. `tiles.md` is the same catalogue as a table, for reading.
+//
+// Both are derived from the same `catalogue()` the atlases and the module come
+// from, in the same order, with nothing dated or timed in them — so a second
+// run leaves the tree clean, which `tests/tiles.test.ts` checks by running the
+// generator into a temporary directory and comparing bytes.
+
+/** The group names, in the language the documents are written in. */
+const GROUP_WORD = {
+  machine: "машина",
+  actor: "существо",
+  module: "модуль",
+  relic: "реликвия",
+  thing: "предмет",
+  hazard: "опасность",
+  door: "дверь",
+  zone: "отсек",
+  overlay: "оверлей",
+};
+
+const groupWord = (group) => GROUP_WORD[group] ?? group;
+
+/** `salvor-12.png 24,0 12×12`, or nothing if this size has no drawing. */
+function atlasAt(tile, size, rects) {
+  const at = rects.get(tile.name);
+  if (at === undefined) return undefined;
+  return `salvor-${size}.png ${at.x},${at.y} ${at.w}×${at.h}`;
+}
+
+/**
+ * The masks, as text. The main artefact of the pair: everything else in the
+ * folder is a rendering of what this file states.
+ */
+function textIndex(tiles, small, big) {
+  const withSixteen = tiles.filter((tile) => tile.mask16).length;
+  const head = [
+    "SALVOR — пиксельные тайлы, маски текстом",
+    "",
+    `Тайлов: ${tiles.length}, на сетке ${GRID}×${GRID}. Из них ${withSixteen} нарисованы заново на ${ZONE_GRID}×${ZONE_GRID} — это виды отсеков.`,
+    "",
+    "Перегенерировать:  npm run tiles -w games/salvor",
+    "Формы (источник):  games/salvor/tools/tiles/sprites.mjs",
+    "Индекс машинный:   salvor.json",
+    "Символы для игры:  games/salvor/src/tiles/sprites.ts",
+    "Таблица для чтения:  tiles.md",
+    "",
+    "Маска: '#' — пиксель принадлежит фигуре, '.' — этого пикселя нет.",
+    "Третьего состояния нет и цвета в маске нет: символы красятся currentColor,",
+    "а цвет в справочных PNG приходит из таблиц самой игры.",
+    "",
+    "Поле «знак» — это символ, который рисует терминальный вид и который тайл",
+    "подменяет. Прочерк значит, что тайл не подменяет ничего: вид ставит его сам",
+    "(вид отсека, состояние двери, модуль на стойке). Знак, которого нет ни у",
+    "одного тайла, схема рисует буквой — это законный запасной путь, а не дыра.",
+    "",
+    "Этот файл целиком сгенерирован. Править sprites.mjs, не его.",
+    "",
+  ].join("\n");
+
+  const blocks = tiles.map((tile) => {
+    const lines = [`=== ${tile.name} ===`, `группа  ${groupWord(tile.group)} (${tile.group})`, `слово   ${tile.label}`];
+    lines.push(`знак    ${tile.glyph === null ? "—" : tile.glyph}`);
+    if (tile.role !== undefined) lines.push(`роль    ${tile.role}`);
+    lines.push(`символ  ${idOf(tile.name)}`);
+    const at12 = atlasAt(tile, GRID, small.rects);
+    if (at12 !== undefined) lines.push(`атлас   ${at12}`);
+    if (tile.mask16) {
+      lines.push(`символ  ${zoneIdOf(tile.name)} (${ZONE_GRID}×${ZONE_GRID})`);
+      const at16 = atlasAt(tile, ZONE_GRID, big.rects);
+      if (at16 !== undefined) lines.push(`атлас   ${at16}`);
+    }
+    lines.push("", `${GRID}×${GRID}`, ...tile.mask);
+    if (tile.mask16) lines.push("", `${ZONE_GRID}×${ZONE_GRID}`, ...tile.mask16);
+    return lines.join("\n");
+  });
+
+  return `${head}\n${blocks.join("\n\n")}\n`;
+}
+
+/** The same catalogue as a table, with the rules that govern it on top. */
+function mdIndex(tiles, small, big) {
+  const rows = tiles.map((tile) => {
+    const at12 = atlasAt(tile, GRID, small.rects) ?? "—";
+    const at16 = atlasAt(tile, ZONE_GRID, big.rects) ?? "—";
+    const cells = [
+      `\`${tile.name}\``,
+      tile.glyph === null ? "—" : `\`${tile.glyph}\``,
+      groupWord(tile.group),
+      tile.label,
+      tile.role ?? "—",
+      `\`${idOf(tile.name)}\``,
+      at12.replace(`salvor-${GRID}.png `, ""),
+      at16 === "—" ? "—" : at16.replace(`salvor-${ZONE_GRID}.png `, ""),
+      tile.colour,
+    ];
+    return `| ${cells.join(" | ")} |`;
+  });
+
+  return [
+    "# Тайлы SALVOR — каталог",
+    "",
+    "Сгенерировано `npm run tiles -w games/salvor`. Править нечего: формы лежат в",
+    "`games/salvor/tools/tiles/sprites.mjs`, всё остальное в этой папке — их рендер.",
+    "Маски текстом, по которым тайл можно перерисовать руками, — в **`tiles.txt`**.",
+    "",
+    `**Тайлов: ${tiles.length}**, на сетке ${GRID}×${GRID}. Из них **${tiles.filter((t) => t.mask16).length}** нарисованы заново на ${ZONE_GRID}×${ZONE_GRID}.`,
+    "",
+    "## Правила, которые держат набор",
+    "",
+    "1. **Цвета в арте нет.** Маска — это `#` и `.`, без полутона. Символы в",
+    "   `src/tiles/sprites.ts` — единичные `<rect>` с `fill=\"currentColor\"`, поэтому",
+    "   тайл красит тот, кто его ставит, и дробный масштаб ничего не стоит.",
+    "2. **Янтарь `#e0a458` в арте запрещён полностью.** Он значит «здесь требуется",
+    "   решение» и принадлежит рамке, которую рисует вид, а не картинке внутри неё.",
+    "3. **Нет тайла — рисуется буква.** Словарь марок открыт снизу (`content/cards.ts`",
+    "   кладёт в `marks` что угодно), и плейсхолдера в наборе нет намеренно: один серый",
+    "   квадрат на трёх разных вещах хуже трёх букв.",
+    "4. **Класс раньше вида.** Сначала читается «машина / предмет / система / опасность»,",
+    "   и только потом «именно каратель»: имя всё равно стоит словом в панели.",
+    "5. **Толстый контур, сплошная фигура.** Тайлы стоят в ряд и обязаны оставаться",
+    "   раздельными; штрих в один пиксель на этих размерах сливается.",
+    "",
+    "Колонка `цвет` — только для справочных PNG, и приходит из таблиц игры",
+    "(`content/monsters.ts`, `content/palette.ts`). На экран в `salvor` эти цвета не",
+    "попадают: машина приходит виду одним `--bad`. Подробности и почему так —",
+    "`README.md` в этой же папке.",
+    "",
+    "## Каталог",
+    "",
+    `| имя | знак | группа | слово | роль | символ | ${GRID}×${GRID} в атласе | ${ZONE_GRID}×${ZONE_GRID} в атласе | цвет |`,
+    "|---|---|---|---|---|---|---|---|---|",
+    ...rows,
+    "",
+  ].join("\n");
 }
 
 // ------------------------------------------------------- the module the game uses
@@ -576,6 +739,8 @@ function main() {
     ),
   };
   writeFileSync(join(outDir, "salvor.json"), `${JSON.stringify(index, null, 2)}\n`);
+  writeFileSync(join(outDir, "tiles.txt"), textIndex(tiles, small, big));
+  writeFileSync(join(outDir, "tiles.md"), mdIndex(tiles, small, big));
 
   mkdirSync(dirname(tsOut), { recursive: true });
   writeFileSync(tsOut, tsModule(tiles));
@@ -587,6 +752,7 @@ function main() {
     `tiles: ${tiles.length} icons\n` +
       `  ${tsOut} (${(tsModule(tiles).length / 1024).toFixed(1)} kB of symbols)\n` +
       `  ${outDir} — salvor-${GRID}.png ${small.width}×${small.height} (${small.count}), salvor-${ZONE_GRID}.png ${big.width}×${big.height} (${big.count})\n` +
+      `  ${join(outDir, "tiles.txt")}, tiles.md, salvor.json\n` +
       `  ${contactPath}\n`,
   );
 }

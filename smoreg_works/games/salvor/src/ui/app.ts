@@ -22,9 +22,11 @@ import {
   syncStatus,
   stoppedAt,
   walkEnded,
+  withSettings,
   type AppEffect,
   type AppState,
 } from "./appstate.js";
+import { isSoundKey, rememberSound, storedSound } from "./title.js";
 import { debugBlock } from "./debug.js";
 import { ownFailure } from "./crashguard.js";
 import { isChord, isDebugKey, toIntent, type UiIntent } from "./input.js";
@@ -63,6 +65,13 @@ export class App {
   private web: WebRenderer | undefined;
   private view: View;
   private readonly store: ViewStore | undefined;
+  /**
+   * Whether this session has sound, and the second setting the start screen's
+   * menu names (G84). Kept here beside the view for the same reason: it is a
+   * DOM-layer choice the sim must never be told about, and `?sound=off` pins it
+   * for a link the way `?view=` pins the drawing.
+   */
+  private sound = true;
   private state: AppState = initialState();
   /**
    * The owner's debug overlay (G68): `` ` `` flips it, `?debug=1` starts it
@@ -131,9 +140,13 @@ export class App {
     // on the drawing rather than a fourth view, so `V` still walks three
     // (docs/tiles-design.md, 3) and the terminal ignores it entirely.
     this.tiles = params.get("tiles") === "1";
-    const sound = soundEnabled(window.location.search);
-    this.music = new SalvorMusic(sound);
-    this.sfx = new SalvorSfx(sound);
+    // The URL wins, then what the last session chose, then sound on. Following
+    // somebody's `?sound=off` link deliberately does not write the setting on
+    // this machine — the same contract `?view=` keeps (`ui/view.ts`).
+    this.sound = params.has("sound") ? soundEnabled(window.location.search) : storedSound(this.store) ?? true;
+    this.music = new SalvorMusic(this.sound);
+    this.sfx = new SalvorSfx(this.sound);
+    this.state = initialState({ view: this.view, sound: this.sound, seed: this.game.seed });
     window.addEventListener("keydown", (e) => this.guard(() => this.onKey(e)));
     // Whatever the guards miss — a listener we do not own, a rejected promise —
     // still has to land on the error screen and not in a console nobody opens.
@@ -183,6 +196,14 @@ export class App {
       return;
     }
     this.wakeSound();
+    // After `wakeSound`, not before: pressing the sound key is itself the user
+    // gesture a browser wants, so turning the sound on with it has to be able
+    // to start the track it just asked for.
+    if (isSoundKey(e)) {
+      e.preventDefault();
+      this.toggleSound();
+      return;
+    }
     // Tab moves the browser's focus off the page, and it does so on the screens
     // where every other key is left to the browser as well. Both halves of it —
     // shift+tab included — are the game's on all of them.
@@ -223,10 +244,50 @@ export class App {
   /** The other screen, and the setting remembering it. Nothing about the run moves. */
   private switchView(): void {
     this.guard(() => {
-      this.view = nextView(this.view);
-      rememberView(this.view, this.store);
+      this.cycleView();
       this.redraw();
     });
+  }
+
+  /** Sound on or off, and the setting remembering it. Never a turn, on any screen. */
+  private toggleSound(): void {
+    this.guard(() => {
+      this.flipSound();
+      this.redraw();
+    });
+  }
+
+  /**
+   * The two settings without their key press or their redraw.
+   *
+   * Split out because the start screen's rows reach them by click as well
+   * (`ui/appstate.ts`, effects `view` and `sound`), and a click already has a
+   * redraw of its own further up `apply` — one gesture must not paint twice.
+   */
+  private cycleView(): void {
+    this.view = nextView(this.view);
+    rememberView(this.view, this.store);
+    this.syncSettings();
+  }
+
+  private flipSound(): void {
+    this.sound = !this.sound;
+    rememberSound(this.sound, this.store);
+    this.music.setEnabled(this.sound);
+    this.sfx.setEnabled(this.sound);
+    this.syncSettings();
+  }
+
+  /**
+   * The three things the start screen's menu names, written into the state the
+   * menu is drawn from.
+   *
+   * The shell owns them — `V`, `S`, the URL, the seed of the run it just
+   * made — and the reducer only has to be able to print them, so this is the
+   * one direction the mirror runs (`ui/appstate.ts`, `withSettings`).
+   */
+  private syncSettings(): void {
+    this.state = withSettings(this.state, { view: this.view, sound: this.sound, seed: this.game.seed });
   }
 
   /** The debug overlay, on or off. Not remembered between sessions — `?debug=1` is the link for that. */
@@ -265,10 +326,16 @@ export class App {
         // rebuilt from the tables on the redraw that follows this.
         break;
       case "newRun":
-        this.newRun();
+        this.newRun(false, effect.seed);
         break;
       case "training":
         this.training();
+        break;
+      case "view":
+        this.cycleView();
+        break;
+      case "sound":
+        this.flipSound();
         break;
       case "idle":
       case "pass":
@@ -349,7 +416,11 @@ export class App {
     this.newRun(true);
   }
 
-  private newRun(training = false): void {
+  /**
+   * A fresh run. `chosen` is the seed the start screen was typed with, and
+   * undefined means draw one — which is what `shift+R` has always done.
+   */
+  private newRun(training = false, chosen?: number): void {
     this.stopWalk();
     // Entity ids start again with the new voyage, so what the old one had in
     // sight says nothing about this one. Anything aboard the first compartment
@@ -359,8 +430,12 @@ export class App {
     // The tutorial is one hull and always the same one; everything else is a
     // fresh draw. The seed still goes into the URL either way, so the two are
     // reported and replayed by exactly the same route.
-    const seed = training ? TUTORIAL_SEED : (Math.random() * 0xffffffff) >>> 0;
+    const seed = training ? TUTORIAL_SEED : chosen ?? (Math.random() * 0xffffffff) >>> 0;
     this.game = newGame(seed, training);
+    // The menu's seed row names the run that exists, so it moves with it: a
+    // seed typed on the title is read back off the game rather than off what
+    // was typed, which is what makes a clamped ten-digit number honest.
+    this.syncSettings();
     // Keep the seed reachable for bug reports: players can paste the URL back.
     const url = new URL(window.location.href);
     url.searchParams.set("seed", String(seed));

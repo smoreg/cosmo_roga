@@ -7,6 +7,7 @@
 | `audio/music/main.ogg` — трек `Dead Compartment` | Kirill Semenchenko (smoreg), владелец проекта | написан им в **Suno** (генеративная модель), исходник `main.mp3` не коммитится; в репозиторий кладётся только вырезанная петля | как у репозитория |
 | `audio/sfx/{system,dead,sold}.ogg` | этот проект | паттерны Strudel `games/salvor/music/src/stingers/`, рендер `music/scripts/render.mjs` | как у репозитория |
 | `audio/sfx/*.ogg` (остальные 10) | ElevenLabs Sound Effects, сгенерировано для этого проекта | text-to-sound-effects API, промпты — в `music/scripts/sfx.mjs` | по условиям ElevenLabs на сгенерированное аудио |
+| `games/salvor/assets/tiles/*` и `games/salvor/src/tiles/sprites.ts` | этот проект | маски `#`/`.` в `games/salvor/tools/tiles/sprites.mjs`, рендер `npm run tiles -w games/salvor`; маски текстом — `tiles.txt` | как у репозитория |
 
 Чужого файла — сэмпла, трека, шрифта, спрайта — в сборке нет: всё аудио либо
 сгенерировано для этого проекта, либо написано его автором. Но «всё написано
@@ -26,6 +27,10 @@
 
 ## Влияния (файлов не копировали)
 
+- Правила пиксельного набора (`games/salvor/assets/tiles/`) — по статьям Kyzrati о Cogmind
+  («ASCII vs. Tiles», «Tileset 1.0»), разобранным в `docs/gui-guides.md` §6: 12×12 как нижняя
+  граница, монохром, толстый контур, «класс раньше вида». Взяты правила; ни одного пикселя и ни
+  одного файла оттуда в наборе нет — все маски нарисованы заново.
 - Словарь отсеков и правило стыковки по портам в генераторе корабля
   (`packages/engine/src/rooms/gen/`) — по мотивам *Starship Geomorphs 2.0* Роберта Пирса
   (rpgmobius.com/geomorphs, CC BY-NC 4.0). Ни одна картинка и ни один файл оттуда не

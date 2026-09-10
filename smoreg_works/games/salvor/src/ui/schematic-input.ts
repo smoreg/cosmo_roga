@@ -58,7 +58,7 @@ const CONTENT_KEYS = ["bodies", "crates", "systems", "items"] as const;
  * later without a mark fails the "everything on the deck has one" test rather
  * than quietly vanishing off the map.
  */
-const BUCKET_GLYPH: Readonly<Record<(typeof CONTENT_KEYS)[number], string>> = {
+export const BUCKET_GLYPH: Readonly<Record<(typeof CONTENT_KEYS)[number], string>> = {
   bodies: "†",
   crates: "X",
   systems: "+",
@@ -347,7 +347,7 @@ export function thingsIn(game: RoomGame, room: RoomId): RoomThing[] {
  * rule that a property of a compartment either shows everywhere or does not
  * exist (docs/tasks/G43-fire.md).
  */
-const VENTED_GLYPH = "~";
+export const VENTED_GLYPH = "~";
 
 /**
  * The same, on a hull the drone is not aboard: content belongs to the ship,
@@ -545,6 +545,14 @@ function clipTo(text: string, width: number): string {
   return text.length <= width ? text : text.slice(0, Math.max(0, width));
 }
 
+/**
+ * A system that is already up. Named and exported with the bucket marks
+ * because between them they are the whole of what a card can put on the map
+ * without carrying a glyph of its own, and `tests/tiles-view.test.ts` holds
+ * every one of them to having a drawing.
+ */
+export const ONLINE_GLYPH = "✓";
+
 function asThing(raw: unknown, fallback: string, called: string): RoomThing | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const thing = raw as { glyph?: unknown; name?: unknown; label?: unknown; online?: unknown };
@@ -557,7 +565,7 @@ function asThing(raw: unknown, fallback: string, called: string): RoomThing | un
   // owner, standing on a raised drive with `ALL THREE ONLINE` on the panel:
   // «почему тут +?». The tick is the panel's own mark for the same fact, and it
   // is a glyph rather than a word, so it needs no table.
-  const glyph = thing.online === true ? "✓" : mark;
+  const glyph = thing.online === true ? ONLINE_GLYPH : mark;
   const name =
     typeof thing.name === "string" ? thing.name : typeof thing.label === "string" ? thing.label : called;
   return { glyph, name };

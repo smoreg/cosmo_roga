@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { inflateSync } from "node:zlib";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MONSTERS, ENFORCER } from "../src/content/monsters.js";
@@ -53,6 +56,8 @@ interface Tile {
   readonly label: string;
   readonly glyph: string | null;
   readonly colour: string;
+  /** `behaviour` off the machine's row. Only machines have one. */
+  readonly role?: string;
   readonly symbol: string;
   readonly rects: Record<string, Rect>;
 }
@@ -327,5 +332,143 @@ describe("the reference atlases", () => {
         }
       }
     }
+  });
+});
+
+// ------------------------------------------------------ the set as readable text
+
+/**
+ * `tiles.txt` and `tiles.md`: the set written down so it can be re-drawn or
+ * carried into another project without opening the generator.
+ *
+ * The owner's ask, and it only holds if the text is the same drawing as
+ * everything else in the folder. So the masks in `tiles.txt` are compared to
+ * the atlas pixel for pixel — the same comparison the symbols get above, which
+ * closes the loop: text, symbol and PNG are three renderings of one mask, and
+ * any two of them agreeing is not enough.
+ */
+
+const text = readFileSync(asset("tiles.txt"), "utf8");
+
+/** One tile's block, split back into its fields and its masks. */
+function block(name: string): { fields: string[]; masks: Record<number, string[]> } {
+  const start = text.indexOf(`=== ${name} ===\n`);
+  expect(start, `no block for ${name}`).toBeGreaterThan(-1);
+  const next = text.indexOf("\n=== ", start + 1);
+  const body = text.slice(start, next === -1 ? text.length : next).split("\n");
+  const fields: string[] = [];
+  const masks: Record<number, string[]> = {};
+  let into: string[] | undefined;
+  for (const line of body.slice(1)) {
+    const size = /^(\d+)×\1$/.exec(line.trim());
+    if (size !== null) {
+      into = [];
+      masks[Number(size[1])] = into;
+      continue;
+    }
+    if (/^[.#]+$/.test(line)) {
+      expect(into, `${name}: a mask row before its size`).toBeDefined();
+      into!.push(line);
+      continue;
+    }
+    if (line.trim().length > 0) fields.push(line);
+  }
+  return { fields, masks };
+}
+
+describe("the masks written down as text", () => {
+  it("has a block for every tile the index knows, and none for anything else", () => {
+    const named = [...text.matchAll(/^=== (\S+) ===$/gm)].map((m) => m[1]!);
+    expect(named).toEqual(Object.keys(index.tiles));
+  });
+
+  it("says the same name, mark and role the index says", () => {
+    for (const [name, tile] of Object.entries(index.tiles)) {
+      const { fields } = block(name);
+      const said = (key: string): string | undefined =>
+        fields.find((line) => line.startsWith(key))?.slice(key.length).trim();
+      expect(said("слово"), name).toBe(tile.label);
+      expect(said("знак"), name).toBe(tile.glyph === null ? "—" : tile.glyph);
+      expect(said("роль"), name).toBe(tile.role);
+      expect(fields.some((line) => line.includes(tile.symbol)), name).toBe(true);
+    }
+  });
+
+  it("draws the same picture as the atlas, pixel for pixel", () => {
+    // The whole point of the file: a mask copied out of it and pasted into
+    // another project is the tile, and not an approximation of it.
+    let checked = 0;
+    for (const [name, tile] of Object.entries(index.tiles)) {
+      const { masks } = block(name);
+      for (const size of [TILE_GRID, ZONE_GRID]) {
+        const rect = tile.rects[size];
+        if (rect === undefined) {
+          expect(masks[size], `${name} has a ${size} mask and no ${size} rectangle`).toBeUndefined();
+          continue;
+        }
+        const mask = masks[size];
+        expect(mask, `${name}: no ${size} mask in tiles.txt`).toBeDefined();
+        expect(mask!.length, `${name} at ${size}`).toBe(size);
+        for (let y = 0; y < size; y += 1) {
+          expect(mask![y]!.length, `${name} at ${size}, row ${y}`).toBe(size);
+          for (let x = 0; x < size; x += 1) {
+            const ink = mask![y]![x] === "#";
+            expect(ink, `${name} at ${size}, pixel ${x},${y}`).toBe(opaque(size, rect.x + x, rect.y + y));
+            checked += 1;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(73 * 144);
+  });
+
+  it("says nothing in a mask but ink and holes", () => {
+    for (const name of Object.keys(index.tiles)) {
+      for (const mask of Object.values(block(name).masks)) {
+        for (const row of mask) expect(/^[.#]+$/.test(row), `${name}: ${row}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe("the catalogue as a table", () => {
+  it("has a row for every tile, in the set's own order", () => {
+    const md = readFileSync(asset("tiles.md"), "utf8");
+    const named = [...md.matchAll(/^\| `([\w.-]+)` \|/gm)].map((m) => m[1]!);
+    expect(named).toEqual(Object.keys(index.tiles));
+  });
+
+  it("points at the text file, which is the one a redraw starts from", () => {
+    const md = readFileSync(asset("tiles.md"), "utf8");
+    expect(md).toContain("tiles.txt");
+    expect(md).toContain("npm run tiles -w games/salvor");
+  });
+});
+
+describe("what is committed here", () => {
+  it("is byte for byte what the generator writes today", () => {
+    // Determinism and freshness in one assertion: the generator runs into a
+    // temporary directory and the bytes are compared. A mask edited without
+    // regenerating fails here, and so would anything in the output that
+    // depended on the clock or on the order of a hash map.
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const tmp = mkdtempSync(join(tmpdir(), "salvor-tiles-"));
+    execFileSync(
+      process.execPath,
+      [
+        join(root, "tools", "tiles", "tiles.mjs"),
+        "--out", tmp,
+        "--ts", join(tmp, "sprites.ts"),
+        "--contact", join(tmp, "contact.html"),
+      ],
+      { stdio: "pipe" },
+    );
+    for (const name of ["tiles.txt", "tiles.md", "salvor.json", "salvor-12.png", "salvor-16.png"]) {
+      expect(readFileSync(join(tmp, name)).equals(readFileSync(asset(name))), name).toBe(true);
+    }
+    expect(readFileSync(join(tmp, "sprites.ts"), "utf8")).toBe(
+      readFileSync(join(root, "src", "tiles", "sprites.ts"), "utf8"),
+    );
+    rmSync(tmp, { recursive: true, force: true });
   });
 });

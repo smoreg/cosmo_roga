@@ -9,8 +9,8 @@ import {
   helpHeadings,
   helpPages,
   keyHelp,
-  titleLines,
 } from "../input.js";
+import { titleScreen, type TitleItem } from "../title.js";
 import { HISTORY_ROWS, historyPages, logFades, logText, opensTurn } from "../logline.js";
 import { codexBadge, debugBlockLines, footBlocks, panelBlocks, type PanelLine } from "../panel.js";
 import { NOTHING_LIT, type Lit } from "../pulse.js";
@@ -67,7 +67,7 @@ export function screenHtml(
 ): string {
   const overlay = state.overlay;
   if (overlay === "crash") return card("bad", crashCard(state));
-  if (overlay === "title") return card("", titleCard());
+  if (overlay === "title") return card("title", titleCard(state));
 
   const actions = listOf(game, state);
   const blocks = panelBlocks(game, [], state.cursor);
@@ -219,18 +219,56 @@ function overlayHtml(game: RoomGame, state: AppState): string {
 }
 
 /**
- * The title card: the same six lines the terminal spreads over twelve rows, in
- * the same order and with the same air between them.
+ * The start screen, as panels.
+ *
+ * The same value the terminal lays out in a frame and columns (`ui/title.ts`),
+ * given the one thing a page has that a grid does not: type sizes and a table.
+ * The name is large because a heading can be, the menu is a real three-column
+ * table so the keys line up without padding, and the ring rows mark what they
+ * are on with a class rather than with a bright cell. Not one word of it is
+ * written here — every string came out of `titleScreen` (G84).
  */
-function titleCard(): string[] {
-  const [name, ...rest] = titleLines();
-  const pitch = rest.slice(0, 3).map((line) => `<div class="prose">${esc(line)}</div>`);
+function titleCard(state: AppState): string[] {
+  const screen = titleScreen(state.settings, state.seedText);
   return [
-    `<div class="h">${esc(name ?? "")}</div>`,
-    ...pitch,
-    `<div class="sub">${esc(rest[3] ?? "")}</div>`,
-    `<div class="hint">${esc(rest[4] ?? "")}</div>`,
+    `<div class="title-name">${esc(screen.name)}</div>`,
+    `<div class="title-tag">${esc(screen.tagline)}</div>`,
+    `<div class="head">${esc(screen.menuHead)}</div>`,
+    `<div class="title-menu">${screen.items.map(titleItemHtml).join("")}</div>`,
+    ...screen.hints.map((line) => `<div class="hint">${esc(line)}</div>`),
+    `<div class="head">${esc(screen.keysHead)}</div>`,
+    ...screen.keys.map((line) => `<div class="keys">${esc(line)}</div>`),
+    `<div class="title-foot">${esc(screen.foot)}</div>`,
   ];
+}
+
+/**
+ * One row of the menu, and the one attribute that makes the screen usable with
+ * a mouse.
+ *
+ * `data-line` is what the page's click handler looks for (`ui/web/mount.ts`),
+ * and the start screen shipped without it: the owner plays the graphic view
+ * with a mouse, so for him there was no start screen at all — seven rows he
+ * could read and none he could press. The index is the row's place in the menu,
+ * never the digit it wears, which is exactly the distinction the action list
+ * already draws (`ui/input.ts`, `line` versus `pick`): three of these rows wear
+ * a letter and no digit at all.
+ */
+function titleItemHtml(item: TitleItem, index: number): string {
+  return [
+    `<div class="title-row" data-line="${index}">`,
+    `<span class="title-key">${esc(item.key)}</span>`,
+    `<span class="title-label">${esc(item.label)}</span>`,
+    `<span class="title-value">${titleValueHtml(item)}</span>`,
+    `</div>`,
+  ].join("");
+}
+
+function titleValueHtml(item: TitleItem): string {
+  if (!item.options) return esc(item.value ?? "");
+  return item.options
+    .map((o) => `<span class="${o.on ? "title-on" : "title-off"}">${esc(o.text)}</span>`)
+    .join(`<span class="title-off"> · </span>`);
 }
 
 /**

@@ -540,6 +540,24 @@ export const THINGS = {
     "............",
     "............",
   ),
+  // An errand item: a console to work at, or a charter's package to carry out.
+  // One mark for both (`BUCKET_GLYPH` in ui/schematic-input.ts), told apart by
+  // the word beside it, so the drawing says the class and not the errand — a
+  // carried case, solid where the crate is a hollow box with a brace.
+  parcel: S(
+    "............",
+    "....####....",
+    "...##..##...",
+    ".##########.",
+    ".##########.",
+    ".####..####.",
+    ".####..####.",
+    ".##########.",
+    ".##########.",
+    ".##########.",
+    "............",
+    "............",
+  ),
   keycard: S(
     "............",
     "............",
@@ -1037,20 +1055,24 @@ export const ZONES = {
 // why none of them is drawn with detail it could lose.
 
 export const HAZARDS = {
-  // Eight arms and no body: ice reads as structure with air in it.
+  // A crystal: a solid core, six arms out to the edges, and air between them.
+  // Every stroke is two pixels because the first draft's were one, and a
+  // one-pixel arm is exactly what closes up in a crowd (§6.3) — that draft
+  // degraded into a plus sign at the size the honeycomb draws, which is a mark
+  // this game already uses for something else.
   frost: S(
-    "............",
     ".....##.....",
-    "..#..##..#..",
-    "...#.##.#...",
-    "....####....",
-    ".##########.",
-    ".##########.",
-    "....####....",
-    "...#.##.#...",
-    "..#..##..#..",
     ".....##.....",
-    "............",
+    ".##..##..##.",
+    ".###.##.###.",
+    "..########..",
+    "...######...",
+    "...######...",
+    "..########..",
+    ".###.##.###.",
+    ".##..##..##.",
+    ".....##.....",
+    ".....##.....",
   ),
   // One mass with a lumpy top and a ragged underside. No wisps: a one-pixel
   // trail is exactly the detail that disappears at this size (§6.2).
@@ -1068,20 +1090,23 @@ export const HAZARDS = {
     "............",
     "............",
   ),
-  // A charge with four prongs. Solid through the middle, which is what keeps it
-  // from reading as the frost at a glance.
+  // A charge: a disc with a rim around a solid core, and no arms at all. The
+  // arms went because the frost has them — told apart by silhouette and not by
+  // how many prongs a reader can count at ten pixels. Inset from the edges on
+  // every side, where the frost fills them, which is the difference that
+  // survives when the rim closes up.
   mine: S(
     "............",
-    ".#........#.",
-    "..##....##..",
     "...######...",
     "..########..",
-    ".##########.",
-    ".##########.",
+    ".###....###.",
+    ".##.####.##.",
+    ".##.####.##.",
+    ".##.####.##.",
+    ".##.####.##.",
+    ".###....###.",
     "..########..",
     "...######...",
-    "..##....##..",
-    ".#........#.",
     "............",
   ),
 };
