@@ -142,6 +142,8 @@ export const CARD_MODULE: Readonly<Partial<Record<string, ModuleId>>> = {
   "reactor antechamber": "cell",
   "armory locker": "laser",
   "containment locker": "emp",
+  "instrument bay": "scanner",
+  "welding bay": "welder",
 };
 
 /**
@@ -173,24 +175,33 @@ const DOCKING_BAY: RoomCard = {
 };
 
 /**
- * What the hauler was hauling, and the first credits a run ever banks. The
- * first ship of a voyage only.
+ * What the hull was hauling, and the first credits a run ever banks. The first
+ * ship of a voyage only.
  *
- * The freighter carries no contraband and its crew is one body, so this is the
- * card that makes the first hold a player ever prises open a certainty rather
- * than a draw: two of them, 16 CR, pinned where the tutorial can count on them.
- * The rest of what a freighter is carrying is drawn by weight like every other
- * hull's (`HOLDS`), and the two together are what make the one charter on the
- * board (`SALVAGE 20 CR`) a job rather than a gamble on whether the ship's
- * systems happen to sit outside its one bulkhead.
+ * A starting hull carries no contraband and its crew is a body or two, so this
+ * is the card that makes the first hold a player ever prises open a certainty
+ * rather than a draw: two of them, 16 CR, pinned where the onboarding can count
+ * on them. The rest of what a hull is carrying is drawn by weight like every
+ * other one's (`HOLDS`), and the two together are what make the one charter on
+ * the board (`SALVAGE 20 CR`) a job rather than a gamble on whether the ship's
+ * systems happen to sit outside its bulkheads.
+ *
+ * The kinds are every compartment any of the five starting hulls keeps stock in
+ * (`STARTER_HULLS`), and not the freighter's four — a ferry has no cargo bay
+ * and a probe has no maintenance shop, and either would have opened its voyage
+ * with nothing pinned aboard. Nothing about the freighter or the training hull
+ * moves for it: neither has a compartment of any of the added kinds, so the
+ * card is eligible in exactly the rooms it always was.
  *
  * Pinned, and deliberately not on the corridors: the freighter's single locked
  * door is drawn by `security checkpoint`, which competes for a corridor, and a
- * pinned card in the same room would be the thing that unlocks the ship.
+ * pinned card in the same room would be the thing that unlocks the ship. The
+ * ferry's two gates are kept off these kinds for the same reason
+ * (`BOARDING_GATE`).
  */
 const CARGO_MANIFEST: RoomCard = {
   name: "cargo manifest",
-  kinds: ["cargo", "storage", "lifesupport", "maintenance"],
+  kinds: ["cargo", "storage", "lifesupport", "maintenance", "hab", "workshop", "sensors"],
   when: (ctx) => ctx.shipIndex === 0,
   weight: PINNED,
   maxPerShip: 2,
@@ -227,12 +238,40 @@ const HOLDS: ReadonlyArray<{
   readonly kinds: readonly string[];
   /** Compartments of that kind it may fill. One crate — 8 CR — in each. */
   readonly maxPerShip: number;
+  /**
+   * Crates in each of them, and whether the card is pinned there.
+   *
+   * Both are for the four small hulls a voyage can open on and nothing else. A
+   * nine-compartment barge and a six-compartment probe have a third of the card
+   * slots a freighter has, so a hold drawn by weight lands on them a third as
+   * often — which is how the same deck that pays a freighter 48 CR in front of
+   * its locks paid a probe 24, against a threshold of 30 that
+   * `tests/ship-content.test.ts` holds every class to. A pinned hold of two
+   * crates is the floor those hulls need; everything above it is still drawn.
+   */
+  readonly crates?: number;
+  readonly pinned?: boolean;
 }> = [
   // The bulk hauler: containers, and the run's first lesson that a hold is
   // money. Two apiece rather than three, because `cargo manifest` is already
   // pinned to two of its compartments.
   { hull: "freighter", name: "container stack", kinds: ["cargo", "storage"], maxPerShip: 2 },
   { hull: "freighter", name: "ore drums", kinds: ["maintenance", "lifesupport", "corridor"], maxPerShip: 2 },
+  // The four other hulls a voyage can open on. Each is smaller than the
+  // freighter and has fewer card slots to be paid in, so each holds more per
+  // slot: what `tests/ship-content.test.ts` measures is credits in front of the
+  // locks, and a nine-compartment hull reaches the same band as a fourteen-
+  // compartment one only by being denser.
+  { hull: "barge", name: "container line", kinds: ["cargo"], maxPerShip: 1, crates: 2, pinned: true },
+  { hull: "barge", name: "deck cargo", kinds: ["storage", "maintenance", "corridor"], maxPerShip: 2 },
+  { hull: "ferry", name: "passenger baggage", kinds: ["cargo"], maxPerShip: 1, crates: 2, pinned: true },
+  // Behind the two gates, which is the whole of what a ferry teaches: the
+  // freight worth carrying is on the far side of a door with a key on a body.
+  { hull: "ferry", name: "galley stores", kinds: ["mess", "cryo"], maxPerShip: 2 },
+  { hull: "probe", name: "sample canisters", kinds: ["sensors"], maxPerShip: 1, crates: 2, pinned: true },
+  { hull: "probe", name: "instrument cases", kinds: ["sensors", "storage"], maxPerShip: 2 },
+  { hull: "tender", name: "parts pallets", kinds: ["workshop"], maxPerShip: 1, crates: 2, pinned: true },
+  { hull: "tender", name: "yard stock", kinds: ["maintenance", "storage", "corridor"], maxPerShip: 2 },
   // The research hull: what it was carrying is what it was studying.
   { hull: "laboratory", name: "sample crates", kinds: ["lab", "med", "cryo"], maxPerShip: 3 },
   { hull: "laboratory", name: "supply cache", kinds: ["storage", "sensors", "hydroponics"], maxPerShip: 3 },
@@ -267,14 +306,14 @@ const HOLDS: ReadonlyArray<{
  */
 const HOLD_WEIGHT = 5;
 
-/** The holds, as cards: one crate of freight, eligible on their own hull only. */
+/** The holds, as cards: crates of freight, eligible on their own hull only. */
 const HOLD_CARDS: readonly RoomCard[] = HOLDS.map((hold) => ({
   name: hold.name,
   kinds: hold.kinds,
-  weight: HOLD_WEIGHT,
+  weight: hold.pinned === true ? PINNED : HOLD_WEIGHT,
   maxPerShip: hold.maxPerShip,
   when: (ctx: CardContext) => isClass(ctx, hold.hull),
-  marks: ["cargo"],
+  marks: new Array<string>(hold.crates ?? 1).fill("cargo"),
 }));
 
 /**
@@ -308,6 +347,18 @@ const CHARGING_ALCOVE: RoomCard = {
 };
 
 /**
+ * The starting hulls whose bulkheads are their own, and the one whose living
+ * quarters are, by id.
+ *
+ * Literals, like `tutorial` below and for the same reason: this file is what
+ * `content/derelicts.ts` is built out of, and a deck that imported a ship class
+ * would close the loop ADR 0003 exists to keep open (docs/adr/0003-decoupling.md).
+ * `tests/content.test.ts` holds these strings against the classes they name.
+ */
+const OWN_BULKHEADS = ["barge", "ferry", "probe", "tender"];
+const FERRY = "ferry";
+
+/**
  * The heaviest thing this hull fields, behind a bulkhead. The freighter's one
  * locked door.
  *
@@ -321,7 +372,21 @@ const SECURITY_CHECKPOINT: RoomCard = {
   kinds: ["corridor", "control", "armory", "engineering"],
   weight: 2,
   maxPerShip: 1,
-  weightWhen: (ctx) => (isClass(ctx, "freighter") ? BULKHEAD : 1),
+  // Pinned on the two hulls whose one bulkhead is a promise rather than a draw:
+  // the freighter a voyage opens on, and the training hull a training run opens
+  // on instead (`content/tutorial.ts`, `TUTORIAL_ID`). The id is a literal here
+  // and not an import, because a card that imported a ship class would close
+  // the one loop `zones → cards → derelicts` exists to keep open
+  // (docs/adr/0003-decoupling.md); `tests/tutorial.test.ts` holds the two ends
+  // of the string together.
+  weightWhen: (ctx) => (isClass(ctx, "freighter") || isClass(ctx, "tutorial") ? BULKHEAD : 1),
+  // And off the four other hulls a voyage can open on entirely. Each of them
+  // states its own door plan — the ferry's two gates, the barge's and the
+  // probe's open runs, the tender's welds — and each carries one or two
+  // machines all told, so a lock nobody promised with the heaviest machine of
+  // the band behind it is both a lesson the hull is not teaching and a third of
+  // its head count (`content/derelicts.ts`, `STARTER_HULLS`).
+  when: (ctx) => !OWN_BULKHEADS.some((id) => isClass(ctx, id)),
   marks: ["M", LOCK_ENTRY],
 };
 
@@ -382,13 +447,162 @@ const CONTAINMENT_LOCKER: RoomCard = {
   marks: ["X:emp", "%:emp"],
 };
 
-/** Where the crew was when it stopped being a crew. One of them has a key. */
+/**
+ * Where the crew was when it stopped being a crew. One of them has a key.
+ *
+ * Off the ferry, and only the ferry: that hull promises exactly two locked
+ * doors and places both itself (`BOARDING_GATE`, `MUSTER_POINT`), and a third
+ * drawn by weight would make the two that were promised indistinguishable from
+ * a draw. Every other hull with living quarters still draws this one.
+ */
 const CREW_QUARTERS: RoomCard = {
   name: "crew quarters",
   kinds: ["hab", "cryo", "mess"],
   weight: 2,
   maxPerShip: 1,
+  when: (ctx) => !isClass(ctx, FERRY),
   marks: ["†", "†", "†:key", LOCK_ENTRY],
+};
+
+// ------------------------------------------- what the four starting hulls are
+
+/**
+ * The barge's holds, restrained and stacked: two piles of scrap in a
+ * compartment, up to four compartments of them.
+ *
+ * Eight piles on a nine-compartment hull, against six slots on the rack the
+ * drone flew out in — which is the whole lesson of the class. A sortie aboard a
+ * barge ends when there is nowhere left to put anything, and what the player
+ * learns is that the question was never "is the ship empty" but "what is worth
+ * a slot" (`content/derelicts.ts`, `BARGE`).
+ */
+const STACKED_SCRAP: RoomCard = {
+  name: "stacked scrap",
+  kinds: ["cargo", "storage", "maintenance", "corridor"],
+  // Over `PICKED_CLEAN`'s twelve, which is the only weight in this deck that
+  // means anything: a barge that drew a stripped compartment more often than a
+  // stacked one would be a barge with less aboard than the hull it replaced.
+  weight: 14,
+  maxPerShip: 4,
+  when: (ctx) => isClass(ctx, "barge"),
+  marks: ["%", "%"],
+};
+
+/**
+ * The ferry's two bulkheads, one apiece and each pinned to a compartment kind
+ * the hull has exactly one of, so that "two doors, two keys" is a fact about
+ * the class rather than a draw.
+ *
+ * Two cards and not one card twice: `maxPerShip` is what caps a card, and one
+ * card capped at two lands in the two shallowest compartments it is eligible
+ * in — which on an eight-compartment hull is wherever the freight is. Split in
+ * two, each gate takes the one compartment of its own kind, and the hull's
+ * cargo bay and hab block stay in front of the locks where the manifest can be
+ * reached without a keycard.
+ *
+ * `LOCK_ENTRY` is a request to the generator and not content: it locks the tree
+ * door into this compartment and puts the key in a compartment the drone can
+ * already stand in, where `systems/populate.ts` lays it on a body — the one on
+ * the card, or one it makes. So the keycard is on the dead by construction, and
+ * that is what a ferry teaches.
+ */
+const BOARDING_GATE: RoomCard = {
+  name: "boarding gate",
+  kinds: ["mess"],
+  weight: PINNED,
+  maxPerShip: 1,
+  when: (ctx) => isClass(ctx, FERRY),
+  marks: ["†", LOCK_ENTRY],
+};
+
+const MUSTER_POINT: RoomCard = {
+  name: "muster point",
+  kinds: ["cryo"],
+  weight: PINNED,
+  maxPerShip: 1,
+  when: (ctx) => isClass(ctx, FERRY),
+  marks: ["†", "†", LOCK_ENTRY],
+};
+
+/**
+ * The one locked bulkhead of the barge, the probe and the tender, with the
+ * keycard on a body in front of it.
+ *
+ * Not decoration and not a lesson: it is the only way the third system comes
+ * up. The main terminal is raised with a SPIKE or a keycard
+ * (`content/objectives.ts`, `TERMINAL`), the drone leaves the yard with neither
+ * — its rack is CUTTER, THRUSTERS, SCANNER, PLATING, CELL — and a SPIKE only
+ * turns up as one face of the eleven-way lottery a plain crate is. So a hull
+ * that locks nothing hands out no keycards, and a hull that hands out no
+ * keycards cannot be neutralised, cannot be towed and cannot be sold.
+ *
+ * It was measured before it existed. Over 64 careful voyages apiece, the three
+ * hulls with no lock aboard brought a mean of 1.9 systems online and sold 0.00,
+ * 0.02 and 0.02 hulls; the freighter, whose `security checkpoint` has always
+ * carried a key, brought up 2.34 and sold 0.56, and the ferry, which has two
+ * gates and the most keys of the pool, 2.55 and 0.66. The third system was not
+ * hard on those hulls — it was arithmetically shut, which is the same defect
+ * design-doc.md records for the father's tug and G30 closed there.
+ *
+ * A card of its own rather than `security checkpoint`, because that one also
+ * stands the heaviest machine of the band behind its door, and these three
+ * hulls hold one or two machines in total (`content/derelicts.ts`).
+ * `storage` is the compartment all three have and the ferry has not — the ferry
+ * states its own doors and needs no fourth.
+ */
+const SUPPLY_LOCKER: RoomCard = {
+  name: "supply locker",
+  kinds: ["storage"],
+  // Pinned and not merely heavy. `BULKHEAD` is what makes the freighter's one
+  // door a near-certainty, and a near-certainty is the wrong shape here: the
+  // seeds it misses are not slightly poorer hulls, they are hulls whose third
+  // system cannot be raised at all.
+  weight: PINNED,
+  maxPerShip: 1,
+  when: (ctx) => ["barge", "probe", "tender"].some((id) => isClass(ctx, id)),
+  marks: ["†", "†:key", LOCK_ENTRY],
+};
+
+/**
+ * The probe's one instrument bay: the SCANNER that reads a compartment through
+ * a door, in the hull whose machines see further than the drone does.
+ *
+ * `cover` with it, because the answer this class asks for is a shut door and
+ * something to stand behind rather than a fight — and a hull that asks the
+ * question without offering the answer anywhere aboard is a hull that only
+ * punishes.
+ */
+const INSTRUMENT_BAY: RoomCard = {
+  name: "instrument bay",
+  kinds: ["sensors"],
+  weight: 8,
+  maxPerShip: 1,
+  when: (ctx) => isClass(ctx, "probe"),
+  marks: ["X:scanner", "cover"],
+};
+
+/** The tender's own trade, still on the bench: a welder and the scrap of one. */
+const WELDING_BAY: RoomCard = {
+  name: "welding bay",
+  kinds: ["workshop", "maintenance"],
+  weight: BULKHEAD,
+  maxPerShip: 1,
+  when: (ctx) => isClass(ctx, "tender"),
+  marks: ["m:welder-bot", "%:welder"],
+};
+
+/**
+ * And the racks around it. A crate and a pile of scrap apiece, drawn from the
+ * lottery: a yard tender is where a rack that came off a bad sortie is made
+ * whole again, and what it is holding is modules rather than credits.
+ */
+const SPARES_RACK: RoomCard = {
+  name: "spares rack",
+  kinds: ["workshop", "maintenance", "storage"],
+  weight: 7,
+  maxPerShip: 3,
+  when: (ctx) => isClass(ctx, "tender"),
+  marks: ["X", "%"],
 };
 
 /** A smuggler's false hold: locked, and worth the trouble of opening. */
@@ -506,6 +720,14 @@ export const CARDS: readonly RoomCard[] = [
   HIDDEN_HOLD,
   SPORE_BLOOM,
   TURRET_NEST,
+  // The set pieces of the four hulls a voyage can open on beside the freighter.
+  STACKED_SCRAP,
+  SUPPLY_LOCKER,
+  BOARDING_GATE,
+  MUSTER_POINT,
+  INSTRUMENT_BAY,
+  WELDING_BAY,
+  SPARES_RACK,
   ENGINE_ROOM,
   CORE_ROOM,
   BRIDGE,

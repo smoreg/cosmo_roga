@@ -18,6 +18,7 @@ import {
 } from "@jamrog/engine";
 import { specOfShip } from "../content/derelicts.js";
 import { MODULES, moduleName, type ModuleId } from "../content/modules.js";
+import { CROWD } from "../content/monsters.js";
 import {
   OBJECTIVE_COUNT,
   objectiveName,
@@ -25,7 +26,7 @@ import {
   type ObjectiveSpec,
 } from "../content/objectives.js";
 import { t } from "../i18n.js";
-import { addWreck, registerDamageVeto } from "../twist/rig.js";
+import { addWreck, hostilesIn, registerDamageVeto } from "../twist/rig.js";
 import { raiseAlert } from "./alert.js";
 import { rivalState, type RivalState } from "./rivalstate.js";
 import { roomList, type ShipSystem } from "./populate.js";
@@ -225,13 +226,16 @@ function spawn(game: RoomGame, st: RivalState): void {
 function pickSpawnRoom(game: RoomGame, rng: Rng): RoomId | undefined {
   const ship = game.ship;
   const map = RoomDistance.from(ship, [ship.entry], breachFilter(ship));
-  const deep = ship.rooms.filter((r) => Number.isFinite(map.at(r.id)) && map.at(r.id) >= MIN_SPAWN_DOORS);
+  // Never into a compartment already as full as one gets (`CROWD`): the
+  // rival is one more machine on the panel, and three is the most there are.
+  const open = ship.rooms.filter((r) => hostilesIn(game, r.id).length < CROWD);
+  const deep = open.filter((r) => Number.isFinite(map.at(r.id)) && map.at(r.id) >= MIN_SPAWN_DOORS);
   if (deep.length > 0) return rng.pick(deep).id;
 
   // A hull too small to hold three doors of distance: as far in as it goes.
   let best = 0;
   let rooms: RoomId[] = [];
-  for (const room of ship.rooms) {
+  for (const room of open) {
     const d = map.at(room.id);
     if (!Number.isFinite(d) || d <= 0) continue;
     if (d > best) {

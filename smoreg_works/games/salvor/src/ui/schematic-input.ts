@@ -2,13 +2,22 @@ import { isAlive, portsOf, type Entity, type Room, type RoomGame, type RoomId, t
 import { derelictNameOf } from "../content/derelicts.js";
 import { tugCallsign } from "../content/hints.js";
 import { moduleKind, moduleName } from "../content/modules.js";
+import { machineName } from "../content/monsters.js";
 import { roomName } from "../content/zones.js";
 import { t } from "../i18n.js";
+import { hazardKind } from "../content/hazards.js";
 import { isTug } from "../content/tug.js";
 import { alertState } from "../systems/alert.js";
-import { wrecksOn } from "../twist/rig.js";
+import { doorHazard, hazardKnown, hazardsOf, roomHazard, signsFresh, type HazardRecord } from "../systems/hazardstate.js";
+import { hostilesIn, wrecksOn } from "../twist/rig.js";
 import { strikersNear } from "./strikers.js";
-import type { RoomState, SchematicDoor, SchematicInput, SchematicRoom } from "./schematic.js";
+import type {
+  RoomState,
+  SchematicDoor,
+  SchematicInput,
+  SchematicRoom,
+  SchematicThing,
+} from "./schematic.js";
 
 /**
  * Where the engine's `Ship` meets the picture of it.
@@ -34,6 +43,37 @@ export interface RoomThing {
  * expect, and a save file round-trips through JSON with no types at all.
  */
 const CONTENT_KEYS = ["bodies", "crates", "systems", "items"] as const;
+
+/**
+ * The mark a thing wears when its own record carries none.
+ *
+ * Bodies, crates and errand items are stored as plain records — `{id, searched}`,
+ * `{id, kind}` — because nothing in the rules cares what they look like. The map
+ * did care, and asked `glyph` of them: absent, so `asThing` dropped them and
+ * they were invisible while the action list offered `search the body` twice over
+ * (the owner, 10.09: «нет значков на обыск тел, пусть у всего есть значки»).
+ *
+ * So the bucket a thing came out of names its mark, and the record's own `glyph`
+ * still wins where it has one. Every bucket is covered, and a bucket added
+ * later without a mark fails the "everything on the deck has one" test rather
+ * than quietly vanishing off the map.
+ */
+const BUCKET_GLYPH: Readonly<Record<(typeof CONTENT_KEYS)[number], string>> = {
+  bodies: "†",
+  crates: "X",
+  systems: "+",
+  items: "*",
+};
+
+/** What each bucket's thing is called, when its record does not say. */
+function bucketName(key: (typeof CONTENT_KEYS)[number], raw: unknown): string {
+  const rec = raw as { kind?: unknown; searched?: unknown } | null;
+  const kind = typeof rec?.kind === "string" ? rec.kind : undefined;
+  if (key === "bodies") return t(rec?.searched === true ? "thing.body.searched" : "thing.body");
+  if (key === "crates") return t(kind === "contraband" ? "thing.contraband" : "thing.cargo");
+  if (key === "items") return t(kind === "console" ? "thing.console" : "thing.package");
+  return t("thing.system");
+}
 
 /**
  * The picture on the screen: the hull under the drone's feet, or — standing at
@@ -64,6 +104,7 @@ export function schematicInputOf(
  * a shared empty set rather than a fresh one per frame.
  */
 const NO_ALARM: ReadonlySet<RoomId> = new Set();
+const NO_DOORS: ReadonlySet<number> = new Set();
 
 /**
  * The hull as the drone sees it from inside: sight, memory and the machines.
@@ -83,21 +124,54 @@ function aboardInput(game: RoomGame, alarm: ReadonlySet<RoomId>): SchematicInput
   const struck = new Set(
     here === undefined ? [] : strikersNear(game, here).map((s) => s.room),
   );
+  const data = game.currentShip.data;
+  // What the red line has just named: the compartment and the door it points
+  // at, lit as the move list's destination is, so a player reading «за d19 —
+  // ЦЕХ, там дым» finds d19 and the box on the map without looking for them
+  // (docs/tasks/G83-anonymous-blows.md, 7).
+  const named = signsNamed(game, here);
   const rooms = game.ship.rooms.map((room) => {
     const state = stateOf(game, room, here);
-    const drawn = box(room, state, glyphsOf(game, room, state), hostileWidth(game, room, state));
+    const drawn = box(room, state, thingsOf(game, room, state, data), hostileWidth(game, room, state));
     const lit = alarm.has(room.id) ? { ...drawn, alarm: true as const } : drawn;
-    return struck.has(room.id) ? { ...lit, threat: true as const } : lit;
+    const hit = struck.has(room.id) ? { ...lit, threat: true as const } : lit;
+    return named.rooms.has(room.id) ? { ...hit, target: true as const } : hit;
   });
   const line = isTug(game) ? tugLine(game) : shipLine(game.ship, game.currentShip.data, rooms);
-  return frame(game.ship, rooms, line);
+  return frame(game.ship, rooms, line, named.doors);
+}
+
+/**
+ * The compartments and doors this turn's red lines name, read the way the
+ * line was worded (`systems/hazards.ts`, `hazardLine`): a compartment hazard
+ * is the compartment and the door from here into it, a door trap is the door.
+ */
+function signsNamed(game: RoomGame, here: RoomId | undefined): { rooms: Set<RoomId>; doors: Set<number> } {
+  const rooms = new Set<RoomId>();
+  const doors = new Set<number>();
+  if (here === undefined) return { rooms, doors };
+  const ship = game.ship;
+  for (const rec of signsFresh(game)) {
+    if (rec.door !== undefined) {
+      doors.add(rec.door);
+      continue;
+    }
+    if (rec.room === undefined || rec.room === here) continue;
+    rooms.add(rec.room);
+    const door = ship
+      .doorsOf(here)
+      .filter((d) => ship.other(d, here) === rec.room)
+      .sort((a, b) => a.id - b.id)[0];
+    if (door) doors.add(door.id);
+  }
+  return { rooms, doors };
 }
 
 /** A hull nobody is aboard: what it was left like, and nothing more. */
 function remoteInput(ship: Ship, data: Record<string, unknown>): SchematicInput {
   const rooms = ship.rooms.map((room) => {
     const state: RoomState = room.explored ? "explored" : room.scanned ? "scanned" : "unknown";
-    return box(room, state, state === "unknown" ? "" : remembered(ship, room, state));
+    return box(room, state, state === "unknown" ? marksOf(ship, room, data) : remembered(ship, room, state, data));
   });
   return frame(ship, rooms, shipLine(ship, data, rooms));
 }
@@ -190,20 +264,23 @@ function dockedHull(game: RoomGame): { ship: Ship; data: Record<string, unknown>
   return stored ? { ship: stored.ship, data: stored.data } : undefined;
 }
 
-/** The geometry every drawing shares: the wires between the boxes, and the caption. */
-function frame(ship: Ship, rooms: SchematicRoom[], caption: string): SchematicInput {
+/** The geometry every drawing shares: the wires between the boxes, and the caption. `lit` doors are the ones a red line has just named. */
+function frame(ship: Ship, rooms: SchematicRoom[], caption: string, lit: ReadonlySet<number> = NO_DOORS): SchematicInput {
   const ports = portMap(ship);
   const doors: SchematicDoor[] = ship.doors
     .filter((d) => d.a !== d.b)
-    .map((d) => ({
-      id: d.id,
-      label: d.label,
-      a: d.a,
-      b: d.b,
-      state: d.state,
-      portA: ports.get(portKey(d.a, d.id)) ?? 0,
-      portB: ports.get(portKey(d.b, d.id)) ?? 0,
-    }));
+    .map((d) => {
+      const door: SchematicDoor = {
+        id: d.id,
+        label: d.label,
+        a: d.a,
+        b: d.b,
+        state: d.state,
+        portA: ports.get(portKey(d.a, d.id)) ?? 0,
+        portB: ports.get(portKey(d.b, d.id)) ?? 0,
+      };
+      return lit.has(d.id) ? { ...door, target: true as const } : door;
+    });
 
   const airlock = ship.airlock();
   const input: SchematicInput = { rooms, doors, shipLine: caption };
@@ -211,16 +288,27 @@ function frame(ship: Ship, rooms: SchematicRoom[], caption: string): SchematicIn
   return input;
 }
 
-function box(room: Room, state: RoomState, glyphs: string, hostiles = 0): SchematicRoom {
+/**
+ * A compartment as the drawings take it.
+ *
+ * `glyphs` is spelled out of `things` rather than built beside it, so the
+ * string the terminal prints and the list a tile row walks cannot drift: one
+ * list, joined for the view that needs a string. That is also why `things` may
+ * never be dropped from a box that has contents — the ASCII schematic would go
+ * blank with it.
+ */
+function box(room: Room, state: RoomState, things: readonly SchematicThing[], hostiles = 0): SchematicRoom {
   const out: SchematicRoom = {
     id: room.id,
     label: room.label,
     name: roomName(room),
+    kind: room.kind,
     col: room.col,
     row: room.row,
     state,
-    glyphs,
+    glyphs: things.map((thing) => thing.glyph).join(" "),
   };
+  if (things.length > 0) out.things = things;
   if (hostiles > 0) out.hostiles = hostiles;
   return out;
 }
@@ -236,35 +324,80 @@ function box(room: Room, state: RoomState, glyphs: string, hostiles = 0): Schema
  */
 function hostileWidth(game: RoomGame, room: Room, state: RoomState): number {
   if (state !== "current" && state !== "visible") return 0;
-  // Counted off the same list `glyphsOf` draws from, so the prefix it paints is
-  // exactly the machines and never a character of the scrap behind them.
-  const machines = machinesIn(game, room.id).length;
+  // Counted off the list the contacts block counts (`hostilesIn`), and the
+  // hostile glyphs lead the row (`thingsOf`), so the prefix it paints is
+  // exactly those machines and never a character of anything behind them —
+  // and the badge every view makes of this number is the number the panel's
+  // rule shows (docs/tasks/G83-anonymous-blows.md, 4).
+  const machines = hostilesIn(game, room.id).length;
   return machines === 0 ? 0 : machines * 2 - 1;
 }
 
 /** Everything lying in a compartment, in the order the panel lists it. */
 export function thingsIn(game: RoomGame, room: RoomId): RoomThing[] {
-  return thingsOn(game.ship, room);
+  return thingsOn(game.ship, room, game.currentShip.data);
 }
 
-/** The same, on a hull the drone is not aboard: content belongs to the ship. */
-function thingsOn(ship: Ship, room: RoomId): RoomThing[] {
-  const out: RoomThing[] = wrecksOn(ship, room).map((w) => {
+/**
+ * A compartment the ship has opened to space (`systems/alert.ts`, the
+ * scuttle). Drawn among the compartment's things rather than as a state of the
+ * box, because this one list is what every view and the panel's own block
+ * read: one glyph here is the `~` in the ASCII box, in the SVG box and in the
+ * hexagon, and the line `~ no atmosphere` under the compartment's name — the
+ * rule that a property of a compartment either shows everywhere or does not
+ * exist (docs/tasks/G43-fire.md).
+ */
+const VENTED_GLYPH = "~";
+
+/**
+ * The same, on a hull the drone is not aboard: content belongs to the ship,
+ * and what the drone *knows* of its hazards to the ship's pocket in the store
+ * (`systems/hazardstate.ts`), which is the `data` here.
+ */
+function thingsOn(ship: Ship, room: RoomId, pocket: Record<string, unknown>): RoomThing[] {
+  const out: RoomThing[] = [];
+  if (ship.roomAt(room).hazard === "vented") out.push({ glyph: VENTED_GLYPH, name: t("word.vented") });
+  out.push(...hazardThings(ship, room, hazardsOf(pocket)));
+  out.push(...wrecksOn(ship, room).map((w): RoomThing => {
     const kind = moduleKind(w.kind);
     const what = w.glyph === "X" ? t("word.crate") : t("word.scrap");
     return {
       glyph: w.glyph,
       name: `${what} ${moduleName(kind.id)} ${w.integrity}/${kind.integrity}`,
     };
-  });
+  }));
 
   const data = ship.roomAt(room).data;
   for (const key of CONTENT_KEYS) {
     const list = data[key];
     if (!Array.isArray(list)) continue;
     for (const raw of list) {
-      const thing = asThing(raw);
+      const thing = asThing(raw, BUCKET_GLYPH[key], bucketName(key, raw));
       if (thing) out.push(thing);
+    }
+  }
+  return out;
+}
+
+/**
+ * The hazards a compartment shows: the one filling it, and a trap on any of
+ * its doors, each only once the drone has been told or has scanned it. Drawn
+ * among the compartment's things for the reason the vented mark is — one list
+ * feeds the box in all three views and the line under the compartment's name
+ * — and that is the whole of what "marked in every view" costs a new hazard:
+ * a glyph and a word in its row of `content/hazards.ts`.
+ */
+function hazardThings(ship: Ship, room: RoomId, records: readonly HazardRecord[]): RoomThing[] {
+  if (records.length === 0) return [];
+  const out: RoomThing[] = [];
+  const own = roomHazard(ship, records, room);
+  const kind = own === undefined ? undefined : hazardKind(own.id);
+  if (own && kind && hazardKnown(ship, own)) out.push({ glyph: kind.glyph, name: t(kind.word) });
+  for (const door of ship.doorsOf(room)) {
+    const trap = doorHazard(ship, records, door.id);
+    const trapKind = trap === undefined ? undefined : hazardKind(trap.id);
+    if (trap && trapKind && hazardKnown(ship, trap)) {
+      out.push({ glyph: trapKind.glyph, name: t(trapKind.word, { door: door.label }) });
     }
   }
   return out;
@@ -295,33 +428,80 @@ function stateOf(game: RoomGame, room: Room, here: RoomId | undefined): RoomStat
  * was left lying there, because wreckage stays where it fell and machines do
  * not — except after a pulse, which is a snapshot and says so by being one.
  */
-function glyphsOf(game: RoomGame, room: Room, state: RoomState): string {
-  if (state === "unknown") return "";
-  if (state !== "current" && state !== "visible") return remembered(game.ship, room, state);
+function thingsOf(
+  game: RoomGame,
+  room: Room,
+  state: RoomState,
+  data: Record<string, unknown>,
+): SchematicThing[] {
+  if (state === "unknown") return marksOf(game.ship, room, data);
+  if (state !== "current" && state !== "visible") return remembered(game.ship, room, state, data);
 
-  const machines = machinesIn(game, room.id).map((m) => m.ch);
-  return [...machines, ...homeGlyphs(game.ship, room), ...thingsOn(game.ship, room.id).map((t) => t.glyph)]
-    .join(" ");
+  // The machines carry their own word, which is the one thing a picture of a
+  // machine cannot: `machineName` is what the contact block calls it, so a tile
+  // and the sidebar name the same thing. Hostile ones first, painted as such;
+  // anything else alive in the compartment after them, in plain colour.
+  const hostile = new Set(hostilesIn(game, room.id).map((m) => m.id));
+  const machines = machinesIn(game, room.id)
+    .sort((a, b) => Number(hostile.has(b.id)) - Number(hostile.has(a.id)))
+    .map((m): SchematicThing =>
+      hostile.has(m.id)
+        ? { glyph: m.ch, name: machineName(m.name), hostile: true }
+        : { glyph: m.ch, name: machineName(m.name) },
+    );
+  return [...machines, ...homeThings(game.ship, room), ...thingsOn(game.ship, room.id, data)];
 }
 
 /**
  * A compartment nobody is looking at: what was left lying in it, because
  * wreckage stays where it fell and machines do not — except after a pulse,
- * which is a snapshot and says so by being one.
+ * which is a snapshot and says so by being one. The hazard marks ride along
+ * with the snapshot: a pulse is exactly how a hazard gets known without a
+ * sign, and the snapshot string knows nothing about them.
  */
-function remembered(ship: Ship, room: Room, state: RoomState): string {
-  const home = homeGlyphs(ship, room);
+function remembered(
+  ship: Ship,
+  room: Room,
+  state: RoomState,
+  data: Record<string, unknown>,
+): SchematicThing[] {
+  const home = homeThings(ship, room);
   const snapshot = room.data.snapshot;
   if (state === "scanned" && typeof snapshot === "string") {
-    return [...home, snapshot].filter((s) => s.length > 0).join(" ");
+    const marks = hazardThings(ship, room.id, hazardsOf(data));
+    // The pulse wrote down marks and not names, so a remembered mark is its own
+    // word: whatever stood there has had a chance to walk off, and inventing a
+    // name for it would be the drawing claiming to know more than the sensor did.
+    const seen = snapshot
+      .split(" ")
+      .filter((g) => g.length > 0)
+      .map((glyph): SchematicThing => ({ glyph, name: glyph }));
+    return [...home, ...marks, ...seen];
   }
-  return [...home, ...thingsOn(ship, room.id).map((t) => t.glyph)].join(" ");
+  return [...home, ...thingsOn(ship, room.id, data)];
 }
 
-/** The airlock's own label, drawn in whichever compartment carries it. */
-function homeGlyphs(ship: Ship, room: Room): string[] {
+/**
+ * A compartment the drone knows nothing about — except, sometimes, that there
+ * is a hazard in it. The sign is given from next door before the drone has
+ * ever looked in (`systems/hazards.ts`), and a smoke-filled compartment is
+ * one it *cannot* look into; the mark still has to be on the box, or the red
+ * line points at nothing on the map.
+ */
+function marksOf(ship: Ship, room: Room, data: Record<string, unknown>): SchematicThing[] {
+  return hazardThings(ship, room.id, hazardsOf(data));
+}
+
+/**
+ * The airlock's own label, drawn in whichever compartment carries it.
+ *
+ * Two characters wide and never a picture: `a1` is a door's name, and the set
+ * has no tile for it on purpose — a label that turned into a silhouette would
+ * stop being the thing the player types.
+ */
+function homeThings(ship: Ship, room: Room): SchematicThing[] {
   const airlock = ship.doorsOf(room.id).find((d) => d.state === "airlock");
-  return airlock ? [airlock.label] : [];
+  return airlock ? [{ glyph: airlock.label, name: airlock.label }] : [];
 }
 
 /**
@@ -365,11 +545,12 @@ function clipTo(text: string, width: number): string {
   return text.length <= width ? text : text.slice(0, Math.max(0, width));
 }
 
-function asThing(raw: unknown): RoomThing | undefined {
+function asThing(raw: unknown, fallback: string, called: string): RoomThing | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const thing = raw as { glyph?: unknown; name?: unknown; label?: unknown; online?: unknown };
-  const mark = typeof thing.glyph === "string" && thing.glyph.length > 0 ? thing.glyph[0]! : undefined;
-  if (mark === undefined) return undefined;
+  const own = typeof thing.glyph === "string" && thing.glyph.length > 0 ? thing.glyph[0]! : undefined;
+  const mark = own ?? fallback;
+  if (mark.length === 0) return undefined;
   // A system already up is drawn ticked rather than as the mark that means
   // "work to do here". Three `+` on a hull whose three systems are online is
   // the map telling a player to go and do what they have already done — the
@@ -378,7 +559,7 @@ function asThing(raw: unknown): RoomThing | undefined {
   // is a glyph rather than a word, so it needs no table.
   const glyph = thing.online === true ? "✓" : mark;
   const name =
-    typeof thing.name === "string" ? thing.name : typeof thing.label === "string" ? thing.label : glyph;
+    typeof thing.name === "string" ? thing.name : typeof thing.label === "string" ? thing.label : called;
   return { glyph, name };
 }
 

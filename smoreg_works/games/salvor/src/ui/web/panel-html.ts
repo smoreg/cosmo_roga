@@ -52,6 +52,30 @@ const BAR_RUN = /[▮▯]+/g;
 const EXPOSED = "◀";
 
 /**
+ * From this level the alert row leaves the counters and stands at the top of
+ * the panel, above the rack: the ladder is shutting doors from three up
+ * (`systems/alert.ts`, `DOOR_LEVEL`), and a row that changes the shape of the
+ * page is read where a row in a stack of counters is not.
+ */
+const LIFT_ALERT_FROM = 3;
+
+/**
+ * The alert row, and how far up the gauge it is — read the way `listHeading`
+ * reads its heading: the row opens with the word `panel.alert` opens with, in
+ * whatever language the table is in, and the level is the filled cells of the
+ * bar after it. The RIVAL row carries a bar too, which is why the word is
+ * checked and not the bar alone.
+ */
+function alertLevelOf(text: string): number | undefined {
+  const prefix = t("panel.alert", { gauge: "" }).trim();
+  const row = text.trim();
+  if (prefix.length === 0 || !row.startsWith(prefix)) return undefined;
+  const bar = /[▮▯]+/.exec(row.slice(prefix.length));
+  if (bar === null) return undefined;
+  return [...bar[0]].filter((ch) => ch === "▮").length;
+}
+
+/**
  * The panel, top to bottom.
  *
  * Two of the arguments are differences between frames rather than facts about
@@ -69,7 +93,12 @@ export function htmlOf(
   lit: ReadonlySet<number> = new Set(),
 ): string {
   const heading = listHeading();
-  const groups = ordered(groupsOf(blocks), heading);
+  // The alert, lifted out of the counters and put first once the ship is
+  // shutting doors. Taken out of the blocks before they are grouped, so the
+  // stack it stood in closes up behind it rather than keeping a hole.
+  const alarm = blocks.find((line) => (alertLevelOf(line.text) ?? 0) >= LIFT_ALERT_FROM);
+  const body = alarm === undefined ? blocks : blocks.filter((line) => line !== alarm);
+  const groups = ordered(groupsOf(body), heading);
   const out = groups.map((group) => {
     const rows = group.map((line, j) => lineHtml(line, flash, lit, j === 0));
     // The list belongs to the block its heading is in, under that heading —
@@ -77,6 +106,10 @@ export function htmlOf(
     if (group.some((line) => line.text.trim() === heading)) rows.push(actionsHtml(actions, cursor));
     return `<section class="pb">${rows.join("")}</section>`;
   });
+  if (alarm !== undefined) {
+    const level = alertLevelOf(alarm.text) ?? 0;
+    out.unshift(`<section class="pb web-alarm is-l${level}">${lineHtml(alarm, flash, lit)}</section>`);
+  }
   // The key row, pinned to the corner of the panel — the owner's "подсказки по
   // хоткеям всегда снизу справа". Handed in rather than taken off the end of
   // the blocks: on a full panel the terminal leaves no blank row between it and
@@ -175,6 +208,25 @@ export function exposeHtml(
 }
 
 /**
+ * `[i] 2` in the top-left corner of the map, where the terminal puts it.
+ *
+ * A sibling of `web-expose` rather than something inside the schematic: both
+ * are marks laid over the map at opposite corners, and the grid places them by
+ * the same two properties. The look is written inline because the sheet
+ * (`ui/web/styles.ts`) belongs to another task in this wave — everything it
+ * uses is an existing custom property, so the badge changes colour with the
+ * rest of the page and nothing has to be kept in step in two files.
+ *
+ * Empty when there is nothing unread: the corner goes back to being map.
+ */
+export function codexHtml(badge: string | undefined): string {
+  if (badge === undefined) return "";
+  const place = `style="grid-column:1;grid-row:2;align-self:start;justify-self:start;margin:8px 0 0 12px;z-index:2;pointer-events:none"`;
+  const chip = `style="border:1px solid var(--accent);background:var(--amber-wash);border-radius:2px;padding:2px 8px;color:var(--accent);font-size:12px;font-weight:600;letter-spacing:.06em"`;
+  return `<div class="web-codex" ${place}><div ${chip}>${esc(badge)}</div></div>`;
+}
+
+/**
  * One line of the panel, in the colour the panel picked for it.
  *
  * `panelColour` is the authority — it already knows that a system's own colour
@@ -199,6 +251,11 @@ export function lineHtml(
   if (slot !== undefined) classes.push("slot");
   if (line.text.includes(EXPOSED)) classes.push("is-exposed");
   if (hit) classes.push("hit");
+  // The alert row carries its level as a class, so the sheet can colour the
+  // ladder: nothing below three, amber at three and four, red and blinking at
+  // the top (`styles.ts`, `.web-alert`).
+  const alert = alertLevelOf(line.text);
+  if (alert !== undefined) classes.push("web-alert", `is-l${alert}`);
   return `<div class="${classes.join(" ")}" style="color:${colour}">${bars(line.text)}</div>`;
 }
 
@@ -224,16 +281,33 @@ function bars(text: string): string {
 /**
  * The numbered list as buttons.
  *
- * A click is the digit: `data-pick` is the index into `roomActions(game)`, which
- * is exactly what `{ kind: "pick", index }` carries, so the mouse reaches the
- * reducer through the one door the keyboard uses and there is no second set of
- * rules about what a line does. A line that cannot be pressed stays pressable
- * for the same reason its digit does — pressing it prints why, and costs no turn.
+ * A click is the row: `data-line` is the index into the list as it is drawn,
+ * and `{ kind: "line", index }` carries it to the reducer, which does that row.
+ * It used to carry the same number as `{ kind: "pick" }`, which is a *digit* —
+ * true on the compartment's own list and false one level down, where `0` is the
+ * way back however few entries there are. A click on `back` in a list of five
+ * sent 5, no row wore that digit, and the page said "nothing on that line" and
+ * stayed inside the level (docs/tug-menu-audit.md, defect 6). A line that
+ * cannot be pressed stays pressable for the same reason its digit does —
+ * pressing it prints why, and costs no turn.
  *
  * Every entry gets a button, including the ones past the tenth that the terminal
  * can only count: the panel scrolls here, and a list that scrolls has no reason
  * to hide its own tail.
  */
+/**
+ * The debug overlay (G68), drawn as its own section under the log — never
+ * inside `htmlOf`'s grouped blocks, so it cannot be mistaken for one of them
+ * or picked up by `ordered()`. Empty input means the flag is off: the section
+ * is left out of the page entirely rather than rendered blank, which is what
+ * `tests/debug.test.ts` checks for.
+ */
+export function debugHtml(lines: readonly PanelLine[]): string {
+  if (lines.length === 0) return "";
+  const rows = lines.map((line) => lineHtml(line)).join("");
+  return `<section class="pb web-debug">${rows}</section>`;
+}
+
 function actionsHtml(actions: readonly Action[], cursor: number): string {
   if (actions.length === 0) return "";
   const rows = actions.map((action, i) => {
@@ -248,7 +322,7 @@ function actionsHtml(actions: readonly Action[], cursor: number): string {
     const mark = i === cursor ? '<span class="cursor">▸</span>' : "";
     return [
       head,
-      `<button type="button" class="${classes.join(" ")}" data-pick="${i}">`,
+      `<button type="button" class="${classes.join(" ")}" data-line="${i}">`,
       `<span class="key">${mark}${esc(action.key)}</span>`,
       `<span class="label">${esc(action.label)}</span>`,
       extra,

@@ -9,7 +9,8 @@ import { Faction, type Entity } from "../sim/entity.js";
  * The engine knows no word of any game: `kind`, `name`, `hazard` and the card
  * `marks` are strings it carries and never reads (the one exception is the
  * hazard `"vented"`, which noise has to understand). A locked door names its
- * key by a string id; what a key *is* belongs to the game.
+ * key by a string id, a trapped door names its trap the same way; what a key
+ * or a trap *is* belongs to the game.
  */
 
 export type RoomId = number;
@@ -38,6 +39,14 @@ export interface Room {
   cover: boolean;
   /** Content-defined; the engine only ever compares it to "vented". */
   hazard: string;
+  /**
+   * No line of sight in or out of it. Set by the game on a compartment it has
+   * filled with something that blinds — smoke, darkness — and read by
+   * `rooms/sight.ts` alone; what it is called is the game's business, the way
+   * `hazard` is. Optional, so a ship stored by an older build comes back as it
+   * was.
+   */
+  opaque?: boolean;
   /** Stood here / seen by a sensor pulse. */
   explored: boolean;
   scanned: boolean;
@@ -56,6 +65,12 @@ export interface Door {
   state: DoorState;
   /** Id of the key that opens it, when `locked`. A string; the game owns its meaning. */
   key?: string;
+  /**
+   * Something waiting on the door for whoever goes through it. A string the
+   * game owns the meaning of, exactly as `key` is: the engine carries it and
+   * never reads it.
+   */
+  trap?: string;
 }
 
 /** The passability facts about an actor — all `Ship.passable` ever reads. */

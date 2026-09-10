@@ -172,6 +172,9 @@ describe("a ghost is the rack it wears", () => {
     expect(bestAttack(rigWith(["cutter", "laser"]))).toEqual([...MODULES.laser.attack!]);
     expect(bestAttack(rigWith(["emitter"]))).toEqual([...MODULES.emitter.attack!]);
     expect(bestAttack(rigWith(["plating", "scanner"]))).toEqual([1, 1, 0]);
+    // A relic blade is the best swing there is, and a ghost wearing one swings it.
+    expect(bestAttack(rigWith(["cutter", "blade", "laser"]))).toEqual([...MODULES.blade.attack!]);
+    expect(ghostKind(rigWith(["blade"])).damage).toEqual([2, 6, 0]);
   });
 
   it("spawns with the numbers its kind says", () => {

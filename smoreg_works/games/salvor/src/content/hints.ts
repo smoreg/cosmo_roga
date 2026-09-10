@@ -86,6 +86,24 @@ export const HINT_LINE_KEYS = {
    * is paid until it is back out through the airlock (docs/owner-queue.md, 5).
    */
   payout: "hint.payout",
+  // The training run's own chain, said only aboard the training hull and only
+  // in this order (`content/tutorial.ts`, `systems/tutorial.ts`). They live in
+  // this table rather than in a second one of their own so that "once a run"
+  // and "survives a save" are the same mechanism for every line the game says.
+  /** Aboard: everything the drone can do is the numbered list. */
+  "tutorial.enter": "hint.tutorial.enter",
+  /** How to see further than the compartment you are standing in. */
+  "tutorial.scan": "hint.tutorial.scan",
+  /** The first machine, and what a fight costs a rack. */
+  "tutorial.contact": "hint.tutorial.contact",
+  /** The one locked bulkhead, and where its keycard is. */
+  "tutorial.door": "hint.tutorial.door",
+  /** The first of the ship's three systems, and what all three are worth. */
+  "tutorial.system": "hint.tutorial.system",
+  /** The airlock: nothing is paid on the inside of it. */
+  "tutorial.airlock": "hint.tutorial.airlock",
+  /** The hull sold, the next drone priced, and the end of the lesson. */
+  "tutorial.sale": "hint.tutorial.sale",
 } as const satisfies Record<string, Key>;
 
 export type HintId = keyof typeof HINT_LINE_KEYS | "sold";
@@ -200,21 +218,20 @@ function hintsOf(player: Entity): Record<string, boolean> {
 }
 
 /**
- * Say every onboarding line at once, in the order a run meets them.
+ * Open a training run: one line saying what the first hull is for.
  *
- * The second line of the title menu. The game already knows how to explain
- * itself — five one-shot lines, each fired the turn the thing it is about first
- * happens (`ONBOARDING_HINTS`) — and that is the right way round for a player
- * who is playing. It is the wrong way round for a player who has not started
- * yet and wants to be told what this is.
+ * The second line of the title menu. It used to say all five onboarding lines
+ * at once, on turn zero, and mark them read — five rules in a block before
+ * anything had happened, which is the shape of explanation this game was
+ * designed against. What replaced it is a ship (`content/tutorial.ts`): the
+ * itinerary's first hull is one built to be learned on, and seven lines are
+ * said on it, each on the turn its subject is first standing in front of the
+ * drone (`systems/tutorial.ts`).
  *
- * So training is the same five lines, said up front, and then the run is an
- * ordinary run: nothing is easier, nothing is scripted, and every line is one
- * the game would have said anyway. Marking them as said is deliberate — a
- * player who has just read the rule about EXPOSED does not need it again the
- * first time a module takes a hit.
+ * The five ordinary hints are untouched and unmarked: on the training hull they
+ * fire when they fire, like they do in every other run, because a training run
+ * *is* a run and nothing about it is easier.
  */
 export function startTraining(game: RoomGame): void {
   game.log.add(t("hint.training"), game.schedule.time, "warn", "hint.training");
-  for (const id of ONBOARDING_HINTS) hint(game, id);
 }

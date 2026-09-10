@@ -12,6 +12,7 @@ import {
 } from "../src/rooms/behaviours.js";
 import { Faction, makeEntity, type Entity } from "../src/sim/entity.js";
 import { Rng } from "../src/sim/rng.js";
+import { applyStatus } from "../src/sim/status.js";
 import type { RoomId, Ship } from "../src/rooms/graph.js";
 import { shipFromText, type ShipFixture } from "../src/testing/roomfixtures.js";
 
@@ -341,6 +342,23 @@ describe("turret", () => {
 
     const unarmed = machine(ship.room("r2").id);
     expect(BEHAVIOURS.turret(world(ship, player, unarmed), unarmed)).toEqual({ kind: "wait" });
+  });
+
+  it("holds its fire while stunned, and never staggers off its mount", () => {
+    // Every walking behaviour blunders through a door when seized; a turret
+    // has no door to blunder through, so a stun is a turn of silence. Without
+    // this the one machine a stun is most worth spending on was the one it
+    // did nothing to.
+    const { ship } = shipFromText(TURRET_SHIP);
+    const player = drone(ship.room("r2").id);
+    const self = machine(ship.room("r2").id, { range: 1 });
+    applyStatus(self, "stun", 2);
+    const w = world(ship, player, self);
+    expect(BEHAVIOURS.turret(w, self)).toEqual({ kind: "wait" });
+    expect(self.room).toBe(ship.room("r2").id);
+
+    self.statuses = [];
+    expect(BEHAVIOURS.turret(w, self)).toEqual({ kind: "shoot", target: player });
   });
 });
 

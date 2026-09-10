@@ -23,17 +23,21 @@ export class WebRenderer {
   private readonly root: HTMLElement;
   /** Which of the two drawings the map half shows. Set by `V`, nothing else. */
   private map: MapKind = "graph";
+  /** Whether the honeycomb wears its hull (G81). `?hull=0` turns it off; nothing else does. */
+  private hull = true;
+  /** Whether a glyph on the schematic is drawn as a tile (G80). `?tiles=1` turns it on. */
+  private tiles = false;
   /** The panel's memory between frames, so a module that just took a blow flashes. */
   private flash: Flash = NO_FLASH;
 
-  constructor(mount: HTMLElement, pick: (index: number) => void, enter: (room: number) => void) {
+  constructor(mount: HTMLElement, line: (index: number) => void, enter: (room: number) => void) {
     injectStyle(mount.ownerDocument);
     this.root = mount.ownerDocument.createElement("div");
     this.root.className = WEB_ROOT_CLASS;
     mount.appendChild(this.root);
     this.root.addEventListener("click", (e) => {
       const index = indexOf(e.target);
-      if (index !== undefined) return pick(index);
+      if (index !== undefined) return line(index);
       // A compartment on the schematic: the same thing its line of the move
       // list does. The list is checked first because a button never sits
       // inside a box, and a box must not swallow a click meant for a row.
@@ -47,13 +51,32 @@ export class WebRenderer {
     this.map = map;
   }
 
-  draw(game: RoomGame, state: AppState, lit: Lit = NOTHING_LIT): void {
+  /** The drawn hull under the honeycomb, on or off. A URL setting, like the view. */
+  setHull(on: boolean): void {
+    this.hull = on;
+  }
+
+  /** Pictures where the glyphs go, on or off. A URL setting, like the hull. */
+  setTiles(on: boolean): void {
+    this.tiles = on;
+  }
+
+  draw(game: RoomGame, state: AppState, lit: Lit = NOTHING_LIT, debug = false): void {
     // The error screen is drawn without touching the game: whatever broke may
     // well be the ship or the rig, and this is the one frame that has to render.
     if (state.overlay !== "crash") {
       this.flash = trackFlash(this.flash, rackIntegrity(game.player), game.schedule.time);
     }
-    this.root.innerHTML = screenHtml(game, state, this.flash.slots, lit, this.map);
+    this.root.innerHTML = screenHtml(
+      game,
+      state,
+      this.flash.slots,
+      lit,
+      this.map,
+      debug,
+      this.hull,
+      this.tiles,
+    );
     // The newest line, not the oldest. The whole screen is rebuilt every frame,
     // so the log's scroll starts at the top every time — and the top of a log
     // is the part a player has already read. The history stays scrollable above
@@ -73,11 +96,12 @@ export class WebRenderer {
 }
 
 /**
- * Which line of the action list was clicked, if any. The number is on the
+ * Which line of the action list was clicked, if any: its position in the list
+ * as drawn, not the digit it happens to be wearing. The number is on the
  * button, so a click on the label inside one still finds it.
  */
 function indexOf(target: EventTarget | null): number | undefined {
-  return attr(target, "data-pick");
+  return attr(target, "data-line");
 }
 
 /** The whole number carried by the nearest ancestor with that attribute. */

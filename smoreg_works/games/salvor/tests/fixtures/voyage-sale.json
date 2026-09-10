@@ -19,7 +19,7 @@
     {
       "kind": "act",
       "verb": "salvage",
-      "target": 1018
+      "target": 1017
     },
     {
       "kind": "go",
@@ -37,35 +37,44 @@
     },
     {
       "kind": "go",
-      "door": 6
+      "door": 7
     },
     {
       "kind": "act",
-      "verb": "work",
-      "target": 1008
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1008
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1008
+      "verb": "take",
+      "target": 1013
     },
     {
       "kind": "go",
-      "door": 13
-    },
-    {
-      "kind": "attack",
-      "target": 3
+      "door": 8
     },
     {
       "kind": "act",
       "verb": "salvage",
-      "target": 1019
+      "target": 1015
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1016
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1014
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1014
+    },
+    {
+      "kind": "go",
+      "door": 8
+    },
+    {
+      "kind": "go",
+      "door": 11
     },
     {
       "kind": "act",
@@ -78,17 +87,27 @@
     },
     {
       "kind": "act",
-      "verb": "take",
+      "verb": "carry",
+      "target": 1006
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1005
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1005
+    },
+    {
+      "kind": "act",
+      "verb": "work",
       "target": 1005
     },
     {
       "kind": "go",
-      "door": 14
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1013
+      "door": 4
     },
     {
       "kind": "attack",
@@ -97,30 +116,6 @@
     {
       "kind": "attack",
       "target": 4
-    },
-    {
-      "kind": "attack",
-      "target": 4
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1014
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1020
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1012
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1012
     },
     {
       "kind": "go",
@@ -128,23 +123,7 @@
     },
     {
       "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "attack",
-      "target": 5
-    },
-    {
-      "kind": "attack",
-      "target": 5
-    },
-    {
-      "kind": "attack",
-      "target": 5
-    },
-    {
-      "kind": "attack",
-      "target": 5
+      "door": 7
     },
     {
       "kind": "go",
@@ -162,8 +141,8 @@
     "deaths": 0,
     "sold": 1,
     "charters": 0,
-    "kills": 4,
-    "turns": 35,
+    "kills": 2,
+    "turns": 30,
     "rig": {
       "slots": [
         {
@@ -172,14 +151,13 @@
         },
         {
           "kind": "thrusters",
-          "integrity": 11
+          "integrity": 12
         },
         null,
         {
           "kind": "plating",
-          "integrity": 12,
-          "base": 16,
-          "bonus": 1
+          "integrity": 14,
+          "base": 16
         },
         {
           "kind": "cell",
@@ -189,10 +167,9 @@
         null
       ],
       "exposed": null,
-      "burnedCount": 3,
+      "burnedCount": 2,
       "burned": [
         "welder",
-        "emitter",
         "scanner"
       ],
       "scars": [
@@ -201,10 +178,10 @@
         "scanner",
         null,
         null,
-        "emitter"
+        "welder"
       ]
     }
   },
-  "fingerprint": "bb94bd20",
-  "codeSha": "ab9c03f44a359d131d605c28079a522cc019dd4c"
+  "fingerprint": "52d6a1a6",
+  "codeSha": "f89a64674454cd6212217c4897fe73f7f0bb0443"
 }

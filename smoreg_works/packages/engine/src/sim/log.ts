@@ -12,7 +12,12 @@ export interface LogLine {
   text: string;
   /** Game turn the line was produced on, for "(x2)" folding and greying out. */
   turn: number;
-  tone: "plain" | "good" | "bad" | "warn";
+  /**
+   * `alarm` is the loud one: a whole line on a red ground that does not fade
+   * with the turn, for a danger the player must not walk into unread. The
+   * engine never writes it; a game decides what deserves it.
+   */
+  tone: "plain" | "good" | "bad" | "warn" | "alarm";
   count: number;
   /**
    * What happened, as an opaque id the writer chose — never the wording.

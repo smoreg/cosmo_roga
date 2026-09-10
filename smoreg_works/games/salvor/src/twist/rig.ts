@@ -19,8 +19,10 @@ import {
   BARE_CHASSIS,
   MAX_GRAFT,
   SCRAP_INTEGRITY,
+  SHOCK_STUN_TURNS,
   STARTING_MODULES,
   hitLine,
+  isRelic,
   moduleBurnLine,
   moduleKind,
   moduleName,
@@ -31,6 +33,7 @@ import type { Key } from "../content/i18n/keys.js";
 import { specOfShip } from "../content/derelicts.js";
 import { machineByName, machineName } from "../content/monsters.js";
 import { PALETTE } from "../content/palette.js";
+import { roomName } from "../content/zones.js";
 import { t } from "../i18n.js";
 import { capitalize, entityLabel } from "../names.js";
 import { jammed } from "../systems/jam.js";
@@ -123,6 +126,8 @@ export interface DerivedStats {
   noisePenalty: number;
   /** Non-zero while a BAFFLE hides the drone one door out. See systems/sight.ts. */
   machineFovPenalty: number;
+  /** Flat armour off every blow: the lattice's one point, or 0. */
+  defense: number;
 }
 
 export interface RepairResult {
@@ -162,10 +167,15 @@ export function rigFrom(slots: ReadonlyArray<Slot | null>, size = SLOT_COUNT): R
   };
 }
 
-function makeSlot(kind: ModuleId, integrity: number): Slot {
+/**
+ * `charges` is what this particular copy has left, when whoever is handing it
+ * over knows — the hold, the drone's arms, a pile off a rack. Absent means the
+ * kind's own count: a crate is full, and so is a machine's scrap.
+ */
+function makeSlot(kind: ModuleId, integrity: number, charges?: number): Slot {
   const k = moduleKind(kind);
   const slot: Slot = { kind, integrity: clamp(integrity, 1, k.integrity) };
-  if (k.charges !== undefined) slot.charges = k.charges;
+  if (k.charges !== undefined) slot.charges = charges ?? k.charges;
   return slot;
 }
 
@@ -182,13 +192,34 @@ export function findSlot(rig: Rig, kind: ModuleId): number | null {
   return null;
 }
 
+/**
+ * The same question asked the way a rule asks it: this kind, or a relic that
+ * answers for it (`ModuleKind.countsAs`). A blade is a cutter to a bulkhead
+ * and lattice is plating to a blow; neither is a cutter or plating to the
+ * scrap that would graft onto one, which is why `findSlot` stays exact.
+ */
+export function findSlotAs(rig: Rig, kind: ModuleId): number | null {
+  const exact = findSlot(rig, kind);
+  if (exact !== null) return exact;
+  for (let i = 0; i < rig.slots.length; i++) {
+    const slot = rig.slots[i];
+    if (slot && moduleKind(slot.kind).countsAs === kind) return i;
+  }
+  return null;
+}
+
 /** Put a salvaged module in the first empty slot. Returns its index. */
-export function install(rig: Rig, kind: ModuleId, integrity: number): number | undefined {
+export function install(rig: Rig, kind: ModuleId, integrity: number, charges?: number): number | undefined {
   const i = rig.slots.findIndex((s) => s === null);
   if (i < 0) return undefined;
-  rig.slots[i] = makeSlot(kind, integrity);
-  rig.scars[i] = null;
+  installAt(rig, i, kind, integrity, charges);
   return i;
+}
+
+/** Bolt a module into this slot, whatever was there. The swap's half. */
+function installAt(rig: Rig, i: number, kind: ModuleId, integrity: number, charges?: number): void {
+  rig.slots[i] = makeSlot(kind, integrity, charges);
+  rig.scars[i] = null;
 }
 
 /**
@@ -206,13 +237,15 @@ export function removeSlot(rig: Rig, i: number): Slot | undefined {
 
 /**
  * Mend the most damaged intact module, never past its own full integrity.
- * `exclude` keeps the welder from welding itself.
+ * `exclude` keeps the welder from welding itself. A relic is never the answer:
+ * nothing in the game mends one (`ModuleKind.relic`), so a rack whose only
+ * damage is a relic has nothing to repair.
  */
 export function repair(rig: Rig, exclude?: number, amount = 1): RepairResult | undefined {
   let best: number | null = null;
   for (let i = 0; i < rig.slots.length; i++) {
     const slot = rig.slots[i];
-    if (!slot || i === exclude) continue;
+    if (!slot || i === exclude || isRelic(slot.kind)) continue;
     if (slot.integrity >= capOf(slot)) continue;
     if (best === null || slot.integrity < rig.slots[best]!.integrity) best = i;
   }
@@ -231,7 +264,7 @@ export function repair(rig: Rig, exclude?: number, amount = 1): RepairResult | u
  */
 export function graft(rig: Rig, slot: number): RepairResult | undefined {
   const s = rig.slots[slot];
-  if (!s || (s.bonus ?? 0) >= MAX_GRAFT) return undefined;
+  if (!s || isRelic(s.kind) || (s.bonus ?? 0) >= MAX_GRAFT) return undefined;
   s.bonus = (s.bonus ?? 0) + 1;
   s.integrity += 1;
   return { slot, kind: s.kind, integrity: s.integrity, max: capOf(s) };
@@ -294,14 +327,42 @@ function actExposure(game: RoomGame, rig: Rig, cmd: Extract<RoomCommand, { kind:
   // this reads as hands-on work — which the last turn of it was anyway.
   if (cmd.verb === "work") {
     const tool = cmd.target === undefined ? undefined : hackTargetAt(game, cmd.target)?.expose;
-    return findSlot(rig, tool ?? "plating");
+    return findSlotAs(rig, tool ?? "plating");
   }
-  return findSlot(rig, VERB_MODULE[cmd.verb] ?? "plating");
+  // A swap is the drone picking a crate up with its hands, like a carry.
+  if (cmd.verb === "swap") return findSlotAs(rig, "plating");
+  return findSlotAs(rig, VERB_MODULE[cmd.verb] ?? "plating");
 }
 
 /** Swinging risks the weapon, or the thrusters that carried the ram. */
 function attackExposure(rig: Rig): number | null {
-  return findSlot(rig, "cutter") ?? findSlot(rig, "laser") ?? findSlot(rig, "thrusters");
+  return meleeSlot(rig) ?? findSlot(rig, "thrusters");
+}
+
+/**
+ * The slot the drone swings with: the best melee weapon in the rack by
+ * expected roll, which is the same choice `derivedStats` makes for the dice.
+ * A shot is not a swing — the EMITTER carries a range and is never this.
+ */
+function meleeSlot(rig: Rig): number | null {
+  let best: number | null = null;
+  let bestRoll = -1;
+  for (let i = 0; i < rig.slots.length; i++) {
+    const slot = rig.slots[i];
+    if (!slot) continue;
+    const kind = moduleKind(slot.kind);
+    if (!kind.attack || (kind.range ?? 0) > 0) continue;
+    const roll = expectedRoll(kind.attack);
+    if (roll > bestRoll) {
+      best = i;
+      bestRoll = roll;
+    }
+  }
+  return best;
+}
+
+function expectedRoll(a: readonly [number, number, number]): number {
+  return (a[0] * (a[1] + 1)) / 2 + a[2];
 }
 
 // -------------------------------------------------------------------- damage
@@ -345,9 +406,16 @@ function chain(rig: Rig, tags: readonly string[]): number[] {
 
   const out: number[] = [];
   if (first !== null) out.push(first);
-  const plating = findSlot(rig, "plating");
+  // Plating, or the lattice standing in for it: armour is whatever counts as
+  // armour, to the chain and to the crawler that eats through it alike.
+  const plating = findSlotAs(rig, "plating");
   if (plating !== null && !out.includes(plating)) out.push(plating);
-  return tags.includes("corrosive") ? out.filter((i) => rig.slots[i]?.kind !== "plating") : out;
+  return tags.includes("corrosive") ? out.filter((i) => !isArmour(rig.slots[i])) : out;
+}
+
+function isArmour(slot: Slot | null | undefined): boolean {
+  if (!slot) return false;
+  return slot.kind === "plating" || moduleKind(slot.kind).countsAs === "plating";
 }
 
 /** Weakest intact module; ties go to the lower slot. */
@@ -395,7 +463,10 @@ function burnOut(rig: Rig, i: number): void {
  * and the sight model keep reading plain fields and know nothing about modules.
  */
 export function derivedStats(rig: Rig): DerivedStats {
-  const attack = intact(rig, "laser")?.attack ?? intact(rig, "cutter")?.attack ?? BARE_CHASSIS.damage;
+  // The best swing in the rack by expected roll — laser over cutter, blade
+  // over both — and the chassis's ram once nothing that cuts is left.
+  const weapon = meleeSlot(rig);
+  const attack = weapon === null ? BARE_CHASSIS.damage : moduleKind(rig.slots[weapon]!.kind).attack!;
   // A burned BAFFLE is a hole in the rack like any other: the two stealth
   // numbers drop to zero the turn it goes, with nothing to remember them by.
   const baffle = intact(rig, "baffle");
@@ -403,12 +474,15 @@ export function derivedStats(rig: Rig): DerivedStats {
   // THRUSTERS give 120), so it is read off the slot first and off the kind
   // second — the same order `capOf` reads integrity in.
   const thrusters = slotWith(rig, "thrusters");
+  let defense = 0;
+  for (const slot of rig.slots) if (slot) defense += moduleKind(slot.kind).defense ?? 0;
   return {
     speed: thrusters?.speed ?? intact(rig, "thrusters")?.speed ?? BARE_CHASSIS.speed,
     sight: intact(rig, "scanner")?.sight ?? BARE_CHASSIS.sight,
     damage: [attack[0], attack[1], attack[2]],
     noisePenalty: baffle?.noisePenalty ?? 0,
     machineFovPenalty: baffle?.machineFovPenalty ?? 0,
+    defense,
   };
 }
 
@@ -427,7 +501,7 @@ export function rigOf(entity: Entity): Rig | undefined {
 }
 
 /**
- * Only the three stats the engine itself reads go onto the entity. The BAFFLE
+ * Only the four stats the engine itself reads go onto the entity. The BAFFLE
  * pair stays in `derivedStats`: there is no engine field for "how loud I am" or
  * "how far away I am noticed", and inventing one on the player would make every
  * machine's own `sight` a lie that some other system would then read.
@@ -439,6 +513,7 @@ export function applyDerived(player: Entity): void {
   player.speed = stats.speed;
   player.sight = stats.sight;
   player.damage = stats.damage;
+  player.defense = stats.defense;
 }
 
 // ------------------------------------------------------------- the wreckage
@@ -474,6 +549,12 @@ export interface Wreck {
   glyph: string;
   /** Whose it was, when anything recorded it. Absent = the ship's own scrap. */
   source?: WreckSource;
+  /**
+   * Charges left in a pile that once was on a rack (a dead drone's coil, a
+   * module swapped out onto the floor). Absent = the kind's own count, which a
+   * factory crate and a machine's scrap are.
+   */
+  charges?: number;
 }
 
 /**
@@ -553,11 +634,19 @@ function removeWreck(game: RoomGame, room: RoomId, wreck: Wreck): void {
   if (i >= 0) wrecks.splice(i, 1);
 }
 
-/** What taking this wreck apart would do to the rack, before a turn is spent. */
+/**
+ * What taking this wreck apart would do to the rack, before a turn is spent.
+ *
+ * `swap` is a relic's answer to a full rack: it goes in by throwing another
+ * module out (`swapIn`). `slot` is the one it would take in a single press —
+ * the module it is a better copy of (`ModuleKind.upgrades`), when that module
+ * is in the rack — or null when the player has to say which.
+ */
 export type Take =
   | { kind: "graft"; slot: number }
   | { kind: "mend"; slot: number }
   | { kind: "install" }
+  | { kind: "swap"; slot: number | null }
   | { kind: "no"; why: string };
 
 /**
@@ -569,17 +658,44 @@ export type Take =
  * considered for an empty slot elsewhere. Only past that does a full rack with
  * nothing it carries refuse instead — and either way the refusal comes before
  * the turn, so the key stays free.
+ *
+ * A relic is grafted onto nothing and mended by nothing: a second copy of one
+ * already in the rack is refused outright, which is also what makes it a pile
+ * worth carrying home. And a full rack does not refuse a relic — it asks which
+ * module to throw out for it.
  */
 export function takeFor(rig: Rig, kind: ModuleId): Take {
+  const relic = isRelic(kind);
   const slot = findSlot(rig, kind);
   if (slot !== null) {
+    if (relic) return { kind: "no", why: t("why.relic.have", { module: moduleName(kind) }) };
     const s = rig.slots[slot]!;
     if ((s.bonus ?? 0) < MAX_GRAFT) return { kind: "graft", slot };
     if (s.integrity < capOf(s)) return { kind: "mend", slot };
     return { kind: "no", why: t("why.graft.full") };
   }
   if (rig.slots.some((s) => s === null)) return { kind: "install" };
+  if (relic) {
+    const upgrades = moduleKind(kind).upgrades;
+    return { kind: "swap", slot: upgrades === undefined ? null : findSlot(rig, upgrades) };
+  }
   return { kind: "no", why: t("why.rack.burnFirst") };
+}
+
+/**
+ * The slots a relic could take a full rack by, in the order the list offers
+ * them: the module it upgrades first, then the rest worst-first — the module
+ * nearest to burning out is the one a fresh relic most naturally replaces.
+ * Ties go to the lower slot, so the order is the same on every frame.
+ */
+export function swapSlots(rig: Rig, kind: ModuleId): number[] {
+  const take = takeFor(rig, kind);
+  if (take.kind !== "swap") return [];
+  const rest = rig.slots
+    .flatMap((slot, i) => (slot && i !== take.slot ? [{ i, left: slot.integrity }] : []))
+    .sort((a, b) => a.left - b.left || a.i - b.i)
+    .map((s) => s.i);
+  return take.slot === null ? rest : [take.slot, ...rest];
 }
 
 /**
@@ -608,6 +724,19 @@ export const CARRY_LIMIT = 2;
 export interface Carried {
   kind: ModuleId;
   integrity: number;
+  /**
+   * Charges left, for a module that spends them. Carried along so that taking
+   * a coil off the rack and putting it back is not a recharge — a spent EMP in
+   * the arms is a spent EMP on the rails.
+   */
+  charges?: number;
+}
+
+/** One armful, with its charges when the thing has any. */
+export function carriedFrom(kind: ModuleId, integrity: number, charges?: number): Carried {
+  const out: Carried = { kind, integrity };
+  if (charges !== undefined) out.charges = charges;
+  return out;
 }
 
 /** What the drone is carrying, read defensively — it round-trips through a save. */
@@ -651,7 +780,7 @@ function carryWreck(game: RoomGame, target: number | undefined): Outcome {
   const carrying = carriedBy(game.player);
   if (carrying.length >= CARRY_LIMIT) return FAIL(t("why.carry.full", { n: CARRY_LIMIT }));
 
-  setCarried(game.player, [...carrying, { kind: wreck.kind, integrity: wreck.integrity }]);
+  setCarried(game.player, [...carrying, carriedFrom(wreck.kind, wreck.integrity, wreck.charges)]);
   removeWreck(game, here, wreck);
   game.makeNoise(here, SALVAGE_NOISE);
   const kind = moduleKind(wreck.kind);
@@ -693,6 +822,11 @@ function salvage(game: RoomGame, target: number | undefined): Outcome {
   switch (take.kind) {
     case "no":
       return FAIL(take.why);
+    // A relic into a full rack: in one press where the rack holds the module
+    // it upgrades, otherwise the list's own `swap` lines say which slot.
+    case "swap":
+      if (take.slot === null) return FAIL(t("why.relic.pick"));
+      return swapIn(game, rig, wreck, take.slot);
     case "graft": {
       const done = graft(rig, take.slot)!;
       key = "log.salvage.graft";
@@ -707,7 +841,7 @@ function salvage(game: RoomGame, target: number | undefined): Outcome {
       break;
     }
     case "install": {
-      const slot = install(rig, wreck.kind, wreck.integrity)!;
+      const slot = install(rig, wreck.kind, wreck.integrity, wreck.charges)!;
       key = "log.salvage.install";
       line = t(key, {
         module: moduleName(kind.id),
@@ -727,9 +861,84 @@ function salvage(game: RoomGame, target: number | undefined): Outcome {
   // virus can come aboard (design-doc.md, "Вирус"). Only a fresh install —
   // grafting and mending work the metal into a module already in the rack.
   if (installed !== undefined) {
+    relicLine(game, wreck.kind);
     tryInfect(game, installed, wreckSource(wreck), specOfShip(game.ship)?.virusBonus ?? 0);
   }
   return DONE();
+}
+
+/**
+ * `act swap {wreck} {slot}`: a relic into a full rack, the module in that slot
+ * out. Only a relic swaps — an ordinary module into a full rack is the refusal
+ * it always was — and only into a full rack: with a slot free the relic goes
+ * in by `salvage` like anything else, and nothing is thrown out for it.
+ */
+function swapFor(game: RoomGame, target: number | undefined, slot: number | undefined): Outcome {
+  const rig = rigOf(game.player);
+  if (!rig) return FAIL(t("why.salvage.noRig"));
+  const here = game.roomOf(game.player).id;
+  const wreck = target === undefined ? undefined : wreckAt(game, here, target);
+  if (!wreck) return FAIL(t("why.salvage.none"));
+
+  const take = takeFor(rig, wreck.kind);
+  if (take.kind === "no") return FAIL(take.why);
+  if (take.kind !== "swap") return FAIL(t("why.swap.free"));
+  if (slot === undefined || !rig.slots[slot]) return FAIL(t("why.rig.emptySlot"));
+  return swapIn(game, rig, wreck, slot);
+}
+
+/**
+ * The swap itself. What comes out goes into the drone's arms
+ * (`carryWreck`, `CARRY_LIMIT`) and, with the arms full, onto the floor of
+ * this compartment as a pile the drone can pick up again — never into
+ * nothing. A relic is worth a slot and the module it displaces is still worth
+ * the walk home.
+ */
+function swapIn(game: RoomGame, rig: Rig, wreck: Wreck, slot: number): Outcome {
+  const here = game.roomOf(game.player).id;
+  const out = removeSlot(rig, slot)!;
+  const carrying = carriedBy(game.player);
+  let key: Key;
+  if (carrying.length < CARRY_LIMIT) {
+    setCarried(game.player, [...carrying, carriedFrom(out.kind, out.integrity, out.charges)]);
+    key = "log.swap.carried";
+  } else {
+    // The drone's own part, laid down: sealed as far as the ship's virus is
+    // concerned, because it never was the ship's — and with whatever charges
+    // it had left, because laying a coil down is not recharging it.
+    const pile = addWreck(game, here, out.kind, out.integrity);
+    pile.source = "crate";
+    if (out.charges !== undefined) pile.charges = out.charges;
+    key = "log.swap.dropped";
+  }
+  installAt(rig, slot, wreck.kind, wreck.integrity, wreck.charges);
+  removeWreck(game, here, wreck);
+  applyDerived(game.player);
+  game.makeNoise(here, SALVAGE_NOISE);
+  game.log.add(
+    t(key, { module: moduleName(wreck.kind), old: moduleName(out.kind) }),
+    game.schedule.time,
+    "good",
+    key,
+  );
+  relicLine(game, wreck.kind);
+  tryInfect(game, slot, wreckSource(wreck), specOfShip(game.ship)?.virusBonus ?? 0);
+  return DONE();
+}
+
+/**
+ * Said the turn a relic goes into the rack, every time: the one place the
+ * player is told what makes it different, and a relic is rare enough that
+ * once a sortie is not a line that wears out.
+ */
+function relicLine(game: RoomGame, kind: ModuleId): void {
+  if (!isRelic(kind)) return;
+  game.log.add(
+    t("log.relic.take", { module: moduleName(kind) }),
+    game.schedule.time,
+    "warn",
+    "log.relic.take",
+  );
 }
 
 // -------------------------------------------------------- the active modules
@@ -828,6 +1037,33 @@ function vetoed(game: RoomGame, source: Entity | undefined): boolean {
   return DAMAGE_VETOES.some((veto) => veto(game, source));
 }
 
+/**
+ * The line a blow with no source is signed by, for as long as one is being
+ * dealt. `dealDamage` hands `onDamage` no source for the ship's own vacuum or
+ * for a mine, and the log used to sign those "Something" — which the owner
+ * read as an invisible machine and answered with `Tab`
+ * (docs/tasks/G83-anonymous-blows.md, 1). Set for the length of one call and
+ * never stored: nothing about it reaches a save or a replay, so this is the
+ * one variable at module level here that is not a registry.
+ */
+let BLOW_CAUSE: Key | undefined;
+
+/**
+ * Deal a blow on behalf of something that is not an entity, and have the log
+ * say what it was: `cause` is the row `onDamage` writes instead of
+ * `log.hit.module`, with the same `module`, `left` and `max`. The system that
+ * owns the blow names it; this file never learns what the causes are.
+ */
+export function blamedOn<T>(cause: Key, blow: () => T): T {
+  const outer = BLOW_CAUSE;
+  BLOW_CAUSE = cause;
+  try {
+    return blow();
+  } finally {
+    BLOW_CAUSE = outer;
+  }
+}
+
 /** `s`, `e`, `w`, `K`, `f`: what the slot holds decides what the key does. */
 function useModule(game: RoomGame, cmd: Extract<RoomCommand, { kind: "act" }>): Outcome {
   const rig = rigOf(game.player);
@@ -839,7 +1075,9 @@ function useModule(game: RoomGame, cmd: Extract<RoomCommand, { kind: "act" }>): 
     case "scanner":
       return pulse(game);
     case "emp":
-      return dischargeEmp(game, slot);
+      return discharge(game, slot, EMP_STUN_TURNS);
+    case "shocker":
+      return discharge(game, slot, SHOCK_STUN_TURNS);
     case "welder":
       return weld(game, rig, index);
     case "spike":
@@ -954,13 +1192,23 @@ export function shootTarget(game: RoomGame): Entity | undefined {
  */
 function pulse(game: RoomGame): Outcome {
   const here = game.roomOf(game.player).id;
+  const found: string[] = [];
   for (const id of scanRooms(game.ship, here, PULSE_DOORS)) {
     const room = game.ship.roomAt(id);
+    // A relic crate is named the first time a pulse reads its compartment:
+    // that is how a player learns there is something aboard worth the guard
+    // standing over it, and why a scan is worth the noise.
+    if (!room.scanned && id !== here && wrecksIn(game, id).some((w) => isRelic(w.kind))) {
+      found.push(roomName(room));
+    }
     room.scanned = true;
     room.data.snapshot = snapshotOf(game, id);
   }
   game.makeNoise(here, PULSE_NOISE);
   game.log.add(t("log.pulse"), game.schedule.time, "warn", "log.pulse");
+  for (const room of found) {
+    game.log.add(t("log.relic.seen", { room }), game.schedule.time, "warn", "log.relic.seen");
+  }
   return DONE();
 }
 
@@ -970,22 +1218,30 @@ export function snapshotOf(game: RoomGame, room: RoomId): string {
   return [...machines.map((m) => m.ch), ...wrecksIn(game, room).map((w) => w.glyph)].join(" ");
 }
 
-/** EMP: three turns of stun on everything in this compartment, twice per module. */
-function dischargeEmp(game: RoomGame, slot: Slot): Outcome {
-  if ((slot.charges ?? 0) <= 0) return FAIL(t("why.emp.spent", { emp: moduleName("emp") }));
+/**
+ * EMP and SHOCKER: `turns` of stun on everything in this compartment, one
+ * charge a press. The status is the engine's own and every behaviour on the
+ * graph reads it (`actionScrambled`), which is what makes a stunned machine a
+ * machine that blunders instead of biting.
+ */
+function discharge(game: RoomGame, slot: Slot, turns: number): Outcome {
+  if ((slot.charges ?? 0) <= 0) return FAIL(t("why.emp.spent", { emp: moduleName(slot.kind) }));
 
   const targets = hostilesIn(game, game.roomOf(game.player).id);
   // A charge is too scarce to spend on empty air; the key stays free instead.
   if (targets.length === 0) return FAIL(t("why.emp.none"));
 
-  for (const m of targets) applyStatus(m, "stun", EMP_STUN_TURNS);
+  for (const m of targets) applyStatus(m, "stun", turns);
   slot.charges = (slot.charges ?? 0) - 1;
   game.makeNoise(game.roomOf(game.player).id, EMP_NOISE);
+  let key: Key;
+  if (slot.kind === "shocker") key = "log.shock";
+  else key = "log.emp";
   game.log.add(
-    t("log.emp", { n: targets.length, left: slot.charges }),
+    t(key, { module: moduleName(slot.kind), n: targets.length, left: slot.charges }),
     game.schedule.time,
     "good",
-    "log.emp",
+    key,
   );
   return DONE();
 }
@@ -993,7 +1249,13 @@ function dischargeEmp(game: RoomGame, slot: Slot): Outcome {
 /** Welder: the run's only way back up, one point at a time, never on itself. */
 function weld(game: RoomGame, rig: Rig, self: number): Outcome {
   const mend = repair(rig, self);
-  if (!mend) return FAIL(t("why.repair.none"));
+  // Nothing to mend — and if what is worn is a relic, say that it is the
+  // relic and not the welder: nothing in the game mends one.
+  if (!mend) {
+    const relic = rig.slots.find((s) => s && isRelic(s.kind) && s.integrity < capOf(s));
+    if (relic) return FAIL(t("why.relic.noRepair", { module: moduleName(relic.kind) }));
+    return FAIL(t("why.repair.none"));
+  }
 
   game.makeNoise(game.roomOf(game.player).id, WELD_NOISE);
   game.log.add(
@@ -1052,13 +1314,20 @@ export const RIG: Twist<RoomGame> = {
     if (!rig) return amount;
 
     const route = routeDamage(rig, amount, source?.tags ?? []);
+    // A blow nothing dealt is signed by whatever owned it (`blamedOn`), and
+    // only when nothing did is it "Something" — a case nothing aboard makes.
+    const cause = source === undefined ? BLOW_CAUSE : undefined;
     const who = capitalize(source ? entityLabel(game, source) : t("label.something"));
     let burned = false;
     for (const hit of route.hits) {
       const kind = moduleKind(hit.kind);
       const slot = rig.slots[hit.slot];
       const max = slot && slot.kind === hit.kind ? capOf(slot) : kind.integrity;
-      game.log.add(hitLine(who, kind, hit.remaining, max), game.schedule.time, "bad", "log.hit.module");
+      const line =
+        cause === undefined
+          ? hitLine(who, kind, hit.remaining, max)
+          : t(cause, { module: moduleName(kind.id), left: hit.remaining, max });
+      game.log.add(line, game.schedule.time, "bad", cause ?? "log.hit.module");
       if (hit.burned) {
         game.log.add(moduleBurnLine(kind.id), game.schedule.time, "bad", "log.module.burn");
         burned = true;
@@ -1126,6 +1395,8 @@ export const RIG: Twist<RoomGame> = {
         return carryWreck(game, cmd.target);
       case "salvage":
         return salvage(game, cmd.target);
+      case "swap":
+        return swapFor(game, cmd.target, cmd.slot);
       case "use":
         return useModule(game, cmd);
       case "shoot": {
@@ -1178,10 +1449,45 @@ export const RIG: Twist<RoomGame> = {
       }
     }
 
+    // A relic that fires — the SHOCKER — has no letter of its own (letters are
+    // `ui/input.ts`'s and name the catalogue), so it is a numbered line, and
+    // only while there is something in the compartment to fire it at: the
+    // same rule the EMITTER's shot follows.
+    if (foes.length > 0) {
+      for (let i = 0; i < rig.slots.length; i++) {
+        const slot = rig.slots[i];
+        if (!slot || !isRelic(slot.kind) || moduleKind(slot.kind).active === undefined) continue;
+        const spent = (slot.charges ?? 0) <= 0;
+        const blocked = jammed(game);
+        const offer: ActionOffer<RoomCommand> = {
+          label: t("action.discharge", { module: moduleName(slot.kind), n: slot.charges ?? 0 }),
+          cmd: { kind: "act", verb: "use", slot: i },
+          enabled: !spent && !blocked,
+        };
+        if (blocked) offer.why = t(JAMMED_KEY);
+        else if (spent) offer.why = t("why.emp.spent", { emp: moduleName(slot.kind) });
+        offers.push(offer);
+      }
+    }
+
     const carrying = carriedBy(game.player).length;
     for (const w of wrecksIn(game, here)) {
       const kind = moduleKind(w.kind);
       const take = takeFor(rig, w.kind);
+      // A relic against a full rack is not one line but one per module it
+      // could throw out, the one it upgrades first (`swapSlots`): the choice
+      // is the player's, and a list is how this game puts a choice in front
+      // of them (design-doc.md, "Действия отсека").
+      if (take.kind === "swap") {
+        for (const i of swapSlots(rig, w.kind)) {
+          offers.push({
+            label: t("action.swap", { module: moduleName(kind.id), old: moduleName(rig.slots[i]!.kind) }),
+            cmd: { kind: "act", verb: "swap", target: w.id, slot: i },
+            enabled: true,
+          });
+        }
+        continue;
+      }
       const offer: ActionOffer<RoomCommand> = {
         label: t("action.salvage", { module: moduleName(kind.id), left: w.integrity, max: kind.integrity }),
         cmd: { kind: "act", verb: "salvage", target: w.id },

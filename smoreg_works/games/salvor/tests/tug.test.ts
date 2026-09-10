@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CALLSIGNS, flavourCallsign } from "../src/content/derelicts.js";
+import { CALLSIGNS, derelictName, flavourCallsign } from "../src/content/derelicts.js";
 import {
   RoomGame,
   Ship,
@@ -15,7 +15,7 @@ import { seedRange } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { TUG_CALLSIGNS, tugCallsign } from "../src/content/hints.js";
 import { ZONE_KINDS, zoneName } from "../src/content/zones.js";
-import { t } from "../src/i18n.js";
+import { LANGS, setLang, t } from "../src/i18n.js";
 import { tugBoard } from "../src/ui/tugboard.js";
 import { STARTING_CREDITS, STARTING_HULL } from "../src/content/hulls.js";
 import { moduleName } from "../src/content/modules.js";
@@ -30,7 +30,7 @@ import {
   stationTargets,
   voyageOf,
 } from "../src/systems/voyage.js";
-import { roomActions, type Action } from "../src/ui/actions.js";
+import { ACTION_WIDTH, roomActions, tugStands, type Action } from "../src/ui/actions.js";
 import { rigOf, findSlot } from "../src/twist/rig.js";
 import { PANEL_WIDTH, panelBlocks } from "../src/ui/panel.js";
 import { schematicInputOf } from "../src/ui/schematic-input.js";
@@ -203,12 +203,18 @@ describe("the tug is one screen", () => {
       const labels = screen(game).map((a) => a.label);
       expect(labels, `seed ${seed}`).toHaveLength(ALL_VERBS.length);
       expect(game.roomOf(game.player).name, `seed ${seed}`).toBe("DOCK");
-      // The six groups, in order, each heading its own first row. Moving the
-      // tug to the next hull has a heading of its own since the eighth
-      // playtest: it is not signing a charter for the hull alongside, and
-      // reading it under `VOYAGE` with the charters is what hid it.
+      // The four groups, in the order a visit home is spent, each heading its
+      // own first row. Moving the tug to the next hull has a heading of its own
+      // since the eighth playtest: it is not signing a charter for the hull
+      // alongside, and reading it under `VOYAGE` with the charters is what hid
+      // it. `DRONE` and `SELL` have none: one stood over a row that already
+      // says `buy a hull`, the other over three things done to the same rack
+      // (docs/tug-menu-audit.md, П7).
       expect(screen(game).flatMap((a) => (a.head === undefined ? [] : [a.head])), `seed ${seed}`)
-        .toEqual(["DRONE", "REPAIR", "RIG", "SELL", "CHARTERS", "NEXT HULL"]);
+        .toEqual(["REPAIR", "RIG", "CHARTERS", "NEXT HULL"]);
+      // Casting off is the last of them and wears no heading: it is the one
+      // press of the screen that cannot be taken back.
+      expect(screen(game)[9]!.cmd, `seed ${seed}`).toMatchObject({ verb: "undock" });
     }
   });
 
@@ -286,15 +292,26 @@ describe("the tug is one screen", () => {
         ),
       );
       expect([...shown].sort(), `seed ${seed}`).toEqual([...ALL_VERBS].sort());
+
+      // Reachable, not merely on a row: the dock's shelf has no row of its own
+      // — it rides on the hold's, because everything that puts a module on the
+      // drone belongs in one place and the panel at home has ten numbered lines
+      // and no eleventh. This used to be written as an exception for `order`,
+      // and the exception was the hole the shelf fell through: it was on no
+      // screen in any state, and the test stayed green (docs/tug-menu-audit.md,
+      // defect 4).
+      const reachable = new Set(shown);
+      for (const row of screen(game)) {
+        if (typeof row.step !== "string") continue;
+        for (const pick of picks(game, row.step)) {
+          if (pick.cmd.kind === "act") reachable.add(pick.cmd.verb);
+        }
+      }
       // `close` is the one line the tug drops on purpose: nothing is ever
       // aboard to shut a bulkhead on, so all it walls off is the player.
-      // `order` is the dock's shelf, and it is folded inside the `fit` row
-      // rather than given one of its own — the panel at home has ten numbered
-      // lines and no more, and everything that puts a module on the drone
-      // belongs in one place anyway.
       for (const verb of flat) {
-        if (verb === "close" || verb === "order") continue;
-        expect(shown.has(verb), `${verb} on seed ${seed}`).toBe(true);
+        if (verb === "close") continue;
+        expect(reachable.has(verb), `${verb} on seed ${seed}`).toBe(true);
       }
     }
   });
@@ -307,6 +324,177 @@ describe("the tug is one screen", () => {
     for (const door of [T1, T2, T3]) {
       game.playerCommand({ kind: "go", door });
       expect(screen(game).map((a) => a.label), game.roomOf(game.player).name).toEqual(first);
+    }
+  });
+});
+
+// ------------------------------------------------------------- the group holds
+
+/**
+ * A group's own list outlives every target but the last
+ * (docs/tug-menu-audit.md, defect 1 — the owner's complaint word for word:
+ * «нельзя взять все контракты, после 2 из 3 выкинет на основное меню»).
+ *
+ * The threshold that decided it was written for a different question — whether
+ * stepping into a list of one is worth the keystroke — and `tugStands` asked it
+ * after every action to find out whether the level the player was standing in
+ * still existed. Two targets left meant a level; one meant the screen went home
+ * on its own, with the highlight on the row that casts off.
+ */
+describe("a group's list stands while it has a target", () => {
+  /** A third charter on the board: no first hull ever draws one, all 60 seeds. */
+  function thirdCharter(game: RoomGame): void {
+    voyageOf(game).offered.push({ id: "salvage", text: "haul the lot home", payout: 33 });
+  }
+
+  it("signs every charter on the board without leaving the group", () => {
+    const game = newGame(4);
+    thirdCharter(game);
+
+    for (const left of [3, 2, 1]) {
+      expect(picks(game, "charter"), `${left} on the board`).toHaveLength(left + 1);
+      expect(tugStands(game, "charter"), `${left} on the board`).toBe(true);
+      const sign = picks(game, "charter")[0]!;
+      expect(sign.enabled, sign.label).toBe(true);
+      expect(game.playerCommand(sign.cmd).ok).toBe(true);
+    }
+
+    expect(voyageOf(game).charters).toHaveLength(3);
+    expect(voyageOf(game).offered).toHaveLength(0);
+    // Only an empty board closes the level, and then it closes onto the group's
+    // own row rather than a step short of it.
+    expect(tugStands(game, "charter")).toBe(false);
+  });
+
+  it("mends every damaged module without leaving the group, paying for each", () => {
+    const game = newGame(4);
+    const rig = rigOf(game.player)!;
+    const slots = filled(game);
+    for (const slot of slots) rig.slots[slot]!.integrity = 1;
+    voyageOf(game).credits = 500;
+
+    let credits = voyageOf(game).credits;
+    for (let left = slots.length; left > 0; left--) {
+      expect(picks(game, "repair"), `${left} damaged`).toHaveLength(left + 1);
+      expect(tugStands(game, "repair"), `${left} damaged`).toBe(true);
+      const mend = picks(game, "repair")[0]!;
+      expect(game.playerCommand(mend.cmd).ok).toBe(true);
+      expect(voyageOf(game).credits, mend.label).toBeLessThan(credits);
+      credits = voyageOf(game).credits;
+    }
+
+    expect(tugStands(game, "repair")).toBe(false);
+    expect(stationTargets(game, "repair")).toHaveLength(0);
+  });
+
+  it("opens a group as a list even when one target is left in it", () => {
+    // Defect 3 of the audit. The row used to become the last thing under it,
+    // so `8` was the list of sales on one screen and, on the next, the sale of
+    // the last module — for good, with the word "for good" left behind on the
+    // group's label.
+    const game = newGame(4);
+    const slots = filled(game);
+    for (const slot of slots.slice(0, -1)) {
+      expect(game.playerCommand({ kind: "act", verb: "sell", slot }).ok).toBe(true);
+    }
+    expect(filled(game)).toHaveLength(1);
+
+    const sell = screen(game).find((a) => a.step === "sell")!;
+    expect(sell.label, "still the group's own word").toBe("sell for good ▸");
+    expect(sell.enabled).toBe(true);
+
+    const under = picks(game, "sell");
+    expect(under).toHaveLength(2);
+    expect(under[0]!.label).toMatch(/^\w+ \d+\/\d+ {2}\d+ CR$/);
+    expect(under[1]!.step).toBe(null);
+    expect(under[1]!.key).toBe("0");
+  });
+
+  it("puts the dock's shelf in the list the hold's row opens, with its own reasons", () => {
+    // Defects 4 and 5 of the audit, and the owner's other complaint: «магаз
+    // модулей где?». The row was built from both verbs and the list under it
+    // from one, so the shelf was on no screen in any state of the game — and
+    // the row's greyed sentence was the shelf's first line, printed over a hold
+    // that had never held anything.
+    const game = newGame(4);
+    expect(voyageOf(game).hold, "a fresh run holds nothing").toHaveLength(0);
+
+    const row = screen(game).find((a) => a.step === "fit")!;
+    expect(row.label).toBe("hold & shelf ▸");
+    expect(row.enabled, "a whole drone needs none of the three").toBe(false);
+    expect(row.why, "its own verb's, and the hold has nothing to say").toBe(
+      "Nothing in the hold, nothing to take off the shelf.",
+    );
+
+    const under = picks(game, "fit");
+    expect(under.map((a) => a.label)).toEqual([
+      "buy CUTTER 20 CR",
+      "buy PLATING 15 CR",
+      "buy THRUSTERS 15 CR",
+      "back",
+    ]);
+    // Every shelf line is dead for a reason of its own, and says it.
+    for (const line of under.slice(0, -1)) {
+      expect(line.enabled, line.label).toBe(false);
+      expect(line.why, line.label).toMatch(/^The drone already carries a \w+\.$/);
+    }
+  });
+});
+
+// --------------------------------------------------------------- casting off
+
+/**
+ * The one row of the tug that cannot be taken back says what the visit home
+ * has left undone (docs/tug-menu-audit.md, "what a designer would do", 5).
+ *
+ * Not a confirmation: a modal screen is the one thing design-doc.md rules out
+ * by name. A line, read before it is pressed — and the price of both entries on
+ * it is already measured in `systems/voyage.ts` (`STATION_ORDER`): charters
+ * left unsigned behind a drone that has flown cost 1.81 → 0.41 a voyage.
+ */
+describe("the row that casts off", () => {
+  const castOff = (game: RoomGame): string => stationTargets(game, "undock")[0]!.label;
+
+  it("lists what is left undone, and names the hull when nothing is", () => {
+    const game = newGame(4);
+    const rig = rigOf(game.player)!;
+    const slots = filled(game);
+
+    // A board with nothing signed on it is the whole of a fresh screen's debt.
+    expect(voyageOf(game).charters).toHaveLength(0);
+    expect(castOff(game)).toBe("cast off no job");
+
+    rig.slots[slots[0]!]!.integrity = 1;
+    rig.slots[slots[1]!]!.integrity = 1;
+    expect(castOff(game)).toBe("cast off 2 dmg, no job");
+
+    expect(game.playerCommand(picks(game, "charter")[0]!.cmd).ok).toBe(true);
+    expect(castOff(game)).toBe("cast off 2 dmg");
+
+    voyageOf(game).credits = 500;
+    while (stationTargets(game, "repair").length > 0) {
+      expect(game.playerCommand(stationTargets(game, "repair")[0]!.cmd).ok).toBe(true);
+    }
+    expect(castOff(game)).toBe(`cast off → ${flavourCallsign(currentDerelict(game).flavour)}`);
+  });
+
+  it("holds the column in all three languages with everything outstanding", () => {
+    // The callsign gives way to the checklist rather than sharing the row with
+    // it, and this is why: twenty-five columns, and the longest callsign is
+    // thirteen of them.
+    const game = newGame(4);
+    const rig = rigOf(game.player)!;
+    for (const slot of filled(game)) rig.slots[slot]!.integrity = 1;
+
+    try {
+      for (const lang of LANGS) {
+        setLang(lang);
+        const label = castOff(game);
+        expect(label, lang).toContain(t("undock.left.charter"));
+        expect(label.length, `${lang}: ${label}`).toBeLessThanOrEqual(ACTION_WIDTH);
+      }
+    } finally {
+      setLang("en");
     }
   });
 });
@@ -405,13 +593,20 @@ describe("the hold", () => {
     ).toHaveLength(1);
   });
 
-  it("keeps the shelf shut while the drone has the three it sells", () => {
-    // The shelf is a way out of a hole, not a supply line: a whole SCRAPPER
-    // carries a CUTTER, a PLATING and a THRUSTERS, so there is nothing on it to
-    // sell — and a line on the list whether or not it is any use is a line that
-    // gets pressed for 20 CR that a jump needed.
+  it("shows the shelf always and opens it only on what the drone has lost", () => {
+    // Always visible, because a shelf that vanishes the moment the drone is
+    // whole is a shelf nobody knows exists — the owner played four hours and
+    // asked «магаз модулей где?». Never live while the drone is whole, because
+    // an enabled line is one a bot presses for 20 CR that a jump needed.
     const game = newGame(4);
-    expect(stationTargets(game, "order")).toEqual([]);
+    const shelf = stationTargets(game, "order");
+    expect(shelf.map((o) => o.label)).toEqual([
+      "buy CUTTER 20 CR",
+      "buy PLATING 15 CR",
+      "buy THRUSTERS 15 CR",
+    ]);
+    expect(shelf.every((o) => !o.enabled)).toBe(true);
+    expect(shelf[0]!.why).toBe("The drone already carries a CUTTER.");
   });
 
   it("opens the shelf on exactly what burned out", () => {
@@ -422,14 +617,20 @@ describe("the hold", () => {
     rack.slots[cutter] = null;
 
     const shelf = stationTargets(game, "order");
-    expect(shelf.map((o) => o.label)).toEqual(["buy CUTTER 20 CR"]);
-    expect(shelf[0]!.enabled).toBe(true);
+    expect(shelf.map((o) => o.label)).toEqual([
+      "buy CUTTER 20 CR",
+      "buy PLATING 15 CR",
+      "buy THRUSTERS 15 CR",
+    ]);
+    // Only the one it lost is live; the other two say why not.
+    expect(shelf.map((o) => o.enabled)).toEqual([true, false, false]);
 
     // Bought into the hold — which is how a player finds the hold at all — and
     // gone off the shelf until the tug moves on.
     expect(game.playerCommand(shelf[0]!.cmd as RoomCommand).ok).toBe(true);
     expect(voyageOf(game).hold.map((h) => h.kind)).toEqual(["cutter"]);
-    expect(stationTargets(game, "order")).toEqual([]);
+    // Bought and gone: the line stays on the list and stops being live.
+    expect(stationTargets(game, "order").every((o) => !o.enabled)).toBe(true);
     expect(voyageOf(game).credits).toBe(480);
   });
 
@@ -439,7 +640,10 @@ describe("the hold", () => {
     const game = newGame(4);
     voyageOf(game).credits = 500;
     voyageOf(game).hull = undefined;
-    expect(stationTargets(game, "order")).toEqual([]);
+    const shelf = stationTargets(game, "order");
+    expect(shelf).toHaveLength(3);
+    expect(shelf.every((o) => !o.enabled)).toBe(true);
+    expect(shelf[0]!.why).toBe("Nothing on the rails to fit it to.");
   });
 });
 
@@ -654,7 +858,7 @@ describe("a run, as it starts", () => {
     // freighters (docs/tasks/G55-playtest-findings.md).
     expect(head(game)).toBe(`SALVOR  tug → ${flavourCallsign(currentDerelict(game).flavour)}`);
     expect(schematicInputOf(game).shipLine).toBe(
-      `${tugCallsign(4)} · your tug · docked to freighter`,
+      `${tugCallsign(4)} · your tug · docked to ${derelictName(currentDerelict(game).spec)}`,
     );
     expect(head(game).length).toBeLessThanOrEqual(PANEL_WIDTH);
 

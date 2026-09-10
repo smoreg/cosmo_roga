@@ -10,7 +10,7 @@ import {
   type RoomGame,
   type System,
 } from "@jamrog/engine";
-import { BLOOM_KIND, CRAWLER } from "../content/monsters.js";
+import { BLOOM_KIND, CRAWLER, CROWD } from "../content/monsters.js";
 import { t } from "../i18n.js";
 import { nextShipId } from "../twist/rig.js";
 import { type RoomItem } from "./populate.js";
@@ -47,6 +47,11 @@ const FAIL = (reason: string): Outcome => ({ ok: false, cost: 0, reason });
 const DONE = (): Outcome => ({ ok: true, cost: TURN_COST });
 
 // ------------------------------------------------------------------ hatching
+
+/** Does this compartment already hold as many machines as one may? */
+function crowded(game: RoomGame, room: number): boolean {
+  return game.entities.filter((e) => e.room === room && e.id !== game.player.id && isAlive(e)).length >= CROWD;
+}
 
 /** Living crawlers this bloom has put out. Dead ones are already off the list. */
 function brood(game: RoomGame, hatchery: Entity): Entity[] {
@@ -140,8 +145,10 @@ export const BLOOM: System<RoomGame> = {
 
     if (turns % HATCH_PERIOD !== 0) return;
     // The cap is on what is alive, not on what has ever been hatched: clearing
-    // the brood is worth doing, and it is worth doing again.
-    if (brood(game, actor).length >= MAX_BROOD) return;
+    // the brood is worth doing, and it is worth doing again. And never into a
+    // compartment already as full as one gets (`CROWD`): the bloom waits for
+    // a crawler to walk out, which they do, and hatches into the room it left.
+    if (brood(game, actor).length >= MAX_BROOD || crowded(game, actor.room)) return;
     hatch(game, actor, actor.room);
   },
 

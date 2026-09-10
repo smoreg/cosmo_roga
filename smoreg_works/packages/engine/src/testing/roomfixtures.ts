@@ -30,9 +30,15 @@ export { layoutShip };
  *
  * Room lines are `id: kind tokens…`. A room named only in an edge line gets the
  * kind "room". Tokens: `@` is the player, `cover` gives it somewhere to hide,
- * `vented` and `hazard:x` set the hazard, `explored` and `scanned` set what has
- * been seen; anything else is a mark, which is what the generator's cards leave
- * behind and what a game turns into things.
+ * `vented` and `hazard=x` (or `hazard:x`) set the hazard, `opaque` blinds it
+ * (`Room.opaque`), `explored` and `scanned` set what has been seen; anything
+ * else is a mark, which is what the generator's cards leave behind and what a
+ * game turns into things.
+ *
+ * Door lines are `id: tokens…` for a door an edge line above has already
+ * declared: a state word (`locked`, `closed`, …) re-states it, `trap=x` arms it
+ * (`Door.trap`) and `key=k1` names its key. So `d2: locked trap=mine` is a
+ * mined lock, and a game reads `mine` off it the way it reads `k1`.
  *
  * `depth` is BFS from the entry, through every door whatever its state.
  */
@@ -55,6 +61,9 @@ const CLOSERS: Record<string, DoorState> = {
 };
 
 const OUTSIDE = new Set(["TUG", "OUT"]);
+
+/** The state words a door line may re-state. */
+const DOOR_STATES: ReadonlySet<string> = new Set(["open", "closed", "locked", "sealed", "broken"]);
 
 export function shipFromText(text: string | string[]): ShipFixture {
   const lines = (Array.isArray(text) ? text : text.split("\n"))
@@ -94,8 +103,17 @@ export function shipFromText(text: string | string[]): ShipFixture {
   for (const line of lines) {
     const tokens = line.split(/\s+/);
     if (tokens[0]!.endsWith(":")) {
+      const label = tokens[0]!.slice(0, -1);
+      // Door line: id: tokens… — only for a door already declared above, and
+      // never for a label some room is using, so a room line can never be
+      // taken for one.
+      const door = byLabel.has(label) ? undefined : doors.find((d) => d.label === label);
+      if (door) {
+        for (const token of tokens.slice(1)) readDoorToken(door, token, line);
+        continue;
+      }
       // Room line: id: kind tokens…
-      const room = ensureRoom(tokens[0]!.slice(0, -1));
+      const room = ensureRoom(label);
       const [kind, ...rest] = tokens.slice(1);
       if (kind !== undefined) {
         room.kind = kind;
@@ -107,7 +125,9 @@ export function shipFromText(text: string | string[]): ShipFixture {
         else if (token === "explored") room.explored = true;
         else if (token === "scanned") room.scanned = true;
         else if (token === "vented") room.hazard = "vented";
+        else if (token === "opaque") room.opaque = true;
         else if (token.startsWith("hazard:")) room.hazard = token.slice("hazard:".length);
+        else if (token.startsWith("hazard=")) room.hazard = token.slice("hazard=".length);
         else {
           room.marks.push(token);
           marks.push({ room: room.id, token });
@@ -156,13 +176,31 @@ export function shipFromText(text: string | string[]): ShipFixture {
   };
 }
 
+/** One token of a door line: a state word, `trap=x` or `key=k1`. */
+function readDoorToken(door: Door, token: string, line: string): void {
+  if (DOOR_STATES.has(token)) {
+    door.state = token as DoorState;
+    return;
+  }
+  if (token.startsWith("trap=") && token.length > "trap=".length) {
+    door.trap = token.slice("trap=".length);
+    return;
+  }
+  if (token.startsWith("key=") && token.length > "key=".length) {
+    door.key = token.slice("key=".length);
+    return;
+  }
+  throw new Error(`shipFromText: '${token}' is not a door token in '${line}'`);
+}
+
 /** Render a ship back to text. For eyeballing a failing test's actual ship. */
 export function shipToText(ship: Ship): string[] {
   const out = ship.rooms.map((r) => {
     const tokens: string[] = [];
     if (r.cover) tokens.push("cover");
     if (r.hazard === "vented") tokens.push("vented");
-    else if (r.hazard !== "none") tokens.push(`hazard:${r.hazard}`);
+    else if (r.hazard !== "none") tokens.push(`hazard=${r.hazard}`);
+    if (r.opaque === true) tokens.push("opaque");
     if (r.explored) tokens.push("explored");
     if (r.scanned) tokens.push("scanned");
     tokens.push(...r.marks);
@@ -177,6 +215,11 @@ export function shipToText(ship: Ship): string[] {
       continue;
     }
     out.push(`${here} ${doorText(d)} ${ship.roomAt(d.b).label}`);
+  }
+  // A trap has no place in the edge syntax, so it goes on a door line after
+  // the edges that declare the doors — which is the order the reader wants.
+  for (const d of ship.doors) {
+    if (d.trap !== undefined) out.push(`${d.label}: trap=${d.trap}`);
   }
   return out;
 }

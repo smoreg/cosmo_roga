@@ -74,6 +74,8 @@ const URLS: Record<SfxId, string> = {
 const SOUNDS: Readonly<Record<string, SfxId>> = {
   "log.module.burn": "burn",
   "log.hit.module": "hit",
+  "log.hit.vent": "hit",
+  "log.hit.mine": "hit",
   "log.system.online": "system",
 
   // Losing the drone, and losing the ship with it. The run's own last line is
@@ -93,6 +95,7 @@ const SOUNDS: Readonly<Record<string, SfxId>> = {
   "log.ghost.sighted": "alert",
 
   "log.emp": "emp",
+  "log.shock": "emp",
 
   "log.salvage.install": "salvage",
   "log.salvage.graft": "salvage",

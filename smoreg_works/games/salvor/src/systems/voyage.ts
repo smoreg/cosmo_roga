@@ -26,6 +26,7 @@ import {
 import type { Key } from "../content/i18n/keys.js";
 import { t, tId } from "../i18n.js";
 import { CHARTER_FLAG } from "../content/cards-derelicts.js";
+import { TUTORIAL_SPEC, isTraining } from "../content/tutorial.js";
 import {
   charterFlags,
   doneBy,
@@ -48,7 +49,7 @@ import {
   type HullId,
   type HullKind,
   startingSlots,} from "../content/hulls.js";
-import { MAX_GRAFT, MODULES, moduleKind, moduleName, type ModuleId } from "../content/modules.js";
+import { MAX_GRAFT, MODULES, isRelic, moduleKind, moduleName, type ModuleId } from "../content/modules.js";
 import { OBJECTIVE_COUNT, type ObjectiveId } from "../content/objectives.js";
 import { alertState } from "./alert.js";
 import { rivalState } from "./rivalstate.js";
@@ -68,6 +69,7 @@ import {
   type Slot,
   findSlot,
   carriedBy,
+  carriedFrom,
   setCarried,} from "../twist/rig.js";
 
 /**
@@ -335,8 +337,12 @@ export function derelictAboard(game: RoomGame): DerelictState | undefined {
 /** Everything a run is, and nothing that outlives one. */
 export interface Voyage {
   credits: number;
-  /** Modules the tug keeps for the next drone. At most `HOLD_LIMIT`. */
-  hold: Array<{ kind: ModuleId; integrity: number }>;
+  /**
+   * Modules the tug keeps for the next drone. At most `HOLD_LIMIT`. A module
+   * that spends charges keeps its count through the hold: stowing a coil and
+   * fitting it again is not a recharge (`twist/rig.ts`, `Carried`).
+   */
+  hold: Array<{ kind: ModuleId; integrity: number; charges?: number }>;
   /** The drone on the rails, or nothing at all — which is half of losing. */
   hull?: HullId;
   /** Keycards the drone is carrying. Written by `systems/doors.ts`, read here. */
@@ -397,7 +403,14 @@ function isVoyage(raw: unknown): raw is Voyage {
 function fresh(game: RoomGame): Voyage {
   // Four hulls, drawn once: the freighter that teaches the game, two of the
   // five in between, and the father's tug (design-doc.md, "Типы дереликтов").
-  const derelicts = derelictsForVoyage(game.rng);
+  const drawn = derelictsForVoyage(game.rng);
+  // A training run swaps the first of them for a hull built to be learned on —
+  // six compartments, one machine, one bulkhead, three systems
+  // (`content/tutorial.ts`, docs/tasks/G69-tutorial.md). The draw above still
+  // happens and still costs the rng exactly what it always did, so a seed is
+  // the same voyage from the second hull on; the training flag reaches here on
+  // the drone itself, because this runs inside the constructor.
+  const derelicts = isTraining(game.player) ? [TUTORIAL_SPEC, ...drawn.slice(1)] : drawn;
   const first = derelicts[0]!;
   return {
     credits: STARTING_CREDITS,
@@ -453,6 +466,58 @@ function freshDerelict(game: RoomGame, spec: DerelictSpec, shipId: string): Dere
  */
 function rollStock(_game: RoomGame): ModuleId[] {
   return [...SHELF];
+}
+
+
+/**
+ * The dock's shelf: three modules, always listed, live only for a module the
+ * drone has lost.
+ */
+function shelfOffers(
+  game: RoomGame,
+  voyage: Voyage,
+  rig: Rig | undefined,
+): Array<ActionOffer<RoomCommand>> {
+  const out: Array<ActionOffer<RoomCommand>> = [];
+
+    // The shelf belongs to the hull the tug is tied to, and a run being fuzzed
+    // can be at neither: read it, never demand it.
+    // Always all three, and greyed rather than gone.
+    //
+    // They used to disappear the moment the drone had one, which is the only
+    // state a whole drone is ever in — so a player with a full rack never saw
+    // the shelf at all and could not know it existed. The owner, four hours in:
+    // «магаз модулей где?».
+    //
+    // Greyed is not the same as absent, and the difference is what the balance
+    // hangs on: a line nobody can press is a line the harness does not press
+    // either, and an *enabled* shelf took it from 10 hulls towed of 32 down to
+    // 3, because a bot with 45 CR buys whatever is in front of it. So the row
+    // is always visible and only ever live for a module the drone has lost.
+    const room = voyage.hold.length < HOLD_LIMIT;
+    (voyage.state[voyage.current]?.stock ?? []).forEach((id, i) => {
+      const price = stockPrice(id);
+      const spare = holds(voyage, rig, id);
+      // A module is for a drone, and with no drone the answer is a drone: a
+      // whole hull with a whole rack is 40 CR against 20 for one CUTTER.
+      const noDrone = voyage.hull === undefined;
+      const why = noDrone
+        ? t("why.stock.noDrone")
+        : spare
+          ? t("why.stock.spare", { module: moduleName(id) })
+          : room
+            ? t(NOT_ENOUGH)
+            : t("why.hold.full", { n: HOLD_LIMIT });
+      out.push(
+        offer(
+          t("action.order", { module: moduleName(id), price }),
+          { kind: "act", verb: "order", target: STOCK_TARGET + i },
+          !noDrone && !spare && room && voyage.credits >= price,
+          why,
+        ),
+      );
+    });
+  return out;
 }
 
 /** Is this module already aboard — in the rack, or waiting in the hold? */
@@ -796,7 +861,11 @@ function autoFit(game: RoomGame): void {
   for (const held of order) {
     const slot = rig.slots.findIndex((s) => s === null);
     if (slot < 0) break;
-    rig.slots[slot] = { kind: held.kind, integrity: held.integrity };
+    // The module as the hold kept it, integrity and charges alike: a coil
+    // comes out with the count it went in with, never recharged.
+    const out: Slot = { kind: held.kind, integrity: held.integrity };
+    if (moduleKind(held.kind).charges !== undefined) out.charges = held.charges ?? moduleKind(held.kind).charges;
+    rig.slots[slot] = out;
     fitted.push(held);
   }
   if (fitted.length === 0) return;
@@ -845,6 +914,8 @@ export function buyHull(game: RoomGame, id: HullId): Outcome {
 export function repair(game: RoomGame, slot: number): Outcome {
   const module = slotAt(game, slot);
   if (!module) return FAIL(t("why.slot.empty"));
+  // A relic is mended by nothing, the bench included (`content/modules.ts`, `relic`).
+  if (isRelic(module.kind)) return FAIL(t("why.relic.noRepair", { module: moduleName(module.kind) }));
   if (module.integrity >= capOf(module)) return FAIL(t("why.module.whole", { module: moduleName(module.kind) }));
   const no = charge(game, repairPrice(module));
   if (no !== undefined) return FAIL(no);
@@ -871,6 +942,7 @@ export function graft(game: RoomGame, slot: number): Outcome {
   const module = slotAt(game, slot);
   if (!module) return FAIL(t("why.slot.empty"));
   const rig = rigOf(game.player)!;
+  if (isRelic(module.kind)) return FAIL(t("why.relic.noRepair", { module: moduleName(module.kind) }));
   if (!canGraft(module)) return FAIL(t("why.module.grafted", { module: moduleName(module.kind) }));
   const no = charge(game, GRAFT_PRICE);
   if (no !== undefined) return FAIL(no);
@@ -990,7 +1062,7 @@ export function stowSlot(game: RoomGame, slot: number): Outcome {
   // not carrying one: handing the sick module to the hold would put the mark on
   // whatever moves up into the slot.
   if (infectedSlot(game) === slot) clearVirus(game.player);
-  voyage.hold.push({ kind: module.kind, integrity: module.integrity });
+  voyage.hold.push(carriedFrom(module.kind, module.integrity, module.charges));
   applyDerived(game.player);
   game.log.add(
     t("log.hold.stow", { module: moduleName(module.kind), integrity: module.integrity, max }),
@@ -1020,6 +1092,12 @@ function buyModule(game: RoomGame, index: number): Outcome {
   const shelf = state?.stock ?? [];
   const id = shelf[index];
   if (id === undefined) return FAIL(t("why.stock.none"));
+  // The same refusals, in the same order, as the greyed line gives
+  // (`shelfOffers`): the list and the command must say one thing.
+  if (voyage.hull === undefined) return FAIL(t("why.stock.noDrone"));
+  if (holds(voyage, rigOf(game.player), id)) {
+    return FAIL(t("why.stock.spare", { module: moduleName(id) }));
+  }
   if (voyage.hold.length >= HOLD_LIMIT) return FAIL(t("why.hold.full", { n: HOLD_LIMIT }));
   const price = stockPrice(id);
   if (!spend(game, price)) return FAIL(t(NOT_ENOUGH));
@@ -1045,7 +1123,7 @@ export function fitFromHold(game: RoomGame, i: number): Outcome {
   if (!rig || voyage.hull === undefined) return FAIL(t("why.hold.noDrone"));
   if (!held) return FAIL(t("why.hold.none"));
 
-  const slot = install(rig, held.kind, held.integrity);
+  const slot = install(rig, held.kind, held.integrity, held.charges);
   if (slot === undefined) return FAIL(t("why.rack.full"));
 
   voyage.hold.splice(i, 1);
@@ -1139,7 +1217,7 @@ function unload(game: RoomGame): void {
   const room = Math.max(0, HOLD_LIMIT - voyage.hold.length);
   if (room === 0) return;
   const landed = carried.slice(0, room);
-  voyage.hold.push(...landed.map((c) => ({ kind: c.kind, integrity: c.integrity })));
+  voyage.hold.push(...landed.map((c) => carriedFrom(c.kind, c.integrity, c.charges)));
   setCarried(game.player, carried.slice(room));
   game.log.add(
     t("log.carry.home", { n: landed.length }),
@@ -1678,6 +1756,36 @@ export function pickLabel(verb: string): string | undefined {
  * the digit for `SCANNER` the same digit between two presses
  * (docs/tasks/G53-tug-is-a-menu.md, 1а).
  */
+/**
+ * What a visit home has left undone, in the order it costs the run: the line
+ * that casts off, read before it is pressed.
+ *
+ * The tug is a menu with no confirmations in it — a modal screen is the one
+ * thing design-doc.md rules out by name — and casting off is the one row on it
+ * that cannot be taken back. So the row says what is not done rather than
+ * asking whether you meant it. The cost of both entries is measured and
+ * already written down here: charters unsigned behind a drone that has flown
+ * cost 1.81 → 0.41 a voyage (`STATION_ORDER`), and a rack under its ceiling is
+ * the whole of what the first sortie is survived on.
+ *
+ * The callsign gives way to them, and only to them. A tug row is twenty-five
+ * columns (`ACTION_WIDTH`) and the longest callsign is thirteen of them, so a
+ * line carrying both would be cut somewhere; the hull is named twice more on
+ * the same screen — on the banner and on the panel — and what is undone is
+ * named nowhere else. With nothing outstanding the row is the callsign again.
+ */
+function castOffLeft(voyage: Voyage, rig: Rig | undefined): string[] {
+  const out: string[] = [];
+  const hurt = rig === undefined ? 0 : damaged(rig).length;
+  if (hurt > 0) out.push(t("undock.left.damaged", { n: hurt }));
+  // Only while there is one to sign: a board the drone has cleared is not a
+  // thing left undone, and neither is one that never had anything on it.
+  if (voyage.charters.length === 0 && voyage.offered.length > 0) {
+    out.push(t("undock.left.charter"));
+  }
+  return out;
+}
+
 export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<RoomCommand>> {
   const voyage = voyageOf(game);
   const rig = rigOf(game.player);
@@ -1739,6 +1847,11 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
     return out;
   }
 
+  // The shelf is the one list a drone need not exist for: with the rails empty
+  // it still says what the dock sells and why the lines are grey, which is how
+  // a player finds out it is there at all.
+  if (verb === "order") return shelfOffers(game, voyage, rig);
+
   if (voyage.hull === undefined) return out;
 
   // The hull by its callsign, not by its class: a voyage draws three of these
@@ -1750,9 +1863,10 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
   if (verb === "undock") {
     const state = currentDerelict(game);
     const hull = flavourCallsign(state.flavour);
+    const left = castOffLeft(voyage, rig);
     out.push(
       offer(
-        t("action.undock", { hull }),
+        left.length === 0 ? t("action.undock", { hull }) : t("action.undock.todo", { left: left.join(", ") }),
         { kind: "act", verb: "undock" },
         !state.sold,
         t("why.undock.tow", { hull }),
@@ -1772,6 +1886,10 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
   if (verb === "repair") {
     damaged(rig).forEach(({ slot, i }) => {
       const price = repairPrice(slot);
+      // A worn relic keeps its line, greyed: the list and the command say the
+      // same thing (`repair` refuses in these words), and a player has to be
+      // able to read why the bench will not touch it.
+      const relic = isRelic(slot.kind);
       out.push(
         offer(
           t("action.repair", {
@@ -1781,8 +1899,8 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
             price,
           }),
           { kind: "act", verb: "repair", slot: i },
-          affordable(game, price),
-          whyNot(game, price),
+          !relic && affordable(game, price),
+          relic ? t("why.relic.noRepair", { module: moduleName(slot.kind) }) : whyNot(game, price),
         ),
       );
     });
@@ -1807,6 +1925,8 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
   if (verb === "graft") {
     rig.slots.forEach((slot, i) => {
       if (!slot || !canGraft(slot)) return;
+      // A relic is on the list and greyed, in the words `graft` refuses with.
+      const relic = isRelic(slot.kind);
       out.push(
         offer(
           // What grafting gives rather than what the module is worth today: at
@@ -1815,8 +1935,8 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
           // does.
           t("action.graft", { module: moduleName(slot.kind), price: GRAFT_PRICE }),
           { kind: "act", verb: "graft", slot: i },
-          affordable(game, GRAFT_PRICE),
-          whyNot(game, GRAFT_PRICE),
+          !relic && affordable(game, GRAFT_PRICE),
+          relic ? t("why.relic.noRepair", { module: moduleName(slot.kind) }) : whyNot(game, GRAFT_PRICE),
         ),
       );
     });
@@ -1861,35 +1981,7 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
   // verb, drawn on the `fit` row (`TugRow.also`, ui/actions.ts) — everything
   // that puts a module on the drone belongs in one place, and the panel at home
   // has no eleventh row to give it.
-  if (verb === "order") {
-    // The shelf belongs to the hull the tug is tied to, and a run being fuzzed
-    // can be at neither: read it, never demand it.
-    // Nothing on the rails, nothing on the shelf. A module is for a drone, and
-    // with no drone the answer is a drone: a whole hull with a whole rack is
-    // 40 CR against 45 for one CUTTER, so a shelf offered to an empty rail is a
-    // trap with a price tag on it.
-    if (voyage.hull === undefined) return out;
-    const room = voyage.hold.length < HOLD_LIMIT;
-    (voyage.state[voyage.current]?.stock ?? []).forEach((id, i) => {
-      // Only what the drone has not got. The shelf exists because a burned
-      // CUTTER is a run that can never raise a drive again, not so that a whole
-      // drone can be bought a second CUTTER — and a line that is on the list
-      // whether or not it is any use is a line that gets pressed. Measured: an
-      // ungated shelf took the harness from 10 hulls towed of 32 to 3, because
-      // a bot with 45 CR buys what is in front of it.
-      if (holds(voyage, rig, id)) return;
-      const price = stockPrice(id);
-      out.push(
-        offer(
-          t("action.order", { module: moduleName(id), price }),
-          { kind: "act", verb: "order", target: STOCK_TARGET + i },
-          room && voyage.credits >= price,
-          room ? t(NOT_ENOUGH) : t("why.hold.full", { n: HOLD_LIMIT }),
-        ),
-      );
-    });
-    return out;
-  }
+
 
   if (verb === "sell") {
     rig.slots.forEach((slot, i) => {

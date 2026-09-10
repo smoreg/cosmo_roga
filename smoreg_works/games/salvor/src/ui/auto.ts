@@ -3,6 +3,7 @@ import {
   blockedBy,
   exploreTarget,
   type Door,
+  type DoorFilter,
   type DoorId,
   type Entity,
   type Room,
@@ -11,7 +12,7 @@ import {
   type RoomId,
   type Ship,
 } from "@jamrog/engine";
-import type { ModuleId } from "../content/modules.js";
+import { moduleName, type ModuleId } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
 import { isTug } from "../content/tug.js";
 import { doorStateWord } from "../content/words.js";
@@ -20,9 +21,11 @@ import { t, tId } from "../i18n.js";
 import { entityLabel } from "../names.js";
 import { alertState } from "../systems/alert.js";
 import { keysHeld } from "../systems/doors.js";
+import { hazardLine, signsGiven } from "../systems/hazards.js";
+import { doorHazard, hazardKnown, hazardRecords, roomHazard } from "../systems/hazardstate.js";
 import { jammed } from "../systems/jam.js";
 import { roomList, type Body, type Crate, type RoomItem, type ShipSystem, type Wreck } from "../systems/populate.js";
-import { findSlot, hostilesIn, rigOf, shootTarget, type Rig } from "../twist/rig.js";
+import { findSlot, findSlotAs, hostilesIn, rigOf, shootTarget, type Rig } from "../twist/rig.js";
 import { strikersNear } from "./strikers.js";
 import { tag } from "./schematic-input.js";
 
@@ -74,6 +77,79 @@ export function passableForPlayer(door: Door): boolean {
   return door.state === "open" || door.state === "closed" || door.state === "broken";
 }
 
+/**
+ * A known hazard on the far side of this door, as the red line says it — or
+ * nothing, when there is none or the drone has not been told of it yet.
+ *
+ * The one question every automatic step asks, and the report's third rule in
+ * a sentence: auto-explore's stop list, a walk sent by `m` and `Tab` all read
+ * this and none of them takes a step it answers. Known means told from next
+ * door or read by a sensor pulse (`systems/hazardstate.ts`, `hazardKnown`);
+ * a hazard nobody has been told of is not this function's to reveal.
+ */
+export function dangerAhead(game: RoomGame, door: Door): string | undefined {
+  const here = game.roomOf(game.player).id;
+  if (door.a !== here && door.b !== here) return undefined;
+  const ship = game.ship;
+  const records = hazardRecords(game);
+  const trap = doorHazard(ship, records, door.id);
+  if (trap && hazardKnown(ship, trap)) return hazardLine(game, trap, here, door);
+  const beyond = ship.other(door, here);
+  if (beyond === here) return undefined;
+  const rec = roomHazard(ship, records, beyond);
+  return rec && hazardKnown(ship, rec) ? hazardLine(game, rec, here, door) : undefined;
+}
+
+/**
+ * Which doors a walk may use *without paying*: the three states a drone steps
+ * through, less every door with a known trap on it and every door into a
+ * compartment with a known hazard in it — except the one the drone is standing
+ * in, which it must always be allowed to leave.
+ *
+ * `through` is the one door the player has confirmed: a walk that stopped a
+ * door short of a hazard and was asked again for the same thing takes that
+ * door, whatever is beyond it (`ui/appstate.ts`, `Warning`). The far side is
+ * still a hazard and its other doors still walls — the confirmation is for
+ * the step in, not for the compartment after it.
+ *
+ * A filter over the whole ship rather than over the compartment underfoot,
+ * because the distance maps a walk plans by are built from the far end, and
+ * a door has to be a wall to them from both sides.
+ */
+function safeForPlayer(game: RoomGame, through?: DoorId): DoorFilter {
+  const ship = game.ship;
+  const here = game.roomOf(game.player).id;
+  const records = hazardRecords(game);
+  if (records.length === 0) return passableForPlayer;
+  const risky = (room: RoomId): boolean => {
+    if (room === here) return false;
+    const rec = roomHazard(ship, records, room);
+    return rec !== undefined && hazardKnown(ship, rec);
+  };
+  return (d) => {
+    if (!passableForPlayer(d)) return false;
+    if (d.id === through) return true;
+    const trap = doorHazard(ship, records, d.id);
+    if (trap && hazardKnown(ship, trap)) return false;
+    return !risky(d.a) && !risky(d.b);
+  };
+}
+
+/**
+ * The door a confirmed walk may take on its first step, and only then: the
+ * one it stopped at, still one of this compartment's, still something a drone
+ * simply steps through. Anything else — the drone has moved, the door has
+ * been locked meanwhile — and the confirmation is for a question that is no
+ * longer being asked.
+ */
+function confirmedDoor(game: RoomGame, through: DoorId | undefined): Door | undefined {
+  if (through === undefined) return undefined;
+  const door = game.ship.doors[through];
+  if (!door || !passableForPlayer(door)) return undefined;
+  const here = game.roomOf(game.player).id;
+  return door.a === here || door.b === here ? door : undefined;
+}
+
 /** What the compartment looked like at the previous step: "new" against "still there". */
 interface Seen {
   room: RoomId;
@@ -82,6 +158,8 @@ interface Seen {
   /** Rig integrity plus CORE: any blow at all lowers this. */
   durability: number;
   alert: number;
+  /** Hazards the drone has been told about this sortie (`systems/hazards.ts`, `signsGiven`). */
+  signs: Set<string>;
 }
 
 export interface Explorer {
@@ -105,10 +183,18 @@ export interface Explorer {
  * The middle one is the whole point — a key that answers "everything left is
  * behind d3" and then stands still has told the player where the next decision
  * is and left them to walk to it by hand.
+ *
+ * `through` is a door the player has already been stopped at and has asked
+ * for again — "…press again to go in" taken at its word. The first step of
+ * this walk is that door, if it is still the door in front of the drone, and
+ * the walk carries on from the far side as any walk does: what is in there
+ * stops it exactly as it would anywhere else. The one door, once — a hazard
+ * further along is a new question, and gets its own stop.
  */
-export function makeExplorer(): Explorer {
+export function makeExplorer(through?: DoorId): Explorer {
   const watch = makeWatch();
   let walkedBack = false;
+  let confirmed = through;
 
   return {
     step(game: RoomGame): AutoResult {
@@ -117,38 +203,53 @@ export function makeExplorer(): Explorer {
       // of "ship explored" came from (docs/tasks/G55-playtest-findings.md).
       if (isTug(game)) return { stop: t("stop.tug") };
 
+      // The confirmation is spent on the first call whatever comes of it: a
+      // walk that stopped for a machine, or went somewhere else first, has
+      // answered a different question.
+      const pass = confirmedDoor(game, confirmed);
+      confirmed = undefined;
+
       const interrupt = watch(game);
       if (interrupt) return interrupt;
+      if (pass) return { cmd: { kind: "go", door: pass.id } };
 
       const room = game.roomOf(game.player);
-      const onwards = exploreTarget(game.ship, room.id, passableForPlayer);
+      const safe = safeForPlayer(game);
+      const onwards = exploreTarget(game.ship, room.id, safe);
       if (onwards) return { cmd: { kind: "go", door: onwards.id } };
 
-      // Nothing is walkable any more, but something openable may still stand
-      // between here and the rest of the ship: walk up to it and hand over the
+      // Nothing is walkable for free any more, but something may still stand
+      // between here and the rest of the ship — a lock the rack can open, or a
+      // hazard the drone has been told about: walk up to it and hand over the
       // question, which is what the screen turns into that bulkhead's own list
       // of ways through it (`ui/appstate.ts`, `stoppedAt`).
-      const gate = nearestGate(game, room.id);
+      const gate = nearestGate(game, room.id, safe);
       if (gate?.step) return { cmd: { kind: "go", door: gate.step.id } };
-      if (gate) {
-        return {
-          stop: t("stop.shut", { door: gate.door.label, state: doorStateWord(gate.door.state) }),
-          door: gate.door.id,
-        };
-      }
+      if (gate) return { ...gateStop(game, gate.door), door: gate.door.id };
 
       // Out of moves. Which of the two things that means is the difference
       // between a sortie that is finished and one that needs a tool, so the
       // line says which, and names the hull it is talking about (G54 §5).
       const left = game.ship.rooms.filter((r) => !r.explored).length;
-      if (left > 0) return { stop: t("stop.noFurther", { hull: hullName(game), n: left }) };
+      if (left > 0) {
+        // A bulkhead still in the way is one a CUTTER opens — locked or welded,
+        // there is no third kind — and the walk only reaches this line with no
+        // cutter aboard. The dock sells one (`systems/voyage.ts`, `SHELF`), so
+        // the line that ends the sortie says what to come back with rather than
+        // only that it ended. Nothing joins the two halves of the hull at all
+        // is the other case, and no tool answers that one.
+        const hull = hullName(game);
+        return blockedBy(game.ship, room.id).length > 0
+          ? { stop: t("stop.noFurther.tool", { hull, n: left, tool: moduleName("cutter") }) }
+          : { stop: t("stop.noFurther", { hull, n: left }) };
+      }
 
       // Nothing unseen left to reach: point the drone at the way out, take a
       // single step towards it, and give the ship back to the player.
-      const home = RoomDistance.from(game.ship, [airlockRoom(game.ship)], passableForPlayer);
+      const home = RoomDistance.from(game.ship, [airlockRoom(game.ship)], safe);
       const where = t("stop.explored", { hull: hullName(game), back: airlockLine(home.at(room.id)) });
       if (walkedBack) return { stop: where };
-      const back = home.nextDoor(room.id, passableForPlayer);
+      const back = home.nextDoor(room.id, safe);
       if (!back) return { stop: where };
       walkedBack = true;
       return { cmd: { kind: "go", door: back.id } };
@@ -164,48 +265,133 @@ interface Gate {
 }
 
 /**
- * The nearest bulkhead that alone stands between the drone and unexplored ship
- * *and* that the rack can open — the second of auto-explore's three questions.
+ * The nearest door that alone stands between the drone and unexplored ship
+ * and is worth walking to — the second of auto-explore's three questions.
  *
- * `blockedBy` (`rooms/paths.ts`) already knows which doors those are; what this
- * adds is the rig, because a lock nobody aboard can pick is not a destination,
- * it is a wall, and walking three compartments to read four greyed-out lines is
- * worse than being told the sortie is over. Ties go to the lower door id, so a
- * seed walks the same way twice.
+ * Two kinds of door qualify. A lock or a seam the rack can open: a lock
+ * nobody aboard can pick is not a destination, it is a wall, and walking
+ * three compartments to read four greyed-out lines is worse than being told
+ * the sortie is over. And a door the free walk refused for a hazard — a known
+ * trap on it, or a known hazard in the compartment beyond it — which plain
+ * walking would take: that is the report's rule that automation stops a door
+ * short and hands the decision over, and the door is where the decision is.
+ *
+ * Nearest by doors from here over the free walk, ties to the lower door id,
+ * so a seed walks the same way twice.
  */
-function nearestGate(game: RoomGame, here: RoomId): Gate | undefined {
+function nearestGate(game: RoomGame, here: RoomId, safe: DoorFilter): Gate | undefined {
   const ship = game.ship;
-  const away = RoomDistance.from(ship, [here], passableForPlayer);
-  // Exactly one end of a blocking door is walkable, so the min is that end.
-  const reach = (d: Door): number => Math.min(away.at(d.a), away.at(d.b));
+  const away = RoomDistance.from(ship, [here], safe);
+  const reached = (room: RoomId): boolean => Number.isFinite(away.at(room));
 
-  let door: Door | undefined;
-  for (const d of blockedBy(ship, here)) {
-    if (canBreach(game, d) && (door === undefined || reach(d) < reach(door))) door = d;
+  let best: { door: Door; inside: RoomId; dist: number } | undefined;
+  for (const d of ship.doors) {
+    if (d.a === d.b || safe(d)) continue;
+    const inside = reached(d.a) ? d.a : reached(d.b) ? d.b : undefined;
+    if (inside === undefined) continue;
+    const beyond = ship.other(d, inside);
+    // Some other route already covers the far side.
+    if (reached(beyond)) continue;
+    if (!passableForPlayer(d) && !canBreach(game, d)) continue;
+    if (!unexploredBehind(ship, beyond)) continue;
+    const dist = away.at(inside);
+    if (!best || dist < best.dist || (dist === best.dist && d.id < best.door.id)) best = { door: d, inside, dist };
   }
-  if (door === undefined) return undefined;
+  if (!best) return undefined;
 
-  const inside = away.at(door.a) <= away.at(door.b) ? door.a : door.b;
-  if (inside === here) return { door };
-  const step = RoomDistance.from(ship, [inside], passableForPlayer).nextDoor(here, passableForPlayer);
-  return step ? { door, step } : undefined;
+  if (best.inside === here) return { door: best.door };
+  const step = RoomDistance.from(ship, [best.inside], safe).nextDoor(here, safe);
+  return step ? { door: best.door, step } : undefined;
 }
 
 /**
- * Has this rack anything that opens that bulkhead, right now?
- *
- * The same question `systems/doors.ts` answers for the compartment the drone is
- * standing in (`doorOffers`, `LOCKED_METHODS`), asked about a door several
- * compartments off — which is what lets a walk treat a lock as somewhere to go
- * rather than as the end of the ship. A lock has four answers and a welded seam
- * has one; a rack with none of them is why `o` says the sortie is over.
+ * Is there unexplored ship on the far side of a door, counting from the
+ * compartment it opens into and walking on through whatever simply opens?
+ * The hazards are not counted here on purpose: what is behind a mined door is
+ * behind it whether or not the drone has been told about the mine.
  */
-function canBreach(game: RoomGame, door: Door): boolean {
+function unexploredBehind(ship: Ship, from: RoomId): boolean {
+  const seen = new Set<RoomId>([from]);
+  const stack = [from];
+  while (stack.length > 0) {
+    const room = stack.pop()!;
+    if (!ship.roomAt(room).explored) return true;
+    for (const { door, room: beyond } of ship.neighbours(room)) {
+      const next = beyond.id;
+      if (next === room || seen.has(next) || !passableForPlayer(door)) continue;
+      seen.add(next);
+      stack.push(next);
+    }
+  }
+  return false;
+}
+
+/**
+ * What a walk says when it stops at a door: the hazard beyond it in the words
+ * of the red line, or the state of the bulkhead. A mined lock is a hazard
+ * first — the lock has four answers of its own on the list that opens.
+ *
+ * The hazard line ends by saying what the next press does, because the owner
+ * pressed `o` eight times at one smoke-filled compartment and read the same
+ * stop eight times (docs/tasks/G83-anonymous-blows.md, 3): a stop the player
+ * cannot get past is not a warning, it is a wall. The screen remembers the
+ * door (`ui/appstate.ts`, `Warning`), and the same ask again walks through.
+ */
+function gateStop(game: RoomGame, door: Door): { stop: string } {
+  const danger = dangerAhead(game, door);
+  if (danger !== undefined) {
+    // A hazard behind a lock is a hazard first, and the second press opens
+    // the lock's own ways rather than stepping through: the line must not
+    // promise a step the door will not give.
+    const key = passableForPlayer(door) ? "stop.hazard.again" : "stop.hazard";
+    return { stop: t(key, { what: danger }) };
+  }
+
+  // What opens it, and which of that is aboard: the owner pressed `o` five
+  // times at one lock and read `d1 (locked)` five times, with nothing in the
+  // line to say what the lock wanted (docs/tasks/G83-anonymous-blows.md, 2).
+  const tools = toolsFor(game, door);
+  const shut = { door: door.label, state: doorStateWord(door.state) };
+  if (tools.all.length === 0) return { stop: t("stop.shut", shut) };
+  const ways = tools.all.join(", ");
+  if (tools.held.length === 0) return { stop: t("stop.shut.none", { ...shut, ways }) };
+  return { stop: t("stop.shut.ways", { ...shut, ways, have: tools.held.join(", ") }) };
+}
+
+/**
+ * What opens that bulkhead, in the order the door's own list offers it
+ * (`systems/doors.ts`, `LOCKED_METHODS`), and which of it this rack holds
+ * right now. A lock has four answers and a welded seam has one; anything else
+ * a drone simply walks through and has no answers at all.
+ *
+ * The same question `systems/doors.ts` answers for the compartment the drone
+ * is standing in, asked about a door several compartments off — which is what
+ * lets a walk treat a lock as somewhere to go rather than as the end of the
+ * ship, and what the stop line names when it gets there.
+ */
+function toolsFor(game: RoomGame, door: Door): { all: string[]; held: string[] } {
   const rig = rigOf(game.player);
-  const carries = (kind: ModuleId): boolean => rig !== undefined && findSlot(rig, kind) !== null;
-  if (door.state === "sealed") return carries("cutter");
-  if (door.state !== "locked") return false;
-  return carries("cell") || carries("spike") || carries("cutter") || keysHeld(game.player) > 0;
+  const carries = (kind: ModuleId): boolean => rig !== undefined && findSlotAs(rig, kind) !== null;
+  const tools: Array<[string, boolean]> =
+    door.state === "sealed"
+      ? [[moduleName("cutter"), carries("cutter")]]
+      : door.state === "locked"
+        ? [
+            [moduleName("cell"), carries("cell")],
+            [moduleName("spike"), carries("spike")],
+            [moduleName("cutter"), carries("cutter")],
+            [t("word.keycard"), keysHeld(game.player) > 0],
+          ]
+        : [];
+  return {
+    all: tools.map(([name]) => name),
+    held: tools.filter(([, held]) => held).map(([name]) => name),
+  };
+}
+
+/** Has this rack anything that opens that bulkhead, right now? A rack with nothing is why `o` says the sortie is over. */
+function canBreach(game: RoomGame, door: Door): boolean {
+  return toolsFor(game, door).held.length > 0;
 }
 
 /**
@@ -251,16 +437,26 @@ function makeWatch(): (game: RoomGame) => { stop: string } | undefined {
 
     const room = game.roomOf(game.player);
     const things = thingsIn(room);
+    const signs = signsGiven(game);
     const now: Seen = {
       room: room.id,
       things: new Set(things.map((t) => t.id)),
       durability: durability(game),
       alert: alertState(game).level,
+      signs: new Set(signs),
     };
     const last = before;
     before = now;
     if (!last) return undefined;
 
+    // A red line the step just earned is the stop the whole hazard design is
+    // for: the sign comes a compartment early, and the walk stops on it the
+    // way it stops on a machine, so the step after it is the player's. Not
+    // the compartment underfoot, though: a hazard the drone has just walked
+    // into on purpose counts as told without a line (`systems/hazards.ts`,
+    // `tell`), and the block under the schematic is already saying the word.
+    const sign = signs.find((s) => !last.signs.has(s) && !standingIn(s, room.id));
+    if (sign !== undefined) return { stop: t("stop.hazard", { what: newestSign(game, sign) }) };
     if (now.durability < last.durability) return { stop: t("stop.hit") };
     if (now.alert > last.alert) return { stop: t("stop.alert") };
     // A compartment the walk has just entered was never snapshotted, so
@@ -268,6 +464,32 @@ function makeWatch(): (game: RoomGame) => { stop: string } | undefined {
     const fresh = things.find((t) => last.room !== room.id || !last.things.has(t.id));
     return fresh ? { stop: t("stop.thing", { thing: fresh.noun }) } : undefined;
   };
+}
+
+/**
+ * The red line for a sign just given, read back off the record it names —
+ * the same words the log has, so the stop and the line are one sentence
+ * twice rather than two sentences about one thing.
+ */
+function newestSign(game: RoomGame, sign: string): string {
+  const here = game.roomOf(game.player).id;
+  const [id, room, door] = signParts(sign);
+  const rec = hazardRecords(game).find(
+    (r) => r.id === id && String(r.room ?? "-") === room && String(r.door ?? "-") === door,
+  );
+  const line = rec === undefined ? undefined : hazardLine(game, rec, here);
+  return line ?? t("word.derelict");
+}
+
+/** Is this sign the compartment the drone is standing in? Door traps never are. */
+function standingIn(sign: string, here: RoomId): boolean {
+  return signParts(sign)[1] === String(here);
+}
+
+/** `id:room:door` as `signsGiven` writes it, with `-` for the half a record has not got. */
+function signParts(sign: string): [string, string, string] {
+  const [id = "", room = "-", door = "-"] = sign.split(":");
+  return [id, room, door];
 }
 
 /**
@@ -282,32 +504,39 @@ function makeWatch(): (game: RoomGame) => { stop: string } | undefined {
  * ordinary `go`, the world moves between them, and a route that has become
  * impossible mid-walk simply stops.
  *
- * Two ways it can end that `o` has no equivalent for: arriving, and running
- * into something shut. The second names the door, and the screen answers by
- * opening that bulkhead's own list of ways through it. Opening it does *not*
- * resume the walk — three turns with a torch is long enough for the ship to
- * have become a different ship, and a drone that then wandered on by itself
- * would be the automation the genre checklist forbids.
+ * Three ways it can end that `o` has no equivalent for: arriving, running
+ * into something shut, and coming up to a hazard the drone knows about. The
+ * last two name the door, and the screen answers by opening that bulkhead's
+ * own list of ways through it — for a hazard, the step in and whatever lifts
+ * it — so "the second press goes on" is the `go` line of that list. Opening
+ * a bulkhead does *not* resume the walk — three turns with a torch is long
+ * enough for the ship to have become a different ship, and a drone that then
+ * wandered on by itself would be the automation the genre checklist forbids.
+ *
+ * `through` is the door the same walk stopped at last time and the player has
+ * asked past (`makeExplorer` says the rest): the first step may take it, and
+ * only the first.
  */
-export function makeTraveller(goal: RoomId): Explorer {
+export function makeTraveller(goal: RoomId, through?: DoorId): Explorer {
   const watch = makeWatch();
+  let confirmed = through;
 
   return {
     step(game: RoomGame): AutoResult {
+      const pass = confirmedDoor(game, confirmed);
+      confirmed = undefined;
+
       const interrupt = watch(game);
       if (interrupt) return interrupt;
 
       const room = game.roomOf(game.player);
       if (room.id === goal) return { stop: t("stop.arrived", { room: roomName(room) }) };
 
-      const route = travelRoute(game.ship, room.id, goal);
+      const route = travelRoute(game.ship, room.id, goal, safeForPlayer(game, pass?.id));
       const next = route?.[0];
       if (!next) return { stop: t("stop.noWay") };
-      if (!passableForPlayer(next)) {
-        return {
-          stop: t("stop.shut", { door: next.label, state: doorStateWord(next.state) }),
-          door: next.id,
-        };
+      if (!passableForPlayer(next) || (next.id !== pass?.id && dangerAhead(game, next) !== undefined)) {
+        return { ...gateStop(game, next), door: next.id };
       }
       return { cmd: { kind: "go", door: next.id } };
     },
@@ -337,13 +566,24 @@ export function breachable(door: Door): boolean {
  * ask. Only when plain walking cannot reach the compartment does the route go
  * through something shut — and then the first shut door on it is the thing the
  * list names and the walk stops at.
+ *
+ * `safe` narrows the clear route further, to doors that cost nothing at all:
+ * with it, a way round a known hazard is taken before the way through one,
+ * which is the report's "обход по петле предлагается первым". Without it the
+ * route is the plain one, which is all `<` at the airlock needs.
  */
-export function travelRoute(ship: Ship, from: RoomId, goal: RoomId): Door[] | undefined {
-  const clear = RoomDistance.from(ship, [goal], passableForPlayer);
-  const walkable = Number.isFinite(clear.at(from));
-  const map = walkable ? clear : RoomDistance.from(ship, [goal], breachable);
-  const filter = walkable ? passableForPlayer : breachable;
-  if (!Number.isFinite(map.at(from))) return undefined;
+export function travelRoute(ship: Ship, from: RoomId, goal: RoomId, safe?: DoorFilter): Door[] | undefined {
+  const tiers: DoorFilter[] = safe ? [safe, passableForPlayer, breachable] : [passableForPlayer, breachable];
+  let map: RoomDistance | undefined;
+  let filter: DoorFilter = breachable;
+  for (const tier of tiers) {
+    const candidate = RoomDistance.from(ship, [goal], tier);
+    if (!Number.isFinite(candidate.at(from))) continue;
+    map = candidate;
+    filter = tier;
+    break;
+  }
+  if (map === undefined) return undefined;
 
   const out: Door[] = [];
   let at = from;
@@ -394,10 +634,28 @@ export function engage(game: RoomGame, mode: "best" | "melee" = "best"): AutoRes
   if (inRoom[0]) return { cmd: { kind: "attack", target: inRoom[0].id } };
 
   const known = knownMachineRooms(game, here);
-  if (known.length === 0) return { stop: t("stop.noTarget") };
+  if (known.length === 0) return { stop: hazardHitting(game) ?? t("stop.noTarget") };
 
-  const towards = RoomDistance.from(game.ship, known, passableForPlayer).nextDoor(here, passableForPlayer);
-  return towards ? { cmd: { kind: "go", door: towards.id } } : { stop: t("stop.noWay") };
+  // The step towards it, and never into something the drone has been told
+  // about: a known hazard on the only way there is a decision, not a step,
+  // and the key says so instead of taking it (`content/hazards.ts`, rule 2).
+  const safe = safeForPlayer(game);
+  const towards = RoomDistance.from(game.ship, known, safe).nextDoor(here, safe);
+  if (towards) return { cmd: { kind: "go", door: towards.id } };
+  const plain = RoomDistance.from(game.ship, known, passableForPlayer).nextDoor(here, passableForPlayer);
+  return plain ? { stop: t("why.auto.hazard") } : { stop: t("stop.noWay") };
+}
+
+/**
+ * What is hitting the drone when no machine is: the vacuum of a compartment
+ * the ship has vented, which costs a point a turn for as long as the drone
+ * stands in it (`systems/alert.ts`, `bleed`). `Tab` used to answer "No target
+ * in sight" to a drone the ship itself was taking apart, and the owner read
+ * an invisible machine into it (docs/tasks/G83-anonymous-blows.md, 1): the
+ * honest answer is what is doing the hitting, and what to do about it.
+ */
+function hazardHitting(game: RoomGame): string | undefined {
+  return game.roomOf(game.player).hazard === "vented" ? t("why.fight.hazard") : undefined;
 }
 
 // ------------------------------------------------------------------ the ship
@@ -491,9 +749,12 @@ function thingsIn(room: Room): Thing[] {
   return out;
 }
 
-/** A rack that can swing at something. Everything else rams, and GHOST only rams. */
+/**
+ * A rack that can swing at something. Everything else rams, and GHOST only
+ * rams. A relic that answers for the cutter — the blade — is a swing too.
+ */
 function hasMelee(rig: Rig): boolean {
-  return findSlot(rig, "cutter") !== null || findSlot(rig, "laser") !== null;
+  return findSlotAs(rig, "cutter") !== null || findSlot(rig, "laser") !== null;
 }
 
 /**

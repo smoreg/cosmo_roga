@@ -7,8 +7,9 @@ import {
   type RoomId,
   type Ship,
 } from "@jamrog/engine";
-import { shipFromText } from "@jamrog/engine/testing";
-import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
+import { BOTS_ROOMS, roomPlay, runBotOn, seedRange, shipFromText } from "@jamrog/engine/testing";
+import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
+import { TUTORIAL_SEED, TUTORIAL_SPEC, TUTORIAL_STEPS } from "../src/content/tutorial.js";
 import {
   HINT_LINE_KEYS,
   ONBOARDING_HINTS,
@@ -19,7 +20,7 @@ import {
 import { t } from "../src/i18n.js";
 import { CHEAPEST_HULL, STARTING_CREDITS } from "../src/content/hulls.js";
 import { moduleKind } from "../src/content/modules.js";
-import { flavourCallsign } from "../src/content/derelicts.js";
+import { STARTER_HULLS, flavourCallsign } from "../src/content/derelicts.js";
 import { OBJECTIVES } from "../src/content/objectives.js";
 import { TUG_ID, TUG_ROOMS } from "../src/content/tug.js";
 import { GHOST_HINT_KEY } from "../src/systems/ghost.js";
@@ -159,7 +160,7 @@ describe("the first thing a player ever does", () => {
       // place on every seed, which is the other half of what this holds.
       const list = roomActions(game);
       const off = list.findIndex((a) => a.cmd.kind === "act" && a.cmd.verb === "undock");
-      expect(off, `seed ${seed}`).toBe(0);
+      expect(off, `seed ${seed}`).toBe(list.length - 1);
       press(list[off]!.key);
 
       expect(game.shipId, `seed ${seed}`).not.toBe(TUG_ID);
@@ -176,10 +177,11 @@ describe("the first thing a player ever does", () => {
     const game = newGame(11);
     const labels = (): string[] => roomActions(game).map((a) => a.label);
 
-    expect(labels()[1]).toBe("buy a hull ▸");
-    // The hull by its callsign: a voyage can draw two freighters, and the line
-    // that flies you to one has to say which (G55, 17).
-    expect(labels()[0]).toBe(`cast off → ${flavourCallsign(currentDerelict(game).flavour)}`);
+    expect(labels()[0]).toBe("buy a hull ▸");
+    // The row that casts off comes last and is a checklist of what the visit
+    // home has left undone; a fresh board has one thing on it
+    // (docs/tug-menu-audit.md, "what a designer would do", 5, and П7).
+    expect(labels()[9]).toBe("cast off no job");
     expect(labels().some((l) => l.startsWith("take a charter"))).toBe(true);
     expect(roomActions(game)).toHaveLength(10);
     expect(roomActions(game).every((a) => a.key !== "")).toBe(true);
@@ -187,12 +189,18 @@ describe("the first thing a player ever does", () => {
     // And the same ten from anywhere aboard, because nothing about them is
     // about where the drone is standing.
     for (const door of [1, 2, 3]) expect(game.playerCommand({ kind: "go", door }).ok).toBe(true);
-    expect(labels()[0]).toBe(`cast off → ${flavourCallsign(currentDerelict(game).flavour)}`);
+    expect(labels()[9]).toBe("cast off no job");
 
     // The board itself, one level down, and the first line of it is the point
     // of the game: raise three systems and the tug sells the hull whole.
     const board = roomActions(game, "charter").filter((a) => a.cmd.kind === "act" && a.cmd.verb === "charter");
     expect(board.map((a) => a.label)).toEqual(["take NEUTRALIZE (200 CR)", "take SALVAGE (20 CR)"]);
+
+    // With nothing outstanding the row is the hull by its callsign: a voyage
+    // can draw two freighters, and the line that flies you to one has to say
+    // which (G55, 17).
+    expect(game.playerCommand(board[0]!.cmd).ok).toBe(true);
+    expect(labels()[9]).toBe(`cast off → ${flavourCallsign(currentDerelict(game).flavour)}`);
   });
 
   /**
@@ -207,8 +215,8 @@ describe("the first thing a player ever does", () => {
       const list = roomActions(game);
 
       expect(list, `seed ${seed}`).toHaveLength(10);
-      expect(list[0]!.label, `seed ${seed}`).toMatch(/^cast off → /);
-      expect(list[0]!.enabled, `seed ${seed}`).toBe(true);
+      expect(list[9]!.label, `seed ${seed}`).toMatch(/^cast off /);
+      expect(list[9]!.enabled, `seed ${seed}`).toBe(true);
       // The rack, always: three hulls one level down, the drone on the rails
       // among them (docs/tasks/G40-tug-clarity.md, 3).
       const rack = roomActions(game, "buy");
@@ -290,17 +298,23 @@ describe("the first freighter, on 200 seeds", () => {
       const here = hostilesIn(game, entry.id);
       if (here.length === 1 && here[0]!.ch === "c") scout++;
 
+      // One bulkhead, and the ferry's two: since G73 the first hull of a run is
+      // one of five classes, and the ferry's whole lesson is a second gate
+      // (`content/derelicts.ts`, `STARTER_HULLS`). What is the same on all
+      // five is that every lock has a keycard aboard and the hull opens all the
+      // way up to a drone that picks them up as it goes.
+      const owed = currentDerelict(game).spec.id === "ferry" ? 2 : 1;
       const locked = ship.doors.filter((d) => d.state === "locked");
-      if (locked.length === 1) oneLock++;
+      if (locked.length === owed) oneLock++;
 
       const key = keyRoom(ship);
-      if (key !== undefined && reachableUnlocked(ship).has(key)) keyBefore++;
+      if (key !== undefined && reachableWithKeys(ship).rooms.size === ship.size) keyBefore++;
     }
 
-    report("first freighter", {
+    report("first hull of a voyage", {
       "% scrap where it lands": scrap,
       "one c and nothing else": scout,
-      "one bulkhead": oneLock,
+      "the bulkheads the class owes": oneLock,
       "key before it": keyBefore,
     });
     expect(scrap).toBe(SEEDS);
@@ -533,3 +547,123 @@ function onBodies(): RoomGame {
   game.refreshSight();
   return game;
 }
+
+// ------------------------------------------------------- the training hull
+
+/**
+ * The tutorial, flown (docs/tasks/G69-tutorial.md).
+ *
+ * `tests/tutorial.test.ts` holds the ship and the chain apart from each other —
+ * the hull over a hundred draws, the seven lines as a table of predicates. This
+ * is the two of them together: a careful bot on the seed a training run starts
+ * from, and the log it leaves behind.
+ *
+ * The log is read through a wrapper rather than off `game.log.lines`, and that
+ * is not fussiness: a `MessageLog` keeps the last two hundred lines, a tutorial
+ * sortie is longer than that, and the first hints of the run had scrolled out of
+ * the array by the time the run ended. Counting them where they are written is
+ * the only way to say "exactly once" about a whole run.
+ */
+function flyTraining(seed: number): {
+  game: SalvorGame;
+  said: Array<{ id: string; turn: number }>;
+} {
+  let game: SalvorGame | undefined;
+  let said: Array<{ id: string; turn: number }> = [];
+  runBotOn(
+    BOTS_ROOMS.careful!,
+    seed,
+    roomPlay({
+      maxSteps: 1500,
+      make: (s) => {
+        const fresh = newGame(s, true);
+        const lines: Array<{ id: string; turn: number }> = [];
+        const add = fresh.log.add.bind(fresh.log);
+        (fresh.log as unknown as { add: typeof add }).add = (text, turn, tone, key, params) => {
+          if (typeof key === "string" && key.startsWith(TUTORIAL_PREFIX)) {
+            lines.push({ id: key.slice("hint.".length), turn });
+          }
+          add(text, turn, tone, key, params);
+        };
+        game = fresh;
+        said = lines;
+        return fresh;
+      },
+    }),
+  );
+  return { game: game!, said };
+}
+
+const TUTORIAL_PREFIX = "hint.tutorial.";
+
+describe("the training hull", () => {
+  const { game, said } = flyTraining(TUTORIAL_SEED);
+  const state = voyageOf(game).state[0]!;
+
+  it("is the first hull of the itinerary, and the tug takes it", () => {
+    expect(state.spec.id).toBe(TUTORIAL_SPEC.id);
+    expect(state.online.length).toBe(OBJECTIVES.length);
+    expect(state.sold).toBe(true);
+    // One drone, one sortie's worth of lessons: the tutorial seed is picked so
+    // that a careful bot finishes the hull without losing a drone on it.
+    expect(state.deaths).toEqual([]);
+  });
+
+  it("says all seven of its lines, each exactly once", () => {
+    const ids = said.map((l) => l.id);
+    expect(new Set(ids).size).toBe(TUTORIAL_STEPS.length);
+    for (const step of TUTORIAL_STEPS) {
+      expect(ids.filter((id) => id === step.id).length, step.id).toBe(1);
+    }
+  });
+
+  it("says them in the order the hull hands them over, one to a turn", () => {
+    // The order is a property of the seed and not of the chain: a hull whose
+    // bulkhead lies deeper than its engine room says the same seven lines in
+    // the order it meets them (`content/tutorial.ts`, `stepDue`). It used to be
+    // the table's own order on this seed, which was a fact about the training
+    // ship this seed drew rather than about the chain — and G73 drew a
+    // different one, because the itinerary the training run replaces its first
+    // hull in is now a draw of five and costs the rng one number more.
+    //
+    // So what is held is the chain's own rule, which was always the point: the
+    // first two lines are due on sight and go first, and every other line lands
+    // on a turn when its subject is standing in front of the drone.
+    expect(said.slice(0, 2).map((l) => l.id)).toEqual(["tutorial.enter", "tutorial.scan"]);
+    expect(said[said.length - 1]!.id).toBe("tutorial.sale");
+    expect(new Set(said.map((l) => l.id))).toEqual(new Set(TUTORIAL_STEPS.map((s) => s.id)));
+    expect(new Set(said.map((l) => l.turn)).size).toBe(said.length);
+    for (let i = 1; i < said.length; i++) {
+      expect(said[i]!.turn, said[i]!.id).toBeGreaterThan(said[i - 1]!.turn);
+    }
+  });
+
+  it("says six of the seven whatever the seed, on 24 of them", () => {
+    // Six are moments the hull guarantees: aboard, a look around, a machine, a
+    // bulkhead, a system, the airlock with something to lose. The seventh is
+    // the sale, which is the one line a player has to earn — printed rather
+    // than asserted at a hundred percent, because it measures the tutorial.
+    let sold = 0;
+    for (const seed of seedRange(1, 24)) {
+      const run = flyTraining(seed);
+      const ids = new Set(run.said.map((l) => l.id));
+      for (const step of TUTORIAL_STEPS) {
+        if (step.id === "tutorial.sale") continue;
+        expect(ids.has(step.id), `seed ${seed}: ${step.id}`).toBe(true);
+      }
+      if (ids.has("tutorial.sale")) sold++;
+    }
+    console.log(`training hull neutralised and sold: ${pct(sold, 24)}`);
+    expect(sold).toBeGreaterThanOrEqual(10);
+  });
+
+  it("leaves an ordinary run opening on a hull of the voyage's own", () => {
+    // The one thing a training run may never do (jam rule 1): change the run
+    // that is not one. Same first hull, same charter board, same credits — and
+    // since G73 that first hull is whichever of the five the seed drew, never
+    // the training one (`content/derelicts.ts`, `STARTER_HULLS`).
+    const plain = newGame(TUTORIAL_SEED);
+    expect(STARTER_HULLS.map((h) => h.id)).toContain(voyageOf(plain).derelicts[0]!.id);
+    expect(voyageOf(plain).credits).toBe(STARTING_CREDITS);
+  });
+});

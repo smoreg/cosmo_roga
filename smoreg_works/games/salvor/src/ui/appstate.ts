@@ -5,13 +5,21 @@ import {
   ACTION_KEYS,
   doorStands,
   roomActions,
+  tugRowIndex,
+  swapStands,
   tugStands,
   waysHere,
   type Action,
   type Level,
 } from "./actions.js";
 import { DOOR_USE, helpPages, missingModuleLine, type UiIntent } from "./input.js";
-import { airlockRoom, travelRoute } from "./auto.js";
+import { codexFor, type CodexEntry, type CodexId } from "../content/codex.js";
+import type { ModuleId } from "../content/modules.js";
+import { codexQueue, readCodex, seenCodex } from "../systems/codex.js";
+import { rigOf } from "../twist/rig.js";
+import { HISTORY_ROWS, historyPages } from "./logline.js";
+import { airlockRoom, passableForPlayer, travelRoute } from "./auto.js";
+import { doorLevel, doorWays, doorWaysStand, doorsStand, sealBehind, soleWay } from "./doorlist.js";
 import { voyageRecord } from "../systems/voyage.js";
 
 /**
@@ -27,7 +35,19 @@ import { voyageRecord } from "../systems/voyage.js";
  */
 
 /** What is drawn in front of the schematic, if anything. */
-export type Overlay = "none" | "title" | "help" | "dead" | "won" | "lost" | "sold" | "crash";
+export type Overlay =
+  | "none"
+  | "title"
+  | "help"
+  /** What is going on here: the `i` card (docs/tasks/G72-codex.md). */
+  | "codex"
+  /** The message log, all of it, paged: `PageUp` (docs/tasks/G79-gui-kyzrati.md). */
+  | "history"
+  | "dead"
+  | "won"
+  | "lost"
+  | "sold"
+  | "crash";
 
 /** Overlays that mean the run, or this sortie, is over: they outrank the board. */
 const ENDINGS: ReadonlySet<Overlay> = new Set<Overlay>(["dead", "won", "lost", "sold"]);
@@ -46,8 +66,12 @@ export type AppEffect =
   | { kind: "command"; cmd: RoomCommand }
   /** A line for the log, and no turn: a refused action, a module that burned. */
   | { kind: "log"; text: string }
-  /** Start the auto-explore walk. The pacing timer belongs to the shell. */
-  | { kind: "explore" }
+  /**
+   * Start the auto-explore walk. The pacing timer belongs to the shell.
+   * `through` is a door the walk stopped at last time and the player has now
+   * asked past: the first step takes it (`ui/auto.ts`, `makeExplorer`).
+   */
+  | { kind: "explore"; through?: DoorId }
   /**
    * Cast off with the training prompts on: the second line of the title menu.
    * The shell owns it because a training run is a *new run* with a flag, and
@@ -57,9 +81,10 @@ export type AppEffect =
   /**
    * Walk to a compartment the player named, a turn at a time, until something
    * is worth a decision (`ui/auto.ts`, `makeTraveller`). The same walk the
-   * shell already runs for `o`, pointed at a destination.
+   * shell already runs for `o`, pointed at a destination. `through` as for
+   * `explore`.
    */
-  | { kind: "travel"; to: RoomId }
+  | { kind: "travel"; to: RoomId; through?: DoorId }
   /** One turn of closing in. `melee` is shift+tab: never spend the emitter. */
   | { kind: "fight"; melee: boolean }
   /** Abort a walk in progress. */
@@ -69,10 +94,35 @@ export type AppEffect =
   /** New seed, new voyage. */
   | { kind: "newRun" };
 
+/**
+ * A walk that stopped a door short of something and handed the decision over:
+ * what was asked of it, and the door it stopped at.
+ *
+ * The one thing the screen remembers between two keys about a stop, and the
+ * whole of the confirmation rule (docs/tasks/G83-anonymous-blows.md, 3): the
+ * same ask again — `o` after `o`, the same compartment off the map, the same
+ * box clicked — goes through that door; anything that spends a turn or starts
+ * a different walk forgets it. A known hazard still stops every walk a door
+ * short, so the fifth rule of the hazards holds (`content/hazards.ts`); what
+ * changed is that the second press is an answer rather than the same question.
+ */
+export interface Warning {
+  /** `explore`, or `travel:<room>` — as `askOf` words it. */
+  readonly ask: string;
+  readonly door: DoorId;
+}
+
 export interface AppState {
   readonly overlay: Overlay;
   /** True while auto-explore is walking. Any key at all ends it. */
   readonly exploring: boolean;
+  /**
+   * What the walk in progress was asked to do, in the words of `Warning.ask`,
+   * for the stop that may end it to remember. Undefined between walks.
+   */
+  readonly ask: string | undefined;
+  /** The last stop a walk handed over, until a turn is spent or a different walk starts. */
+  readonly warned: Warning | undefined;
   /** The crash card's body, or undefined while the run is healthy. */
   readonly crash: readonly string[] | undefined;
   /**
@@ -115,6 +165,18 @@ export interface AppState {
    */
   readonly moves: boolean;
   /**
+   * True while the list is showing the bulkheads of this compartment rather
+   * than what can be done in it: the level `d` opens
+   * (docs/tasks/G64-door-hotkeys.md).
+   *
+   * A sibling of `moves` and never both at once — one is where the drone can
+   * go, the other is what is in the way — with the same door level underneath
+   * either of them, and the same `0` out of it. Like `moves` it is not a mode
+   * and falls away by itself: the drone walks out, or the last bulkhead worth
+   * a line stops being one (`ui/doorlist.ts`, `doorsStand`).
+   */
+  readonly doors: boolean;
+  /**
    * Which page of the help card is showing, counting from zero.
    *
    * The card outgrew the screen — thirty-eight lines of body in a forty-two row
@@ -123,6 +185,25 @@ export interface AppState {
    * turns the page and closes on the last, and this is the whole of that.
    */
   readonly helpPage: number;
+  /**
+   * Which page of the history card is showing, counting back from now.
+   *
+   * Its own number rather than a second use of `helpPage`, because the two
+   * cards page in opposite directions — help runs forwards from its first page
+   * and the log runs backwards from its last — and a single counter would have
+   * meant one of them counting the wrong way to save a field.
+   */
+  readonly logPage: number;
+  /**
+   * The cards the `i` window is paging through, as ids, fixed when it opened.
+   *
+   * A snapshot rather than a live question, and it has to be: opening a card
+   * marks it read, so the list of unread cards changes under the reader's
+   * hands. What they opened is what they get to finish reading.
+   */
+  readonly codex: readonly CodexId[];
+  /** Which of them is on the screen, counting from zero. */
+  readonly codexAt: number;
   /**
    * The two things a sortie can end with, as the run had them last time this
    * looked: drones lost and hulls taken under tow.
@@ -172,12 +253,18 @@ function started(state: AppState, game: RoomGame): AppState {
     ...state,
     overlay: "none",
     exploring: false,
+    ask: undefined,
+    warned: undefined,
     crash: undefined,
     cursor: 0,
     at: placeOf(game),
     menu: undefined,
     moves: false,
+    doors: false,
     helpPage: 0,
+    logPage: 0,
+    codex: [],
+    codexAt: 0,
     seen: marksOf(game),
     effect: IDLE,
   };
@@ -188,12 +275,18 @@ export function initialState(): AppState {
   return {
     overlay: "title",
     exploring: false,
+    ask: undefined,
+    warned: undefined,
     crash: undefined,
     cursor: 0,
     at: "",
     menu: undefined,
     moves: false,
+    doors: false,
     helpPage: 0,
+    logPage: 0,
+    codex: [],
+    codexAt: 0,
     seen: NO_MARKS,
     effect: IDLE,
   };
@@ -204,7 +297,34 @@ export function initialState(): AppState {
  * of those doors.
  */
 export function listOf(game: RoomGame, state: AppState): Action[] {
-  return roomActions(game, state.menu, state.moves, state.cursor);
+  return listFor(game, state.menu, state.moves, state.doors, state.cursor);
+}
+
+/**
+ * The three lists there are, and which one a level names: the compartment's own
+ * doings, where the drone can walk, the bulkheads of this compartment — and,
+ * under any of them, the one bulkhead whose own ways through it are showing.
+ *
+ * The door level is dispatched here rather than inside `roomActions` for one
+ * reason, and it is a rule of this repo rather than a preference: `ui/doorlist.ts`
+ * is built out of `ui/actions.ts`, so `ui/actions.ts` asking it for a list would
+ * close an import cycle (`.claude/CLAUDE.md`, "Как добавить контент"). Every
+ * renderer already reads the list through `listOf`, so nothing else changes.
+ */
+function listFor(
+  game: RoomGame,
+  menu: Level | undefined,
+  moves: boolean,
+  doors: boolean,
+  cursor = 0,
+): Action[] {
+  if (doors) {
+    if (menu === undefined) return doorLevel(game, cursor);
+    // A bulkhead reached off `d` can be one the drone could walk through, and
+    // those have ways of their own the map's sublist never has to know about.
+    if (typeof menu !== "string") return doorWays(game, menu, cursor) ?? doorLevel(game, cursor);
+  }
+  return roomActions(game, menu, moves, cursor);
 }
 
 /**
@@ -232,17 +352,19 @@ export function aimedAt(game: RoomGame, state: AppState): RoomId | undefined {
  * could not be reached by anything (docs/tasks/G55-playtest-findings.md, 4).
  * The ten digits are a window over this, moved by the arrows (`windowStart`).
  */
-function listLength(game: RoomGame, menu: Level | undefined, moves: boolean): number {
-  return roomActions(game, menu, moves).length;
+function listLength(game: RoomGame, menu: Level | undefined, moves: boolean, doors: boolean): number {
+  return listFor(game, menu, moves, doors).length;
 }
 
 /**
  * The line a digit or a click names.
  *
- * Position and digit are the same thing on the compartment's own list, and the
- * mouse only ever knows the position (`ui/web/panel-html.ts`, `data-pick`). One
- * level down they part company once: `0` is the way back however few methods
- * the lock has, so a digit that lands past the end looks for its own key.
+ * Position and digit are the same thing on the compartment's own list and part
+ * company everywhere else — one level down `0` is the way back however few
+ * entries there are, and past the tenth row there is no digit at all. So they
+ * are two intents: a click carries the position (`ui/web/panel-html.ts`,
+ * `data-line`), a key carries the digit and `lineFor` looks up who is wearing
+ * it.
  */
 function lineAt(list: readonly Action[], index: number): Action | undefined {
   return list[index];
@@ -305,12 +427,18 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
     return {
       overlay: "none",
       exploring: false,
+      ask: undefined,
+      warned: undefined,
       crash: undefined,
       cursor: 0,
       at: placeOf(game),
       menu: undefined,
       moves: false,
+      doors: false,
       helpPage: 0,
+      logPage: 0,
+      codex: [],
+      codexAt: 0,
       // Whatever the run has already done, the first key is not the moment to
       // announce it: the title sits in front of a voyage that has not started.
       seen: marksOf(game),
@@ -339,22 +467,45 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       return synced({ ...state, effect: { kind: "log", text: missingModuleLine(intent.module) } }, game);
     case "help":
       return synced(helpTurned(state, game), game);
+    case "codex": {
+      // The card is in front of the board like the help card, so it takes the
+      // same first question: the run being over outranks it, and a card already
+      // open is closed by the key that would open one.
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      return synced(codexOpened(state, game), game);
+    }
+    case "history":
+      return synced(historyTurned(state, game, intent.delta), game);
     case "dismiss":
       // Escape closes what is in front of the board first, and then takes the
       // list back up a level: the two are never on the screen at once, so one
       // key is enough for both and neither of them is a turn.
       if (state.overlay === "help") return synced({ ...state, overlay: "none", helpPage: 0, effect: IDLE }, game);
-      if (state.menu !== undefined || state.moves) return upALevel(state, game);
+      if (state.overlay === "codex") return synced(codexClosed(state), game);
+      if (state.overlay === "history") return synced(closedHistory(state), game);
+      if (state.menu !== undefined || state.moves || state.doors) return upALevel(state, game);
       return synced({ ...state, effect: IDLE }, game);
     case "restart":
       return newRunState();
+    case "page":
+      // The sideways arrows, which do one thing and only in front of a card.
+      // Anywhere else they are the dead keys they have always been, and the
+      // browser is welcome to them.
+      if (state.overlay === "codex") return codexTurned(state, game, intent.delta);
+      return withEffect(state, PASS);
     case "cursor":
+      // With a card open the arrows turn its page instead of moving the
+      // highlight: the list behind it is not what the player is looking at, and
+      // a highlight that moved under a window is a highlight that has moved by
+      // the time the window closes.
+      if (state.overlay === "codex") return codexTurned(state, game, intent.delta);
       // No turn and no effect: moving the highlight is the one thing in this
       // game that costs nothing at all.
       return synced(
         {
           ...state,
-          cursor: moved(state.cursor, intent.delta, listLength(game, state.menu, state.moves)),
+          cursor: moved(state.cursor, intent.delta, listLength(game, state.menu, state.moves, state.doors)),
           effect: IDLE,
         },
         game,
@@ -370,7 +521,41 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       const stop = stopped(state, game);
       if (stop) return stop;
       if (isTug(game)) return nowhereToWalk(state, game);
-      return synced({ ...state, moves: !state.moves, menu: undefined, cursor: 0, effect: IDLE }, game);
+      return synced(
+        { ...state, moves: !state.moves, doors: false, menu: undefined, cursor: 0, effect: IDLE },
+        game,
+      );
+    }
+    case "doors": {
+      // The bulkheads of this compartment, or back out of them: one key both
+      // ways, as `m` is for the map, and neither way is a turn.
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      if (isTug(game)) return nowhereToWalk(state, game);
+      if (state.doors) {
+        return synced({ ...state, doors: false, menu: undefined, cursor: 0, effect: IDLE }, game);
+      }
+      // One bulkhead with one way through it is not a list. Opening a level to
+      // read a single line and then press it is the keystroke this level exists
+      // to save — the rule `tugRow` and `doorRow` already keep.
+      const only = soleWay(game);
+      if (only !== undefined) return act(state, game, () => ({ kind: "command", cmd: only.cmd }));
+      if (!doorsStand(game)) {
+        return synced({ ...state, effect: { kind: "log", text: t("why.door.noneHere") } }, game);
+      }
+      return synced({ ...state, doors: true, moves: false, menu: undefined, cursor: 0, effect: IDLE }, game);
+    }
+    case "seal": {
+      // Shut the way you came. The rules own every refusal and every turn it
+      // costs (`ui/doorlist.ts`, `sealBehind`); this only decides that a hull
+      // is what the key is about.
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      if (isTug(game)) return nowhereToWalk(state, game);
+      return act(state, game, () => {
+        const sealing = sealBehind(game);
+        return sealing.ok ? { kind: "command", cmd: sealing.cmd } : { kind: "log", text: sealing.why };
+      });
     }
     case "confirm":
       return chosen(state, game, state.cursor);
@@ -386,6 +571,18 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       const at = lineFor(listOf(game, state), intent.index);
       return at < 0 ? chosen(state, game, -1) : chosen({ ...state, cursor: at }, game, at);
     }
+    case "line": {
+      // A click names the row it landed on, and there is nothing to look up:
+      // the mouse can see the list. It takes the highlight with it, exactly as
+      // a digit does, so a click and then `Enter` is not two different things.
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      const list = listOf(game, state);
+      // A click on a row the frame no longer has — the page redrew between the
+      // press and the release — is not the player asking for anything.
+      if (intent.index < 0 || intent.index >= list.length) return withEffect(state, PASS);
+      return chosen({ ...state, cursor: intent.index }, game, intent.index);
+    }
     case "room": {
       // A click on a box is that box's line of the move list, pressed — which
       // is what keeps the mouse from being a second set of rules: one open door
@@ -396,7 +593,7 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       const list = roomActions(game, undefined, true);
       const at = list.findIndex((line) => line.leadsTo === intent.id);
       if (at < 0) return withEffect(state, PASS);
-      return chosen({ ...state, moves: true, menu: undefined, cursor: at }, game, at);
+      return chosen({ ...state, moves: true, doors: false, menu: undefined, cursor: at }, game, at);
     }
     case "module":
       return act(state, game, () => ({ kind: "command", cmd: aimed(game, intent.module, intent.slot) }));
@@ -428,9 +625,116 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
  */
 function helpTurned(state: AppState, game: RoomGame): AppState {
   if (state.overlay !== "help") return { ...state, overlay: "help", helpPage: 0, effect: IDLE };
-  const pages = helpPages(isTug(game)).length;
+  const pages = helpPages(isTug(game), codexSeen(game)).length;
   if (state.helpPage + 1 < pages) return { ...state, helpPage: state.helpPage + 1, effect: IDLE };
   return { ...state, overlay: "none", helpPage: 0, effect: IDLE };
+}
+
+// -------------------------------------------------- what is going on here (G72)
+
+/**
+ * `i`, which opens the card for whatever the run has just shown and not
+ * explained (`content/codex.ts`, `systems/codex.ts`).
+ *
+ * The one place the reducer writes to the run rather than reading it, and it is
+ * deliberate: what has been read is per-run state that has to survive a save
+ * (`player.data.codex`), and marking it here is what makes the badge go down on
+ * the same frame the card comes up. It spends no turn, writes no line and
+ * touches nothing the rules read, so the contract this file keeps — the sim
+ * moves only through an effect — is untouched.
+ *
+ * With nothing waiting the key still does something, and what it does is the
+ * help card: that is where the list of everything this voyage has shown lives
+ * once the badge has stopped counting it (`ui/input.ts`, `helpBlocks`).
+ */
+function codexOpened(state: AppState, game: RoomGame): AppState {
+  const queue = codexQueue(game);
+  if (queue.length === 0) return { ...state, overlay: "help", helpPage: 0, effect: IDLE };
+  const first = queue[0]!;
+  readCodex(game, first);
+  return { ...state, overlay: "codex", codex: queue, codexAt: 0, effect: IDLE };
+}
+
+/** The arrows, over the cards this window opened with. Wraps at both ends. */
+function codexTurned(state: AppState, game: RoomGame, delta: number): AppState {
+  const cards = state.codex;
+  if (cards.length === 0) return synced(codexClosed(state), game);
+  const at = moved(state.codexAt, delta, cards.length);
+  readCodex(game, cards[at]!);
+  return synced({ ...state, codexAt: at, effect: IDLE }, game);
+}
+
+/** Put it away, and drop the snapshot with it: the next `i` asks again. */
+function codexClosed(state: AppState): AppState {
+  return { ...state, overlay: "none", codex: [], codexAt: 0, effect: IDLE };
+}
+
+/**
+ * Everything this voyage has shown, by name, for the block at the foot of the
+ * help card. Already in the language that is on, because the card is redrawn
+ * whenever `L` changes it.
+ */
+export function codexSeen(game: RoomGame): string[] {
+  return seenCodex(game)
+    .map((id) => codexFor(id))
+    .filter((entry): entry is CodexEntry => entry !== undefined)
+    .map((entry) => t(entry.title));
+}
+
+/** What the `i` window is showing, or nothing when it is not open. */
+export interface CodexView {
+  readonly entry: CodexEntry;
+  /** Modules in the rack right now: the ones the card marks as answers to hand. */
+  readonly fitted: ReadonlySet<ModuleId>;
+  readonly page: number;
+  readonly pages: number;
+}
+
+/**
+ * The card, for whichever view is drawing it.
+ *
+ * Both renderers ask this and neither decides anything: the terminal draws it
+ * in a frame of dots and the page draws it in a `card` div, and the words,
+ * their order and their line breaks are the same either way — the rule this
+ * game keeps everywhere else about the two views (`ui/web/screen.ts`).
+ */
+export function codexView(game: RoomGame, state: AppState): CodexView | undefined {
+  if (state.overlay !== "codex") return undefined;
+  const entry = codexFor(state.codex[state.codexAt]);
+  if (entry === undefined) return undefined;
+  const rig = rigOf(game.player);
+  const fitted = new Set<ModuleId>();
+  for (const slot of rig?.slots ?? []) if (slot !== null) fitted.add(slot.kind);
+  return { entry, fitted, page: state.codexAt, pages: state.codex.length };
+}
+
+/**
+ * `PageUp` and `PageDown`: the log's own past, opened and paged
+ * (docs/gui-guides.md, "Что применить", B).
+ *
+ * `PageUp` opens the card and then walks back through it a screen at a time;
+ * `PageDown` walks towards now and is not a way in — a key that means "later"
+ * cannot open a card at the latest thing there is, and left to the browser it
+ * still scrolls the page a voter is reading the game on.
+ *
+ * Neither is ever a turn, and neither clamps at a page that does not exist:
+ * paging past the top of a log holds at the top, which is what every reader
+ * expects and what keeps the card from going blank in a run with two lines in
+ * it. Closing it is `Esc`, or any key that does something else.
+ */
+function historyTurned(state: AppState, game: RoomGame, delta: number): AppState {
+  if (state.overlay !== "history") {
+    if (delta < 0) return withEffect(state, PASS);
+    return { ...state, overlay: "history", logPage: 0, effect: IDLE };
+  }
+  const pages = historyPages(game.log.lines, HISTORY_ROWS).length;
+  const at = Math.min(Math.max(state.logPage + delta, 0), pages - 1);
+  return { ...state, logPage: at, effect: IDLE };
+}
+
+/** The history card, put away. Never a turn: it never spent one to open. */
+function closedHistory(state: AppState): AppState {
+  return { ...state, overlay: "none", logPage: 0, effect: IDLE };
 }
 
 /**
@@ -453,6 +757,11 @@ function nowhereToWalk(state: AppState, game: RoomGame): AppState {
  */
 function stopped(state: AppState, game: RoomGame): AppState | undefined {
   if (state.overlay === "help") return synced({ ...state, overlay: "none", helpPage: 0, effect: IDLE }, game);
+  // The `i` card behaves exactly as the help card does: it is in front of the
+  // board, so the key that puts it away is any key at all, and that key does
+  // nothing else. Which also makes `i` its own way out.
+  if (state.overlay === "codex") return synced(codexClosed(state), game);
+  if (state.overlay === "history") return synced(closedHistory(state), game);
   if (game.isOver()) return synced(withEffect(state, IDLE), game);
   return undefined;
 }
@@ -489,8 +798,11 @@ function chosen(state: AppState, game: RoomGame, index: number): AppState {
  * falls away is always the innermost one there is.
  */
 function upALevel(state: AppState, game: RoomGame): AppState {
-  if (state.menu !== undefined) return synced({ ...state, menu: undefined, cursor: 0, effect: IDLE }, game);
-  return synced({ ...state, moves: false, cursor: 0, effect: IDLE }, game);
+  if (state.menu !== undefined) {
+    const cursor = leftBehind(state, state.at, undefined);
+    return synced({ ...state, menu: undefined, cursor, effect: IDLE }, game);
+  }
+  return synced({ ...state, moves: false, doors: false, cursor: 0, effect: IDLE }, game);
 }
 
 /**
@@ -500,10 +812,37 @@ function upALevel(state: AppState, game: RoomGame): AppState {
 function act(state: AppState, game: RoomGame, effect: () => AppEffect, exploring = false): AppState {
   const stop = stopped(state, game);
   if (stop) return stop;
-  const next = effect();
+  const asked = effect();
   // Only a real walk raises the flag: a refused pick is not the start of one.
-  const walking = exploring && (next.kind === "explore" || next.kind === "travel");
-  return synced({ ...state, exploring: walking, effect: next }, game);
+  const walking = exploring && (asked.kind === "explore" || asked.kind === "travel");
+  const ask = walking ? askOf(asked) : undefined;
+
+  // The same walk asked for twice at the same door is the confirmation
+  // (`Warning`). Through something the drone simply steps over — a hazard —
+  // the walk sets out with that door allowed; at something shut it is the
+  // door's own list of ways that answers, not the same line again, and the
+  // list opens with no walk and no turn. Whatever this key did, the warning
+  // is spent: a turn, a walk, or a different walk all mean a different board.
+  const warned = state.warned;
+  if (walking && warned !== undefined && warned.ask === ask) {
+    const door = game.ship.doors[warned.door];
+    if (door !== undefined && passableForPlayer(door)) {
+      const next = { ...asked, through: door.id } as AppEffect;
+      return synced({ ...state, exploring: true, ask, warned: undefined, effect: next }, game);
+    }
+    if (door !== undefined && doorStands(game, door.id)) {
+      return synced(
+        { ...state, moves: true, doors: false, menu: door.id, cursor: 0, warned: undefined, effect: IDLE },
+        game,
+      );
+    }
+  }
+  return synced({ ...state, exploring: walking, ask, warned: undefined, effect: asked }, game);
+}
+
+/** The words a `Warning` remembers a walk by: what, and where to. */
+function askOf(effect: AppEffect): string {
+  return effect.kind === "travel" ? `travel:${effect.to}` : effect.kind;
 }
 
 /**
@@ -577,10 +916,19 @@ function leaving(game: RoomGame): AppEffect {
  * The door is always one of this compartment's — the walk stops *before*
  * stepping through it — so the level it opens is the same one a number on the
  * compartment's list opens, and `0` comes back the same way.
+ *
+ * And the stop is remembered (`Warning`): the same ask again at this door is
+ * the player's answer to it. Remembered whether or not the door has a list —
+ * a lock with nothing aboard to open it has none, and the second press then
+ * simply asks the walk again, which says the same thing and is right to.
  */
 export function stoppedAt(state: AppState, game: RoomGame, door: DoorId): AppState {
-  if (!doorStands(game, door)) return state;
-  return { ...state, moves: true, menu: door, cursor: 0 };
+  const warned: Warning | undefined = state.ask === undefined ? undefined : { ask: state.ask, door };
+  const stands = doorStands(game, door);
+  if (warned === undefined && !stands) return state;
+  const told = { ...state, ask: undefined, warned };
+  if (!stands) return told;
+  return { ...told, moves: true, doors: false, menu: door, cursor: 0 };
 }
 
 /**
@@ -726,31 +1074,70 @@ function withCursor(state: AppState, game: RoomGame): AppState {
   // makes walking somewhere off the map feel like one keystroke:
   // the step lands in another compartment and the level is simply gone.
   const moves = at === state.at && state.moves;
-  const menu = at === state.at && state.menu !== undefined && levelStands(game, state.menu)
+  const doors = at === state.at && state.doors && doorsStand(game);
+  const menu = at === state.at && state.menu !== undefined && levelStands(game, state.menu, doors)
     ? state.menu
     : undefined;
-  if (at !== state.at || menu !== state.menu || moves !== state.moves) {
-    return { ...state, cursor: 0, at, menu, moves };
+  if (at !== state.at || menu !== state.menu || moves !== state.moves || doors !== state.doors) {
+    return { ...state, cursor: leftBehind(state, at, menu), at, menu, moves, doors };
   }
-  const length = listLength(game, menu, moves);
+  const length = listLength(game, menu, moves, doors);
   return state.cursor < length ? state : { ...state, cursor: Math.max(0, length - 1) };
 }
 
-/** Is the level the list is one step inside still a question? Door or verb. */
-function levelStands(game: RoomGame, menu: Level): boolean {
-  return typeof menu === "string" ? tugStands(game, menu) : doorStands(game, menu);
+/**
+ * Where the highlight goes when a tug group closes under it: back onto the row
+ * that group opened from.
+ *
+ * The top of the list is where it used to go, and that was the expensive half
+ * of the tug's oldest defect. Mending the last damaged module empties the
+ * repairs, the level falls away, and the highlight landed on row one — which
+ * until this wave was `cast off`, so the fifth `Enter` of "mend everything"
+ * flew the drone out with a charter unsigned and no way back
+ * (docs/tug-menu-audit.md, defects 1 and 2). Casting off is last now, so the
+ * stray `Enter` is no longer fatal; landing where you were still beats landing
+ * at the top, and it is the same answer whether the group emptied itself or the
+ * player pressed `0`.
+ *
+ * Only for a tug verb. A bulkhead's level belongs to the compartment list,
+ * which renumbers itself as the ship changes, so there is no row to go back to.
+ */
+function leftBehind(state: AppState, at: string, menu: Level | undefined): number {
+  if (at !== state.at || menu !== undefined || typeof state.menu !== "string") return 0;
+  return Math.max(0, tugRowIndex(state.menu));
+}
+
+/**
+ * Is the level the list is one step inside still a question? Door or verb.
+ *
+ * Which of the two lists a door's own level came out of decides what keeps it
+ * standing: off the map it is a bulkhead in the way (`doorStands`), off `d` it
+ * is a bulkhead with more than one thing to do to it (`doorWaysStand`), and a
+ * door the drone has just opened is still the second while it is no longer the
+ * first.
+ */
+function levelStands(game: RoomGame, menu: Level, doors: boolean): boolean {
+  // A string is a verb of the tug at home and a relic's swap aboard a hull.
+  if (typeof menu === "string") return isTug(game) ? tugStands(game, menu) : swapStands(game, menu);
+  return doors ? doorWaysStand(game, menu) : doorStands(game, menu);
 }
 
 function newRunState(): AppState {
   return {
     overlay: "none",
     exploring: false,
+    ask: undefined,
+    warned: undefined,
     crash: undefined,
     cursor: 0,
     at: "",
     menu: undefined,
     moves: false,
+    doors: false,
     helpPage: 0,
+    logPage: 0,
+    codex: [],
+    codexAt: 0,
     seen: NO_MARKS,
     effect: { kind: "newRun" },
   };
@@ -763,7 +1150,10 @@ function withEffect(state: AppState, effect: AppEffect): AppState {
 function synced(state: AppState, game: RoomGame): AppState {
   if (state.crash !== undefined) return state;
   state = withCursor(state, game);
-  if (state.overlay === "help" || state.overlay === "title") return state;
+  if (state.overlay === "help" || state.overlay === "history" || state.overlay === "title") return state;
+  // Same rule for the `i` card: nothing behind it may overwrite what is in
+  // front of the board while the player is reading (G72).
+  if (state.overlay === "codex") return state;
 
   // The two biggest things that happen to a voyage, noticed here rather than
   // announced from the rules. Both used to be a single line of a log that

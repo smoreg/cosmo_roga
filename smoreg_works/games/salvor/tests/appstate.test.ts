@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { RoomGame, type RoomGameConfig, type Twist } from "@jamrog/engine";
+import { RoomGame, type RoomCommand, type RoomGameConfig, type Twist } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
 import { VOYAGE, currentDerelict, voyageOf } from "../src/systems/voyage.js";
+import { moduleName } from "../src/content/modules.js";
+import { t } from "../src/i18n.js";
 import { addWreck, applyDerived, install, rigOf } from "../src/twist/rig.js";
 import { ACTION_KEYS, BACK_KEY, roomActions } from "../src/ui/actions.js";
 import {
@@ -20,6 +22,8 @@ import {
   type AppState,
 } from "../src/ui/appstate.js";
 import { helpPages, toIntent, type KeyLike } from "../src/ui/input.js";
+import { hazardStore } from "../src/systems/hazardstate.js";
+import { HISTORY_ROWS, historyPages } from "../src/ui/logline.js";
 
 /**
  * The overlays and the numbered list, as transitions.
@@ -92,6 +96,24 @@ const CUT_OFF = `
   r2: cargo cover explored
   r5: hab explored
 `;
+
+/** A ring: welding the way back is legal, because there is a way round. */
+const LOOP = `
+  TUG -a1- r1
+  r1 -d1- r2
+  r1 -d2- r3
+  r2 -d3- r3
+  r1: docking explored
+  r2: cargo explored
+  r3: corridor explored
+`;
+
+function loopRun(seed = 101): RoomGame {
+  const game = new RoomGame({ ...config(), firstShip: () => shipFromText(LOOP).ship, seed });
+  game.player.room = game.ship.room("r1").id;
+  game.refreshSight();
+  return game;
+}
 
 function cutOffRun(seed = 101): RoomGame {
   const game = new RoomGame({
@@ -202,6 +224,71 @@ describe("picking a line of the list", () => {
       kind: "log",
       text: "Nothing on that line.",
     });
+  });
+});
+
+/**
+ * A click names a row; a key names a digit (docs/tug-menu-audit.md, defect 6).
+ *
+ * They agree on the compartment's own list, which is why the page sent the
+ * position as `{ kind: "pick" }` for as long as it did. Everywhere else they do
+ * not: `0` is the way back however few entries a level has, and past the tenth
+ * row there is no digit at all.
+ */
+describe("a click on a row of the list", () => {
+  const click = (state: AppState, index: number, game: RoomGame): AppState =>
+    appReducer(state, { kind: "line", index }, game);
+
+  it("presses the row it landed on, and takes the highlight with it", () => {
+    const game = newRun();
+    const second = roomActions(game)[1]!;
+    const out = click(playing(game), 1, game);
+    expect(out.effect).toEqual({ kind: "command", cmd: second.cmd });
+    expect(out.cursor).toBe(1);
+  });
+
+  it("reaches the eleventh row, which no digit is left for", () => {
+    // The page draws them — it scrolls, so it has no reason to hide its own
+    // tail — and until the click carried a position they were the one part of
+    // the screen nothing at all could press.
+    const game = newRun();
+    for (let i = 0; i < 12; i++) addWreck(game, game.ship.room("r2").id, "welder", 2);
+    const list = roomActions(game);
+    expect(list.length).toBeGreaterThan(10);
+    expect(list[10]!.key, "the ten digits are spent").toBe("");
+
+    const out = click(playing(game), 10, game);
+    expect(out.cursor).toBe(10);
+    expect(out.effect).toEqual({ kind: "command", cmd: list[10]!.cmd });
+  });
+
+  it("clicks the way back out of a level, where the position is not a digit", () => {
+    const game = tugRun();
+    const row = roomActions(game).findIndex((a) => a.step === "sell");
+    const inside = click(playing(game), row, game);
+    expect(inside.menu).toBe("sell");
+
+    const list = roomActions(game, "sell");
+    const back = list.length - 1;
+    expect(list[back]!.key).toBe("0");
+    // The defect itself: read as a digit, that position belongs to no row, so
+    // the page answered "nothing on that line" and stayed inside the level.
+    expect(appReducer(inside, { kind: "pick", index: back }, game).effect).toEqual({
+      kind: "log",
+      text: "Nothing on that line.",
+    });
+
+    const out = click(inside, back, game);
+    expect(out.menu).toBeUndefined();
+    expect(out.effect).toEqual({ kind: "idle" });
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("lets a row the frame no longer has go by", () => {
+    const game = newRun();
+    const out = click(playing(game), roomActions(game).length, game);
+    expect(out.effect).toEqual({ kind: "pass" });
+    expect(game.inputs).toEqual([]);
   });
 });
 
@@ -402,6 +489,58 @@ describe("one level down, into a bulkhead", () => {
     const state = inside(game);
     expect(game.playerCommand({ kind: "go", door: game.ship.door("d1").id }).ok).toBe(true);
     expect(syncStatus(state, game).menu).toBeUndefined();
+  });
+
+  /**
+   * A tug group that empties under the player's hands hands the highlight back
+   * to its own row (docs/tug-menu-audit.md, П6).
+   *
+   * It used to hand it to the top of the list, which until this wave was the
+   * row that casts off: the fifth `Enter` of "mend everything" flew the drone
+   * out with the board unsigned, and there is no undo in this game.
+   */
+  it("lands the highlight on a tug group's row when its list empties", () => {
+    const game = tugRun();
+    const rig = rigOf(game.player)!;
+    const slot = rig.slots.findIndex((s) => s !== null);
+    rig.slots[slot]!.integrity = 1;
+    voyageOf(game).credits = 500;
+
+    const row = roomActions(game).findIndex((a) => a.step === "repair");
+    expect(row).toBeGreaterThan(0);
+
+    let state = key(playing(game), digit(row), game);
+    expect(state.menu).toBe("repair");
+    expect(state.cursor, "a level opens at the top of itself").toBe(0);
+
+    // The one damaged module, mended: the repairs have nothing left to be.
+    state = key(state, digit(0), game);
+    expect(state.effect.kind).toBe("command");
+    expect(game.playerCommand((state.effect as { cmd: RoomCommand }).cmd).ok).toBe(true);
+
+    state = syncStatus(state, game);
+    expect(state.menu, "the level is gone").toBeUndefined();
+    expect(state.cursor, "and the highlight is where it went in").toBe(row);
+
+    // The stray `Enter` lands on the repairs, which have nothing left to mend,
+    // and is told so. It does not fly the drone out.
+    const again = key(state, enter, game);
+    expect(again.effect).toEqual({ kind: "log", text: roomActions(game)[row]!.why });
+    expect(game.inputs.filter((c) => c.kind === "act" && c.verb === "undock")).toEqual([]);
+  });
+
+  it("hands the same row back when the player steps out of a tug group by hand", () => {
+    const game = tugRun();
+    const row = roomActions(game).findIndex((a) => a.step === "sell");
+    expect(row).toBeGreaterThan(0);
+
+    const inside = key(playing(game), digit(row), game);
+    expect(inside.menu).toBe("sell");
+    for (const back of [press(BACK_KEY, "Digit0"), esc]) {
+      const out = key(inside, back, game);
+      expect(out.menu, back.key).toBeUndefined();
+      expect(out.cursor, back.key).toBe(row);
+    }
   });
 
   it("moves the highlight over the methods and does the one it is on", () => {
@@ -691,6 +830,169 @@ describe("the map, the walk and the way out", () => {
   });
 });
 
+/**
+ * A stop the player can answer (docs/tasks/G83-anonymous-blows.md, 3). The
+ * owner pressed `o` eight times at one smoke-filled compartment and read the
+ * same red line eight times — a warning that cannot be got past is a wall. So
+ * the screen remembers the last stop a walk handed over, and the same ask
+ * again at the same door is the answer to it: through a hazard the walk goes
+ * in, at something shut the door's own list is what opens. Anything that
+ * spends a turn or starts a different walk forgets it.
+ */
+describe("a stop the player can answer", () => {
+  const SMOKED = `
+    TUG -a1- r1
+    r1 -d1- r2
+    r2 -d2- r3
+    r3 -d5- r7
+    r2 -[d3:k1]- r4
+    r1: docking explored
+    r2: cargo explored
+    r3: hab hazard=smoke
+    r4: storage scanned
+    r7: lab scanned
+  `;
+  const explore = press("o", "KeyO");
+  const move = press("m", "KeyM");
+  const wait = press(".", "Period");
+
+  /** The drone next to a smoke it has been told about, and next to a lock. */
+  function smokedRun(seed = 101): RoomGame {
+    const game = new RoomGame({ ...config(), firstShip: () => shipFromText(SMOKED).ship, seed });
+    game.player.room = game.ship.room("r2").id;
+    game.refreshSight();
+    for (const rec of hazardStore(game)) rec.known = true;
+    return game;
+  }
+
+  /** What the shell does with a stop that names a door (`app.ts`, `follow`). */
+  function stopAt(state: AppState, game: RoomGame, door: string): AppState {
+    return stoppedAt(walkEnded(state), game, game.ship.door(door).id);
+  }
+
+  /** The row of the map that walks to `head`, pressed. */
+  function walkTo(state: AppState, game: RoomGame, head: string): AppState {
+    const at = listOf(game, state).findIndex((a) => a.label.startsWith(head));
+    expect(at, head).toBeGreaterThanOrEqual(0);
+    return key(state, digit(at), game);
+  }
+
+  it("remembers the door a walk stopped at, and goes through it on the same key again", () => {
+    const game = smokedRun();
+    const d2 = game.ship.door("d2").id;
+    const first = key(playing(game), explore, game);
+    expect(first.effect).toEqual({ kind: "explore" });
+    expect(first.ask).toBe("explore");
+
+    const stopped = stopAt(first, game, "d2");
+    expect(stopped.warned).toEqual({ ask: "explore", door: d2 });
+    expect(stopped.ask).toBeUndefined();
+    // The door's own list is open too, with the step in on it — as before.
+    expect(stopped.menu).toBe(d2);
+    expect(listOf(game, stopped)[0]!.cmd).toEqual({ kind: "go", door: d2 });
+
+    const second = key(stopped, explore, game);
+    expect(second.effect).toEqual({ kind: "explore", through: d2 });
+    expect(second.exploring).toBe(true);
+    expect(second.warned).toBeUndefined();
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("answers the same compartment off the map, and the same box clicked", () => {
+    const game = smokedRun();
+    const d2 = game.ship.door("d2").id;
+    const lab = game.ship.room("r7").id;
+    const set = walkTo(key(playing(game), move, game), game, "LAB");
+    expect(set.effect).toEqual({ kind: "travel", to: lab });
+
+    const stopped = stopAt(set, game, "d2");
+    expect(stopped.warned).toEqual({ ask: `travel:${lab}`, door: d2 });
+
+    // The box on the schematic, clicked.
+    const clicked = appReducer(stopped, { kind: "room", id: lab }, game);
+    expect(clicked.effect).toEqual({ kind: "travel", to: lab, through: d2 });
+
+    // Or the map again: `m` closes it, `m` opens it, neither forgets the stop.
+    const closed = key(stopped, move, game);
+    expect(closed.moves).toBe(false);
+    expect(closed.warned).toEqual(stopped.warned);
+    const again = walkTo(key(closed, move, game), game, "LAB");
+    expect(again.effect).toEqual({ kind: "travel", to: lab, through: d2 });
+  });
+
+  it("is a different question from a different key: o after the map, the map after o", () => {
+    const game = smokedRun();
+    const d2 = game.ship.door("d2").id;
+    const lab = game.ship.room("r7").id;
+    const stopped = stopAt(key(playing(game), explore, game), game, "d2");
+
+    // Out of the door's list, which lands on the map, and off to LAB from it.
+    const walked = walkTo(key(stopped, press(BACK_KEY, "Digit0"), game), game, "LAB");
+    expect(walked.effect).toEqual({ kind: "travel", to: lab });
+    expect(walked.warned).toBeUndefined();
+
+    // And the other way round: a stop on the way to LAB is not an answer for `o`.
+    const other = stopAt(walked, game, "d2");
+    expect(other.warned).toEqual({ ask: `travel:${lab}`, door: d2 });
+    expect(key(other, explore, game).effect).toEqual({ kind: "explore" });
+  });
+
+  it("forgets the stop the moment a turn is spent", () => {
+    const game = smokedRun();
+    const stopped = stopAt(key(playing(game), explore, game), game, "d2");
+    const waited = key(stopped, wait, game);
+    expect(waited.effect).toEqual({ kind: "command", cmd: { kind: "wait" } });
+    expect(waited.warned).toBeUndefined();
+    expect(key(waited, explore, game).effect).toEqual({ kind: "explore" });
+  });
+
+  it("keeps it across keys that spend nothing: the highlight, the help card, the way back", () => {
+    const game = smokedRun();
+    const d2 = game.ship.door("d2").id;
+    let state = stopAt(key(playing(game), explore, game), game, "d2");
+    state = key(state, press("ArrowDown", "ArrowDown"), game);
+    state = key(state, press("?", "Slash", { shiftKey: true }), game);
+    expect(state.overlay).toBe("help");
+    state = key(state, press("Escape", "Escape"), game);
+    state = key(state, press(BACK_KEY, "Digit0"), game);
+    expect(state.menu).toBeUndefined();
+    expect(state.warned).toEqual({ ask: "explore", door: d2 });
+    expect(key(state, explore, game).effect).toEqual({ kind: "explore", through: d2 });
+  });
+
+  it("opens a shut door's list on the second press rather than walking at it again", () => {
+    const game = smokedRun();
+    const d3 = game.ship.door("d3").id;
+    const stopped = stopAt(key(playing(game), explore, game), game, "d3");
+    expect(stopped.menu).toBe(d3);
+    expect(stopped.warned).toEqual({ ask: "explore", door: d3 });
+
+    // The player backs out of the list and leans on `o` again: the list, no walk.
+    const out = key(stopped, press(BACK_KEY, "Digit0"), game);
+    expect(out.menu).toBeUndefined();
+    const second = key(out, explore, game);
+    expect(second.effect).toEqual({ kind: "idle" });
+    expect(second.exploring).toBe(false);
+    expect(second.moves).toBe(true);
+    expect(second.menu).toBe(d3);
+    expect(second.warned).toBeUndefined();
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("remembers a stop at a door with no list of its own, and lets the walk ask again", () => {
+    const game = smokedRun();
+    stripRack(game);
+    game.player.data = { ...game.player.data, keys: 0 };
+    game.ship.door("d3").state = "sealed";
+    const d3 = game.ship.door("d3").id;
+    const stopped = stopAt(key(playing(game), explore, game), game, "d3");
+    expect(stopped.menu).toBeUndefined();
+    expect(stopped.warned).toEqual({ ask: "explore", door: d3 });
+    // Nothing to open: the second press is the walk again, which will say so.
+    expect(key(stopped, explore, game).effect).toEqual({ kind: "explore" });
+  });
+});
+
 describe("the module letters", () => {
   it("fires the module where there is nothing to aim it at", () => {
     const game = newRun();
@@ -839,6 +1141,100 @@ describe("the help card", () => {
       expect(next.effect, e.key).toEqual({ kind: "idle" });
       expect(next.exploring, e.key).toBe(false);
     }
+  });
+});
+
+/**
+ * The log's own past, on `PageUp` (docs/gui-guides.md, "Что применить", B).
+ *
+ * The view that starts is the ASCII one, which shows seven lines and has no
+ * scrollbar at all: a line that scrolled was gone, though `MessageLog` had kept
+ * it and 199 others. The card is the existing overlay machinery pointed at
+ * them, so it costs no turn and no mode.
+ */
+describe("the history card", () => {
+  const pgUp = press("PageUp", "PageUp");
+  const pgDn = press("PageDown", "PageDown");
+
+  /** A log with enough in it to page through: more lines than one card holds. */
+  function filled(game: RoomGame, n: number): void {
+    for (let i = 0; i < n; i++) game.log.add(`line ${i}`, i);
+  }
+
+  it("opens on PageUp, and spends no turn doing it", () => {
+    const game = newRun(107);
+    const state = key(playing(game), pgUp, game);
+    expect(state.overlay).toBe("history");
+    expect(state.logPage).toBe(0);
+    expect(state.effect).toEqual({ kind: "idle" });
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("pages back on PageUp and forward on PageDown, and stops at both ends", () => {
+    const game = newRun(107);
+    filled(game, HISTORY_ROWS * 3);
+    const pages = historyPages(game.log.lines, HISTORY_ROWS).length;
+    expect(pages).toBeGreaterThan(2);
+
+    let state = key(playing(game), pgUp, game);
+    for (let i = 1; i < pages; i++) {
+      state = key(state, pgUp, game);
+      expect(state.logPage, `back ${i}`).toBe(i);
+      expect(state.overlay, `back ${i}`).toBe("history");
+    }
+    // The top of the log is the top of the log: paging past it holds there
+    // rather than emptying the card.
+    expect(key(state, pgUp, game).logPage).toBe(pages - 1);
+    expect(key(key(state, pgDn, game), pgDn, game).logPage).toBe(pages - 3);
+    // And forward past now holds at now.
+    let back = key(playing(game), pgUp, game);
+    for (let i = 0; i < 5; i++) back = key(back, pgDn, game);
+    expect(back.logPage).toBe(0);
+    expect(back.overlay).toBe("history");
+  });
+
+  /**
+   * `PageDown` is not a way in. A key that means "later" cannot open a card at
+   * the latest thing there is, and left alone it still scrolls the page a
+   * voter is reading the game on.
+   */
+  it("is not opened by PageDown, which is left to the browser", () => {
+    const game = newRun(107);
+    const state = key(playing(game), pgDn, game);
+    expect(state.overlay).toBe("none");
+    expect(state.effect).toEqual({ kind: "pass" });
+  });
+
+  it("closes on escape, and forgets the page", () => {
+    const game = newRun(107);
+    filled(game, HISTORY_ROWS * 2);
+    const deep = key(key(playing(game), pgUp, game), pgUp, game);
+    expect(deep.logPage).toBe(1);
+    const closed = key(deep, press("Escape", "Escape"), game);
+    expect(closed.overlay).toBe("none");
+    expect(closed.logPage).toBe(0);
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("eats the first key that follows it, exactly as the help card does", () => {
+    const game = newRun(107);
+    const open = key(playing(game), pgUp, game);
+    for (const e of [press("1", "Digit1"), press("o", "KeyO"), press("Tab", "Tab"), press("m", "KeyM")]) {
+      const next = key(open, e, game);
+      expect(next.overlay, e.key).toBe("none");
+      expect(next.effect, e.key).toEqual({ kind: "idle" });
+    }
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("holds the run's own cards back while it is open, the way help does", () => {
+    // A card in front of the board must not be replaced by an ending raised
+    // behind it: the reducer syncs status on every key and skips the swap
+    // while either card is up.
+    const game = newRun(107);
+    const open = key(playing(game), pgUp, game);
+    died(game);
+    expect(syncStatus(open, game).overlay).toBe("history");
   });
 });
 
@@ -1140,5 +1536,151 @@ describe("a key press never touches the game itself", () => {
       state = key(state, e, game);
     }
     expect(JSON.stringify({ inputs: game.inputs, status: game.status, hp: game.player.hp })).toBe(before);
+  });
+});
+
+/**
+ * `d` and `D`: the bulkheads of this compartment as a list, and the one move
+ * among them worth a key of its own (docs/tasks/G64-door-hotkeys.md).
+ */
+describe("the doors of the compartment", () => {
+  it("opens on d and closes on d, 0 and Esc, and none of the four is a turn", () => {
+    const game = newRun();
+    const open = key(playing(game), press("d", "KeyD"), game);
+    expect(open.doors).toBe(true);
+    expect(open.moves).toBe(false);
+    expect(open.effect).toEqual({ kind: "idle" });
+    expect(listOf(game, open).some((a) => a.label.includes("d3"))).toBe(true);
+
+    for (const e of [press("d", "KeyD"), press("0", "Digit0"), press("Escape", "Escape")]) {
+      const back = key(open, e, game);
+      expect(back.doors, e.key).toBe(false);
+      expect(back.effect, e.key).toEqual({ kind: "idle" });
+    }
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("is one level or the other, never both", () => {
+    const game = newRun();
+    const doors = key(playing(game), press("d", "KeyD"), game);
+    const map = key(doors, press("m", "KeyM"), game);
+    expect([map.moves, map.doors]).toEqual([true, false]);
+    expect([key(map, press("d", "KeyD"), game).doors, key(map, press("d", "KeyD"), game).moves]).toEqual([
+      true,
+      false,
+    ]);
+  });
+
+  it("steps into a bulkhead's own ways and comes back to the doors, not to the room", () => {
+    const game = newRun();
+    const doors = key(playing(game), press("d", "KeyD"), game);
+    const at = listOf(game, doors).findIndex((a) => a.step === game.ship.door("d3").id);
+    expect(at).toBeGreaterThanOrEqual(0);
+
+    const inside = key(doors, digit(at), game);
+    expect(inside.menu).toBe(game.ship.door("d3").id);
+    expect(inside.doors).toBe(true);
+    expect(inside.effect).toEqual({ kind: "idle" });
+
+    const back = key(inside, press("0", "Digit0"), game);
+    expect(back.menu).toBeUndefined();
+    expect(back.doors).toBe(true);
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("falls away by itself when the drone walks out of the compartment", () => {
+    const game = newRun();
+    const doors = key(playing(game), press("d", "KeyD"), game);
+    game.playerCommand({ kind: "go", door: game.ship.door("d1").id });
+    expect(syncStatus(doors, game).doors).toBe(false);
+  });
+
+  it("does the move itself when the compartment has one door and one way", () => {
+    // The airlock compartment: `a1` is not a door of the list, so `d1` is the
+    // only bulkhead, and welded shut with a torch aboard cutting it is the only
+    // answer.
+    const game = newRun();
+    game.player.room = game.ship.room("r1").id;
+    game.refreshSight();
+    game.ship.door("d1").state = "sealed";
+    const state = key(playing(game), press("d", "KeyD"), game);
+    expect(state.doors).toBe(false);
+    expect(state.effect).toEqual({
+      kind: "command",
+      cmd: { kind: "act", verb: "cut", target: game.ship.door("d1").id },
+    });
+
+    // Open, the one door is still two answers — through it, or shut it — so
+    // `d` is a list, and the step through is its first line (G83, 6).
+    game.ship.door("d1").state = "open";
+    const list = key(playing(game), press("d", "KeyD"), game);
+    expect(list.doors).toBe(true);
+    expect(list.effect).toEqual({ kind: "idle" });
+    const row = listOf(game, list)[0]!;
+    expect(row.step).toBe(game.ship.door("d1").id);
+    expect(row.ways?.[0]?.cmd).toEqual({ kind: "go", door: game.ship.door("d1").id });
+  });
+
+  it("says so when there is nothing to be done with the bulkheads here", () => {
+    const game = cutOffRun();
+    stripRack(game);
+    game.ship.door("d4").state = "sealed";
+    const state = key(playing(game), press("d", "KeyD"), game);
+    expect(state.doors).toBe(false);
+    expect(state.effect).toEqual({ kind: "log", text: t("why.door.noneHere") });
+    expect(game.inputs).toEqual([]);
+  });
+
+  it("answers on the tug the way every other key of the other half does", () => {
+    const game = tugRun();
+    for (const e of [press("d", "KeyD"), press("D", "KeyD", { shiftKey: true })]) {
+      const state = key(playing(game), e, game);
+      expect(state.effect, e.key).toEqual({ kind: "log", text: t("why.tug.noWalk") });
+    }
+  });
+});
+
+describe("welding the way back on shift+D", () => {
+  it("sends the weld the list would have sent, for one turn", () => {
+    const game = loopRun();
+    install(rigOf(game.player)!, "welder", 3);
+    applyDerived(game.player);
+    game.playerCommand({ kind: "go", door: game.ship.door("d1").id });
+
+    const state = key(playing(game), press("D", "KeyD", { shiftKey: true }), game);
+    expect(state.effect).toEqual({
+      kind: "command",
+      cmd: { kind: "act", verb: "weld", target: game.ship.door("d1").id },
+    });
+  });
+
+  it("refuses without a torch, with nothing behind the drone, and against a way home", () => {
+    const nothing = newRun();
+    expect(key(playing(nothing), press("D", "KeyD", { shiftKey: true }), nothing).effect).toEqual({
+      kind: "log",
+      text: t("why.door.notBehind"),
+    });
+
+    const bare = loopRun();
+    bare.playerCommand({ kind: "go", door: bare.ship.door("d1").id });
+    expect(key(playing(bare), press("D", "KeyD", { shiftKey: true }), bare).effect).toEqual({
+      kind: "log",
+      text: t("why.module.missing", { module: moduleName("welder") }),
+    });
+
+    // The fixture is a chain, so the door the drone came through is the only
+    // walk home there is: the rules refuse it and the key spends nothing.
+    const walled = newRun();
+    install(rigOf(walled.player)!, "welder", 3);
+    applyDerived(walled.player);
+    walled.player.room = walled.ship.room("r1").id;
+    walled.refreshSight();
+    walled.playerCommand({ kind: "go", door: walled.ship.door("d1").id });
+    const turns = walled.inputs.length;
+    expect(key(playing(walled), press("D", "KeyD", { shiftKey: true }), walled).effect).toEqual({
+      kind: "log",
+      text: t("why.door.wallsIn", { door: "d1" }),
+    });
+    expect(walled.inputs.length).toBe(turns);
   });
 });

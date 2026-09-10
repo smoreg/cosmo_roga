@@ -3,17 +3,21 @@ import { t } from "./i18n.js";
 import { MAX_MACHINES, kindsForDepth, monsterChance } from "./content/monsters.js";
 import { startTraining } from "./content/hints.js";
 import { makePlayer } from "./content/player.js";
+import { markTraining } from "./content/tutorial.js";
 import { TUG_ID, tugShip } from "./content/tug.js";
 import { ALERT } from "./systems/alert.js";
 import { BLOOM } from "./systems/bloom.js";
+import { CODEX_SYSTEM } from "./systems/codex.js";
 import { CONTACTS } from "./systems/contacts.js";
 import { DOORS } from "./systems/doors.js";
 import { GHOST } from "./systems/ghost.js";
+import { HAZARD } from "./systems/hazards.js";
 import { JAM } from "./systems/jam.js";
 import { POPULATE } from "./systems/populate.js";
 import { RIVAL } from "./systems/rival.js";
 import { SHIP } from "./systems/ship.js";
 import { TUG } from "./systems/tug.js";
+import { TUTORIAL } from "./systems/tutorial.js";
 import { VIRUS } from "./systems/virus.js";
 import { VOYAGE, voyageMetrics, voyageProgress } from "./systems/voyage.js";
 import { RIG } from "./twist/rig.js";
@@ -44,6 +48,26 @@ export const SALVOR: RoomContentPack = {
     return t("log.death");
   },
 };
+
+/**
+ * The same game, with the drone marked as a training run's before anything can
+ * ask (`content/tutorial.ts`).
+ *
+ * The flag has to be on the player entity by the time `VOYAGE.onRunStart`
+ * draws the itinerary, and that happens inside the `RoomGame` constructor —
+ * earlier than any line `newGame` could write after it. `makePlayer` is the one
+ * hook the content pack gives that runs early enough, so training is a content
+ * pack and not an argument.
+ *
+ * Built on `SALVOR` as a prototype rather than spread from it, and that is not
+ * style: three of its fields are getters that look up the current language when
+ * they are asked, and a spread would call all three here — freezing the win and
+ * death lines to whatever language was on the moment a run was created, which
+ * is a bug `L` would find on the first press.
+ */
+const TRAINING: RoomContentPack = Object.assign(Object.create(SALVOR) as RoomContentPack, {
+  makePlayer: () => markTraining(makePlayer()),
+});
 
 export const GAME_CONFIG: Omit<RoomGameConfig, "seed"> = {
   content: SALVOR,
@@ -76,7 +100,24 @@ export const GAME_CONFIG: Omit<RoomGameConfig, "seed"> = {
   // line it writes is "what is standing in here", and it has to be asked after
   // whatever the turn did to where "here" is — VOYAGE can move the drone to a
   // whole other hull from its own `afterPlayerTurn`.
-  systems: [VIRUS, POPULATE, TUG, DOORS, ALERT, GHOST, JAM, BLOOM, RIVAL, SHIP, VOYAGE, CONTACTS],
+  //
+  // TUTORIAL is last of all, after CONTACTS, and only ever says anything in a
+  // training run: its lines are about the turn as it finally stands, including
+  // the crossing VOYAGE has just made and the hull it has just sold.
+  //
+  // HAZARD sits after POPULATE, which is what lays the hazards on a hull on
+  // its first boarding, and after DOORS, whose welder lifts a mine; it is
+  // before ALERT because a mine going off raises the gauge, and the gauge
+  // should hear it on the turn it happens.
+  //
+  // CODEX_SYSTEM is after even that, and it is the one entry here whose order
+  // cannot matter to anybody: it writes down what the run has shown the player
+  // and changes nothing at all, so it wants the turn as everything else has
+  // finally left it and nothing wants it (`systems/codex.ts`, G72).
+  systems: [
+    VIRUS, POPULATE, TUG, DOORS, HAZARD, ALERT, GHOST, JAM, BLOOM, RIVAL, SHIP, VOYAGE, CONTACTS, TUTORIAL,
+    CODEX_SYSTEM,
+  ],
   // A run starts at home, on the four compartments of the tug, with a drone on
   // the rails and 25 CR. The first derelict is generated the first time
   // something undocks into it (`systems/voyage.ts`), which is what lets the
@@ -106,7 +147,7 @@ export type SalvorGame = RoomGame & {
  * play comes through this function, so nobody measures that by accident.
  */
 export function newGame(seed: number, training = false): SalvorGame {
-  const game = new RoomGame({ ...GAME_CONFIG, seed });
+  const game = new RoomGame({ ...GAME_CONFIG, content: training ? TRAINING : SALVOR, seed });
   if (training) startTraining(game);
   return Object.assign(game, {
     progress: () => voyageProgress(game),

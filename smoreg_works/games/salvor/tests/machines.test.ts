@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   RoomGame,
+  hasStatus,
   isAlive,
   rememberRoom,
   spawnMonsterIn,
@@ -9,13 +10,13 @@ import {
 } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
-import { BLOOM_KIND, CRAWLER, ENFORCER, JAMMER, MONSTERS, SENTRY_TURRET } from "../src/content/monsters.js";
+import { BLOOM_KIND, CRAWLER, CROWD, ENFORCER, JAMMER, MONSTERS, SENTRY_TURRET } from "../src/content/monsters.js";
 import { moduleKind, type ModuleId } from "../src/content/modules.js";
 import { BLOOM } from "../src/systems/bloom.js";
 import { DOORS } from "../src/systems/doors.js";
 import { JAM, jammed } from "../src/systems/jam.js";
 import { roomList, type RoomItem } from "../src/systems/populate.js";
-import { capOf, findSlot, rigOf, wrecksIn, type Rig } from "../src/twist/rig.js";
+import { RIG, capOf, findSlot, install, rigOf, wrecksIn, type Rig } from "../src/twist/rig.js";
 
 /**
  * The four machines a hull class brings: the turret that never moves, the
@@ -258,13 +259,33 @@ describe("the bloom is a clock that hatches", () => {
     expect(brood(game, bloom)[0]!.room).toBe(bloom.room);
   });
 
-  it("never has more than four of them out at once", () => {
-    const game = gameOn(SEALED, [BLOOM]);
+  it("never has more than four of them out at once, and never a fourth machine in its compartment", () => {
+    // Two ceilings: the brood's own, and the compartment's (`CROWD`,
+    // docs/tasks/G83-anonymous-blows.md, 4). Sealed in with its bloom, a
+    // nest holds two crawlers and waits; give them somewhere to go and it
+    // hatches on, up to the brood's four — and not a fifth.
+    const nest = `
+      TUG -a1- r1
+      r1 -#d1#- r2
+      r2 -#d2#- r3
+      r1: docking
+      r2: quarantine
+      r3: hold
+    `;
+    const game = gameOn(nest, [BLOOM]);
     const bloom = put(game, "r2", BLOOM_KIND);
+    const hold = game.ship.room("r3").id;
 
     wait(game, 24);
+    expect(brood(game, bloom)).toHaveLength(CROWD - 1);
+    wait(game, 12);
+    expect(brood(game, bloom), "the compartment is full").toHaveLength(CROWD - 1);
+
+    for (const c of brood(game, bloom)) c.room = hold;
+    wait(game, 12);
     expect(brood(game, bloom)).toHaveLength(4);
 
+    for (const c of brood(game, bloom)) c.room = hold;
     wait(game, 60);
     expect(brood(game, bloom), "the cap is the cap, not the pace").toHaveLength(4);
   });
@@ -376,5 +397,84 @@ describe("the bestiary reads off the schematic", () => {
     for (const machine of [SENTRY_TURRET, JAMMER, CRAWLER, BLOOM_KIND]) {
       expect(machine.weight, machine.name).toBe(0);
     }
+  });
+});
+
+// ------------------------------------------------------------------- shocker
+
+describe("the shocker seizes the compartment", () => {
+  const byId = (id: string) => MONSTERS.find((m) => m.id === id)!;
+
+  /** A shocker in the empty sixth slot, with its three charges. */
+  function arm(game: RoomGame): number {
+    const slot = install(rig(game), "shocker", moduleKind("shocker").integrity)!;
+    expect(rig(game).slots[slot]!.charges).toBe(3);
+    return slot;
+  }
+
+  it("stuns everything in this compartment for two turns, a charge a press, and refuses on empty", () => {
+    // Behind a welded bulkhead so that a seized machine has nowhere to
+    // stagger to: the count is about the charges and the status, not a door.
+    const game = gameOn(SEALED);
+    const bot = put(game, "r1", byId("maintenance-bot"));
+    const unit = put(game, "r1", byId("security-unit"));
+    const slot = arm(game);
+
+    expect(game.playerCommand({ kind: "act", verb: "use", slot }).ok).toBe(true);
+    expect(hasStatus(bot, "stun")).toBe(true);
+    expect(hasStatus(unit, "stun")).toBe(true);
+    expect(rig(game).slots[slot]!.charges).toBe(2);
+    expect(rig(game).exposed).toBe(slot);
+    expect(game.log.tail(5).map((m) => m.text)).toContain("The SHOCKER arcs. 2 machines seize up. 2 left.");
+
+    // Two turns and it wears off, on its own.
+    wait(game, 2);
+    expect(hasStatus(bot, "stun")).toBe(false);
+    expect(hasStatus(unit, "stun")).toBe(false);
+
+    expect(game.playerCommand({ kind: "act", verb: "use", slot }).ok).toBe(true);
+    expect(game.playerCommand({ kind: "act", verb: "use", slot }).ok).toBe(true);
+    expect(rig(game).slots[slot]!.charges).toBe(0);
+    const turns = game.inputs.length;
+    expect(game.playerCommand({ kind: "act", verb: "use", slot })).toEqual({
+      ok: false, cost: 0, reason: "SHOCKER is spent.",
+    });
+    expect(game.inputs).toHaveLength(turns);
+    // Spent, it stays on the rack: a relic is still something to hit.
+    expect(rig(game).slots[slot]!.kind).toBe("shocker");
+  });
+
+  it("is a numbered line, only with something here to fire at, and greyed once spent", () => {
+    // Letters belong to the catalogue (`ui/input.ts`); a relic that fires has
+    // to be on the list, or nothing in the game could ever fire it.
+    const game = gameOn(SEALED);
+    const slot = arm(game);
+    const line = () =>
+      RIG.offerActions!(game).find((o) => o.cmd.kind === "act" && o.cmd.verb === "use" && o.cmd.slot === slot);
+    expect(line()).toBeUndefined();
+
+    put(game, "r1", byId("maintenance-bot"));
+    expect(line()).toMatchObject({ label: "discharge SHOCKER (3)", enabled: true });
+
+    rig(game).slots[slot]!.charges = 0;
+    expect(line()).toMatchObject({ label: "discharge SHOCKER (0)", enabled: false, why: "SHOCKER is spent." });
+  });
+
+  it("holds a turret's fire, which the EMP could never do", () => {
+    const game = gameOn(SEALED);
+    const gun = put(game, "r1");
+    gun.hp = 99;
+    const slot = arm(game);
+    // Let the turret take its first shot, so the count starts on a quiet turn.
+    wait(game, 1);
+    const before = intact(game);
+
+    expect(game.playerCommand({ kind: "act", verb: "use", slot }).ok).toBe(true);
+    expect(hasStatus(gun, "stun")).toBe(true);
+    // The turret's turn after the discharge: seized, and a seized turret waits.
+    expect(intact(game)).toBe(before);
+    // Once the stun is gone it shoots again.
+    wait(game, 2);
+    expect(intact(game)).toBeLessThan(before);
   });
 });

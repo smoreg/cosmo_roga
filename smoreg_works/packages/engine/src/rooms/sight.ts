@@ -10,17 +10,28 @@ import type { Door, RoomId, Ship } from "./graph.js";
  * a decision.
  */
 
-/** Rooms within `depth` doors, counting only doors that can be seen through. */
+/**
+ * Rooms within `depth` doors, counting only doors that can be seen through.
+ *
+ * An opaque room (`Room.opaque`) is a wall to sight both ways: nothing is seen
+ * from inside it but itself, and from outside it is never reached, whatever
+ * its doors are.
+ */
 export function visibleRooms(ship: Ship, from: RoomId, depth: number): Set<RoomId> {
-  return spread(ship, from, depth, (d) => ship.seeThrough(d));
+  if (opaque(ship, from)) return new Set([from]);
+  return spread(ship, from, depth, (d, to) => ship.seeThrough(d) && !opaque(ship, to));
 }
 
 /**
  * Rooms within `depth` doors through *any* door — the sensor pulse, which
- * reads the ship's structure rather than looking at it.
+ * reads the ship's structure rather than looking at it, smoke and all.
  */
 export function scanRooms(ship: Ship, from: RoomId, depth: number): Set<RoomId> {
   return spread(ship, from, depth, () => true);
+}
+
+function opaque(ship: Ship, room: RoomId): boolean {
+  return ship.roomAt(room).opaque === true;
 }
 
 /**
@@ -28,7 +39,8 @@ export function scanRooms(ship: Ship, from: RoomId, depth: number): Set<RoomId> 
  * because the moment the two differ, hiding becomes a lie the UI tells.
  *
  *   same room        seen unless the target is hidden and the viewer is not keen
- *   next room        the same, and only with `sight >= 1` and an open door
+ *   next room        the same, and only with `sight >= 1`, an open door, and
+ *                    neither room opaque
  *   anywhere else    no
  */
 export function canSee(ship: Ship, viewer: Entity, target: Entity): boolean {
@@ -41,7 +53,12 @@ export function canSee(ship: Ship, viewer: Entity, target: Entity): boolean {
   return visibleRooms(ship, from, 1).has(to);
 }
 
-function spread(ship: Ship, from: RoomId, depth: number, through: (d: Door) => boolean): Set<RoomId> {
+function spread(
+  ship: Ship,
+  from: RoomId,
+  depth: number,
+  through: (d: Door, to: RoomId) => boolean,
+): Set<RoomId> {
   const seen = new Set<RoomId>([from]);
   let frontier: RoomId[] = [from];
 
@@ -49,9 +66,9 @@ function spread(ship: Ship, from: RoomId, depth: number, through: (d: Door) => b
     const next: RoomId[] = [];
     for (const r of frontier) {
       for (const d of ship.doorsOf(r)) {
-        if (!through(d)) continue;
         const to = ship.other(d, r);
         if (to === r || seen.has(to)) continue;
+        if (!through(d, to)) continue;
         seen.add(to);
         next.push(to);
       }

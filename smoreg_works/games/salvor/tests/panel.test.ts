@@ -12,6 +12,7 @@ import {
   PANEL_WIDTH,
   DOOR_LINES,
   ROOM_LINES,
+  contactTone,
   contactsBlock,
   flashSlots,
   missionBlock,
@@ -22,6 +23,7 @@ import {
   trackFlash,
 } from "../src/ui/panel.js";
 import { shipState } from "../src/systems/shipstate.js";
+import { schematicInputOf } from "../src/ui/schematic-input.js";
 import { currentDerelict, derelictAboard, voyageOf } from "../src/systems/voyage.js";
 import { isTug } from "../src/content/tug.js";
 import { CALLSIGNS, flavourCallsign } from "../src/content/derelicts.js";
@@ -350,7 +352,7 @@ describe("the action list on the panel", () => {
     // ends on the rows a lost player reads.
     expect(out.some((l) => l.includes("salvage"))).toBe(false);
     expect(out[out.length - 1]).toBe("o explore  Tab fight  ? help");
-    expect(out[out.length - 2]).toBe("< leave");
+    expect(out[out.length - 2]).toBe("h hide  < leave");
   });
 
   it("counts what the ten keys could not reach and what the panel had no room for", () => {
@@ -376,12 +378,13 @@ describe("the action list on the panel", () => {
     const cargo = lines(gameIn());
     // `m` leads the row: walking is the commonest thing there is, and its
     // number was a different number every turn (G48).
-    expect(cargo).toContain("m move  . brace  h hide");
+    expect(cargo).toContain("m move  d doors  . brace");
+    expect(cargo).toContain("h hide  < leave");
     expect(cargo).toContain("o explore  Tab fight  ? help");
 
     // The airlock compartment of the fixture has no cover, and the way home is
     // the line a lost player looks for.
-    expect(lines(gameIn("r1"))).toContain("m move  . brace  < leave");
+    expect(lines(gameIn("r1"))).toContain("< leave");
   });
 });
 
@@ -485,7 +488,7 @@ describe("the row of letters is always the last row of the panel", () => {
     // Where the doors went: they are rows of the map now, one `m` away, and
     // the compartment's own list is only what happens in this compartment.
     expect(roomActions(game, undefined, true).map((a) => a.label)).toContain("DOCKING   r1  1 door");
-    expect(out.slice(-3)).toEqual(["m move  . brace  h hide", "< leave", KEYS]);
+    expect(out.slice(-3)).toEqual(["m move  d doors  . brace", "h hide  < leave", KEYS]);
   });
 
   it("shortens the list rather than the keys, and says how much it shortened it", () => {
@@ -496,7 +499,7 @@ describe("the row of letters is always the last row of the panel", () => {
     const more = out.findIndex((l) => l.startsWith("… "));
     expect(more).toBeGreaterThan(0);
     // The count, then the letters, and nothing after them.
-    expect(out.slice(more + 1)).toEqual(["m move  . brace  h hide", "< leave", KEYS]);
+    expect(out.slice(more + 1)).toEqual(["m move  d doors  . brace", "h hide  < leave", KEYS]);
   });
 });
 
@@ -578,7 +581,10 @@ describe("the contacts block", () => {
     // No `HERE`: the rule over the block already said it, and the five columns
     // it cost are the ones the danger word is written in.
     expect(block[1]!.text).toBe("S security unit 8/8 melee");
-    expect(block[1]!.fg).toBe(THEME.bad);
+    // The rule above it is the red one. The line itself says how much of the
+    // machine is left, and this one has not been touched (G79).
+    expect(block[0]!.fg).toBe(THEME.bad);
+    expect(block[1]!.fg).toBe(THEME.hpFull);
     expect(block).toHaveLength(2);
   });
 
@@ -589,8 +595,48 @@ describe("the contacts block", () => {
 
     expect(game.visible.has(game.ship.room("r5").id)).toBe(true);
     expect(block[1]!.text).toBe("c scout 3/3 d4 melee");
-    // Not the colour of something in the room with you: it is a door away.
-    expect(block[1]!.fg).toBe(THEME.warn);
+    // A door away is what the amber rule over the block says. The line says
+    // what the fight would cost, and this scout is whole.
+    expect(block[0]!.fg).toBe(THEME.warn);
+    expect(block[1]!.fg).toBe(THEME.hpFull);
+  });
+
+  /**
+   * Kyzrati's green-to-red on remaining integrity, which is how he says "this
+   * one you can finish" without making anybody read a number
+   * (docs/gui-guides.md, "Что применить", D). Four bands and three thresholds:
+   * whole, hurt, half gone, a quarter left.
+   */
+  it("colours a contact by how much of the machine is left", () => {
+    const bands: Array<[number, number, string]> = [
+      [10, 10, THEME.hpFull],
+      [9, 10, THEME.fg],
+      [6, 10, THEME.fg],
+      [5, 10, THEME.warn],
+      [3, 10, THEME.warn],
+      [2, 10, THEME.hpLow],
+      [0, 10, THEME.hpLow],
+    ];
+    for (const [hp, max, fg] of bands) {
+      expect(contactTone(hp, max), `${hp}/${max}`).toBe(fg);
+    }
+    // A machine the content pack gave no hit points at all is not a red line.
+    expect(contactTone(0, 0)).toBe(THEME.hpFull);
+  });
+
+  it("puts that colour on the line the panel draws, and leaves the rule alone", () => {
+    const game = gameIn();
+    const machine = put(game, "r2", "security-unit");
+    const whole = contactsBlock(game);
+    expect(whole[1]!.fg).toBe(THEME.hpFull);
+
+    machine.hp = 2;
+    const hurt = contactsBlock(game);
+    expect(hurt[1]!.text).toBe("S security unit 2/8 melee");
+    expect(hurt[1]!.fg).toBe(THEME.hpLow);
+    // The rule over the block still says which group it is: that is the half
+    // the colour change did not take (G47).
+    expect(hurt[0]!.fg).toBe(THEME.bad);
   });
 
   it("drops a whole word rather than half of one when a name will not fit", () => {
@@ -624,17 +670,33 @@ describe("the contacts block", () => {
   });
 
   it("counts the machines it has no rows for rather than growing", () => {
+    // The rule says how many are in the compartment, rows or no rows — the
+    // number the schematic's badge shows — and the ones without a row are
+    // counted again underneath, so the arithmetic still closes.
     const game = gameIn();
     for (let i = 0; i < 4; i++) put(game, "r2", "scout");
     const block = contactsBlock(game, 2);
 
     expect(block.map((l) => l.text)).toEqual([
-      "══ ENEMY IN HERE: 2 ════════",
+      "══ ENEMY IN HERE: 4 ════════",
       "c scout 3/3 melee",
       "c scout 3/3 melee",
       "… 2 more in sight",
     ]);
     expect(block[3]!.fg).toBe(THEME.fgDim);
+  });
+
+  it("says the number the schematic's badge says, off the same list", () => {
+    // The owner read `ВРАГ В ОТСЕКЕ: 6` on the panel and `7` on the map of the
+    // same compartment (docs/tasks/G83-anonymous-blows.md, 4). One source now:
+    // `hostilesIn`, for the rule and for the badge in every view.
+    const game = gameIn();
+    for (let i = 0; i < 7; i++) put(game, "r2", "scout");
+    const box = schematicInputOf(game).rooms.find((r) => r.label === "r2")!;
+    const badge = Math.ceil((box.hostiles ?? 0) / 2);
+    expect(badge).toBe(7);
+    expect(contactsBlock(game)[0]!.text).toContain("ENEMY IN HERE: 7");
+    expect(contactsBlock(game).map((l) => l.text)).toContain("… 1 more in sight");
   });
 
   it("keeps one machine on the panel however short of rows it is", () => {
@@ -892,7 +954,7 @@ describe("the panel at home", () => {
     for (const line of text) expect(line.length, line).toBeLessThanOrEqual(PANEL_WIDTH);
   });
 
-  it("prints the whole tug as six headed groups of ten numbered rows", () => {
+  it("prints the whole tug as four headed groups of ten numbered rows", () => {
     // The screen the owner asked for after two live runs: everything the tug
     // does at once, grouped by verb, one row per verb whatever it could be
     // aimed at, and a reason on every row that cannot be pressed
@@ -900,18 +962,21 @@ describe("the panel at home", () => {
     const game = newGame(4);
     const out = lines(game);
     const first = out.indexOf("ACTIONS") + 1;
-    expect(out.slice(first, first + 6)).toEqual([
-      " 1 cast off → PALE HORSE",
-      "DRONE",
-      " 2 buy a hull ▸",
+    expect(out.slice(first, first + 5)).toEqual([
+      " 1 buy a hull ▸",
       "REPAIR",
-      " 3 repair a module ▸",
-      " 4 graft a module ▸ 12 CR",
+      " 2 repair a module ▸",
+      " 3 graft a module ▸ 12 CR",
+      " 4 clean a module",
     ]);
     expect(out).toContain("RIG");
-    expect(out).toContain("SELL");
     expect(out).toContain("CHARTERS");
     expect(out).toContain("NEXT HULL");
+    // Casting off is last, and the two headings that stood over a single row
+    // each are gone (docs/tug-menu-audit.md, П7).
+    expect(out).not.toContain("DRONE");
+    expect(out).not.toContain("SELL");
+    expect(out).toContain(" 0 cast off no job");
     expect(out.filter((l) => /^[▸ ]\d /.test(l))).toHaveLength(10);
 
     // No compartment block, no doors and no second way out: the tug is not a
@@ -920,8 +985,8 @@ describe("the panel at home", () => {
   });
 
   it("keeps the airlock's letter for a derelict, where it is the way home", () => {
-    expect(lines(newGame(4))).not.toContain("m move  . brace  < leave");
-    expect(lines(gameIn("r1"))).toContain("m move  . brace  < leave");
+    expect(lines(newGame(4))).not.toContain("< leave");
+    expect(lines(gameIn("r1"))).toContain("< leave");
   });
 });
 

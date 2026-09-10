@@ -40,37 +40,23 @@
       "target": 2
     },
     {
-      "kind": "attack",
-      "target": 2
-    },
-    {
-      "kind": "attack",
-      "target": 5
-    },
-    {
       "kind": "act",
       "verb": "salvage",
       "target": 1000
     },
     {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1014
+      "kind": "attack",
+      "target": 4
     },
     {
       "kind": "act",
       "verb": "salvage",
-      "target": 1015
+      "target": 1020
     },
     {
       "kind": "act",
-      "verb": "cure",
-      "slot": 5
-    },
-    {
-      "kind": "act",
-      "verb": "cure",
-      "slot": 5
+      "verb": "salvage",
+      "target": 1021
     },
     {
       "kind": "go",
@@ -80,6 +66,16 @@
       "kind": "act",
       "verb": "take",
       "target": 1001
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1002
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1003
     },
     {
       "kind": "hide"
@@ -99,8 +95,13 @@
     },
     {
       "kind": "act",
-      "verb": "take",
-      "target": 1004
+      "verb": "salvage",
+      "target": 1009
+    },
+    {
+      "kind": "act",
+      "verb": "carry",
+      "target": 1010
     },
     {
       "kind": "hide"
@@ -144,6 +145,6 @@
       ]
     }
   },
-  "fingerprint": "b0e6b612",
-  "codeSha": "ab9c03f44a359d131d605c28079a522cc019dd4c"
+  "fingerprint": "28b93a7e",
+  "codeSha": "f89a64674454cd6212217c4897fe73f7f0bb0443"
 }

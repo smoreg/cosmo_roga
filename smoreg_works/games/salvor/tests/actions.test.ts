@@ -14,7 +14,7 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import { DOORS } from "../src/systems/doors.js";
-import { addWreck, applyDerived, install, rigOf } from "../src/twist/rig.js";
+import { addWreck, applyDerived, findSlot, install, rigOf } from "../src/twist/rig.js";
 import {
   ACTION_KEYS,
   ACTION_WIDTH,
@@ -22,6 +22,8 @@ import {
   omittedActions,
   roomActions,
   roomLabel,
+  swapLevel,
+  swapStands,
   waysHere,
   type Action,
 } from "../src/ui/actions.js";
@@ -117,6 +119,89 @@ function put(game: RoomGame, room: string, id: string): Entity {
   game.refreshSight();
   return e;
 }
+
+// -------------------------------------------------------------------- relics
+
+describe("a relic crate against a full rack", () => {
+  /** A full rack — the five the drone undocks with and a welder in the sixth. */
+  function fullRack(game: RoomGame): void {
+    const rig = rigOf(game.player)!;
+    for (let i = 0; i < rig.slots.length; i++) if (!rig.slots[i]) rig.slots[i] = { kind: "welder", integrity: 3 };
+  }
+
+  function blade(game: RoomGame, room = "r2"): number {
+    return addWreck(game, game.ship.room(room).id, "blade", 14, "X").id;
+  }
+
+  it("is one line that steps down, worded after the relic, aimed at the slot it upgrades", () => {
+    const game = gameIn();
+    fullRack(game);
+    const id = blade(game);
+    const rig = rigOf(game.player)!;
+
+    const list = roomActions(game);
+    const swaps = list.filter((a) => a.cmd.kind === "act" && a.cmd.verb === "swap");
+    expect(swaps).toHaveLength(1);
+    const line = swaps[0]!;
+    expect(line.label).toBe("Q-BLADE for … ▸");
+    expect(line.step).toBe(swapLevel(id));
+    expect(line.enabled).toBe(true);
+    // The command on the folded line is the swap the rig would do in one press:
+    // a harness reading commands still puts the blade where the cutter was.
+    expect(line.cmd).toEqual({ kind: "act", verb: "swap", target: id, slot: findSlot(rig, "cutter") });
+    expect(line.label.length).toBeLessThanOrEqual(ACTION_WIDTH);
+  });
+
+  it("opens into every slot in the rig's order, with 0 for the way back", () => {
+    const game = gameIn();
+    fullRack(game);
+    const id = blade(game);
+    const rig = rigOf(game.player)!;
+
+    const level = roomActions(game).find((a) => a.step === swapLevel(id))!;
+    const picks = roomActions(game, level.step!);
+    expect(picks.map((a) => a.key)).toEqual(["1", "2", "3", "4", "5", "6", "0"]);
+    expect(picks[0]!.label).toBe("Q-BLADE for CUTTER");
+    expect(picks[6]!.step).toBe(null);
+    // Nothing of the compartment is on it: the same list one level down.
+    expect(picks.some((a) => a.label.startsWith("leave"))).toBe(false);
+    for (const pick of picks.slice(0, 6)) {
+      expect(pick.label.length, pick.label).toBeLessThanOrEqual(ACTION_WIDTH);
+      expect(pick.cmd).toMatchObject({ kind: "act", verb: "swap", target: id });
+    }
+
+    // Pressing one does the swap, and the level falls away with the crate.
+    const scanner = picks.find((a) => a.label.endsWith("SCANNER"))!;
+    expect(game.playerCommand(scanner.cmd).ok).toBe(true);
+    expect(rig.slots[findSlot(rig, "blade")!]!.kind).toBe("blade");
+    expect(findSlot(rig, "scanner")).toBeNull();
+    expect(swapStands(game, level.step as string)).toBe(false);
+    expect(roomActions(game, level.step!).some((a) => a.step === null)).toBe(false);
+  });
+
+  it("is the swap itself when only one module could go, and no level at all", () => {
+    const game = gameIn();
+    const rig = rigOf(game.player)!;
+    rig.slots = [{ kind: "cutter", integrity: 11 }];
+    rig.scars = [null];
+    const id = blade(game);
+
+    const line = roomActions(game).find((a) => a.cmd.kind === "act" && a.cmd.verb === "swap")!;
+    expect(line.label).toBe("Q-BLADE for CUTTER");
+    expect(line.step).toBeUndefined();
+    expect(swapStands(game, swapLevel(id))).toBe(false);
+    expect(game.playerCommand(line.cmd).ok).toBe(true);
+    expect(rig.slots[0]!.kind).toBe("blade");
+  });
+
+  it("stays inside the ten digits with a crate, a machine and the airlock all on the list", () => {
+    const game = gameIn();
+    fullRack(game);
+    blade(game);
+    put(game, "r2", "scout");
+    expect(omittedActions(roomActions(game))).toHaveLength(0);
+  });
+});
 
 /** A stand-in for the bulkhead system (G14): it offers, it never performs. */
 function doorSystem(offers: (game: RoomGame) => Array<ActionOffer<RoomCommand>>): Twist<RoomGame> {
@@ -746,12 +831,18 @@ describe("the same list, on the tug", () => {
     const game = newGame(4);
     const list = labels(game);
 
-    expect(list[0]).toMatch(/^cast off → /);
-    expect(list[1]).toBe("buy a hull ▸");
+    // The order a visit home is spent in: a drone first, casting off last.
+    expect(list[0]).toBe("buy a hull ▸");
+    // A board with nothing signed on it is the one thing a fresh screen has
+    // left undone, so the row that casts off says so instead of naming the
+    // hull (docs/tug-menu-audit.md, "what a designer would do", 5).
+    expect(list[9]).toBe("cast off no job");
     expect(list.some((l) => l.startsWith("go "))).toBe(false);
     expect(list.some((l) => l.startsWith("leave"))).toBe(false);
     // Every verb of the tug is here, on the first screen, with nothing walked to.
-    for (const line of ["cast off", "repair", "graft", "clean", "stow", "fit", "sell", "take", "jump"]) {
+    // `hold & shelf` is the row that fits a module, from either place it can
+    // come from: the hold, and the three the dock has for sale.
+    for (const line of ["cast off", "repair", "graft", "clean", "stow", "hold &", "sell", "take", "jump"]) {
       expect(list.some((l) => l.startsWith(line)), line).toBe(true);
     }
   });

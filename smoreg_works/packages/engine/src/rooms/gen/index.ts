@@ -36,8 +36,13 @@ export {
 export {
   HEX_DIRS,
   HEX_SPACING,
+  MASK_FLOOR,
   hexAdjacent,
+  hexFit,
+  hexKey,
   hexLayout,
+  hexThickness,
   type HexCell,
   type HexLayout,
+  type HexLayoutOptions,
 } from "./hexlayout.js";

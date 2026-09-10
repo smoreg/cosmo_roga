@@ -12,6 +12,7 @@ import {
   type System,
 } from "@jamrog/engine";
 import { MODULES, type ModuleId } from "../content/modules.js";
+import { CROWD } from "../content/monsters.js";
 import { t } from "../i18n.js";
 import { addWreck, capOf, type Rig, type WreckSource } from "../twist/rig.js";
 
@@ -46,8 +47,15 @@ const MAX_DOORS = 2;
 
 /** Ramming: a rack with nothing in it that cuts still has a chassis. */
 const RAM: readonly [number, number, number] = [1, 1, 0];
-/** What can be swung or fired. The best of them arms the ghost. */
-const ATTACK_MODULES: readonly ModuleId[] = ["laser", "cutter", "emitter"];
+/**
+ * What can be swung or fired: every module the catalogue gives dice to, the
+ * relic blade among them. The best of them arms the ghost — read off the table
+ * rather than listed here, so a weapon added to the catalogue arms a ghost
+ * without this file hearing about it.
+ */
+const ATTACK_MODULES: readonly ModuleId[] = (Object.keys(MODULES) as ModuleId[]).filter(
+  (id) => MODULES[id].attack !== undefined,
+);
 
 export const GHOST_ID = "ghost";
 export const GHOST_NAME = "ghost";
@@ -280,7 +288,9 @@ function raise(game: RoomGame, death: Death): void {
     return;
   }
 
-  const ghost = spawnMonsterIn(ghostKind(death.rig), pickRoom(game, death.room));
+  const room = pickRoom(game, death.room);
+  if (room === undefined) return;
+  const ghost = spawnMonsterIn(ghostKind(death.rig), room);
   ghost.data = { ...(ghost.data ?? {}), ghostRig: copyRig(death.rig) };
   game.schedule.admit(ghost);
   game.entities.push(ghost);
@@ -294,19 +304,25 @@ function raise(game: RoomGame, death: Death): void {
  * A compartment sealed off from everything falls back to the wreckage itself:
  * a ghost that cannot be placed is a death record that silently did nothing.
  */
-function pickRoom(game: RoomGame, from: RoomId): RoomId {
+function pickRoom(game: RoomGame, from: RoomId): RoomId | undefined {
   const walk: DoorFilter = (d) => game.ship.passable(d, {});
   const map = RoomDistance.from(game.ship, [from], walk);
+  // Never into a compartment already as full as one gets (`CROWD`): a ghost
+  // is one more machine in the drone's way, and three is the most there are.
   const band = game.ship.rooms
     .map((r) => r.id)
-    .filter((id) => map.at(id) >= MIN_DOORS && map.at(id) <= MAX_DOORS);
-  if (band.length === 0) return from;
+    .filter((id) => map.at(id) >= MIN_DOORS && map.at(id) <= MAX_DOORS && !crowded(game, id));
+  if (band.length === 0) return crowded(game, from) ? undefined : from;
 
   // Not on the drone's head the turn it comes aboard: the ghost is something
   // to walk into, not an ambush in the airlock.
   const here = game.roomOf(game.player).id;
   const clear = band.filter((id) => id !== here);
   return ghostRng(game).pick(clear.length > 0 ? clear : band);
+}
+
+function crowded(game: RoomGame, room: RoomId): boolean {
+  return game.entities.filter((e) => e.room === room && e.id !== game.player.id && isAlive(e)).length >= CROWD;
 }
 
 /**
@@ -322,7 +338,11 @@ function dropRig(game: RoomGame, room: RoomId, rig: Rig, source: WreckSource): n
   for (const slot of rig.slots) {
     if (!slot || !MODULES[slot.kind]) continue;
     const integrity = Math.max(1, Math.min(slot.integrity, capOf(slot)));
-    addWreck(game, room, slot.kind, integrity).source = source;
+    const wreck = addWreck(game, room, slot.kind, integrity);
+    wreck.source = source;
+    // A spent coil stays spent on the floor: what the dead drone had left is
+    // what the pile holds, charges included.
+    if (slot.charges !== undefined) wreck.charges = slot.charges;
     dropped++;
   }
   return dropped;

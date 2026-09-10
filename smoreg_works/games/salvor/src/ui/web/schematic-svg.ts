@@ -1,4 +1,12 @@
-import { TUG_GLYPH, type SchematicDoor, type SchematicInput, type SchematicRoom } from "../schematic.js";
+import {
+  TUG_GLYPH,
+  type SchematicDoor,
+  type SchematicInput,
+  type SchematicRoom,
+  type SchematicThing,
+} from "../schematic.js";
+import { thingsOf, tileDefs, tileRow, zoneTile } from "./tiles.js";
+import { esc } from "./xml.js";
 
 /**
  * The ship schematic again, as SVG this time.
@@ -53,6 +61,46 @@ const TAG_PAD = 10;
 /** What an unexplored compartment says instead of a name. Same mark as the terminal's. */
 const UNKNOWN = "····";
 
+/**
+ * The tile row inside a box (`?tiles=1`): six cells of sixteen units on a step
+ * of twenty.
+ *
+ * Every number here is a measurement rather than a taste, and the first one was
+ * wrong before it was measured. `docs/tiles-design.md` (2.2) put the schematic
+ * at 2.0–2.6×, which would have made a twelve-unit cell 24–31 CSS px; a hull of
+ * the size the game actually generates draws at **1.2×**, and twelve units
+ * there is fourteen pixels — under the em box of the letter it replaced and all
+ * but on the floor the format has, where a tile reads slower than a character
+ * (`docs/gui-guides.md`, 6.1). Sixteen units puts it back at nineteen.
+ *
+ * The four units the step leaves between cells are the gap the set was measured
+ * to need: two wide chassis drawn touching read as one machine. Six cells is
+ * what 132 units of box hold at that step, and the seventh thing becomes `+N`.
+ *
+ * The band `y + 34 … y + 50` is chosen by what it must not touch: the
+ * compartment's name has its baseline at `y + 25` and `rN` at `y + 64`, and the
+ * one rule a tile may not break is that a label never lies under it
+ * (`docs/gui-guides.md`, 6.7) — `tests/tiles-view.test.ts` measures both gaps,
+ * at the scale a generated hull is drawn at rather than at the fixture's.
+ */
+const TILE_SIZE = 16;
+const TILE_STEP = 20;
+const TILE_MAX = 6;
+const TILE_X = 10;
+const TILE_Y = 34;
+
+/**
+ * The compartment's own pictogram, at the set's larger grid, standing in front
+ * of the name rather than over it. Six kinds have one (`ui/web/tiles.ts`); the
+ * name starts where it always did on every other compartment, so a hull of
+ * corridors is the drawing it was.
+ */
+const ZONE_SIZE = 16;
+const ZONE_X = 10;
+const ZONE_Y = 12;
+/** Where the name begins once a pictogram is in front of it. */
+const NAME_X_TILED = 32;
+
 interface Point {
   x: number;
   y: number;
@@ -69,23 +117,30 @@ interface Placed {
  * that says which ship this is — and it is a parameter rather than part of
  * `SchematicInput` because the terminal draws it separately too.
  */
-export function svgOf(input: SchematicInput, banner = ""): string {
+export function svgOf(input: SchematicInput, banner = "", tiles = false): string {
   const placed = place(input.rooms);
   const boxes = new Map(placed.map((p) => [p.room.id, p]));
   const size = extent(placed);
 
   const parts = [
-    `<svg class="schematic" viewBox="0 0 ${size.w} ${size.h}" preserveAspectRatio="xMidYMid meet" role="img">`,
     hull(size),
     ...input.doors.map((door) => wire(door, boxes)).filter((s) => s.length > 0),
-    ...placed.map(box),
+    ...placed.map((p) => box(p, tiles)),
     ...input.doors.map((door) => tag(door, boxes)).filter((s) => s.length > 0),
     tug(input, boxes),
     banner.length > 0 ? text(16, 30, banner, "banner") : "",
     input.shipLine.length > 0 ? text(16, size.h - 18, input.shipLine, "ship-line") : "",
-    "</svg>",
   ];
-  return parts.filter((s) => s.length > 0).join("");
+  const body = parts.filter((s) => s.length > 0).join("");
+  // The symbols this frame referenced, and none of the other sixty. Empty when
+  // the flag is off, which is what makes the plain drawing byte for byte the
+  // one it was before tiles existed (`tests/tiles-view.test.ts`).
+  return [
+    `<svg class="schematic${tiles ? " has-tiles" : ""}" viewBox="0 0 ${size.w} ${size.h}" preserveAspectRatio="xMidYMid meet" role="img">`,
+    tileDefs(body),
+    body,
+    "</svg>",
+  ].join("");
 }
 
 // ---------------------------------------------------------------- geometry
@@ -125,16 +180,25 @@ function portY(p: Placed, port: 0 | 1): number {
 
 // ------------------------------------------------------------------- boxes
 
-function box(p: Placed): string {
+function box(p: Placed, tiles: boolean): string {
   const { room } = p;
   const unknown = room.state === "unknown";
   const name = unknown ? UNKNOWN : room.name;
+  // The pictogram, and the name shifted out from under it. An unknown
+  // compartment gets neither: what it is for is exactly what the drone has not
+  // found out yet, and a picture of a reactor on a dashed box would be the map
+  // telling a lie the dashes are there to prevent.
+  const picture = tiles && !unknown ? zoneTile(room, p.x + ZONE_X, p.y + ZONE_Y, ZONE_SIZE) : "";
   const body = [
     `<rect class="room-box" x="${p.x}" y="${p.y}" width="${BOX_W}" height="${BOX_H}" rx="3"/>`,
-    text(p.x + 10, p.y + 25, name, "room-name"),
+    picture,
+    text(p.x + (picture.length > 0 ? NAME_X_TILED : 10), p.y + 25, name, "room-name"),
     text(p.x + BOX_W - 10, p.y + BOX_H - 12, room.label, "room-id", "end"),
-  ];
-  if (!unknown && room.glyphs.length > 0) body.push(glyphRow(p));
+  ].filter((s) => s.length > 0);
+  // An unknown box carries glyphs only when the adapter put a known hazard's
+  // mark on it (`ui/schematic-input.ts`, `marksOf`): the one thing a
+  // compartment nobody has looked into can still show.
+  if (room.glyphs.length > 0) body.push(tiles ? tileRowOf(p) : glyphRow(p));
   if (!unknown && (room.hostiles ?? 0) > 0) body.push(threat(p));
   // The halo sits under nothing and over nothing: it is a second rect on the
   // box's own outline, so the amber frame of the compartment the drone stands
@@ -180,6 +244,25 @@ function glyphRow(p: Placed): string {
 }
 
 /**
+ * The same row with the pictures in it (`?tiles=1`).
+ *
+ * The row is the only thing that changes: same contents, same order, same
+ * colours, and a mark the set has no drawing for still comes out as its letter
+ * — which is the whole promise of the flag, and why it is a modifier rather
+ * than a fourth view (docs/tiles-design.md, 3).
+ */
+function tileRowOf(p: Placed): string {
+  return tileRow(thingsOf(p.room), {
+    x: p.x + TILE_X,
+    y: p.y + TILE_Y,
+    size: TILE_SIZE,
+    step: TILE_STEP,
+    max: TILE_MAX,
+    baseline: p.y + TILE_Y + TILE_SIZE,
+  });
+}
+
+/**
  * Machines are in there, said on the box and not only on one small glyph: a red
  * cap over its top edge carrying the count.
  *
@@ -219,7 +302,7 @@ function wire(door: SchematicDoor, boxes: ReadonlyMap<number, Placed>): string {
     from.x === to.x
       ? `M ${from.x} ${from.y} L ${to.x} ${to.y}`
       : `M ${from.x} ${from.y} L ${bend(from, to)} ${from.y} L ${bend(from, to)} ${to.y} L ${to.x} ${to.y}`;
-  return `<path class="door-wire is-${door.state}" d="${d}"/>`;
+  return `<path class="door-wire is-${door.state}${door.target === true ? " is-goal" : ""}" d="${d}"/>`;
 }
 
 /**
@@ -242,7 +325,7 @@ function tag(door: SchematicDoor, boxes: ReadonlyMap<number, Placed>): string {
   const at = from.x === to.x ? mid(from, to) : { x: bend(from, to), y: (from.y + to.y) / 2 };
   const w = door.label.length * TAG_CHAR_W + TAG_PAD;
   return [
-    `<g class="door is-${door.state}">`,
+    `<g class="door is-${door.state}${door.target === true ? " is-goal" : ""}">`,
     `<rect class="door-tag" x="${round(at.x - w / 2)}" y="${round(at.y - TAG_H / 2)}" width="${w}" height="${TAG_H}" rx="3"/>`,
     text(round(at.x), round(at.y + 5), door.label, "door-label", "middle"),
     "</g>",
@@ -328,14 +411,8 @@ function round(n: number): number {
 }
 
 /**
- * Every string on this drawing is content: room names come from a card,
- * and glyphs include `&`, `"` and `<` by design (design-doc.md, "Экран"). One
- * unescaped ampersand takes the whole picture down.
+ * The escape both drawings share, re-exported from where half the view already
+ * imports it. It moved to `xml.ts` when `tiles.ts` came to need it too
+ * (importing it back from here would have closed a cycle).
  */
-export function esc(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+export { esc } from "./xml.js";

@@ -1,5 +1,6 @@
 import type { RoomCommand, RoomGame } from "@jamrog/engine";
 import { startTraining } from "../content/hints.js";
+import { TUTORIAL_SEED } from "../content/tutorial.js";
 import { newGame } from "../game.js";
 import { initLang } from "../i18n.js";
 import { rigOf } from "../twist/rig.js";
@@ -24,7 +25,9 @@ import {
   type AppEffect,
   type AppState,
 } from "./appstate.js";
-import { isChord, toIntent, type UiIntent } from "./input.js";
+import { debugBlock } from "./debug.js";
+import { ownFailure } from "./crashguard.js";
+import { isChord, isDebugKey, toIntent, type UiIntent } from "./input.js";
 import { BEAT_MS, SalvorMusic, soundEnabled } from "./music.js";
 import {
   NO_PULSE,
@@ -61,6 +64,19 @@ export class App {
   private view: View;
   private readonly store: ViewStore | undefined;
   private state: AppState = initialState();
+  /**
+   * The owner's debug overlay (G68): `` ` `` flips it, `?debug=1` starts it
+   * on. Kept here rather than in `AppState` — it is a DOM-layer setting like
+   * the view is, not a fact `appReducer` or a save file has any business
+   * knowing about, and its reducer's switch has no `default` to fall through.
+   */
+  private debug = false;
+  /** The drawn hull under the honeycomb (G81). Read once off the URL, never remembered. */
+  private hull = true;
+  /** Tiles in place of glyphs on the schematic (G80). Read once off the URL, like the hull. */
+  private tiles = false;
+  /** The terminal view's overlay: a plain element beside the canvas, because the ASCII screen is a fixed-size `rot.js` grid with no rows spare for it. */
+  private debugHost: HTMLElement | undefined;
   /** The walk in progress, and the timeout pacing it. Both null between walks. */
   private explorer: Explorer | undefined;
   private walkTimer: number | undefined;
@@ -96,16 +112,47 @@ export class App {
     this.view = initialView(window.location.search, this.store);
     // `?training=1` beside `?seed=`: a training run can be linked and reloaded
     // like any other, which is the whole reason the flag lives in the URL.
-    const training = new URLSearchParams(window.location.search).get("training") === "1";
-    this.game = newGame(seed, training);
+    const params = new URLSearchParams(window.location.search);
+    const training = params.get("training") === "1";
+    // A tutorial is only a tutorial if it is the same ship twice, and the seed
+    // is the whole of that: the training hull is drawn by the ordinary
+    // generator, so what makes it repeatable is the run's own number
+    // (`content/tutorial.ts`). A seed named in the URL still wins — a training
+    // run has to be as reportable as any other.
+    this.game = newGame(training && !params.has("seed") ? TUTORIAL_SEED : seed, training);
+    // `?debug=1`: the owner's overlay, on from the first frame — linkable and
+    // reloadable the same way `?seed=` and `?training=1` are.
+    this.debug = params.get("debug") === "1";
+    // `?hull=0`: the honeycomb without its drawn hull (G81) — the one switch
+    // that takes the picture back to the day before, for a crowded frame or a
+    // bug report about the hull itself.
+    this.hull = params.get("hull") !== "0";
+    // `?tiles=1`: the schematic with pictures where the letters are. A modifier
+    // on the drawing rather than a fourth view, so `V` still walks three
+    // (docs/tiles-design.md, 3) and the terminal ignores it entirely.
+    this.tiles = params.get("tiles") === "1";
     const sound = soundEnabled(window.location.search);
     this.music = new SalvorMusic(sound);
     this.sfx = new SalvorSfx(sound);
     window.addEventListener("keydown", (e) => this.guard(() => this.onKey(e)));
     // Whatever the guards miss — a listener we do not own, a rejected promise —
     // still has to land on the error screen and not in a console nobody opens.
-    window.addEventListener("error", (e) => this.fail(e.error ?? e.message));
-    window.addEventListener("unhandledrejection", (e) => this.fail(e.reason));
+    window.addEventListener("error", (e) => {
+      const stack = (e.error as { stack?: string } | undefined)?.stack;
+      if (ownFailure({ filename: e.filename, message: e.message, stack }, window.location.origin)) {
+        this.fail(e.error ?? e.message);
+      } else {
+        console.warn("SALVOR ignored an error from another script:", e.error ?? e.message);
+      }
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      const stack = (e.reason as { stack?: string } | undefined)?.stack;
+      if (ownFailure({ stack }, window.location.origin)) {
+        this.fail(e.reason);
+      } else {
+        console.warn("SALVOR ignored a rejection from another script:", e.reason);
+      }
+    });
     this.redraw();
   }
 
@@ -125,6 +172,14 @@ export class App {
     if (isViewKey(e)) {
       e.preventDefault();
       this.switchView();
+      return;
+    }
+    // Same shape as the view key, and the same reason: never a turn, works
+    // before the run has started, and has no business going through
+    // `appReducer` for a setting the sim never asks about.
+    if (isDebugKey(e)) {
+      e.preventDefault();
+      this.toggleDebug();
       return;
     }
     this.wakeSound();
@@ -149,10 +204,11 @@ export class App {
     this.redraw();
   }
 
-  private onPick(index: number): void {
+  /** A row of the list clicked in the page: its position, never its digit. */
+  private onLine(index: number): void {
     this.guard(() => {
       this.wakeSound();
-      this.apply({ kind: "pick", index });
+      this.apply({ kind: "line", index });
     });
   }
 
@@ -173,6 +229,14 @@ export class App {
     });
   }
 
+  /** The debug overlay, on or off. Not remembered between sessions — `?debug=1` is the link for that. */
+  private toggleDebug(): void {
+    this.guard(() => {
+      this.debug = !this.debug;
+      this.redraw();
+    });
+  }
+
   /** The one place a state transition becomes something the browser can see. */
   private run(effect: AppEffect): void {
     switch (effect.kind) {
@@ -183,11 +247,11 @@ export class App {
         this.spend(effect.cmd);
         break;
       case "explore":
-        this.explorer = makeExplorer();
+        this.explorer = makeExplorer(effect.through);
         this.walk();
         break;
       case "travel":
-        this.explorer = makeTraveller(effect.to);
+        this.explorer = makeTraveller(effect.to, effect.through);
         this.walk();
         break;
       case "fight":
@@ -292,7 +356,10 @@ export class App {
     // is where the run begins rather than something that turned up in it.
     this.stopPulse();
     this.pulse = NO_PULSE;
-    const seed = (Math.random() * 0xffffffff) >>> 0;
+    // The tutorial is one hull and always the same one; everything else is a
+    // fresh draw. The seed still goes into the URL either way, so the two are
+    // reported and replayed by exactly the same route.
+    const seed = training ? TUTORIAL_SEED : (Math.random() * 0xffffffff) >>> 0;
     this.game = newGame(seed, training);
     // Keep the seed reachable for bug reports: players can paste the URL back.
     const url = new URL(window.location.href);
@@ -397,11 +464,46 @@ export class App {
     if (web) {
       const renderer = this.webRenderer();
       renderer.setMap(this.view === "hex" ? "hex" : "graph");
-      renderer.draw(this.game, this.state, lit);
+      renderer.setHull(this.hull);
+      renderer.setTiles(this.tiles);
+      renderer.draw(this.game, this.state, lit, this.debug);
+      this.paintDebugHost(false);
     } else {
       this.asciiRenderer().draw(this.game, this.state, lit);
+      this.paintDebugHost(true);
     }
     this.web?.show(web);
+  }
+
+  /**
+   * The terminal view's half of the overlay: `rot.js`'s canvas is a fixed
+   * grid with no rows spare for it (`ui/render.ts`, `SCREEN_HEIGHT`), so it is
+   * drawn as one plain element under the canvas instead — monospaced, and
+   * built from the same lines `ui/panel.ts` hands the web view.
+   */
+  private paintDebugHost(ascii: boolean): void {
+    const lines = debugBlock(this.game, ascii && this.debug);
+    if (lines.length === 0) {
+      if (this.debugHost) this.debugHost.hidden = true;
+      return;
+    }
+    if (!this.debugHost) {
+      this.debugHost = this.mount.ownerDocument.createElement("pre");
+      // Set property by property rather than one `cssText` sentence: every
+      // value here is a single token, so `tests/purity.test.ts` reads it as
+      // markup rather than English, exactly as the font stack it borrows does.
+      const style = this.debugHost.style;
+      style.margin = "4px";
+      style.padding = "4px";
+      style.fontSize = "12px";
+      // The same stack `ui/render.ts` gives the terminal canvas.
+      style.fontFamily = "ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace";
+      style.color = "#8a8f98";
+      style.whiteSpace = "pre-wrap";
+      this.mount.appendChild(this.debugHost);
+    }
+    this.debugHost.hidden = false;
+    this.debugHost.textContent = lines.join("\n");
   }
 
   private asciiRenderer(): Renderer {
@@ -413,7 +515,7 @@ export class App {
     if (!this.web) {
       this.web = new WebRenderer(
         this.mount,
-        (index) => this.onPick(index),
+        (index) => this.onLine(index),
         (room) => this.onRoom(room),
       );
     }

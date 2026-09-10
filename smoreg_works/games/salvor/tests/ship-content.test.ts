@@ -20,7 +20,9 @@ import { CARDS, CARDS_PER_ROOM, CARD_MODULE, CLASS_FLAG, SALVAGE_POOL } from "..
 import {
   DERELICTS,
   FATHERS_TUG,
+  STARTER_HULLS,
   buildChartered,
+  isStarterHull,
   specOfShip,
   type DerelictSpec,
 } from "../src/content/derelicts.js";
@@ -85,6 +87,11 @@ const FULL_BAND = {
 
 function freighter(seed: number): Ship {
   return derelictShip(FREIGHTER, 0, new Rng(seed), NO_RUN);
+}
+
+/** Any hull a voyage can open on, built as the first ship of one. */
+function starter(spec: DerelictSpec, seed: number): Ship {
+  return derelictShip(spec, 0, new Rng(seed), NO_RUN);
 }
 
 /** A drone whose rig the cards can read. */
@@ -226,39 +233,79 @@ describe("the compartment catalogue", () => {
   });
 });
 
-// ------------------------------------------------------------ the freighter
+// -------------------------------------------------- the hull a voyage opens on
 
-describe("the first freighter of a voyage", () => {
+/**
+ * The five hulls the first slot of a voyage is drawn from, as one table.
+ *
+ * It used to be one hull: `derelictsForVoyage` handed the first slot to the
+ * freighter without a draw, so everything the onboarding leans on could be
+ * checked on the freighter alone. It is a pool now (G73), and every one of
+ * these is somebody's first ship — so every guarantee the onboarding rests on
+ * is owed by all five, not by the class the tests happened to name.
+ *
+ * The one line that stays the freighter's is its single locked bulkhead. Each
+ * of the other four has a door plan of its own, and each states it in
+ * `tests/derelicts.test.ts`: the ferry's two gates, the barge's and the probe's
+ * open runs, the tender's welds.
+ */
+describe("the hull a voyage opens on", () => {
   it("is built out of the catalogue, systems included", () => {
-    for (const kind of FREIGHTER.kinds) expect(isZoneKind(kind), kind).toBe(true);
-    for (const required of ZONE_KINDS.filter((z) => z.required)) {
-      expect(FREIGHTER.kinds, required.kind).toContain(required.kind);
+    for (const spec of STARTER_HULLS) {
+      for (const kind of spec.kinds) expect(isZoneKind(kind), `${spec.id} ${kind}`).toBe(true);
+      for (const required of ZONE_KINDS.filter((z) => z.required)) {
+        expect(spec.kinds, `${spec.id} ${required.kind}`).toContain(required.kind);
+      }
+      expect(shipSpecOf(spec).kinds.map((k) => k.kind), spec.id).toEqual([...spec.kinds]);
+      expect(shipSpecOf(spec).entryKind, spec.id).toBe(ENTRY_KIND);
     }
-    expect(shipSpecOf(FREIGHTER).kinds.map((k) => k.kind)).toEqual([...FREIGHTER.kinds]);
-    expect(shipSpecOf(FREIGHTER).entryKind).toBe(ENTRY_KIND);
   });
 
   it("passes every invariant on 200 seeds", () => {
-    for (let seed = 1; seed <= SEEDS; seed++) {
-      const built = buildDerelict(FREIGHTER, 0, new Rng(seed), NO_RUN);
-      expect(built.problems, `seed ${seed}`).toEqual([]);
-      expect(validateShip(built.ship, shipSpecOf(FREIGHTER)), `seed ${seed}`).toEqual([]);
-      expect(built.ship.size, `seed ${seed}`).toBeGreaterThanOrEqual(FREIGHTER.rooms[0]);
-      expect(built.ship.size, `seed ${seed}`).toBeLessThanOrEqual(FREIGHTER.rooms[1]);
+    for (const spec of STARTER_HULLS) {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const built = buildDerelict(spec, 0, new Rng(seed), NO_RUN);
+        const where = `${spec.id} seed ${seed}`;
+        expect(built.problems, where).toEqual([]);
+        expect(validateShip(built.ship, shipSpecOf(spec)), where).toEqual([]);
+        expect(built.ship.size, where).toBeGreaterThanOrEqual(spec.rooms[0]);
+        expect(built.ship.size, where).toBeLessThanOrEqual(spec.rooms[1]);
+      }
     }
   });
 
   it("lands the drone in a docking bay at depth 0", () => {
-    for (let seed = 1; seed <= SEEDS; seed++) {
-      const ship = freighter(seed);
-      const entry = ship.roomAt(ship.entry);
-      expect(entry.kind, `seed ${seed}`).toBe(ENTRY_KIND);
-      expect(entry.depth, `seed ${seed}`).toBe(0);
-      expect(ship.rooms.filter((r) => r.kind === ENTRY_KIND), `seed ${seed}`).toHaveLength(1);
+    for (const spec of STARTER_HULLS) {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const ship = starter(spec, seed);
+        const entry = ship.roomAt(ship.entry);
+        const where = `${spec.id} seed ${seed}`;
+        expect(entry.kind, where).toBe(ENTRY_KIND);
+        expect(entry.depth, where).toBe(0);
+        expect(ship.rooms.filter((r) => r.kind === ENTRY_KIND), where).toHaveLength(1);
+      }
     }
   });
 
-  it("has exactly one locked door, with its key on the near side of it", () => {
+  it("leaves every compartment reachable with the keys the hull itself carries", () => {
+    // A starting hull never needs a cutter: whatever it locks, it leaves the
+    // keycard for it somewhere the drone can already stand, picking up keys as
+    // it goes. On the ferry that is two doors deep — the second gate's card may
+    // lie behind the first — which is Dormans's rule and not a hole in it.
+    for (const spec of STARTER_HULLS) {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const ship = starter(spec, seed);
+        const where = `${spec.id} seed ${seed}`;
+        for (const door of ship.doors.filter((d) => d.state === "locked")) {
+          const holder = ship.rooms.find((r) => r.marks.includes(`${KEY_MARK}${door.key}`));
+          expect(holder, `${where} ${door.label}`).toBeDefined();
+        }
+        expect(reachableWithKeys(ship).rooms.size, where).toBe(ship.size);
+      }
+    }
+  });
+
+  it("has exactly one locked door on the freighter, with its key on the near side of it", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const ship = freighter(seed);
       const locked = ship.doors.filter((d) => d.state === "locked");
@@ -269,45 +316,58 @@ describe("the first freighter of a voyage", () => {
       const holder = ship.rooms.find((r) => r.marks.includes(`${KEY_MARK}${key}`));
       expect(holder, `seed ${seed}`).toBeDefined();
       expect(reachableUnlocked(ship).has(holder!.id), `seed ${seed}`).toBe(true);
-      expect(reachableWithKeys(ship).rooms.size, `seed ${seed}`).toBe(ship.size);
     }
   });
 
-  it("leaves scrap in the room the drone lands in", () => {
-    for (let seed = 1; seed <= SEEDS; seed++) {
-      const ship = freighter(seed);
-      const entry = ship.roomAt(ship.entry);
-      expect(entry.marks, `seed ${seed}`).toContain("%:welder");
-      expect(entry.marks, `seed ${seed}`).toContain("m:scout");
+  it("leaves scrap and one weak machine in the room the drone lands in", () => {
+    for (const spec of STARTER_HULLS) {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const entry = starter(spec, seed).roomAt(starter(spec, seed).entry);
+        expect(entry.marks, `${spec.id} seed ${seed}`).toContain("%:welder");
+        expect(entry.marks, `${spec.id} seed ${seed}`).toContain("m:scout");
+      }
     }
   });
 
   it("carries exactly one engine, one core and one terminal", () => {
-    for (let seed = 1; seed <= SEEDS; seed++) {
-      const marks = marksOf(freighter(seed));
-      for (const mark of ["E", "O", "T"]) {
-        expect(marks.filter((m) => m === mark).length, `seed ${seed} mark ${mark}`).toBe(1);
+    for (const spec of STARTER_HULLS) {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const marks = marksOf(starter(spec, seed));
+        for (const mark of ["E", "O", "T"]) {
+          expect(marks.filter((m) => m === mark).length, `${spec.id} seed ${seed} ${mark}`).toBe(1);
+        }
       }
-      expect(marks.filter((m) => m === LOCK_ENTRY).length, `seed ${seed}`).toBe(1);
+      // Every lock aboard is a card's, and each class says how many it owes:
+      // one apiece, and two on the ferry, whose gates are its whole lesson.
+      const locks = new Map([["freighter", 1], ["ferry", 2], ["barge", 1], ["probe", 1], ["tender", 1]]);
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const marks = marksOf(starter(spec, seed));
+        expect(marks.filter((m) => m === LOCK_ENTRY).length, `${spec.id} seed ${seed}`)
+          .toBe(locks.get(spec.id));
+      }
     }
   });
 
   it("keeps its docking bay for the first ship of the voyage only", () => {
-    const later = derelictShip(FREIGHTER, 1, new Rng(7), NO_RUN);
-    expect(later.roomAt(later.entry).marks).not.toContain("m:scout");
+    for (const spec of STARTER_HULLS) {
+      const later = derelictShip(spec, 1, new Rng(7), NO_RUN);
+      expect(later.roomAt(later.entry).marks, spec.id).not.toContain("m:scout");
+    }
   });
 
   it("generates the same ship from the same seed", () => {
-    const a = freighter(42);
-    const b = freighter(42);
-    expect(JSON.stringify(a.toJSON())).toBe(JSON.stringify(b.toJSON()));
+    for (const spec of STARTER_HULLS) {
+      const a = starter(spec, 42);
+      const b = starter(spec, 42);
+      expect(JSON.stringify(a.toJSON()), spec.id).toBe(JSON.stringify(b.toJSON()));
+    }
   });
 });
 
 // ------------------------------------------------------------------- the hold
 
 /**
- * What a hull is carrying, in credits, on 200 seeds of each of the seven
+ * What a hull is carrying, in credits, on 200 seeds of each of the eleven
  * classes.
  *
  * The whole of G41's first defect: until it, `X` was a crate of *modules*,
@@ -321,9 +381,10 @@ describe("the first freighter of a voyage", () => {
  * that has not found a keycard yet never sees.
  */
 describe("what a hull is carrying", () => {
-  /** Where in the itinerary a class is flown: the freighter first, the tug last. */
+  /** Where in the itinerary a class is flown: a starting hull first, the tug last. */
   function indexOf(spec: DerelictSpec): number {
-    return spec.id === FREIGHTER.id ? 0 : spec.id === FATHERS_TUG.id ? 2 : 1;
+    if (isStarterHull(spec)) return 0;
+    return spec.id === FATHERS_TUG.id ? 2 : 1;
   }
 
   /** Credits of freight lying in these compartments, at the tug's own prices. */
@@ -373,9 +434,15 @@ describe("what a hull is carrying", () => {
     // Both ends are the threshold. Under the first the sortie cannot repay the
     // hull that flew it; over the second a voyage is funded by walking into the
     // first four compartments of anything, and how deep to go stops being a
-    // decision (design-doc.md, "Экономика рейса"). Measured: a median of 36 CR
-    // on the military hull, 40 on five of them and 48 on the freighter, which
-    // is the one hull with a pinned manifest as well as its own holds.
+    // decision (design-doc.md, "Экономика рейса"). Measured: a median of 32 CR
+    // on four classes, 40 on four and 48 on the three with a pinned hold as
+    // well as a pinned manifest — the freighter, the barge and the tender.
+    //
+    // The four small hulls a voyage can open on reach it a different way. A
+    // nine-compartment barge has a third of the freighter's card slots, so a
+    // hold drawn by weight lands on it a third as often; each of the four
+    // therefore carries one *pinned* hold of two crates as a floor, and draws
+    // the rest (`content/cards.ts`, `HOLDS`).
     for (const spec of DERELICTS) {
       const { unlocked } = carried.get(spec.id)!;
       const where = `${spec.id}: median ${median(unlocked)} CR unlocked`;

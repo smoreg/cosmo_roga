@@ -16,6 +16,7 @@ import {
 import { RoomGame as RoomGameClass, type System } from "@jamrog/engine";
 import { BOTS_ROOMS, seedRange } from "@jamrog/engine/testing";
 import { GAME_CONFIG } from "../src/game.js";
+import { OBJECTIVE_COUNT } from "../src/content/objectives.js";
 import { TUG_ID, tugRoomKind } from "../src/content/tug.js";
 import { gatedOffers } from "../src/systems/tug.js";
 import { isGhost } from "../src/systems/ghost.js";
@@ -552,18 +553,22 @@ describe("the doors are as the last drone left them", () => {
 // ------------------------------------------------------- what the ship did
 
 describe("the ship answers between two sorties", () => {
-  it("settles the alert to the number of systems the drone raised", () => {
-    // design-doc.md, "Персистентный дереликт": the gauge falls to a floor equal
-    // to the systems brought online, and nothing raises it while nobody is
-    // aboard. Exact rather than bounded, because the snapshot is taken before
-    // the arrival turn's own clock has ticked (see `PROBE`).
+  it("comes back two steps calmer after an airlock, three after a death, never under its floor", () => {
+    // design-doc.md, "Тревога, охотники и как спрятаться" (G63): the gauge
+    // falls while nobody is aboard — two steps for a drone that cycled out,
+    // three for one the ship took apart — and never under the floor its raised
+    // systems hold it at. A neutralised hull does not move at all. Exact rather
+    // than bounded, because the snapshot is taken before the arrival turn's
+    // own clock has ticked (see `PROBE`).
     const offences: string[] = [];
     for (const t of trips) {
-      const floor = Math.min(t.b.alert, t.b.online);
-      if (t.c.alert !== floor) {
+      const drop = t.died ? 3 : 2;
+      const settled =
+        t.b.online >= OBJECTIVE_COUNT ? t.b.alert : Math.max(t.b.online, t.b.alert - drop);
+      if (t.c.alert !== settled) {
         offences.push(
-          `seed ${t.seed}: left at ${t.b.alert} with ${t.b.online} systems up, came back to ` +
-            `${t.c.alert} and not ${floor}`,
+          `seed ${t.seed}: left at ${t.b.alert} with ${t.b.online} systems up` +
+            `${t.died ? ", dead," : ""} came back to ${t.c.alert} and not ${settled}`,
         );
       }
     }

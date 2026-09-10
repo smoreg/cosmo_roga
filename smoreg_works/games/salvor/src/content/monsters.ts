@@ -214,3 +214,13 @@ export function monsterChance(): number {
  * still what clamps `DerelictSpec.machines` in `systems/populate.ts`.
  */
 export const MAX_MACHINES = 8;
+
+/**
+ * The most machines one compartment holds: never a fourth where three stand.
+ * The muster between sorties, the ladder's wakes, the hunter and a machine
+ * walking in all stop at it — the fourth waits in the next compartment — so
+ * a fight is a doorway and not a pile, and the contacts block is never a
+ * list of seven (docs/tasks/G83-anonymous-blows.md, 4). One number, read by
+ * `systems/populate.ts` and `systems/alert.ts`.
+ */
+export const CROWD = 3;

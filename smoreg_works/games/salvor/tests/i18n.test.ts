@@ -208,6 +208,9 @@ describe("the message format", () => {
     expect(left(1)).toBe("VESPER: дальше не пройти, остался 1 отсек.");
     expect(left(3)).toBe("VESPER: дальше не пройти, осталось 3 отсека.");
     expect(left(7)).toBe("VESPER: дальше не пройти, осталось 7 отсеков.");
+    expect(t("stop.noFurther.tool", { hull: "VESPER", n: 7, tool: moduleName("cutter") })).toBe(
+      "VESPER: дальше не пройти, осталось 7 отсеков — нужен РЕЗАК.",
+    );
   });
 });
 
@@ -738,7 +741,7 @@ describe("the graphic view says what the terminal says", () => {
       const html = htmlOf(panelBlocks(game, [], 0), [], roomActions(game), 0);
       // The buttons come after the heading and before whatever follows it.
       const heading = html.indexOf(TABLES[lang]["panel.actions"]!);
-      const buttons = html.indexOf('data-pick="0"');
+      const buttons = html.indexOf('data-line="0"');
       expect(heading, lang).toBeGreaterThanOrEqual(0);
       expect(buttons, lang).toBeGreaterThan(heading);
     }
@@ -804,7 +807,9 @@ describe("the table carries nothing nobody asks for", () => {
  * Russian, including the lines the engine wrote, which is what this block is
  * here for.
  */
-const LATIN_ALLOWED = /\b[a-z]\d+\b|\bCR\b|\b[A-Z][A-Z' ]*[A-Z]\b|\b[A-Z]\b/g;
+// And `[i]`, which is a key and not a word: the codex's hook on every red
+// hazard line (`content/hazards.ts`, `tell`; docs/tasks/G72-codex.md).
+const LATIN_ALLOWED = /\b[a-z]\d+\b|\bCR\b|\b[A-Z][A-Z' ]*[A-Z]\b|\b[A-Z]\b|\[i\]/g;
 
 describe("the engine speaks the language the game is in", () => {
   /**

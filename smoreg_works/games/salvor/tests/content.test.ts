@@ -1,6 +1,19 @@
 import { describe, it, expect } from "vitest";
+import { Rng, RoomGame } from "@jamrog/engine";
+import { seedRange, shipFromText } from "@jamrog/engine/testing";
+import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { ZONE_KINDS } from "../src/content/zones.js";
-import { DERELICTS } from "../src/content/derelicts.js";
+import {
+  DERELICTS,
+  FATHERS_TUG,
+  MILITARY,
+  RELIC_DEPTH,
+  STARTER_HULLS,
+  buildDerelict,
+  derelictShip,
+  derelictSpec,
+} from "../src/content/derelicts.js";
+import { TUTORIAL_SPEC } from "../src/content/tutorial.js";
 import {
   BLOOM_KIND,
   CRAWLER,
@@ -10,11 +23,12 @@ import {
   SENTRY_TURRET,
   machineAboard,
 } from "../src/content/monsters.js";
-import { MODULES, type ModuleId } from "../src/content/modules.js";
+import { MODULES, RELICS, isRelic, moduleKind, type ModuleId } from "../src/content/modules.js";
 import { SALVAGE_POOL } from "../src/content/cards.js";
 import { HULLS } from "../src/content/hulls.js";
 import { OBJECTIVES } from "../src/content/objectives.js";
 import { DEFAULT_STRAIN, STRAINS, strainOf } from "../src/content/viruses.js";
+import { POPULATE, placeRelic, roomList, type ShipSystem, type Wreck } from "../src/systems/populate.js";
 
 /**
  * Content that cannot be reached is content that does not exist.
@@ -84,17 +98,20 @@ describe("every row of the content tables can be reached", () => {
   });
 
   it("leaves a way to get hold of every module", () => {
-    // Three routes, and a module needs one of them: it comes bolted to a hull
-    // you can buy, it drops off a machine, or it turns up as loose scrap. A
-    // module on none of the three is a row in the catalogue and nothing else.
+    // Four routes, and a module needs one of them: it comes bolted to a hull
+    // you can buy, it drops off a machine, it turns up as loose scrap, or a
+    // class of ship hides it in a guarded crate (a relic, and only a relic).
+    // A module on none of the four is a row in the catalogue and nothing else.
     const onHulls = new Set(HULLS.flatMap((h) => h.modules));
     const dropped = new Set(ALL.map((m) => m.salvage).filter((s): s is ModuleId => s !== undefined));
     const scrap = new Set(SALVAGE_POOL);
+    const hidden = new Set(DERELICTS.flatMap((spec) => spec.relics ?? []));
     for (const id of Object.keys(MODULES) as ModuleId[]) {
       const where = [
         onHulls.has(id) ? "a hull" : undefined,
         dropped.has(id) ? "a machine" : undefined,
         scrap.has(id) ? "scrap" : undefined,
+        hidden.has(id) ? "a relic crate" : undefined,
       ].filter((x) => x !== undefined);
       expect(where.length, `${id} cannot be got hold of at all`).toBeGreaterThan(0);
     }
@@ -126,6 +143,39 @@ describe("every row of the content tables can be reached", () => {
     }
   });
 
+  it("answers with a class for every hull a run can stand on, itinerary or not", () => {
+    // The training hull is out of `DERELICTS` on purpose and still has to be
+    // *known*: `systems/populate.ts` reads the class off the ship it is filling,
+    // and a class it cannot find is a ship with no band and no budget — which is
+    // how the tutorial came to be guarded by security units and haulers before
+    // `derelictSpec` learned about it (`content/tutorial.ts`).
+    expect(DERELICTS.map((d) => d.id)).not.toContain(TUTORIAL_SPEC.id);
+    expect(derelictSpec(TUTORIAL_SPEC.id)).toBe(TUTORIAL_SPEC);
+    for (const spec of DERELICTS) expect(derelictSpec(spec.id)).toBe(spec);
+    expect(derelictSpec("no such hull")).toBeUndefined();
+  });
+
+  it("holds the training hull to the same table rules as the seven", () => {
+    // Every check above, on the one class the sweeps skip because no voyage
+    // draws it. A row nothing iterates is a row nothing protects.
+    for (const kind of TUTORIAL_SPEC.kinds) {
+      expect(kinds.has(kind), `tutorial: no compartment kind '${kind}'`).toBe(true);
+    }
+    for (const id of TUTORIAL_SPEC.band) {
+      expect(machineAboard(id) !== undefined, `tutorial: no machine '${id}'`).toBe(true);
+    }
+    for (const id of TUTORIAL_SPEC.strains ?? []) {
+      expect(strainOf(id).id, `tutorial: no strain '${id}'`).toBe(id);
+    }
+    for (const id of TUTORIAL_SPEC.relics ?? []) {
+      expect(isRelic(id), `tutorial: ${id} is not a relic`).toBe(true);
+    }
+    const required = ZONE_KINDS.filter((k) => k.required === true).map((k) => k.kind);
+    for (const kind of required) {
+      expect(TUTORIAL_SPEC.kinds.includes(kind), `tutorial has no ${kind}`).toBe(true);
+    }
+  });
+
   it("keeps a compartment for all three systems in every class", () => {
     // A hull the drone cannot neutralise is a hull the run cannot get past, and
     // the three required kinds are how the generator guarantees one of each.
@@ -136,5 +186,183 @@ describe("every row of the content tables can be reached", () => {
         expect(spec.kinds.includes(kind), `${spec.id} has no ${kind}`).toBe(true);
       }
     }
+  });
+});
+
+// ------------------------------------------------------- the starting hulls
+
+/**
+ * The deck names four ship classes by a bare string, and this is what holds the
+ * two ends of those strings together.
+ *
+ * `content/cards.ts` may not import `content/derelicts.ts` — the deck is what
+ * the classes are built out of, and the loop is the one ADR 0003 exists to keep
+ * open — so `security checkpoint`, `crew quarters` and the six set pieces all
+ * carry their hull's id as a literal. A class renamed on one side of that and
+ * not the other is a card that silently stops appearing, which is exactly the
+ * failure this file was written for.
+ */
+describe("the deck knows the hulls a voyage opens on", () => {
+  const NO_RUN = { flags: new Set<string>(), shipIndex: 0 };
+
+  /** Card names placed on this class over a run of seeds, as a set. */
+  function placed(id: string): Set<string> {
+    const spec = derelictSpec(id)!;
+    const names = new Set<string>();
+    for (let seed = 1; seed <= 60; seed++) {
+      for (const { card } of buildDerelict(spec, 0, new Rng(seed), NO_RUN).cards) names.add(card.name);
+    }
+    return names;
+  }
+
+  it("draws each class's own set piece and nobody else's", () => {
+    const own: Record<string, string> = {
+      barge: "stacked scrap",
+      ferry: "boarding gate",
+      probe: "instrument bay",
+      tender: "welding bay",
+    };
+    for (const [id, card] of Object.entries(own)) {
+      const here = placed(id);
+      expect(here, `${id} never drew ${card}`).toContain(card);
+      for (const [other, theirs] of Object.entries(own)) {
+        if (other === id) continue;
+        expect(here, `${id} drew ${theirs}`).not.toContain(theirs);
+      }
+    }
+    expect(placed("ferry")).toContain("muster point");
+    expect(placed("tender")).toContain("spares rack");
+  });
+
+  it("keeps the pinned bulkhead on the freighter and off the other four", () => {
+    // The freighter's one locked door is a promise the card makes; the other
+    // four state their doors themselves, and a lock drawn by weight on a hull
+    // holding one or two machines is a third of its head count behind a door
+    // nobody said would be there (`content/cards.ts`, `SECURITY_CHECKPOINT`).
+    expect(placed("freighter")).toContain("security checkpoint");
+    for (const id of ["barge", "ferry", "probe", "tender"]) {
+      expect(placed(id), `${id} drew a security checkpoint`).not.toContain("security checkpoint");
+    }
+    // And the deck's other lock is off the ferry alone, whose two gates are its
+    // whole door plan. The hulls with living quarters still draw it.
+    expect(placed("ferry")).not.toContain("crew quarters");
+  });
+
+  it("pins a manifest aboard every hull a voyage opens on", () => {
+    // Two crates in front of the locks on the first ship of a run, whatever
+    // class it is: the onboarding's `SALVAGE 20 CR` charter is a job and not a
+    // gamble only if the freight is there to be found.
+    for (const spec of STARTER_HULLS) {
+      const seen = placed(spec.id);
+      expect(seen, `${spec.id} drew no cargo manifest`).toContain("cargo manifest");
+      expect(seen, `${spec.id} drew no docking bay`).toContain("docking bay");
+    }
+  });
+});
+
+// -------------------------------------------------------------------- relics
+
+describe("every relic can be found", () => {
+  it("is named by at least one class of hull, and every class names only relics that exist", () => {
+    const hidden = new Set(DERELICTS.flatMap((spec) => spec.relics ?? []));
+    for (const id of RELICS) expect(hidden.has(id), `${id} is on no hull`).toBe(true);
+    for (const spec of DERELICTS) {
+      for (const id of spec.relics ?? []) expect(isRelic(id), `${spec.id}: ${id} is not a relic`).toBe(true);
+    }
+    // The last hull of the voyage hides nothing: it is the end, not a shop.
+    expect(FATHERS_TUG.relics ?? []).toEqual([]);
+  });
+
+  it("turns up on at least ten of 200 draws, three doors in, off the systems, and guarded", () => {
+    // Every hull of the classes naming a relic, populated the way a sortie
+    // finds it. Two hundred draws a relic, spread over the classes that hide it.
+    for (const relic of RELICS) {
+      const classes = DERELICTS.filter((spec) => (spec.relics ?? []).includes(relic));
+      const per = Math.ceil(200 / classes.length);
+      let hits = 0;
+      for (const spec of classes) {
+        for (const seed of seedRange(1, per)) {
+          const game = new RoomGame({
+            ...GAME_CONFIG,
+            seed,
+            systems: [POPULATE],
+            content: { ...SALVOR, monsterChance: () => 0 },
+            firstShip: (rng) => derelictShip(spec, 1, rng, { flags: new Set(), shipIndex: 1 }),
+            firstShipId: "1",
+          });
+          const crates = game.ship.rooms.filter((r) =>
+            roomList<Wreck>(r, "wrecks").some((w) => w.kind === relic && w.glyph === "X"),
+          );
+          expect(crates.length, `${spec.id} seed ${seed}: two relic crates`).toBeLessThanOrEqual(1);
+          if (crates.length === 0) continue;
+          hits++;
+          const room = crates[0]!;
+          const where = `${spec.id} seed ${seed}: ${room.label}`;
+          expect(room.depth, `${where} is only ${room.depth} doors in`).toBeGreaterThanOrEqual(RELIC_DEPTH);
+          expect(roomList<ShipSystem>(room, "systems"), `${where} holds a system`).toHaveLength(0);
+          // Guarded — unless the deck alone already filled the hull to its
+          // class's ceiling, which is the one case the guard is skipped so the
+          // head count stays the class's (`systems/populate.ts`, `placeRelic`).
+          const aboard = game.entities.filter((e) => e.id !== game.player.id).length;
+          const guards = game.entitiesIn(room.id).filter((e) => e.id !== game.player.id);
+          if (aboard < spec.machines[1]) {
+            expect(guards.length, `${where} is unguarded`).toBeGreaterThanOrEqual(1);
+          }
+          expect(aboard, `${where}: over the class's count`).toBeLessThanOrEqual(spec.machines[1]);
+          const crate = roomList<Wreck>(room, "wrecks").find((w) => w.kind === relic)!;
+          expect(crate.integrity).toBe(moduleKind(relic).integrity);
+          expect(crate.source).toBe("crate");
+        }
+      }
+      expect(hits, `${relic} came up on ${hits} of ${per * classes.length} hulls`).toBeGreaterThanOrEqual(10);
+    }
+  });
+
+  it("puts exactly one machine more into the crate's compartment than the deck and the budget did", () => {
+    // A hand-drawn hull with one compartment deep enough and not a system's:
+    // whatever the class's kit would have stood there, the relic adds one.
+    const DEEP = `
+      TUG -a1- r1
+      r1 -d1- r2 -d2- r3 -d3- r4
+      r4 -d4- r5
+      r1: docking
+      r2: cargo
+      r3: corridor
+      r4: storage
+      r5: engineering
+    `;
+    const spec = { ...MILITARY, relics: ["blade"] as const };
+    let placed = 0;
+    for (const seed of seedRange(1, 30)) {
+      const game = new RoomGame({
+        ...GAME_CONFIG,
+        seed,
+        systems: [],
+        content: { ...SALVOR, monsterChance: () => 0 },
+        firstShip: () => shipFromText(DEEP).ship,
+        firstShipId: "1",
+      });
+      const r5 = game.ship.room("r5");
+      (r5.data as { systems?: ShipSystem[] }).systems = [{ id: 1, kind: "engine", online: false }];
+      const machines = () =>
+        game.ship.rooms.map((r) => game.entitiesIn(r.id).filter((e) => e.id !== game.player.id).length);
+      const before = machines();
+
+      const room = placeRelic(game, spec);
+      if (room === undefined) {
+        expect(machines()).toEqual(before);
+        continue;
+      }
+      placed++;
+      expect(room.label).toBe("r4");
+      const after = machines();
+      for (let i = 0; i < after.length; i++) {
+        expect(after[i], game.ship.rooms[i]!.label).toBe(before[i]! + (game.ship.rooms[i] === room ? 1 : 0));
+      }
+      expect(roomList<Wreck>(room, "wrecks").map((w) => w.kind)).toEqual(["blade"]);
+    }
+    // Six in ten, so thirty seeds place some and leave some.
+    expect(placed).toBeGreaterThanOrEqual(5);
+    expect(placed).toBeLessThanOrEqual(28);
   });
 });

@@ -124,9 +124,16 @@ describe("the three bots on the first freighter", () => {
     // 17.5 while a rack could be sold for more than the hull it came on: the
     // bot bought drones with the money and swept the ship again with each one.
     // 13.0 on one drone and what it carries (G41), and the bot no longer sells
-    // the rack it is about to fly with (`testing/roombots.ts`). 14.0 now: the
-    // same walk on a rack that burns slower.
+    // the rack it is about to fly with (`testing/roombots.ts`). 14.0 after that:
+    // the same walk on a rack that burns slower.
+    //
+    // 10.0 since G73, and the walk did not get shorter — the ship did. The
+    // first hull of a run is drawn from five classes now and is seven to
+    // fourteen compartments rather than always twelve to fourteen, so a bot
+    // that sweeps *all* of a probe scores seven. What this number measures is
+    // the hull it was flown on, so the threshold moves with the pool: the
+    // distribution over 32 seeds runs 7 to 25 with eleven seeds at ten.
     const summary = batch("greedy");
-    expect(summary.medianProgress, formatSummary(summary)).toBeGreaterThanOrEqual(12);
+    expect(summary.medianProgress, formatSummary(summary)).toBeGreaterThanOrEqual(9);
   });
 });

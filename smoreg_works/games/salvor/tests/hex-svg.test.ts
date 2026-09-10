@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { RoomGame, Rng, hexAdjacent, hexLayout, type RoomGameConfig } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
@@ -149,6 +152,53 @@ describe("the honeycomb drawing", () => {
     expect(count(svg, "</svg>")).toBe(1);
     expect(count(svg, "<g ")).toBe(count(svg, "</g>"));
     expect(count(svg, "<text")).toBe(count(svg, "</text>"));
+  });
+});
+
+// ------------------------------------------------------- and without a hull
+
+/**
+ * The same fixture as `SHIP`, with a loop and two more compartments — what the
+ * golden file below was drawn from, the day before there was a hull (G81).
+ */
+const GOLDEN_SHIP = `
+  TUG -a1- r1
+  r1 -d1- r2
+  r2 -[d2:k1]- r3
+  r2 -d3- r4
+  r3 -#d4#- r5
+  r4 -d5- r6
+  r6 -d6- r7
+  r7 -d7- r2
+  r1: docking explored
+  r2: cargo cover explored
+  r3: storage scanned
+  r4: hab explored
+  r5: reactor
+  r6: mess explored
+  r7: lab scanned
+`;
+
+describe("the honeycomb without a hull", () => {
+  it("is byte for byte the drawing it was before there was a hull to switch off", () => {
+    // `?hull=0` promises today's picture, and "today" is a file: the output of
+    // this very call, written down before `hexSvgOf` learned its fourth
+    // argument. If this fails, the bare honeycomb has changed — which may be
+    // right, but has to be on purpose, and then the file is re-recorded.
+    const config: Omit<RoomGameConfig, "seed"> = {
+      ...GAME_CONFIG,
+      content: { ...SALVOR, monsterChance: () => 0 },
+      firstShip: () => shipFromText(GOLDEN_SHIP).ship,
+      firstShipId: "1",
+    };
+    const game = new RoomGame({ ...config, seed: 7 });
+    game.player.room = game.ship.room("r2").id;
+    game.refreshSight();
+    const svg = hexSvgOf(schematicInputOf(game), hexLayout(game.ship), "KESTREL · freighter");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const golden = readFileSync(join(here, "fixtures", "hex-svg-before-hull.svg"), "utf8");
+    expect(svg).toBe(golden);
+    expect(svg).not.toContain("hull-");
   });
 });
 

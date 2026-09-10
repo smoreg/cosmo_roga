@@ -1,23 +1,29 @@
 import {
   RoomDistance,
   Rng,
+  dealDamage,
   isAlive,
   rememberRoom,
   spawnMonsterIn,
+  type Door,
   type DoorFilter,
   type Entity,
   type MonsterKind,
+  type Room,
   type RoomGame,
   type RoomId,
   type Ship,
   type System,
 } from "@jamrog/engine";
 import { specOfShip } from "../content/derelicts.js";
-import { ENFORCER, MAX_MACHINES, machineName } from "../content/monsters.js";
+import type { Key } from "../content/i18n/keys.js";
+import { CROWD, ENFORCER, MAX_MACHINES, machineName } from "../content/monsters.js";
+import { OBJECTIVE_COUNT } from "../content/objectives.js";
 import { PALETTE } from "../content/palette.js";
-import { isTug } from "../content/tug.js";
+import { TUG_ID, isTug } from "../content/tug.js";
 import { roomName } from "../content/zones.js";
 import { t } from "../i18n.js";
+import { blamedOn, hostilesIn } from "../twist/rig.js";
 import { canSeeDrone } from "./sight.js";
 
 /**
@@ -28,15 +34,22 @@ import { canSeeDrone } from "./sight.js";
  * охотники и как спрятаться"): it lives in `currentShip.data`, so it survives
  * walking back to the tug, and the derelict is still looking for you when you
  * come back through the airlock. Time pushes it up and so does noise; standing
- * quiet — or standing in cover — pushes it back down; near the top of it the
- * ship sends an ENFORCER that cuts doors to reach you.
+ * quiet — or standing in cover — pushes it back down.
+ *
+ * What the gauge *does* is a ladder (`LADDER` below), one rung per level, and
+ * every rung is climbed once on the way up: the ship notices, then posts a
+ * machine where you have walked, then sends one after you and starts shutting
+ * doors, then sends its hunter, and at the top it locks the doors and begins
+ * venting its own compartments one by one until you leave or it has nothing
+ * left to vent. Neutralising the ship — all three systems up — switches the
+ * whole process off (`standDown`, called from `systems/ship.ts`).
  *
  * A system, not the twist: it hooks the same turn cycle but knows nothing about
  * modules, and the rig knows nothing about it.
  */
 
 /** Top of the gauge. Every number below is design-doc.md's. */
-const MAX_LEVEL = 5;
+export const MAX_LEVEL = 5;
 /** Turns aboard between time-driven raises. The run's first derelict is the tutorial. */
 const PERIOD_FIRST_SHIP = 80;
 const PERIOD = 40;
@@ -59,7 +72,7 @@ const QUIET_TURNS_HIDDEN = 8;
 /** Nothing is ever woken this close to the drone: two doors is the ambush line. */
 const MIN_SPAWN_DOORS = 2;
 /**
- * The level at which the ship answers, and the only level at which it does.
+ * The level at which the ship sends its hunter.
  *
  * design-doc.md, "Тревога", says three, and three is a number that reads well
  * next to a five-step gauge. It does not survive being multiplied by the other
@@ -84,6 +97,51 @@ const HUNTER_PERIOD = 15;
 /** How often a machine that walked the ship alone left a closed door open behind it. */
 const TRAIL_CHANCE = 0.5;
 
+/** From this level the ship shuts one door behind the drone every `DOOR_PERIOD` turns. */
+const DOOR_LEVEL = 3;
+export const DOOR_PERIOD = 10;
+/** From this level the door it shuts is locked rather than closed. */
+const LOCK_LEVEL = MAX_LEVEL;
+
+/**
+ * The scuttle: at the top of the gauge the ship counts `SCUTTLE_WARN` turns
+ * down on the panel — the last warning — and then vents one compartment every
+ * `SCUTTLE_PERIOD` turns, farthest from the drone first. Fifteen and twelve
+ * rather than twelve and ten: a bot that never reads the countdown dies in a
+ * vented compartment on a quarter of the sorties it happens in at the shorter
+ * clock, and on an eighth at this one — and a scuttle is a warning, not an
+ * execution.
+ */
+export const SCUTTLE_WARN = 15;
+export const SCUTTLE_PERIOD = 12;
+/** What a turn spent standing in a vented compartment costs the rack. */
+const VENT_DAMAGE = 1;
+
+/**
+ * From this level every machine the ladder wakes is tougher: `hp` and `hpMax`
+ * both gain `level − STRONGER_FROM + 1`, so the level-4 hunter carries one
+ * point more and whatever the top of the gauge sends carries two. Number and
+ * strength are the two axes the owner named, and this is the second one.
+ */
+const STRONGER_FROM = 4;
+
+/**
+ * How far the gauge falls while nobody is aboard: two steps for a drone that
+ * cycled out through the airlock, three for a drone the ship took apart — a
+ * dead drone is a ship that has stopped hearing anything — never below the
+ * floor its raised systems hold it at. The muster that meets the next drone is
+ * sized by the level *before* the drop (`shipAnswers`), which is where "по
+ * возвращению там будет прилично дронов" lives.
+ *
+ * The owner asked for one and two. Measured over 200 careful voyages with the
+ * rest of the ladder in place: at one and two the gauge reaches the top on
+ * 48 % of sorties and the voyage is won 3 times, which is the jam's line with
+ * no margin under it; at two and three it is 33 % and 8 wins. What the extra
+ * step buys is a second sortie that starts under the hunter instead of on it.
+ */
+const LEAVE_DROP = 2;
+const DEATH_DROP = 3;
+
 /**
  * Colours come from `content/palette.ts`, not `ui/theme.ts`: rules never
  * depend on the renderer, and the palette is data either way.
@@ -93,8 +151,54 @@ const BAD_FG = PALETTE.bad;
 /** The gauge turns warn at this level and bad at MAX_LEVEL. */
 const WARN_LEVEL = 3;
 
+/** Set on a vented compartment; the engine reads exactly this string (`rooms/noise.ts`). */
+const VENTED = "vented";
+
+// ------------------------------------------------------------------ the ladder
+
+/**
+ * One rung of the ladder: the word the panel shows for the level, and what the
+ * ship does the turn it gets there.
+ *
+ * `posted` machines are put down where the drone has walked and given no
+ * orders — they are waiting where it has to walk, which is the whole of the
+ * threat, exactly as the muster between sorties works. `sent` machines are
+ * told which compartment the drone is in. `hunter` is the ENFORCER, and there
+ * is never more than one of those aboard.
+ */
+interface Rung {
+  word: Key;
+  posted: number;
+  sent: number;
+  hunter: boolean;
+}
+
+/**
+ * Data, not a state machine. Level 1 buys nothing but the word; the doors
+ * start shutting at `DOOR_LEVEL` and locking at `LOCK_LEVEL`, and the scuttle
+ * starts at `MAX_LEVEL` — those three are clocks rather than one-off answers,
+ * so they live in `afterPlayerTurn` and not here.
+ *
+ * One machine at two and one at three, and neither on the run's first
+ * derelict. The owner asked for one and two; measured, every machine woken
+ * inside a sortie is a machine outside the hull's budget, and the careful bot
+ * — which never reads the panel — pays for each one in hulls sold: two sent at
+ * three is 14 hulls of 32 and 4 wins in 200, one is 15 and 8. On the first
+ * derelict, the tutorial, even one posted machine took the voyage from 16
+ * hulls sold to 6, so there the ladder is the word, the doors and the hunter.
+ */
+const LADDER: Readonly<Record<number, Rung>> = {
+  1: { word: "alert.noticed", posted: 0, sent: 0, hunter: false },
+  2: { word: "alert.searching", posted: 1, sent: 0, hunter: false },
+  3: { word: "alert.hunting", posted: 0, sent: 1, hunter: false },
+  4: { word: "alert.hunter", posted: 0, sent: 0, hunter: true },
+  5: { word: "alert.scuttle", posted: 0, sent: 0, hunter: true },
+};
+
+// ------------------------------------------------------------------- the state
+
 export interface AlertState {
-  /** 0..MAX_LEVEL. Each step up costs the drone one more machine aboard. */
+  /** 0..MAX_LEVEL. Each step up is a rung of the ladder. */
   level: number;
   /** Player turns spent aboard this ship, across every sortie. */
   turnsAboard: number;
@@ -106,6 +210,23 @@ export interface AlertState {
   lastHunter: number;
   /** How many times the alert has rolled for this ship. See `alertRng`. */
   rolls: number;
+  /** `turnsAboard` of the last door the ship shut on the drone. */
+  lastDoor: number;
+  /** `turnsAboard` at which the scuttle countdown started; −1 while it is not running. */
+  scuttleFrom: number;
+  /** Neutralised: the gauge is off, and nothing below moves it again. */
+  frozen: boolean;
+  /** A drone died aboard since the last entry: the next entry drops two levels, not one. */
+  lostDrone: boolean;
+  /** Sorties during which the gauge reached the top, and the visit it last did. */
+  peaks: number;
+  peakVisit: number;
+  /** Compartments vented over the ship's life, the sorties it happened in, and the last such visit. */
+  vents: number;
+  ventSorties: number;
+  ventVisit: number;
+  /** Drones that died standing in a vented compartment. */
+  ventDeaths: number;
 }
 
 /**
@@ -119,7 +240,7 @@ export interface AlertState {
 export function alertState(game: RoomGame): AlertState {
   const data = game.currentShip.data;
   const existing = data.alert;
-  if (isState(existing)) return existing;
+  if (isState(existing)) return complete(existing);
   const fresh = freshState();
   data.alert = fresh;
   return fresh;
@@ -139,6 +260,28 @@ function isState(raw: unknown): raw is AlertState {
   );
 }
 
+/**
+ * A record written by the build before the ladder has the six numbers above
+ * and none of the rest. It is still that ship's gauge; the missing fields are
+ * filled with what a fresh record would hold rather than thrown away with the
+ * level, so a save from the day before loads with the same ship in it.
+ */
+function complete(st: AlertState): AlertState {
+  const s = st as Partial<AlertState> & AlertState;
+  const fresh = freshState();
+  if (typeof s.lastDoor !== "number") s.lastDoor = fresh.lastDoor;
+  if (typeof s.scuttleFrom !== "number") s.scuttleFrom = fresh.scuttleFrom;
+  if (typeof s.frozen !== "boolean") s.frozen = fresh.frozen;
+  if (typeof s.lostDrone !== "boolean") s.lostDrone = fresh.lostDrone;
+  if (typeof s.peaks !== "number") s.peaks = fresh.peaks;
+  if (typeof s.peakVisit !== "number") s.peakVisit = fresh.peakVisit;
+  if (typeof s.vents !== "number") s.vents = fresh.vents;
+  if (typeof s.ventSorties !== "number") s.ventSorties = fresh.ventSorties;
+  if (typeof s.ventVisit !== "number") s.ventVisit = fresh.ventVisit;
+  if (typeof s.ventDeaths !== "number") s.ventDeaths = fresh.ventDeaths;
+  return s;
+}
+
 function freshState(): AlertState {
   // Both cooldowns start already expired, so the first loud turn aboard counts.
   return {
@@ -148,6 +291,16 @@ function freshState(): AlertState {
     quietTurns: 0,
     lastHunter: -HUNTER_PERIOD,
     rolls: 0,
+    lastDoor: 0,
+    scuttleFrom: -1,
+    frozen: false,
+    lostDrone: false,
+    peaks: 0,
+    peakVisit: 0,
+    vents: 0,
+    ventSorties: 0,
+    ventVisit: 0,
+    ventDeaths: 0,
   };
 }
 
@@ -167,32 +320,96 @@ function alertRng(game: RoomGame): Rng {
   return new Rng(game.currentShip.scheduleSeed).fork(st.rolls++);
 }
 
+// ------------------------------------------------------------------- climbing
+
 /**
  * One step up the gauge. Exported because the alert is also something the game
  * provokes directly — a ship system brought online, a bulkhead cut open — not
  * only something time does.
  *
- * The gauge has exactly one output, and it is the hunter (design-doc.md,
- * "Тревога, охотники и как спрятаться": the gauge sends an ENFORCER, and at
- * five replaces it every fifteen turns and points the whole ship at the drone).
- * Everything under `HUNTER_LEVEL` buys nothing but the climb towards it.
- *
- * They used to buy a patrol each, and the balance pass measured what that cost:
- * a third spawner outside `DerelictSpec.machines`, worth one to six extra
- * machines over a sortie of thirty turns, on top of a hull's whole budget of
- * three to five. The two the document does name — the ship's own population and
- * the muster between sorties — are budgeted; this one was not, and it is the
- * reason a tutorial freighter could not be walked out of. Reinforcement between
- * sorties is `shipAnswers` below, and it is the one the document describes.
+ * Every level climbed is a rung of `LADDER` executed exactly once, on the way
+ * up and never on the way down or on a raise at the top: a ship already at
+ * five that is provoked again answers with nothing new — its clocks (the
+ * hunter, the doors, the scuttle) are already running. Nothing at all moves a
+ * neutralised ship (`standDown`).
  */
 export function raiseAlert(game: RoomGame, steps = 1): void {
   const st = alertState(game);
+  if (neutralised(game, st)) return;
   for (let i = 0; i < steps; i++) {
-    st.level = Math.min(MAX_LEVEL, st.level + 1);
     // The ship just noticed something: whatever silence had been banked is gone.
     st.quietTurns = 0;
-    if (st.level >= HUNTER_LEVEL && !hunterAboard(game)) sendEnforcer(game);
+    if (st.level >= MAX_LEVEL) continue;
+    st.level++;
+    climb(game, st, st.level);
   }
+}
+
+/** The ship's answer to arriving at `level`, once. */
+function climb(game: RoomGame, st: AlertState, level: number): void {
+  const rung = LADDER[level];
+  if (!rung) return;
+
+  game.log.add(
+    t("log.alert.up", { stage: t(rung.word) }),
+    game.schedule.time,
+    level >= WARN_LEVEL ? "bad" : "warn",
+    "log.alert.up",
+  );
+
+  // The two clocks that start on a rung rather than on a turn: the doors start
+  // shutting `DOOR_PERIOD` turns from now, and the scuttle starts counting.
+  if (level === DOOR_LEVEL) st.lastDoor = st.turnsAboard;
+  if (level === MAX_LEVEL) {
+    st.scuttleFrom = st.turnsAboard;
+    const visit = game.currentShip.visits;
+    if (st.peakVisit !== visit) {
+      st.peakVisit = visit;
+      st.peaks++;
+    }
+    game.log.add(t("log.alert.scuttle", { n: SCUTTLE_WARN }), game.schedule.time, "bad", "log.alert.scuttle");
+  }
+
+  // The tutorial hull wakes nothing extra: its ladder is doors and the hunter.
+  if (rung.posted + rung.sent > 0 && !isFirstShip(game)) {
+    const rng = alertRng(game);
+    for (let i = 0; i < rung.posted; i++) wake(game, rng, level, false);
+    for (let i = 0; i < rung.sent; i++) wake(game, rng, level, true);
+  }
+  if (rung.hunter && !hunterAboard(game)) sendEnforcer(game, level);
+}
+
+/**
+ * One machine of the compartment's own depth band, put down where the drone
+ * has walked. `sent` gives it the drone's compartment as a standing order;
+ * without one it is posted, and waits.
+ */
+function wake(game: RoomGame, rng: Rng, level: number, sent: boolean): void {
+  const room = pickSpawnRoom(game, rng, false);
+  if (room === undefined) return;
+  const kind = pickKind(rng, game.content.monstersForDepth(game.ship.roomAt(room).depth));
+  if (!kind) return;
+
+  const machine = spawnMonsterIn(kind, room);
+  harden(machine, level);
+  // Not noise: a sound made here would settle into the field next turn and trip
+  // the alert's own noise rule, so the gauge would keep raising itself.
+  if (sent) rememberRoom(machine, game.roomOf(game.player).id);
+  game.schedule.admit(machine);
+  game.entities.push(machine);
+  game.log.add(
+    t("log.alert.wake", { room: roomName(game.ship.roomAt(room)) }),
+    game.schedule.time,
+    "bad",
+    "log.alert.wake",
+  );
+}
+
+/** The strength axis: a machine woken high on the ladder carries more. */
+function harden(machine: Entity, level: number): void {
+  const bonus = Math.max(0, level - STRONGER_FROM + 1);
+  machine.hp += bonus;
+  machine.hpMax += bonus;
 }
 
 /** Is the ship's one hunter out there right now? */
@@ -201,18 +418,19 @@ export function hunterAboard(game: RoomGame): boolean {
 }
 
 /**
- * The ship's answer at level 3: one hunter, and never a second one.
+ * The ship's hunter: one, and never a second one.
  *
  * Distance is what makes the alert a clock rather than an ambush; the standing
  * order is what makes it arrive. Without one the hunter would see nothing on
  * the turn it wakes — a machine sees one compartment, and it starts at least
  * two away — and simply stand where it was put.
  */
-function sendEnforcer(game: RoomGame): void {
+function sendEnforcer(game: RoomGame, level: number): void {
   const room = pickSpawnRoom(game, alertRng(game), ENFORCER.breacher === true);
   if (room === undefined) return;
 
-  dispatchTo(game, ENFORCER, room);
+  const hunter = dispatchTo(game, ENFORCER, room);
+  harden(hunter, level);
   alertState(game).lastHunter = alertState(game).turnsAboard;
   game.log.add(
     t("log.alert.hunter", {
@@ -227,8 +445,6 @@ function sendEnforcer(game: RoomGame): void {
 
 function dispatchTo(game: RoomGame, kind: MonsterKind, room: RoomId): Entity {
   const machine = spawnMonsterIn(kind, room);
-  // Not noise: a sound made here would settle into the field next turn and trip
-  // the alert's own noise rule, so the gauge would keep raising itself.
   rememberRoom(machine, game.roomOf(game.player).id);
   game.schedule.admit(machine);
   game.entities.push(machine);
@@ -241,10 +457,49 @@ function dispatchTo(game: RoomGame, kind: MonsterKind, room: RoomId): Entity {
  * down a corridor it recognises instead of out of unexplored ship.
  */
 function pickSpawnRoom(game: RoomGame, rng: Rng, breacher: boolean): RoomId | undefined {
-  const rooms = roomsAtLeast(game.ship, game.roomOf(game.player).id, MIN_SPAWN_DOORS, breacher);
+  const rooms = roomsAtLeast(game.ship, game.roomOf(game.player).id, MIN_SPAWN_DOORS, breacher).filter(
+    (r) => !crowded(game, r),
+  );
   if (rooms.length === 0) return undefined;
   const explored = rooms.filter((r) => game.ship.roomAt(r).explored);
   return rng.pick(explored.length > 0 ? explored : rooms);
+}
+
+/**
+ * Is this compartment as full as one gets? `CROWD` is the ceiling on every
+ * way a machine arrives — woken, mustered, dispatched, or walking in — so a
+ * fight is a doorway and not a pile (docs/tasks/G83-anonymous-blows.md, 4).
+ */
+function crowded(game: RoomGame, room: RoomId): boolean {
+  return hostilesIn(game, room).length >= CROWD;
+}
+
+/**
+ * A machine that has just walked into a full compartment waits at the door
+ * instead: back where it came from, its turn spent. The engine has no notion
+ * of a compartment's capacity and its pathing needs none — the fourth machine
+ * still *goes* where it is pointed, it just does not get in until one of the
+ * three has come out, which is the corridor fight this rule exists for.
+ *
+ * `POST` is where the machine stood before its turn, stamped on every hostile
+ * at the top of each round and again after each of its own turns, so a fast
+ * machine's second move is judged from where its first one left it.
+ */
+const POST = "post";
+
+function stampPosts(game: RoomGame): void {
+  for (const e of game.entities) {
+    if (e.id !== game.player.id && e.faction !== game.player.faction) (e.data ??= {})[POST] = e.room;
+  }
+}
+
+function holdAtTheDoor(game: RoomGame, actor: Entity): void {
+  const was = actor.data?.[POST];
+  const now = actor.room;
+  if (typeof was === "number" && now !== undefined && was !== now && isAlive(actor)) {
+    if (hostilesIn(game, now).length > CROWD) actor.room = was;
+  }
+  (actor.data ??= {})[POST] = actor.room;
 }
 
 /**
@@ -301,17 +556,219 @@ function pointEveryoneAtTheDrone(game: RoomGame): void {
   }
 }
 
+// ------------------------------------------------------------------ the doors
+
+/**
+ * The ship shuts a door behind the drone: an open one is closed, and from
+ * `LOCK_LEVEL` an open or closed one is locked — with no key aboard for it, so
+ * it is a CELL, a SPIKE, a torch or a card the drone happens to carry.
+ *
+ * Never a door of the compartment the drone is standing in, which is what
+ * keeps this a clock and not a trap sprung underfoot, and never the last free
+ * way home: a lock is only turned when a route from the drone to the airlock
+ * through doors it can walk bare-handed still exists afterwards, so the ship
+ * cannot wall in a drone that carries nothing (`tests/deadends.test.ts`,
+ * `strandedAboard`). A drone that has already gone through a lock with its
+ * tools has no such route to begin with, and then the ship locks nothing.
+ */
+function shutADoor(game: RoomGame, st: AlertState): void {
+  const ship = game.ship;
+  const here = game.roomOf(game.player).id;
+  const lock = st.level >= LOCK_LEVEL;
+  if (lock && !bareWayHome(ship, here)) return;
+
+  const candidates = ship.doors.filter(
+    (d) =>
+      d.a !== d.b &&
+      d.a !== here &&
+      d.b !== here &&
+      (d.state === "open" || (lock && d.state === "closed")),
+  );
+  if (candidates.length === 0) return;
+
+  const rng = alertRng(game);
+  for (const door of rng.shuffle([...candidates])) {
+    if (lock && !lockable(ship, door, here)) continue;
+    door.state = lock ? "locked" : "closed";
+    st.lastDoor = st.turnsAboard;
+    game.log.add(
+      t(lock ? "log.alert.lock" : "log.alert.door", { door: door.label }),
+      game.schedule.time,
+      "bad",
+      lock ? "log.alert.lock" : "log.alert.door",
+    );
+    return;
+  }
+}
+
+/** Would the drone still have a bare-handed route to the airlock with this door locked? */
+function lockable(ship: Ship, door: Door, here: RoomId): boolean {
+  const was = door.state;
+  door.state = "locked";
+  const still = bareWayHome(ship, here);
+  door.state = was;
+  return still;
+}
+
+function bareWayHome(ship: Ship, here: RoomId): boolean {
+  const map = RoomDistance.from(ship, [ship.entry], (d) => ship.passable(d, {}));
+  return Number.isFinite(map.at(here));
+}
+
+// ---------------------------------------------------------------- the scuttle
+
+/**
+ * The ship vents one compartment: the one farthest from the drone among those
+ * it has walked and that lie at least two doors away, so the venting is read
+ * off the schematic as a thing coming closer rather than felt as a blow.
+ *
+ * Never the airlock compartment and never the one the drone is in — a vented
+ * compartment is still a compartment and still walkable, so the way home is
+ * never the thing that goes (`tests/deadends.test.ts`). What was in it is gone:
+ * the machines die, the scrap and the crates are blown out with the air, and
+ * whatever cover there was is torn loose. A drone that walks in afterwards
+ * pays for every turn it stands there (`bleed`).
+ */
+function vent(game: RoomGame, st: AlertState): void {
+  const ship = game.ship;
+  const here = game.roomOf(game.player).id;
+  const map = RoomDistance.from(ship, [here], walkFilter(ship, true));
+  const candidates = ship.rooms.filter(
+    (r) =>
+      r.id !== here &&
+      r.id !== ship.entry &&
+      r.explored &&
+      r.hazard !== VENTED &&
+      Number.isFinite(map.at(r.id)) &&
+      map.at(r.id) >= MIN_SPAWN_DOORS,
+  );
+  if (candidates.length === 0) return;
+
+  const farthest = Math.max(...candidates.map((r) => map.at(r.id)));
+  const pool = candidates.filter((r) => map.at(r.id) === farthest);
+  const room = pool.length === 1 ? pool[0]! : alertRng(game).pick(pool);
+  blowOut(game, room);
+
+  st.vents++;
+  const visit = game.currentShip.visits;
+  if (st.ventVisit !== visit) {
+    st.ventVisit = visit;
+    st.ventSorties++;
+  }
+  game.log.add(t("log.alert.vent", { room: roomName(room) }), game.schedule.time, "bad", "log.alert.vent");
+}
+
+/**
+ * The compartment, opened to space.
+ *
+ * The machines in it die through the game's own death hook, so every system
+ * that keeps a record of one — the rival's drone, a ghost, a bloom — hears
+ * about it; what those hooks drop on the deck goes out with the air a line
+ * later, along with everything that was already lying there. Bodies stay:
+ * a keycard on a corpse is the only kind the ship has, and a vent that ate
+ * it would be a lock nothing opens.
+ */
+function blowOut(game: RoomGame, room: Room): void {
+  room.hazard = VENTED;
+  room.cover = false;
+  for (const e of [...game.entities]) {
+    if (e.id === game.player.id || e.room !== room.id || !isAlive(e)) continue;
+    e.hp = 0;
+    e.alive = false;
+    game.onDeath(e);
+  }
+  game.reapDead();
+  const data = room.data as Record<string, unknown[] | undefined>;
+  if (Array.isArray(data.wrecks)) data.wrecks.length = 0;
+  if (Array.isArray(data.crates)) data.crates.length = 0;
+}
+
+/**
+ * A turn standing in a vented compartment: one point into the rack, through
+ * the same path a blow takes, so the exposed module is what wears and the
+ * PLATING is what saves the core. Whichever system routes the hit says what
+ * it hit; this only speaks when the point went past the rack to the core,
+ * because then nobody else has.
+ *
+ * True when the drone did not survive it — the death hook has moved the
+ * operator home by the time this returns, and the caller must not touch the
+ * ship it was reading.
+ */
+function bleed(game: RoomGame): boolean {
+  const room = game.roomOf(game.player);
+  if (room.hazard !== VENTED) return false;
+
+  const res = blamedOn("log.hit.vent", () => dealDamage(game, game.player, VENT_DAMAGE));
+  if (res.toHp > 0) {
+    game.log.add(
+      t("log.alert.vacuum", { room: roomName(room), n: res.toHp }),
+      game.schedule.time,
+      "bad",
+      "log.alert.vacuum",
+    );
+  }
+  if (isAlive(game.player)) return false;
+  game.onDeath(game.player);
+  return true;
+}
+
+/** Turns until the scuttle does something next — the number on the panel. */
+function scuttleCountdown(st: AlertState): number {
+  const elapsed = st.turnsAboard - st.scuttleFrom;
+  if (elapsed < SCUTTLE_WARN) return SCUTTLE_WARN - elapsed;
+  const since = (elapsed - SCUTTLE_WARN) % SCUTTLE_PERIOD;
+  return since === 0 ? SCUTTLE_PERIOD : SCUTTLE_PERIOD - since;
+}
+
+function scuttleDue(st: AlertState): boolean {
+  const elapsed = st.turnsAboard - st.scuttleFrom;
+  return elapsed >= SCUTTLE_WARN && (elapsed - SCUTTLE_WARN) % SCUTTLE_PERIOD === 0;
+}
+
+// ------------------------------------------------------------- neutralised
+
+/**
+ * The ship is neutralised: the gauge stops, and with it every clock it runs —
+ * no more raises, no doors, no scuttle, no hunter replaced. Called by
+ * `systems/ship.ts` the turn the third system comes up. What is already awake
+ * stays awake; the ship stops *answering*, it does not surrender.
+ */
+export function standDown(game: RoomGame): void {
+  if (isTug(game)) return;
+  const st = alertState(game);
+  if (st.frozen) return;
+  st.frozen = true;
+  st.scuttleFrom = -1;
+  game.log.add(t("log.alert.down"), game.schedule.time, "good", "log.alert.down");
+}
+
+/**
+ * Is the gauge off? The flag `standDown` sets, or the fact it is set for —
+ * every system of the ship online, read off the SHIP system's own record —
+ * so a hull neutralised by a save file from before the flag existed is still
+ * a hull that has stopped answering.
+ */
+function neutralised(game: RoomGame, st: AlertState): boolean {
+  return st.frozen || onlineSystems(game) >= OBJECTIVE_COUNT;
+}
+
+/** The same question, for the panel and the tests. */
+export function alertOff(game: RoomGame): boolean {
+  return !isTug(game) && neutralised(game, alertState(game));
+}
+
 // ------------------------------------------------------- between two sorties
 
 /**
  * What the ship did while nobody was watching (design-doc.md, "Персистентный
- * дереликт"): it calmed down to the floor its raised systems hold it at, it
- * mustered machines into the compartments you already walked, and those
- * machines left a trail of doors they did not bother to close.
+ * дереликт"): it calmed down — one step for a drone that left through the
+ * airlock, two for one it killed, never below the floor its raised systems
+ * hold it at — it mustered machines into the compartments you already walked,
+ * and those machines left a trail of doors they did not bother to close.
  *
  * The muster is sized by how alarmed the ship was when the drone left, not by
- * the floor it settles to — leaving at 5/5 is what makes coming back expensive,
- * and reading the floor instead would make the gauge free to fill.
+ * what it settled to — leaving at 5/5 is what makes coming back expensive,
+ * and reading the settled level instead would make the gauge free to fill.
  *
  * It is sized *down* by what is already aboard, which is the half that was
  * missing. `2 + 2 × alert` is what the document asks a muster to bring; nothing
@@ -327,9 +784,12 @@ function pointEveryoneAtTheDrone(game: RoomGame): void {
  */
 function shipAnswers(game: RoomGame): void {
   const st = alertState(game);
+  if (neutralised(game, st)) return;
   const alarmed = st.level;
-  st.level = Math.min(st.level, onlineSystems(game));
+  st.level = Math.max(onlineSystems(game), alarmed - (st.lostDrone ? DEATH_DROP : LEAVE_DROP));
+  st.lostDrone = false;
   st.quietTurns = 0;
+  st.scuttleFrom = -1;
 
   const rng = alertRng(game);
   const entry = game.ship.entry;
@@ -344,7 +804,11 @@ function shipAnswers(game: RoomGame): void {
   let placed = 0;
 
   for (let i = 0; i < Math.min(2 + 2 * alarmed, room); i++) {
-    const room = rng.pick(rooms);
+    // Never a fourth into a compartment that holds three: the muster spreads
+    // down the corridors the drone walked, and stops when they are all full.
+    const open = rooms.filter((r) => !crowded(game, r));
+    if (open.length === 0) break;
+    const room = rng.pick(open);
     const kind = pickKind(rng, game.content.monstersForDepth(game.ship.roomAt(room).depth));
     if (!kind) continue;
     // No standing order: these are posted, not dispatched. They are waiting
@@ -420,12 +884,41 @@ export const ALERT: System<RoomGame> = {
     // whether or not anything ever raises its alert.
     alertState(game);
     if (game.currentShip.visits > 1) shipAnswers(game);
+    stampPosts(game);
+  },
+
+  /** A machine that walked into a full compartment did not get in (`holdAtTheDoor`). */
+  afterActorTurn(game, actor) {
+    if (isTug(game) || actor.id === game.player.id || actor.faction === game.player.faction) return;
+    holdAtTheDoor(game, actor);
+  },
+
+  /**
+   * A drone the ship took apart: remembered on the ship, so that the next entry
+   * finds it two steps calmer rather than one (`shipAnswers`). Both ways a
+   * drone dies aboard come through here — a machine's blow through the engine,
+   * the vacuum through `bleed` — and both go on to `systems/voyage.ts`, which is
+   * later in the list and moves the operator home.
+   */
+  onDeath(game, victim) {
+    if (victim.id !== game.player.id || isTug(game)) return;
+    const st = alertState(game);
+    st.lostDrone = true;
+    if (game.roomOf(victim).hazard === VENTED) st.ventDeaths++;
   },
 
   afterPlayerTurn(game) {
     if (game.status !== "playing" || isTug(game)) return;
+    // Where everything stands before the machines move: what `holdAtTheDoor`
+    // sends a machine back to when it walks into a compartment that is full.
+    stampPosts(game);
     const st = alertState(game);
     st.turnsAboard++;
+
+    // The vacuum is not the alert's to switch off: a vented compartment stays
+    // vented on a neutralised ship, and standing in it still costs.
+    if (bleed(game)) return;
+    if (neutralised(game, st)) return;
 
     const period = isFirstShip(game) ? PERIOD_FIRST_SHIP : PERIOD;
     if (st.turnsAboard % period === 0) raiseAlert(game);
@@ -435,12 +928,20 @@ export const ALERT: System<RoomGame> = {
       raiseAlert(game);
     }
 
+    if (st.level >= DOOR_LEVEL && st.turnsAboard - st.lastDoor >= DOOR_PERIOD) shutADoor(game, st);
+
     // At the top of the gauge the hunt never lapses: a hunter that died is
-    // replaced, and everything aboard is told where you are.
-    if (st.level >= MAX_LEVEL && st.turnsAboard - st.lastHunter >= HUNTER_PERIOD) {
-      st.lastHunter = st.turnsAboard;
-      if (!hunterAboard(game)) sendEnforcer(game);
-      pointEveryoneAtTheDrone(game);
+    // replaced, everything aboard is told where you are, and the ship starts
+    // taking itself apart from the far end.
+    if (st.level >= MAX_LEVEL) {
+      // The vent first: a hunter woken this turn is woken into the ship as
+      // it is after the venting, not into the compartment about to be blown.
+      if (st.scuttleFrom >= 0 && scuttleDue(st)) vent(game, st);
+      if (st.turnsAboard - st.lastHunter >= HUNTER_PERIOD) {
+        st.lastHunter = st.turnsAboard;
+        if (!hunterAboard(game)) sendEnforcer(game, st.level);
+        pointEveryoneAtTheDrone(game);
+      }
     }
 
     st.quietTurns = quietTurn(game) ? st.quietTurns + 1 : 0;
@@ -448,6 +949,9 @@ export const ALERT: System<RoomGame> = {
     if (st.level > 0 && st.quietTurns >= needed) {
       st.quietTurns = 0;
       st.level--;
+      // Off the top: the countdown stops, and starts again only from a fresh
+      // climb to the top.
+      if (st.level < MAX_LEVEL) st.scuttleFrom = -1;
       game.log.add(t("log.alert.calm"), game.schedule.time, "good", "log.alert.calm");
     }
   },
@@ -458,17 +962,35 @@ export const ALERT: System<RoomGame> = {
     // screen whose whole point is that the other half of the game is not
     // happening (docs/tasks/G53-tug-is-a-menu.md, 2).
     if (isTug(game)) return [];
-    const level = alertState(game).level;
+    const st = alertState(game);
+    const level = st.level;
     const gauge = "▮".repeat(level) + "▯".repeat(MAX_LEVEL - level);
-    const text = t("panel.alert", { gauge });
-    const fg = level >= MAX_LEVEL ? BAD_FG : level >= WARN_LEVEL ? WARN_FG : undefined;
+
+    // The word after the bar is the whole of the ladder made visible: what the
+    // ship is doing about you, in one word, and at the top how long you have.
+    const off = neutralised(game, st);
+    let text: string;
+    if (off) text = t("panel.alertOff", { gauge });
+    else if (level >= MAX_LEVEL && st.scuttleFrom >= 0) {
+      text = t("panel.alertScuttle", { gauge, n: scuttleCountdown(st) });
+    } else if (level > 0) text = t("panel.alertStage", { gauge, stage: t(LADDER[level]!.word) });
+    else text = t("panel.alert", { gauge });
+
+    const fg = off ? undefined : level >= MAX_LEVEL ? BAD_FG : level >= WARN_LEVEL ? WARN_FG : undefined;
     const lines = [fg ? { text, fg } : { text }];
     if (hunterAboard(game)) lines.push({ text: t("panel.hunter"), fg: BAD_FG });
     return lines;
   },
 };
 
-/** The run's first derelict is the tutorial, and its clock runs half as fast. */
+/**
+ * The run's first derelict is the tutorial, and its clock runs half as fast.
+ *
+ * The first *derelict*, not the first ship in the store: a run starts on the
+ * tug (`GAME_CONFIG.firstShipId`), so the store's first id is home, and read
+ * that way no derelict was ever the first one — every hull ran on the forty-turn
+ * clock and the tutorial pace existed only in the fixture tests.
+ */
 function isFirstShip(game: RoomGame): boolean {
-  return game.ships.ids()[0] === game.shipId;
+  return game.ships.ids().find((id) => id !== TUG_ID) === game.shipId;
 }

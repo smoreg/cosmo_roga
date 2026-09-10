@@ -228,6 +228,9 @@ export function hunter(memoryTurns = 8): Behaviour {
  * otherwise waits — never closes the distance, never retreats.
  */
 export const turret: Behaviour = (world, self) => {
+  // Seized like anything else, but a thing that never moves has nowhere to
+  // stagger to: a stunned turret simply does not fire.
+  if (actionScrambled(self)) return { kind: "wait" };
   if ((self.range ?? 0) < 1) return { kind: "wait" };
   const player = world.player;
   if (!isAlive(player) || !canSee(world.ship, self, player)) return { kind: "wait" };

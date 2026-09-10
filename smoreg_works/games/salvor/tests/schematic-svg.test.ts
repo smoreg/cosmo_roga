@@ -127,10 +127,22 @@ describe("the SVG schematic", () => {
   });
 
   it("shows nothing at all inside a compartment nobody has seen", () => {
-    const dark = svgOf({ ...SHIP, rooms: [room(9, "SECRET", 0, 0, "unknown", "E %", 1)], doors: [] });
+    // The adapter hands an unknown box no glyphs (`ui/schematic-input.ts`),
+    // and the machine count is never drawn on one whatever it is handed.
+    const dark = svgOf({ ...SHIP, rooms: [room(9, "SECRET", 0, 0, "unknown", "", 1)], doors: [] });
     expect(dark).not.toContain("class=\"glyph");
+    expect(dark).not.toContain("threat");
     expect(dark).not.toContain("alarm");
     expect(dark).toContain(">····</text>");
+  });
+
+  it("draws a known hazard's mark on a compartment nobody has seen, and still no machines", () => {
+    // The one thing an unknown box is ever handed: the mark of a hazard the
+    // drone was told about from next door (`ui/schematic-input.ts`, `marksOnly`).
+    const marked = svgOf({ ...SHIP, rooms: [room(9, "SECRET", 0, 0, "unknown", "≈", 1)], doors: [] });
+    expect(marked).toContain(">≈</text>");
+    expect(marked).not.toContain("threat");
+    expect(marked).toContain(">····</text>");
   });
 
   it("hangs the tug off the airlock, to the left of its compartment", () => {

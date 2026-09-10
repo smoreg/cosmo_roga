@@ -1,14 +1,24 @@
 import * as ROT from "rot-js";
-import type { RoomGame } from "@jamrog/engine";
+import type { LogLine, RoomGame } from "@jamrog/engine";
 import { isTug } from "../content/tug.js";
 import { LANGS, currentLang, t } from "../i18n.js";
 import { rigOf } from "../twist/rig.js";
 import { voyageProgress, voyageRecord } from "../systems/voyage.js";
-import { helpFooter, helpHeadings, helpPages, keyHelp, titleLines } from "./input.js";
-import { logText } from "./logline.js";
+import {
+  codexBody,
+  codexFooter,
+  codexHeading,
+  helpFooter,
+  helpHeadings,
+  helpPages,
+  keyHelp,
+  titleLines,
+} from "./input.js";
+import { HISTORY_ROWS, historyPages, logFades, logText, type LogFade } from "./logline.js";
 import {
   NO_FLASH,
   PANEL_WIDTH,
+  codexBadge,
   panelBlocks,
   panelColour,
   rackIntegrity,
@@ -20,7 +30,7 @@ import { schematic, type SchematicLine } from "./schematic.js";
 import { BANNER_WIDTH, bannerLine, schematicInputOf } from "./schematic-input.js";
 import { LAYOUT, SCREEN_HEIGHT, SCREEN_WIDTH, THEME } from "./theme.js";
 import { tugBoard } from "./tugboard.js";
-import { aimedAt, listOf, type AppState, type Overlay } from "./appstate.js";
+import { aimedAt, codexSeen, codexView, listOf, type AppState, type Overlay } from "./appstate.js";
 
 /**
  * The only file in the game that talks to a display.
@@ -66,8 +76,8 @@ function boxFor(lines: readonly string[], extraRows: number): BoxSize {
  * The first block is the only one that changes, and it is first because it is
  * the question `?` was pressed to ask.
  */
-export function helpBody(onTug: boolean): string[] {
-  return helpPages(onTug).flatMap((page, i) => (i === 0 ? page : ["", ...page]));
+export function helpBody(onTug: boolean, seen: readonly string[] = []): string[] {
+  return helpPages(onTug, seen).flatMap((page, i) => (i === 0 ? page : ["", ...page]));
 }
 
 /**
@@ -77,10 +87,24 @@ export function helpBody(onTug: boolean): string[] {
  * One size for every page, taken from the tallest and the widest of them, so
  * the card does not resize under the reader's hands when `?` turns the page.
  */
-export function helpBox(onTug: boolean): BoxSize {
-  const pages = helpPages(onTug);
+export function helpBox(onTug: boolean, seen: readonly string[] = []): BoxSize {
+  const pages = helpPages(onTug, seen);
   const rows = pages.reduce((n, page) => Math.max(n, page.length), 0);
   return { ...boxFor(pages.flat(), 0), height: rows + 6 };
+}
+
+/**
+ * The `i` card, sized the way the help card is: a heading row, a blank one, the
+ * body, a blank one, the footer, and the frame.
+ *
+ * The same six rows of furniture and the same padding, because it is the same
+ * window — the owner asked for the card to be "тот же оверлей, что справка на
+ * `?`", and a second card with a frame of its own would be a second thing to
+ * keep on the screen when the screen grows.
+ */
+export function codexBox(heading: string, body: readonly string[], footer: string): BoxSize {
+  const lines = [heading, ...body, footer];
+  return { ...boxFor(lines, 0), height: body.length + 6 };
 }
 
 /**
@@ -154,8 +178,41 @@ export function endHint(overlay: Overlay): string {
 }
 
 /** The two cards that are not an ending, by the word across the top of each. */
-export function cardTitles(): { help: string; crash: string } {
-  return { help: t("help.title"), crash: t("crash.title") };
+export function cardTitles(): { help: string; crash: string; history: string } {
+  return { help: t("help.title"), crash: t("crash.title"), history: t("log.title") };
+}
+
+/**
+ * A log line's colour once its age is taken into account.
+ *
+ * Three steps and not two, because the middle one is the point: `soft` is the
+ * turn just gone, still legible and plainly not now, and `fgDim` is everything
+ * the player has had time to read. The terminal has no other way to say it —
+ * there are no spare rows for the blank line the graphic view puts between
+ * turns.
+ */
+function fadedTo(colour: string, fade: LogFade): string {
+  if (fade === "fresh") return colour;
+  return fade === "recent" ? THEME.soft : THEME.fgDim;
+}
+
+/**
+ * The history card's frame: as much of the screen as it can have.
+ *
+ * Fixed rather than measured off the lines it holds, unlike every other card
+ * here. The log is whatever the run wrote into it, so a box that fitted itself
+ * to the text would change width on every page and between one run and the
+ * next; a player paging back through forty lines is reading a column, and a
+ * column that moves is one they have to find again.
+ */
+export function historyBox(): BoxSize {
+  const width = SCREEN_WIDTH - 4;
+  return { width, height: HISTORY_ROWS + 6, inner: width - 4 };
+}
+
+/** The line under the history card: which page, and which key turns it. */
+export function historyFooter(page: number, pages: number): string {
+  return t("log.page", { n: page + 1, of: pages });
 }
 
 /** Where the panel starts: one column of gutter past the schematic. */
@@ -213,6 +270,8 @@ export class Renderer {
     this.drawPanel(game, state, lit);
     this.drawLog(game);
     if (overlay === "help") this.drawHelp(game, state.helpPage);
+    if (overlay === "codex") this.drawCodex(game, state);
+    if (overlay === "history") this.drawHistory(game, state.logPage);
     const ending = endingBanners()[overlay];
     if (ending) this.drawBanner(ending.title, ending.why, runSummary(game), ending.fg, endHint(overlay));
   }
@@ -232,7 +291,27 @@ export class Renderer {
       if (y >= LAYOUT.mapHeight) return;
       this.putSpans(y, line);
     });
-    this.putLine(0, 0, clamp(bannerLine(game), BANNER_WIDTH), THEME.accent);
+    const gap = this.drawBadge(game);
+    this.putLine(gap, 0, clamp(bannerLine(game), BANNER_WIDTH - gap), THEME.accent);
+  }
+
+  /**
+   * `[i] 2` in the top-left corner of the map, and how many columns it took.
+   *
+   * The corner is the owner's — «сверху слева значок информации и хоткей» — and
+   * row zero is the one row on this screen that belongs to nothing: the boxes
+   * start at row one (design-doc.md, "Экран"). The banner shares the row and
+   * moves right by whatever the badge used, so the two can never overprint each
+   * other and neither of them costs the picture a line.
+   *
+   * Nothing drawn and no columns taken when the run has nothing unread, which
+   * is what keeps a quiet sortie's screen exactly as it was.
+   */
+  private drawBadge(game: RoomGame): number {
+    const badge = codexBadge(game);
+    if (badge === undefined) return 0;
+    this.putLine(0, 0, badge, THEME.warn);
+    return badge.length + 1;
   }
 
   /**
@@ -242,11 +321,16 @@ export class Renderer {
    * answer in the same place either way.
    */
   private drawBoard(game: RoomGame): void {
+    // The badge stands in the same corner at home as it does aboard a hull: a
+    // relic bought at the dock and a strain the bench has not cleaned are both
+    // things to read about, and both are read standing here.
+    const gap = this.drawBadge(game);
     tugBoard(game).forEach((line, i) => {
       const y = i;
       if (y >= LAYOUT.mapHeight) return;
       const fg = i === 0 ? THEME.accent : line.startsWith(" ") ? THEME.fg : THEME.zone;
-      this.putLine(0, y, clamp(line, LAYOUT.mapWidth), fg);
+      const x = i === 0 ? gap : 0;
+      this.putLine(x, y, clamp(line, LAYOUT.mapWidth - x), fg);
     });
   }
 
@@ -278,12 +362,27 @@ export class Renderer {
     for (let x = 0; x < SCREEN_WIDTH; x++) this.display.draw(x, LAYOUT.mapHeight, "─", THEME.fgDim, null);
 
     const lines = game.log.tail(LAYOUT.logHeight);
+    // Which lines are still bright is a question about turns, not about how
+    // many lines happen to be on the screen (`ui/logline.ts`, `logFades`).
+    const fades = logFades(lines);
+    const alarm = latestAlarm(lines);
     lines.forEach((l, i) => {
+      const suffix = l.count > 1 ? ` (x${l.count})` : "";
+      const text = clamp(`${logText(l)}${suffix}`, SCREEN_WIDTH - 2);
+      // The alarm tone: the whole row on a red ground for the newest one, and
+      // red ink that never fades for the ones before it — a danger the
+      // player has not read must not grey out with the turn
+      // (`packages/engine/src/sim/log.ts`). Read means a newer alarm, or the
+      // codex key (docs/tasks/G72-codex.md); this only draws.
+      if (l.tone === "alarm") {
+        if (i === alarm) this.putLine(1, y0 + i, text.padEnd(SCREEN_WIDTH - 2), THEME.bright, THEME.bad);
+        else this.putLine(1, y0 + i, text, THEME.bad);
+        return;
+      }
       const colour =
         l.tone === "good" ? THEME.good : l.tone === "bad" ? THEME.bad : l.tone === "warn" ? THEME.warn : THEME.fg;
-      const fade = i < lines.length - 3 ? THEME.fgDim : colour;
-      const suffix = l.count > 1 ? ` (x${l.count})` : "";
-      this.putLine(1, y0 + i, clamp(`${logText(l)}${suffix}`, SCREEN_WIDTH - 2), fade);
+      const fade = fadedTo(colour, fades[i]!);
+      this.putLine(1, y0 + i, text, fade);
     });
   }
 
@@ -336,9 +435,10 @@ export class Renderer {
 
   private drawHelp(game: RoomGame, page: number): void {
     const onTug = isTug(game);
-    const pages = helpPages(onTug);
+    const seen = codexSeen(game);
+    const pages = helpPages(onTug, seen);
     const body = pages[Math.min(page, pages.length - 1)] ?? [];
-    const { width: w, height: h, inner } = helpBox(onTug);
+    const { width: w, height: h, inner } = helpBox(onTug, seen);
     const x0 = (SCREEN_WIDTH - w) >> 1;
     const y0 = (SCREEN_HEIGHT - h) >> 1;
     this.box(x0, y0, w, h);
@@ -357,6 +457,52 @@ export class Renderer {
           : THEME.zone;
       this.putLine(x0 + 2, y0 + 3 + i, clamp(s, inner), fg);
     });
+  }
+
+  /**
+   * What is going on here, in a card in front of the board.
+   *
+   * Every word of it was decided in `ui/input.ts` and every line was already
+   * broken there, so this only puts the text in a frame — the same contract
+   * the rest of this file keeps.
+   */
+  private drawCodex(game: RoomGame, state: AppState): void {
+    const view = codexView(game, state);
+    if (view === undefined) return;
+    const heading = codexHeading(view.entry);
+    const body = codexBody(view.entry, view.fitted);
+    const footer = codexFooter(view.page, view.pages);
+    const { width: w, height: h, inner } = codexBox(heading, body, footer);
+    const x0 = (SCREEN_WIDTH - w) >> 1;
+    const y0 = (SCREEN_HEIGHT - h) >> 1;
+    this.box(x0, y0, w, h);
+    this.putLine(x0 + 2, y0 + 1, clamp(heading, inner), THEME.accent);
+    this.putLine(x0 + 2, y0 + h - 2, clamp(footer, inner), THEME.fgDim);
+    body.forEach((line, i) => {
+      this.putLine(x0 + 2, y0 + 3 + i, clamp(line, inner), THEME.fg);
+    });
+  }
+
+  /**
+   * The message log, all of it, as a card the same machinery draws the help
+   * card with — the overlay was already there, and history is a page of text
+   * (docs/gui-guides.md, "Что применить", B).
+   *
+   * The newest page first, so the card opens where the log itself is standing.
+   */
+  private drawHistory(game: RoomGame, page: number): void {
+    const pages = historyPages(game.log.lines, HISTORY_ROWS);
+    const at = Math.min(page, pages.length - 1);
+    const body = pages[at] ?? [];
+    const { width: w, height: h, inner } = historyBox();
+    const x0 = (SCREEN_WIDTH - w) >> 1;
+    const y0 = (SCREEN_HEIGHT - h) >> 1;
+    this.box(x0, y0, w, h);
+    this.putLine(x0 + 2, y0 + 1, cardTitles().history, THEME.accent);
+    this.putLine(x0 + 2, y0 + h - 2, clamp(historyFooter(at, pages.length), inner), THEME.fgDim);
+    // Every line in one colour: the card is read as a transcript, and the tone
+    // of a line thirty turns back is no longer news about anything.
+    body.forEach((s, i) => this.putLine(x0 + 2, y0 + 3 + i, clamp(s, inner), THEME.fg));
   }
 
   private drawBanner(
@@ -416,11 +562,11 @@ export class Renderer {
   }
 
   /** One row of text, cell by cell: no markup, so no glyph can be read as one. */
-  private putLine(x0: number, y: number, text: string, fg: string): void {
+  private putLine(x0: number, y: number, text: string, fg: string, bg: string | null = null): void {
     for (let i = 0; i < text.length; i++) {
       const x = x0 + i;
       if (x >= SCREEN_WIDTH) return;
-      this.display.draw(x, y, text[i]!, fg, null);
+      this.display.draw(x, y, text[i]!, fg, bg);
     }
   }
 }
@@ -428,6 +574,16 @@ export class Renderer {
 /** One line, one row: a line longer than its box would run over the frame. */
 function clamp(text: string, width: number): string {
   return text.length <= width ? text : `${text.slice(0, Math.max(1, width - 1))}…`;
+}
+
+/**
+ * Index of the newest alarm line in a tail, or -1: the one still on its red
+ * ground. Shared with the graphic view, so the two cannot disagree about which
+ * line is the loud one.
+ */
+export function latestAlarm(lines: readonly LogLine[]): number {
+  for (let i = lines.length - 1; i >= 0; i--) if (lines[i]!.tone === "alarm") return i;
+  return -1;
 }
 
 /**

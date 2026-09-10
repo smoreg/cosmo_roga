@@ -247,9 +247,20 @@ describe("nothing but the tables speaks English", () => {
     for (const dir of WORDED_DIRS) {
       for (const file of tsFiles(join(ROOT, dir))) {
         if (relative(ROOT, file).includes(join("content", "i18n"))) continue;
+        // The debug overlay (G68): a diagnostic panel for whoever is running
+        // the build, not game text a player reads, so it is deliberately
+        // plain English and outside `t()` — see the file's own doc comment.
+        if (relative(ROOT, file) === join("games", "salvor", "src", "ui", "debug.ts")) continue;
+        // The crash guard (10.09): the browser's own `Script error.` is a
+        // literal it compares against, and its two console lines are read in a
+        // devtools panel, never on the screen. Neither is game text.
+        if (relative(ROOT, file) === join("games", "salvor", "src", "ui", "crashguard.ts")) continue;
         code(readFileSync(file, "utf8"))
           .split("\n")
           .forEach((line, i) => {
+            // A console line is read in devtools by whoever runs the build,
+            // never by a player: diagnostics, not game text.
+            if (/^\s*console\.(warn|error|log|info)\(/.test(line)) return;
             for (const m of line.matchAll(/"[^"\n]*"|`[^`\n]*`/g)) {
               // What is left of a literal once the interpolations are out of it.
               const text = m[0].slice(1, -1).replace(/\$\{[^}]*\}/g, "");

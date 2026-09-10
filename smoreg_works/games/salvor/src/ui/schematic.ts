@@ -37,6 +37,21 @@ export type DoorState = "open" | "closed" | "locked" | "sealed" | "broken" | "ai
 /** How much the drone knows about a room, worst to best. */
 export type RoomState = "unknown" | "scanned" | "explored" | "visible" | "current";
 
+/**
+ * One thing standing or lying in a compartment, as the picture knows it.
+ *
+ * The same list `glyphs` is spelled out of — `things.map(t => t.glyph).join(" ")`
+ * is `glyphs`, and `tests/tiles-view.test.ts` holds the two to that — so a
+ * drawing that can put a picture where a letter went reads this and a drawing
+ * that cannot reads the string. Nothing here decides how either is drawn.
+ */
+export interface SchematicThing {
+  glyph: string;
+  name: string;
+  /** A machine, painted in the colour of trouble. Absent means it is not one. */
+  hostile?: true;
+}
+
 export interface SchematicRoom {
   id: number;
   /** The short id the panel and the log use: "r4". */
@@ -61,6 +76,20 @@ export interface SchematicRoom {
   threat?: true;
   /** What is in there, already spaced by the caller: `S x % †`. */
   glyphs: string;
+  /**
+   * The same contents unjoined, for a drawing that can put a tile where the
+   * letter went (`?tiles=1`, `ui/web/tiles.ts`). Optional because a hand-written
+   * fixture says `glyphs` and nothing else, and because `glyphs` is what the
+   * terminal draws — this field may never become the only statement of what is
+   * in a compartment.
+   */
+  things?: readonly SchematicThing[];
+  /**
+   * What the compartment is for, as the catalogue's own word (`content/zones.ts`,
+   * `kind`). Carried rather than derived from `name`, which is translated: the
+   * pictogram beside the name has to pick the same drawing in three languages.
+   */
+  kind?: string;
   /**
    * Columns at the head of `glyphs` that are machines, painted in the colour of
    * trouble. Absent means none — which is what a hand-written fixture says, and
@@ -93,6 +122,17 @@ export interface SchematicDoor {
   /** Which of the two ports on that side of room `a` this door uses. */
   portA: 0 | 1;
   portB: 0 | 1;
+  /**
+   * The door a red hazard line has just named (`ui/schematic-input.ts`,
+   * `signsFresh`): drawn in the accent colour, as the compartment the move
+   * list points at is, so the line and the map say the same thing at once.
+   */
+  target?: true;
+}
+
+/** The colour a door's label is written in: its state's, or the accent when a line has just named it. */
+function doorFg(door: SchematicDoor): string {
+  return door.target === true ? THEME.accent : THEME.door[door.state];
 }
 
 export interface SchematicInput {
@@ -490,7 +530,7 @@ function route(
   for (let i = 0; i < GUTTER; i++) row.push([from, gx + i]);
 
   const draw = (): void => {
-    sheet.write(from, gx, label, THEME.door[door.state]);
+    sheet.write(from, gx, label, doorFg(door));
     ports.add(slot(left.room.id, "R", leftPort));
     ports.add(slot(right.room.id, "L", rightPort));
   };
@@ -555,7 +595,7 @@ function loop(
   for (let y = top; y <= bottom; y++) {
     if (y !== labelY) sheet.put(y, x, "│");
   }
-  sheet.write(labelY, labelX, label, THEME.door[door.state]);
+  sheet.write(labelY, labelX, label, doorFg(door));
   marks.tee(upper.room.id, "bottom", CHANNEL);
   marks.tee(lower.room.id, "top", CHANNEL);
   return true;
@@ -590,8 +630,8 @@ function breakOff(
   if (!sheet.free(cells)) return false;
 
   sheet.reserve(cells);
-  sheet.write(y, x, label, THEME.door[door.state]);
-  sheet.put(y, arrow, right ? "»" : "«", THEME.door[door.state]);
+  sheet.write(y, x, label, doorFg(door));
+  sheet.put(y, arrow, right ? "»" : "«", doorFg(door));
   ports.add(slot(here.room.id, side, port));
   return true;
 }
@@ -638,7 +678,7 @@ function refer(
       : far.row < box.room.row ? "U"
       : undefined;
     if (side === undefined) continue;
-    if (mark(sheet, marks, ports, box, side, port, far.label, door.state)) drawn = true;
+    if (mark(sheet, marks, ports, box, side, port, far.label, doorFg(door))) drawn = true;
   }
   return drawn;
 }
@@ -661,7 +701,7 @@ function mark(
   side: "L" | "R" | "U" | "D",
   port: 0 | 1,
   target: string,
-  state: DoorState,
+  fg: string,
 ): boolean {
   const arrow = ARROWS[side];
   const sideways = side === "L" || side === "R";
@@ -695,7 +735,7 @@ function mark(
     if (!sheet.free(cells)) continue;
 
     sheet.reserve(cells);
-    sheet.write(spot.y, spot.x, text, THEME.door[state]);
+    sheet.write(spot.y, spot.x, text, fg);
     if (spot.claim !== undefined) ports.add(spot.claim);
     if (spot.tee !== undefined) marks.tee(box.room.id, spot.tee, spot.x - box.x);
     return true;
@@ -758,7 +798,9 @@ function drawBox(sheet: Sheet, p: Placed, ports: ReadonlySet<string>, marks: Mar
 
   const unknown = room.state === "unknown";
   const name = unknown ? centre(UNKNOWN, INNER) : clip(room.name, INNER).padEnd(INNER, " ");
-  const rows = [name, fill(unknown ? "" : room.glyphs, room.label, INNER)];
+  // The adapter hands an unknown box no glyphs but a known hazard's mark
+  // (`ui/schematic-input.ts`, `marksOnly`), so what it hands is what is drawn.
+  const rows = [name, fill(room.glyphs, room.label, INNER)];
   for (const [i, text] of rows.entries()) {
     const port = i as 0 | 1;
     sheet.write(y + 1 + port, x, f.v + text + f.v, fg);

@@ -224,17 +224,19 @@ describe("what the two views paint it with", () => {
   });
 
   /**
-   * A contact a door away is amber, and turning it red is the whole of what the
-   * panel does for the pulse. One standing in the drone's own compartment is
-   * already red, and the flashing box on the schematic is what carries the
-   * signal for that one.
+   * A contact's own colour is how much of it is left (G79, `contactTone`), and
+   * turning that line red is the whole of what the panel does for the pulse.
+   * The flashing box on the schematic is what carries the signal for a machine
+   * already standing in the drone's compartment.
    */
   it("turns the line of a machine a door away red while it flashes", () => {
     const game = gameOn();
     const id = put(game, "r2");
     const line = panelBlocks(game, []).find((l) => l.id === id);
     expect(line, "the machine has a line of its own to flash").toBeDefined();
-    expect(panelColour(line!, new Set())).toBe(THEME.warn);
+    // Whole, so its own colour is the top of the integrity scale (G79,
+    // `contactTone`); the pulse is what puts red on it.
+    expect(panelColour(line!, new Set())).toBe(THEME.hpFull);
     expect(panelColour(line!, new Set(), new Set([id]))).toBe(THEME.bad);
   });
 

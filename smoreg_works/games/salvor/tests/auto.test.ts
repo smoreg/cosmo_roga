@@ -152,6 +152,60 @@ describe("which doors a walk may use", () => {
   });
 });
 
+/**
+ * What a shut bulkhead wants (docs/tasks/G83-anonymous-blows.md, 2): the
+ * owner pressed `o` five times at one lock and read `d1 (locked)` five times.
+ * The line names the ways through it and which of them the rack holds, in
+ * the order the door's own list offers them.
+ */
+describe("what a shut bulkhead wants", () => {
+  function arm(game: RoomGame, kind: "cutter" | "cell" | "spike"): void {
+    stripTools(game);
+    const rig = rigOf(game.player)!;
+    rig.slots[rig.slots.findIndex((s) => s === null || s.kind === "plating")] = { kind, integrity: 3 };
+    applyDerived(game.player);
+  }
+
+  it("names the four ways through a lock and marks the ones aboard", () => {
+    const game = gameOn(SHUT("r2 -[d3:k1]- r4"), "r2");
+    arm(game, "cutter");
+    expect(stopOf(makeExplorer().step(game))).toBe(
+      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard; aboard: CUTTER.",
+    );
+    game.player.data = { ...game.player.data, keys: 1 };
+    expect(stopOf(makeExplorer().step(game))).toBe(
+      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard; aboard: CUTTER, keycard.",
+    );
+  });
+
+  it("names the one way through a seam", () => {
+    const game = gameOn(SHUT("r2 -#d3#- r4"), "r2");
+    arm(game, "cutter");
+    expect(stopOf(makeExplorer().step(game))).toBe("The way on is shut: d3 (sealed) — CUTTER; aboard: CUTTER.");
+  });
+
+  it("says outright when nothing aboard opens it", () => {
+    // Nothing to open it with is a walk `o` never sends (`canBreach`), so it
+    // is the travel walk that gets there: a compartment named behind a lock.
+    const game = gameOn(
+      `
+        TUG -a1- r1
+        r1 -d1- r2
+        r2 -[d2:k1]- r3
+        r1: docking explored
+        r2: cargo explored
+        r3: hab explored
+      `,
+      "r2",
+    );
+    stripTools(game);
+    expect(stopOf(makeTraveller(game.ship.room("r3").id).step(game))).toBe(
+      "The way on is shut: d2 (locked) — CELL, SPIKE, CUTTER, keycard; nothing aboard opens it.",
+    );
+    expect(game.inputs).toEqual([]);
+  });
+});
+
 describe("auto-explore", () => {
   it("walks towards the compartment it has not seen", () => {
     const game = gameOn(HULL, "r2");
@@ -265,7 +319,7 @@ describe("auto-explore", () => {
       // turns on the player's behalf.
       expect(findSlot(rigOf(game.player)!, "cutter")).not.toBeNull();
       const result = makeExplorer().step(game);
-      expect(stopOf(result)).toBe(`The way on is shut: d3 (${state}).`);
+      expect(stopOf(result)).toContain(`The way on is shut: d3 (${state}) — `);
       expect(isStop(result) ? result.door : undefined).toBe(game.ship.door("d3").id);
       expect(game.inputs).toEqual([]);
     }
@@ -279,7 +333,7 @@ describe("auto-explore", () => {
     const step = cmdOf(explorer.step(game));
     expect(step).toEqual(door(game, "d1"));
     expect(game.playerCommand(step).ok).toBe(true);
-    expect(stopOf(explorer.step(game))).toBe("The way on is shut: d3 (locked).");
+    expect(stopOf(explorer.step(game))).toContain("The way on is shut: d3 (locked) — ");
   });
 
   it("takes the nearer of two bulkheads it could open", () => {
@@ -296,26 +350,48 @@ describe("auto-explore", () => {
       `,
       "r1",
     );
-    expect(stopOf(makeExplorer().step(game))).toBe("The way on is shut: d2 (locked).");
+    expect(stopOf(makeExplorer().step(game))).toContain("The way on is shut: d2 (locked) — ");
   });
 
   it("says the sortie is over rather than walking at a lock it cannot open", () => {
+    // And says what to come back with: the dock sells a CUTTER, and a CUTTER is
+    // the one module that opens both kinds of shut bulkhead there are.
     const game = gameOn(SHUT("r2 -[d3:k1]- r4"), "r2");
     stripTools(game);
-    expect(stopOf(makeExplorer().step(game))).toBe("DERELICT: no way further in, 1 room left unexplored.");
+    expect(stopOf(makeExplorer().step(game))).toBe("DERELICT: no way further in, 1 room left — you need a CUTTER.");
     expect(game.inputs).toEqual([]);
+  });
+
+  it("names no tool when what is missing is a door rather than a module", () => {
+    // A hull genuinely cut in two: no cutter answers that, so the line does not
+    // send the player to the shelf for one.
+    const game = gameOn(
+      `
+        TUG -a1- r1
+        r1 -d1- r2
+        r3 -d2- r4
+        r1: docking explored
+        r2: cargo explored
+        r3: hab explored
+        r4: storage
+      `,
+      "r2",
+    );
+    expect(stopOf(makeExplorer().step(game))).toBe("DERELICT: no way further in, 1 room left unexplored.");
   });
 
   it("counts a keycard as a way through a lock and nothing at all through a seam", () => {
     const locked = gameOn(SHUT("r2 -[d3:k1]- r4"), "r2");
     stripTools(locked);
     locked.player.data = { ...locked.player.data, keys: 1 };
-    expect(stopOf(makeExplorer().step(locked))).toBe("The way on is shut: d3 (locked).");
+    expect(stopOf(makeExplorer().step(locked))).toBe(
+      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard; aboard: keycard.",
+    );
 
     const sealed = gameOn(SHUT("r2 -#d3#- r4"), "r2");
     stripTools(sealed);
     sealed.player.data = { ...sealed.player.data, keys: 1 };
-    expect(stopOf(makeExplorer().step(sealed))).toBe("DERELICT: no way further in, 1 room left unexplored.");
+    expect(stopOf(makeExplorer().step(sealed))).toBe("DERELICT: no way further in, 1 room left — you need a CUTTER.");
   });
 
   it("reads a bulkhead the same way its own list of ways does", () => {
@@ -517,6 +593,16 @@ describe("engage", () => {
     expect(cmdOf(engage(game, "melee"))).toEqual({ kind: "act", verb: "shoot" });
   });
 
+  it("closes in with a blade and no cutter: a relic that cuts is a swing, not a ram", () => {
+    const game = gameOn(RANGE, "r1");
+    withEmitter(game);
+    stripMelee(game);
+    install(rigOf(game.player)!, "blade", 14);
+    applyDerived(game.player);
+    put(game, "r2", "scout");
+    expect(cmdOf(engage(game, "melee"))).toEqual(door(game, "d1"));
+  });
+
   it("walks towards a machine a sensor pulse left on the schematic", () => {
     const game = gameOn(
       `
@@ -668,7 +754,7 @@ describe("travel", () => {
     // question over.
     const game = gameOn(BEHIND, "r2");
     const result = makeTraveller(game.ship.room("r3").id).step(game);
-    expect(stopOf(result)).toBe("The way on is shut: d2 (locked).");
+    expect(stopOf(result)).toContain("The way on is shut: d2 (locked) — ");
     expect(isStop(result) ? result.door : undefined).toBe(game.ship.door("d2").id);
     expect(game.inputs).toEqual([]);
   });
@@ -678,7 +764,7 @@ describe("travel", () => {
     const walk = makeTraveller(game.ship.room("r3").id);
     expect(cmdOf(walk.step(game))).toEqual(door(game, "d1"));
     expect(game.playerCommand(door(game, "d1")).ok).toBe(true);
-    expect(stopOf(walk.step(game))).toBe("The way on is shut: d2 (locked).");
+    expect(stopOf(walk.step(game))).toContain("The way on is shut: d2 (locked) — ");
   });
 
   it("hands the ship back the moment a machine is in sight, as `o` does", () => {
@@ -716,6 +802,38 @@ describe("travel", () => {
     expect(game.inputs).toEqual([]);
     // Standing on the goal is a route of no doors, not a missing one.
     expect(travelRoute(game.ship, game.ship.room("r2").id, game.ship.room("r2").id)).toEqual([]);
+  });
+
+  it("takes the route that costs nothing before the plain one, and the plain one before a torch", () => {
+    // Two doors through d2, or three the long way round: `safe` with d2 struck
+    // off it takes the long way, and without `safe` the short way wins as it
+    // always did. With the long way locked as well, only the torch tier is left.
+    const tiers = `
+      TUG -a1- r1
+      r1 -d1- r2
+      r2 -d2- r3
+      r1 -d3- r4
+      r4 -d4- r5
+      r5 -d5- r3
+      r1: docking explored
+      r2: cargo explored
+      r3: hab explored
+      r4: storage explored
+      r5: mess explored
+    `;
+    const game = gameOn(tiers, "r1");
+    const ship = game.ship;
+    const from = ship.room("r1").id;
+    const goal = ship.room("r3").id;
+    const labels = (route: ReturnType<typeof travelRoute>) => route?.map((d) => d.label);
+    const notD2 = (d: { label: string }) => d.label !== "d2" && passableForPlayer(d as never);
+    expect(labels(travelRoute(ship, from, goal, notD2))).toEqual(["d3", "d4", "d5"]);
+    expect(labels(travelRoute(ship, from, goal, passableForPlayer))).toEqual(["d1", "d2"]);
+    expect(labels(travelRoute(ship, from, goal))).toEqual(["d1", "d2"]);
+
+    ship.door("d2").state = "locked";
+    ship.door("d4").state = "sealed";
+    expect(labels(travelRoute(ship, from, goal, notD2))).toEqual(["d1", "d2"]);
   });
 
   it("replays bit for bit: a walk is ordinary turns and nothing else", () => {

@@ -89,7 +89,14 @@ function itinerary(...hulls: DerelictSpec[]): System<RoomGame> {
   return {
     name: "test-itinerary",
     onRunStart(game) {
-      voyageOf(game).derelicts = [...hulls];
+      const voyage = voyageOf(game);
+      voyage.derelicts = [...hulls];
+      // And the record of the hull already under the tug, which was stamped
+      // with whatever the seed drew. Since G73 that is one of five classes
+      // rather than always the freighter, so a list replaced without the record
+      // is a voyage flying a freighter that sells for a tender's price.
+      const first = voyage.state[0];
+      if (first) first.spec = hulls[0]!;
     },
   };
 }

@@ -1,0 +1,1254 @@
+{
+  "generator": "games/salvor/tools/tiles/tiles.mjs",
+  "module": "games/salvor/src/tiles/sprites.ts",
+  "grid": 12,
+  "columns": 8,
+  "count": 72,
+  "sizes": {
+    "12": {
+      "image": "salvor-12.png",
+      "tile": 12,
+      "width": 96,
+      "height": 108,
+      "rows": 9,
+      "count": 72,
+      "holds": "every tile"
+    },
+    "16": {
+      "image": "salvor-16.png",
+      "tile": 16,
+      "width": 128,
+      "height": 48,
+      "rows": 3,
+      "count": 22,
+      "holds": "compartment kinds, drawn again"
+    }
+  },
+  "tiles": {
+    "machine.maintenance-bot": {
+      "group": "machine",
+      "label": "maintenance bot",
+      "glyph": "m",
+      "colour": "#9aa5b1",
+      "role": "brute",
+      "symbol": "tile-machine-maintenance-bot",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.feral-drone": {
+      "group": "machine",
+      "label": "feral drone",
+      "glyph": "d",
+      "colour": "#4fd0c0",
+      "role": "pack",
+      "symbol": "tile-machine-feral-drone",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 0,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.scout": {
+      "group": "machine",
+      "label": "scout",
+      "glyph": "c",
+      "colour": "#7fb2ff",
+      "role": "stalker",
+      "symbol": "tile-machine-scout",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 0,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.security-unit": {
+      "group": "machine",
+      "label": "security unit",
+      "glyph": "S",
+      "colour": "#3f6fbf",
+      "role": "brute",
+      "symbol": "tile-machine-security-unit",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 0,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.welder-bot": {
+      "group": "machine",
+      "label": "welder bot",
+      "glyph": "w",
+      "colour": "#6fbf5f",
+      "role": "coward",
+      "symbol": "tile-machine-welder-bot",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 0,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.hauler": {
+      "group": "machine",
+      "label": "hauler",
+      "glyph": "H",
+      "colour": "#46587e",
+      "role": "brute",
+      "symbol": "tile-machine-hauler",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 0,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.scrapper": {
+      "group": "machine",
+      "label": "scrapper",
+      "glyph": "x",
+      "colour": "#a98fe0",
+      "role": "pack",
+      "symbol": "tile-machine-scrapper",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 0,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.arc-sentinel": {
+      "group": "machine",
+      "label": "arc sentinel",
+      "glyph": "A",
+      "colour": "#d7ecff",
+      "role": "brute",
+      "symbol": "tile-machine-arc-sentinel",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 0,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.sentry-turret": {
+      "group": "machine",
+      "label": "sentry turret",
+      "glyph": "t",
+      "colour": "#2f97b8",
+      "role": "turret",
+      "symbol": "tile-machine-sentry-turret",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 12,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.jammer": {
+      "group": "machine",
+      "label": "jammer",
+      "glyph": "j",
+      "colour": "#c46fbf",
+      "role": "coward",
+      "symbol": "tile-machine-jammer",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 12,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.crawler": {
+      "group": "machine",
+      "label": "crawler",
+      "glyph": "z",
+      "colour": "#8fae4f",
+      "role": "pack",
+      "symbol": "tile-machine-crawler",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 12,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.bloom": {
+      "group": "machine",
+      "label": "bloom",
+      "glyph": "Y",
+      "colour": "#c3d96f",
+      "role": "static",
+      "symbol": "tile-machine-bloom",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 12,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "machine.enforcer": {
+      "group": "machine",
+      "label": "enforcer",
+      "glyph": "E",
+      "colour": "#d9705a",
+      "role": "hunter",
+      "symbol": "tile-machine-enforcer",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 12,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "actor.drone": {
+      "group": "actor",
+      "label": "drone",
+      "glyph": "@",
+      "colour": "#f0e6d2",
+      "symbol": "tile-actor-drone",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 12,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "actor.ghost": {
+      "group": "actor",
+      "label": "ghost",
+      "glyph": "G",
+      "colour": "#b7ab97",
+      "symbol": "tile-actor-ghost",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 12,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "actor.rival-drone": {
+      "group": "actor",
+      "label": "rival drone",
+      "glyph": "r",
+      "colour": "#d9a441",
+      "symbol": "tile-actor-rival-drone",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 12,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.cutter": {
+      "group": "module",
+      "label": "CUTTER",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-cutter",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 24,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.thrusters": {
+      "group": "module",
+      "label": "THRUSTERS",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-thrusters",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 24,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.scanner": {
+      "group": "module",
+      "label": "SCANNER",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-scanner",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 24,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.plating": {
+      "group": "module",
+      "label": "PLATING",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-plating",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 24,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.cell": {
+      "group": "module",
+      "label": "CELL",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-cell",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 24,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.emp": {
+      "group": "module",
+      "label": "EMP",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-emp",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 24,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.welder": {
+      "group": "module",
+      "label": "WELDER",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-welder",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 24,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.laser": {
+      "group": "module",
+      "label": "LASER",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-laser",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 24,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.spike": {
+      "group": "module",
+      "label": "SPIKE",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-spike",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 36,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.emitter": {
+      "group": "module",
+      "label": "EMITTER",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-emitter",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 36,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.baffle": {
+      "group": "module",
+      "label": "BAFFLE",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-module-baffle",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 36,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.blade": {
+      "group": "relic",
+      "label": "Q-BLADE",
+      "glyph": null,
+      "colour": "#dfe9f0",
+      "symbol": "tile-module-blade",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 36,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.shocker": {
+      "group": "relic",
+      "label": "SHOCKER",
+      "glyph": null,
+      "colour": "#dfe9f0",
+      "symbol": "tile-module-shocker",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 36,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "module.lattice": {
+      "group": "relic",
+      "label": "LATTICE",
+      "glyph": null,
+      "colour": "#dfe9f0",
+      "symbol": "tile-module-lattice",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 36,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "thing.crate": {
+      "group": "thing",
+      "label": "ящик",
+      "glyph": "X",
+      "colour": "#b9c4cc",
+      "symbol": "tile-thing-crate",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 36,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "thing.scrap": {
+      "group": "thing",
+      "label": "лом",
+      "glyph": "%",
+      "colour": "#8f9aa2",
+      "symbol": "tile-thing-scrap",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 36,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "thing.body": {
+      "group": "thing",
+      "label": "тело",
+      "glyph": "†",
+      "colour": "#8f9aa2",
+      "symbol": "tile-thing-body",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 48,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "thing.keycard": {
+      "group": "thing",
+      "label": "ключ-карта",
+      "glyph": null,
+      "colour": "#b9c4cc",
+      "symbol": "tile-thing-keycard",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 48,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "thing.vented": {
+      "group": "thing",
+      "label": "вентилированный отсек",
+      "glyph": "~",
+      "colour": "#d96a6a",
+      "symbol": "tile-thing-vented",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 48,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "thing.system": {
+      "group": "thing",
+      "label": "система корабля",
+      "glyph": "+",
+      "colour": "#d9b56a",
+      "symbol": "tile-thing-system",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 48,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "thing.system-online": {
+      "group": "thing",
+      "label": "система поднята",
+      "glyph": "✓",
+      "colour": "#7fc97f",
+      "symbol": "tile-thing-system-online",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 48,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "thing.cover": {
+      "group": "thing",
+      "label": "укрытие",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-thing-cover",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 48,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "door.open": {
+      "group": "door",
+      "label": "open",
+      "glyph": null,
+      "colour": "#3f4a52",
+      "symbol": "tile-door-open",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 48,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "door.closed": {
+      "group": "door",
+      "label": "closed",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-door-closed",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 48,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "door.locked": {
+      "group": "door",
+      "label": "locked",
+      "glyph": null,
+      "colour": "#e0a458",
+      "symbol": "tile-door-locked",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 60,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "door.sealed": {
+      "group": "door",
+      "label": "sealed",
+      "glyph": null,
+      "colour": "#5a4e42",
+      "symbol": "tile-door-sealed",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 60,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "door.broken": {
+      "group": "door",
+      "label": "broken",
+      "glyph": null,
+      "colour": "#3f4a52",
+      "symbol": "tile-door-broken",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 60,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "door.airlock": {
+      "group": "door",
+      "label": "airlock",
+      "glyph": null,
+      "colour": "#a07a44",
+      "symbol": "tile-door-airlock",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 60,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "zone.docking": {
+      "group": "zone",
+      "label": "DOCKING BAY",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-docking",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 60,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 0,
+          "y": 0,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.cargo": {
+      "group": "zone",
+      "label": "CARGO BAY",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-cargo",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 60,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 16,
+          "y": 0,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.corridor": {
+      "group": "zone",
+      "label": "CORRIDOR RING",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-corridor",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 60,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 32,
+          "y": 0,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.storage": {
+      "group": "zone",
+      "label": "STORAGE",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-storage",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 60,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 48,
+          "y": 0,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.maintenance": {
+      "group": "zone",
+      "label": "MAINTENANCE",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-maintenance",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 72,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 64,
+          "y": 0,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.hab": {
+      "group": "zone",
+      "label": "HAB BLOCK",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-hab",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 72,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 80,
+          "y": 0,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.mess": {
+      "group": "zone",
+      "label": "MESS",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-mess",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 72,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 96,
+          "y": 0,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.hydroponics": {
+      "group": "zone",
+      "label": "HYDROPONICS",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-hydroponics",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 72,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 112,
+          "y": 0,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.med": {
+      "group": "zone",
+      "label": "MED BAY",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-med",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 72,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 0,
+          "y": 16,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.lab": {
+      "group": "zone",
+      "label": "LAB",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-lab",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 72,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 16,
+          "y": 16,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.quarantine": {
+      "group": "zone",
+      "label": "QUARANTINE",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-quarantine",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 72,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 32,
+          "y": 16,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.engineering": {
+      "group": "zone",
+      "label": "ENGINEERING",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-engineering",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 72,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 48,
+          "y": 16,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.workshop": {
+      "group": "zone",
+      "label": "WORKSHOP",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-workshop",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 84,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 64,
+          "y": 16,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.armory": {
+      "group": "zone",
+      "label": "ARMORY",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-armory",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 84,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 80,
+          "y": 16,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.reactor": {
+      "group": "zone",
+      "label": "REACTOR",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-reactor",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 84,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 96,
+          "y": 16,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.control": {
+      "group": "zone",
+      "label": "CONTROL",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-control",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 84,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 112,
+          "y": 16,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.coreaccess": {
+      "group": "zone",
+      "label": "CORE ACCESS",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-coreaccess",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 84,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 0,
+          "y": 32,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.lifesupport": {
+      "group": "zone",
+      "label": "LIFE SUPPORT",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-lifesupport",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 84,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 16,
+          "y": 32,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.cryo": {
+      "group": "zone",
+      "label": "CRYO",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-cryo",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 84,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 32,
+          "y": 32,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.sensors": {
+      "group": "zone",
+      "label": "SENSOR BAY",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-sensors",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 84,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 48,
+          "y": 32,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.brig": {
+      "group": "zone",
+      "label": "BRIG",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-brig",
+      "rects": {
+        "12": {
+          "x": 0,
+          "y": 96,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 64,
+          "y": 32,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "zone.escapepods": {
+      "group": "zone",
+      "label": "ESCAPE PODS",
+      "glyph": null,
+      "colour": "#6f8a9a",
+      "symbol": "tile-zone-escapepods",
+      "rects": {
+        "12": {
+          "x": 12,
+          "y": 96,
+          "w": 12,
+          "h": 12
+        },
+        "16": {
+          "x": 80,
+          "y": 32,
+          "w": 16,
+          "h": 16
+        }
+      }
+    },
+    "hazard.frost": {
+      "group": "hazard",
+      "label": "frost",
+      "glyph": "❄",
+      "colour": "#d96a6a",
+      "symbol": "tile-hazard-frost",
+      "rects": {
+        "12": {
+          "x": 24,
+          "y": 96,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "hazard.smoke": {
+      "group": "hazard",
+      "label": "smoke",
+      "glyph": "≈",
+      "colour": "#d96a6a",
+      "symbol": "tile-hazard-smoke",
+      "rects": {
+        "12": {
+          "x": 36,
+          "y": 96,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "hazard.mine": {
+      "group": "hazard",
+      "label": "mine",
+      "glyph": "^",
+      "colour": "#d96a6a",
+      "symbol": "tile-hazard-mine",
+      "rects": {
+        "12": {
+          "x": 48,
+          "y": 96,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "overlay.damaged": {
+      "group": "overlay",
+      "label": "повреждён",
+      "glyph": null,
+      "colour": "#d9b56a",
+      "symbol": "ov-damaged",
+      "rects": {
+        "12": {
+          "x": 60,
+          "y": 96,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "overlay.infected": {
+      "group": "overlay",
+      "label": "заражён",
+      "glyph": "!",
+      "colour": "#d96a6a",
+      "symbol": "ov-infected",
+      "rects": {
+        "12": {
+          "x": 72,
+          "y": 96,
+          "w": 12,
+          "h": 12
+        }
+      }
+    },
+    "overlay.exposed": {
+      "group": "overlay",
+      "label": "открытый слот",
+      "glyph": "◀",
+      "colour": "#e0a458",
+      "symbol": "ov-exposed",
+      "rects": {
+        "12": {
+          "x": 84,
+          "y": 96,
+          "w": 12,
+          "h": 12
+        }
+      }
+    }
+  }
+}

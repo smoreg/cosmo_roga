@@ -15,6 +15,7 @@ import {
   type System,
 } from "@jamrog/engine";
 import { FREIGHTER, derelictSpec } from "../content/derelicts.js";
+import { DEFUSE_NOISE, DEFUSE_TURNS } from "../content/hazards.js";
 import { hint } from "../content/hints.js";
 import { moduleBurnLine, moduleName, type ModuleId } from "../content/modules.js";
 import { verbWord } from "../content/words.js";
@@ -24,12 +25,14 @@ import {
   SPIKE_TURNS,
   applyDerived,
   findSlot,
+  findSlotAs,
   registerHackTarget,
   rigOf,
   routeDamage,
   type HackTarget,
   type Rig,
 } from "../twist/rig.js";
+import { doorHazard, hazardRecords, removeHazard } from "./hazardstate.js";
 import { roomList, type Body } from "./populate.js";
 
 /**
@@ -66,7 +69,7 @@ const CELL_COST = 1;
 const BODY_CREDITS = 3;
 
 /** The verbs this system owns. Everything else falls through to the next one. */
-type DoorVerb = "key" | "power" | "spike" | "cut" | "weld" | "close";
+type DoorVerb = "key" | "power" | "spike" | "cut" | "weld" | "close" | "defuse";
 
 /**
  * The four ways through a lock, in the order the action list offers them, which
@@ -95,6 +98,7 @@ const METHOD_MODULE: Readonly<Partial<Record<DoorVerb, ModuleId>>> = {
   spike: "spike",
   cut: "cutter",
   weld: "welder",
+  defuse: "welder",
 };
 
 const FAIL = (reason: string): Outcome => ({ ok: false, cost: 0, reason });
@@ -110,7 +114,7 @@ const DONE = (): Outcome => ({ ok: true, cost: TURN_COST });
  * back starts the cut again.
  */
 interface Work {
-  verb: "cut" | "weld";
+  verb: "cut" | "weld" | "defuse";
   door: DoorId;
   left: number;
   /** Index in `game.inputs` of the command that did this turn of the job. */
@@ -122,7 +126,7 @@ function workOf(room: Room): Work | undefined {
   const raw = room.data.work;
   if (typeof raw !== "object" || raw === null) return undefined;
   const w = raw as Partial<Work>;
-  if (w.verb !== "cut" && w.verb !== "weld") return undefined;
+  if (w.verb !== "cut" && w.verb !== "weld" && w.verb !== "defuse") return undefined;
   if (typeof w.door !== "number" || typeof w.left !== "number" || typeof w.turn !== "number") {
     return undefined;
   }
@@ -179,9 +183,13 @@ function addLoot(player: Entity, amount: number): void {
   data.loot = (typeof data.loot === "number" ? data.loot : 0) + amount;
 }
 
-/** Is this module in the rack, whatever is left of it? */
+/**
+ * Is this module in the rack, whatever is left of it — or a relic that answers
+ * for it (`twist/rig.ts`, `findSlotAs`)? A blade cuts a bulkhead the way a
+ * cutter does, and the door does not ask which.
+ */
 function carries(rig: Rig | undefined, kind: ModuleId): boolean {
-  return rig !== undefined && findSlot(rig, kind) !== null;
+  return rig !== undefined && findSlotAs(rig, kind) !== null;
 }
 
 // -------------------------------------------------------------------- the ship
@@ -418,6 +426,31 @@ function weldShut(game: RoomGame, room: Room, door: Door): Outcome {
   return DONE();
 }
 
+/**
+ * The WELDER on a mine: two turns in a row, like a weld, and the door is a
+ * door again (`content/hazards.ts`, `mine`). The charge is on the door and not
+ * on a side of it, so it is lifted from whichever compartment the drone is in
+ * — and whether the door is open, shut or locked, since the lock is a separate
+ * question with its own four answers.
+ */
+function defuseMine(game: RoomGame, room: Room, door: Door): Outcome {
+  const rec = doorHazard(game.ship, hazardRecords(game), door.id);
+  if (rec?.id !== "mine") return FAIL(t("why.door.noTrap", { door: door.label }));
+  const rig = rigOf(game.player);
+  if (!carries(rig, "welder")) return FAIL(missing("defuse"));
+
+  const left = advance(game, room, "defuse", door, DEFUSE_TURNS);
+  game.makeNoise(room.id, DEFUSE_NOISE);
+  if (left > 0) {
+    game.log.add(t("log.door.defuse.on", { door: door.label }), game.schedule.time, "plain", "log.door.defuse.on");
+    return DONE();
+  }
+
+  removeHazard(game, rec);
+  game.log.add(t("log.door.defuse.done", { door: door.label }), game.schedule.time, "good", "log.door.defuse.done");
+  return DONE();
+}
+
 /** Closing one: a turn, and the ship hears three points less of everything. */
 function closeDoor(game: RoomGame, door: Door): Outcome {
   if (door.state !== "open") return FAIL(t("why.door.notOpen", { door: door.label }));
@@ -511,20 +544,31 @@ function doorOffers(game: RoomGame, rig: Rig | undefined, door: Door): Array<Act
     spike: carries(rig, "spike"),
     cut: carries(rig, "cutter"),
     weld: carries(rig, "welder"),
+    defuse: carries(rig, "welder"),
     close: true,
   };
 
+  // The mine first, whatever else the door is: it is the thing that goes off
+  // on the way through, and the drone standing next to it has been told
+  // (`systems/hazards.ts`, the sign), so the line is never a leak.
+  const mine =
+    doorHazard(game.ship, hazardRecords(game), door.id)?.id === "mine"
+      ? [offer("defuse", door, has.defuse, missing("defuse"))]
+      : [];
+
   switch (door.state) {
     case "locked":
-      return LOCKED_METHODS.map((verb) => offer(verb, door, has[verb], missing(verb)));
+      return [...mine, ...LOCKED_METHODS.map((verb) => offer(verb, door, has[verb], missing(verb)))];
     case "sealed":
       return has.cut ? [offer("cut", door, true)] : [];
     case "open":
       return has.weld
-        ? [offer("close", door, true), weldOffer(game, door)]
-        : [offer("close", door, true)];
+        ? [...mine, offer("close", door, true), weldOffer(game, door)]
+        : [...mine, offer("close", door, true)];
     case "closed":
-      return has.weld ? [weldOffer(game, door)] : [];
+      return has.weld ? [...mine, weldOffer(game, door)] : mine;
+    case "broken":
+      return mine;
     default:
       return [];
   }
@@ -563,6 +607,8 @@ export const DOORS: System<RoomGame> = {
         return cutOpen(game, room, door);
       case "weld":
         return weldShut(game, room, door);
+      case "defuse":
+        return defuseMine(game, room, door);
       case "close":
         return closeDoor(game, door);
     }
@@ -585,7 +631,11 @@ export const DOORS: System<RoomGame> = {
     if (!work || work.turn === game.inputs.length - 1) return;
     delete room.data.work;
     game.log.add(
-      work.verb === "cut" ? t("log.work.break.cut") : t("log.work.break.weld"),
+      work.verb === "cut"
+        ? t("log.work.break.cut")
+        : work.verb === "defuse"
+          ? t("log.work.break.defuse")
+          : t("log.work.break.weld"),
       game.schedule.time,
       "warn",
       "log.work.break",
@@ -622,6 +672,6 @@ export const DOORS: System<RoomGame> = {
 function isDoorVerb(verb: string): verb is DoorVerb {
   return (
     verb === "key" || verb === "power" || verb === "spike" ||
-    verb === "cut" || verb === "weld" || verb === "close"
+    verb === "cut" || verb === "weld" || verb === "close" || verb === "defuse"
   );
 }

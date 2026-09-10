@@ -1,8 +1,9 @@
 import type { RoomCommand, RoomId } from "@jamrog/engine";
 import type { Key } from "../content/i18n/keys.js";
+import type { CodexEntry } from "../content/codex.js";
 import { moduleName, type ModuleId } from "../content/modules.js";
 import { t, tId } from "../i18n.js";
-import { findSlot, type Rig } from "../twist/rig.js";
+import { findSlotAs, type Rig } from "../twist/rig.js";
 import { ACTION_KEYS } from "./actions.js";
 import { SCREEN_HEIGHT } from "./theme.js";
 
@@ -23,12 +24,46 @@ import { SCREEN_HEIGHT } from "./theme.js";
  * can reach with the cursor that they cannot reach without it.
  */
 export type UiIntent =
-  /** Line `index` of the action list, counting from zero. */
+  /** The line wearing digit `index`, counting from zero: what a key knows. */
   | { kind: "pick"; index: number }
+  /**
+   * Line `index` of the list as it is drawn, counting from zero: what a mouse
+   * knows.
+   *
+   * A separate intent from `pick`, and the difference is the whole of
+   * docs/tug-menu-audit.md, defect 6. A digit names a *key* and the list looks
+   * up whichever row is wearing it, because the ten digits are a window that
+   * moves; a click names a *row*, and there is nothing to look up. The two
+   * agree on the compartment's own list, which is why the mouse borrowed the
+   * digit for as long as it did — and part company one level down, where `0` is
+   * the way back however few entries the level has. A click on `back` in a list
+   * of five sent index 5, the reducer read it as the digit `5`, no row wore it,
+   * and the page answered "nothing on that line" and stayed put.
+   *
+   * It also reaches the eleventh row and everything under it. The page draws
+   * those — it scrolls, so it has no reason to hide its own tail — and until
+   * now they were the one part of the screen nothing at all could press.
+   */
+  | { kind: "line"; index: number }
   /** Move the highlight down the list by `delta`, wrapping at both ends. */
   | { kind: "cursor"; delta: number }
+  /**
+   * Turn the page of the card in front of the board by `delta`: the sideways
+   * arrows, and the only thing they do.
+   *
+   * A separate intent from `cursor` on purpose. The list behind an overlay is
+   * not what the player is looking at, and `←`/`→` were dead keys precisely
+   * because a second way to move a highlight is a second way to be surprised by
+   * where it went (`docs/tasks/G40-tug-clarity.md`). With no card open this
+   * still does nothing at all.
+   */
+  | { kind: "page"; delta: number }
   /** Show where the drone can walk, or put the list back. Never a turn. */
   | { kind: "moves" }
+  /** Show the bulkheads of this compartment, or put the list back. Never a turn. */
+  | { kind: "doors" }
+  /** Weld shut the bulkhead the drone came through: the trap, in one key. */
+  | { kind: "seal" }
   /** Do the line the highlight is on. */
   | { kind: "confirm" }
   | { kind: "command"; cmd: RoomCommand }
@@ -37,6 +72,18 @@ export type UiIntent =
   /** The letter names a module this drone no longer carries: a line, no turn. */
   | { kind: "missing"; module: ModuleId }
   | { kind: "help" }
+  /**
+   * `i`: what is going on here — the card for whatever the game has just shown
+   * and not explained (`content/codex.ts`). Never a turn, and never a step in
+   * anything: the owner asked for the standard teaching mode, «хочет — читает,
+   * не хочет — не читает».
+   */
+  | { kind: "codex" }
+  /**
+   * The message log as a card. `delta` is `1` for further back and `-1` for
+   * nearer, which is what `PageUp` and `PageDown` mean everywhere else.
+   */
+  | { kind: "history"; delta: number }
   /** `L`, on any screen: round the ring of languages. Never a turn. */
   | { kind: "language" }
   | { kind: "restart" }
@@ -82,6 +129,20 @@ const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta"]);
  */
 export function isChord(e: KeyLike): boolean {
   return MODIFIER_KEYS.has(e.key) || e.ctrlKey === true || e.metaKey === true;
+}
+
+/**
+ * `` ` ``: the owner's debug overlay, on or off (`ui/debug.ts`, G68).
+ *
+ * Read the same way `isViewKey` (`ui/view.ts`) is — before `toIntent`, so the
+ * key never becomes a `UiIntent` and never reaches `appReducer`. It has to be
+ * decided this early for the same reason `V` is: it is not a turn, has no
+ * effect the sim needs to know about, and `appReducer`'s switch over
+ * `UiIntent["kind"]` is exhaustive with no default, so a member added there
+ * for one DOM-only toggle would demand a case in a file this task does not own.
+ */
+export function isDebugKey(e: KeyLike): boolean {
+  return e.key === "`";
 }
 
 /** Brace: wait a turn with the plating towards the room. */
@@ -155,6 +216,18 @@ export function toIntent(e: KeyLike, rig?: Rig): UiIntent {
   // there are none on a graph — it names a destination, and one press opens the
   // list while the next, or `Esc`, or `0`, puts the compartment back.
   if (e.key === "m") return { kind: "moves" };
+  // `d` for the doors, and `D` for the one thing worth its own key among them
+  // (docs/tasks/G64-door-hotkeys.md). Both letters were free, and neither is on
+  // the `hjkl`/`yubn` rose this file keeps dead.
+  //
+  // A compartment has up to four bulkheads and the letters aim at one of them —
+  // whichever the rules offer first, which with two doors in the room is a
+  // guess (`ui/appstate.ts`, `aimed`). `d` names them instead: one row each,
+  // what state it is in, what can be done to it. `D` is the shortest way to say
+  // the move the list is for — shut the way you came, and whatever was
+  // following you is out of the run unless it can cut.
+  if (e.key === "d") return { kind: "doors" };
+  if (e.key === "D") return { kind: "seal" };
   // `<` is "get out", and where the drone is standing decides what that costs:
   // at the airlock it casts off, anywhere else it walks there and stops at the
   // first thing worth a decision (docs/tasks/G48-travel-to-a-room.md). One key,
@@ -175,7 +248,8 @@ export function toIntent(e: KeyLike, rig?: Rig): UiIntent {
 
   const module = MODULE_KEYS[e.key];
   if (module !== undefined) {
-    const slot = rig ? findSlot(rig, module) : null;
+    // Or a relic that answers for it: `c` aims the blade the way it aims a cutter.
+    const slot = rig ? findSlotAs(rig, module) : null;
     return slot === null ? { kind: "missing", module } : { kind: "module", module, slot };
   }
 
@@ -183,6 +257,10 @@ export function toIntent(e: KeyLike, rig?: Rig): UiIntent {
   // does whatever the screen is pointing at rather than a verb of its own.
   if (e.key === "ArrowUp") return { kind: "cursor", delta: -1 };
   if (e.key === "ArrowDown") return { kind: "cursor", delta: 1 };
+  // The sideways pair, which the grid left dead and the `i` card claims: they
+  // turn its page and touch nothing else on any screen (G72).
+  if (e.key === "ArrowLeft") return { kind: "page", delta: -1 };
+  if (e.key === "ArrowRight") return { kind: "page", delta: 1 };
   if (e.key === "Enter") return { kind: "confirm" };
 
   // `l` was a direction on a grid this game no longer has, so both cases of it
@@ -191,6 +269,17 @@ export function toIntent(e: KeyLike, rig?: Rig): UiIntent {
   if (e.key === "o") return { kind: "explore" };
   if (e.key === "Tab") return { kind: "fight", melee: e.shiftKey === true };
   if (e.key === "?") return { kind: "help" };
+  // `i` for information, and it was free: it is not on the `hjkl`/`yubn` rose
+  // this file keeps dead, and it is not a module letter (`MODULE_KEYS`). One
+  // press opens the card the badge in the corner is counting, the arrows page
+  // through the rest, and `esc` — or the same key again — puts it away.
+  if (e.key === "i") return { kind: "codex" };
+  // `PageUp` into the log's own past, `PageDown` back towards now. Both keys
+  // were dead, the log keeps two hundred lines and the screen shows seven of
+  // them, and the view that starts is the one with no scrollbar at all
+  // (docs/gui-guides.md, §5, "Lookback").
+  if (e.key === "PageUp") return { kind: "history", delta: 1 };
+  if (e.key === "PageDown") return { kind: "history", delta: -1 };
   if (e.key === "Escape") return { kind: "dismiss" };
   if (e.key === "r" && (e.ctrlKey === true || e.metaKey === true)) return { kind: "none" }; // browser reload
   if (e.key === "R") return { kind: "restart" };
@@ -242,6 +331,8 @@ const KEY_ROWS = [
   ["help.name.brace", "help.key.brace"],
   ["help.name.hide", "help.key.hide"],
   ["help.name.move", "help.key.move"],
+  ["help.name.doors", "help.key.doors"],
+  ["help.name.seal", "help.key.seal"],
   ["help.name.explore", "help.key.explore"],
   ["help.name.engage", "help.key.engage"],
   ["module.scanner", "help.key.scanner"],
@@ -252,6 +343,8 @@ const KEY_ROWS = [
   ["module.emitter", "help.key.emitter"],
   ["module.cutter", "help.key.cutter"],
   ["help.name.keycard", "help.key.keycard"],
+  ["help.name.codex", "help.key.codex"],
+  ["help.name.log", "help.key.log"],
   ["help.name.help", "help.key.help"],
 ] as const satisfies ReadonlyArray<readonly [Key, Key]>;
 
@@ -284,8 +377,29 @@ const CHARTER_KEYS = [
   "help.charter.head", "help.charter.1", "help.charter.2", "help.charter.3", "help.charter.4",
 ] as const satisfies readonly Key[];
 
+/**
+ * The five settings that live in the address bar and nowhere else.
+ *
+ * They all worked before this block existed and none of them was written down
+ * outside the source: a voter who wants the music off, or a bug report worth
+ * reproducing, had no way to find out that either was possible. Kyzrati's rule
+ * for the options that sit outside the menu is that the help card is where a
+ * player finds them (docs/gui-guides.md, "Что применить", C).
+ *
+ * Written as the query strings themselves rather than described, because that
+ * is what has to be typed, and a description of a URL is a URL the reader now
+ * has to guess.
+ */
+const URL_KEYS = [
+  "help.url.head", "help.url.seed", "help.url.view", "help.url.sound", "help.url.training", "help.url.debug",
+] as const satisfies readonly Key[];
+
 export function ruleHelp(): string[] {
   return RULE_KEYS.map((k) => t(k));
+}
+
+export function urlHelp(): string[] {
+  return URL_KEYS.map((k) => t(k));
 }
 
 export function listHelp(): string[] {
@@ -297,12 +411,35 @@ export function charterHelp(): string[] {
 }
 
 /**
- * The card's five blocks, in the order they are read: where you are and what to
- * do about it, the keys, the rule the twist is, what the numbered list is, and
- * what a charter is.
+ * The card's blocks, in the order they are read: where you are and what to do
+ * about it, the keys, the rule the twist is, what the numbered list is, what a
+ * charter is, the settings that live in the URL — and, last, everything this
+ * voyage has already shown you.
+ *
+ * The URL block is next to last on purpose. It is the only one that is not
+ * about the run in front of the reader, and a player pressing `?` in the middle
+ * of a fight must not meet it first.
+ *
+ * `seen` is the titles of the cards `i` has to offer, already in the language
+ * that is on (`ui/appstate.ts`, `codexSeen`). It is a block rather than a card
+ * of its own because it is the answer to the same question `?` was pressed to
+ * ask, one page further on: a player who read a card and wants it again has
+ * nowhere else to look, and the badge is gone by then by design.
+ *
+ * Absent on a run that has met nothing, which is most of the first sortie: an
+ * empty heading is a promise the card cannot keep.
  */
-function helpBlocks(onTug: boolean): string[][] {
-  return [onTug ? tugHelp() : shipHelp(), keyHelp(), ruleHelp(), listHelp(), charterHelp()];
+function helpBlocks(onTug: boolean, seen: readonly string[]): string[][] {
+  const blocks = [
+    onTug ? tugHelp() : shipHelp(),
+    keyHelp(),
+    ruleHelp(),
+    listHelp(),
+    charterHelp(),
+    urlHelp(),
+  ];
+  if (seen.length > 0) blocks.push([t("help.codex.head"), ...seen.map((title) => ` ${title}`)]);
+  return blocks;
 }
 
 /**
@@ -327,8 +464,8 @@ export const HELP_ROWS = SCREEN_HEIGHT - 8;
  * ideal rather than computed, because five blocks is nothing to search and the
  * arithmetic that would replace the loop is arithmetic somebody has to read.
  */
-export function helpPages(onTug: boolean): string[][] {
-  const blocks = helpBlocks(onTug);
+export function helpPages(onTug: boolean, seen: readonly string[] = []): string[][] {
+  const blocks = helpBlocks(onTug, seen);
   const total = blocks.reduce((n, b) => n + b.length, 0) + blocks.length - 1;
   const want = Math.max(1, Math.ceil(total / HELP_ROWS));
   for (let cap = Math.ceil(total / want); cap <= HELP_ROWS; cap++) {
@@ -367,6 +504,8 @@ export function helpHeadings(): string[] {
     t(RULE_KEYS[0]),
     t(LIST_KEYS[0]),
     t(CHARTER_KEYS[0]),
+    t(URL_KEYS[0]),
+    t("help.codex.head"),
   ];
 }
 
@@ -387,4 +526,85 @@ const TITLE_KEYS = [
 
 export function titleLines(): string[] {
   return TITLE_KEYS.map((k) => t(k));
+}
+
+// ------------------------------------------------ what is going on here (G72)
+
+/**
+ * Columns the `i` card wraps its prose to.
+ *
+ * Wide enough for a sentence to read as a sentence and narrow enough that the
+ * frame around it still lands inside the terminal's ninety-five columns with
+ * the padding `ui/render.ts` puts on every card. The lines are wrapped here
+ * rather than in either renderer, so the graphic view and the terminal view
+ * break them in the same places and `tests/codex.test.ts` can measure one and
+ * mean both.
+ */
+export const CODEX_WIDTH = 52;
+
+/**
+ * The mark the badge and the card share, and the one glyph on the screen that
+ * says which key this window belongs to. Not a word in any language, which is
+ * why it is written once here rather than three times in the tables.
+ */
+const CARD_MARK = "[i]";
+
+/** The name across the top of the card, with the key that opened it. */
+export function codexHeading(entry: CodexEntry): string {
+  return `${CARD_MARK} ${t(entry.title)}`;
+}
+
+/**
+ * The body of the card: what this is, the move that costs, what answers it,
+ * how to turn it if it can be turned, and one line of the world.
+ *
+ * `fitted` is the modules actually in the rack. It is the whole reason the
+ * `helps` line is worth reading rather than skipping: the same card tells a
+ * drone that carries a welder that it has the answer already, and one that does
+ * not what it is looking for.
+ */
+export function codexBody(entry: CodexEntry, fitted: ReadonlySet<ModuleId>): string[] {
+  const out = [...wrapped(t(entry.what))];
+  out.push("");
+  out.push(...wrapped(`${t("codex.label.wrong")} ${t(entry.wrong)}`));
+  out.push(...wrapped(`${t("codex.label.helps")} ${helpsLine(entry, fitted)}`));
+  if (entry.turn !== undefined) out.push(...wrapped(`${t("codex.label.turn")} ${t(entry.turn)}`));
+  out.push("");
+  out.push(...wrapped(t(entry.lore)));
+  return out;
+}
+
+/** The modules that answer this, the ones in the rack marked, then the prose. */
+function helpsLine(entry: CodexEntry, fitted: ReadonlySet<ModuleId>): string {
+  const modules = (entry.modules ?? []).map((id) =>
+    fitted.has(id) ? `${moduleName(id)} ${t("codex.fitted")}` : moduleName(id),
+  );
+  const prose = t(entry.helps);
+  return modules.length === 0 ? prose : `${modules.join(", ")}. ${prose}`;
+}
+
+/**
+ * The line under the card: which of them this is, and that the arrows turn the
+ * page. A single card says only how to close, for the reason `helpFooter` does
+ * — a key named as "next" with nothing next to go to is a key that lies.
+ */
+export function codexFooter(page: number, pages: number): string {
+  const at = { n: page + 1, of: pages };
+  return pages > 1 ? t("codex.footer.more", at) : t("codex.footer.last", at);
+}
+
+/** One line broken to `CODEX_WIDTH`, on spaces. A blank line stays a blank line. */
+function wrapped(text: string): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line.length === 0) line = word;
+    else if (line.length + 1 + word.length <= CODEX_WIDTH) line += ` ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  out.push(line);
+  return out;
 }

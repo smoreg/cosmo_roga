@@ -16,24 +16,32 @@ import { isZoneKind, ZONE_KINDS, ENTRY_KIND } from "../src/content/zones.js";
 import { ENFORCER, MONSTERS, machineByName } from "../src/content/monsters.js";
 import { FREIGHTER, buildDerelict, derelictShip, shipSpecOf, type DerelictSpec } from "../src/content/derelicts.js";
 import {
+  BARGE,
   CALLSIGNS,
   DERELICTS,
   CORSAIR,
   FATHERS_TUG,
+  FERRY,
   LABORATORY,
   MIDDLE_HULLS,
   MILITARY,
+  PROBE,
   QUARANTINE,
   SMUGGLER,
+  STARTER_HULLS,
+  TENDER,
   derelictSpec,
   derelictsForVoyage,
   flavourLine,
+  isStarterHull,
   rollFlavour,
   specOfShip,
 } from "../src/content/derelicts.js";
 
 /**
- * The seven classes of derelict as data (design-doc.md, "Типы дереликтов").
+ * The eleven classes of derelict as data (design-doc.md, "Типы дереликтов",
+ * and ~/reports/salvor-hazards.html, "Стартовые корабли" for the four hulls a
+ * voyage can open on beside the freighter).
  *
  * Two halves. The first is the table itself, written out again so that a
  * changed number is a failing test and not a quiet rebalance — the design
@@ -60,11 +68,22 @@ const NO_RUN: CardContext = { flags: new Set<string>(), shipIndex: 0 };
 /** Every machine that exists, the alert's hunter included. */
 const MACHINE_IDS = new Set([...MONSTERS.map((m) => m.id), ENFORCER.id]);
 
-/** Which derelict of a voyage each class is, for the cards that ask. */
-const INDEX_OF = new Map(DERELICTS.map((d, i) => [d.id, i]));
+/**
+ * Which derelict of a voyage each class is, for the cards that ask.
+ *
+ * A starting hull is the first, the father's tug is the last, and everything
+ * else is the middle — and it is the number the deck reads as `shipIndex`, so
+ * a class flown at the wrong one is a class tested with the wrong cards aboard:
+ * the docking bay and the cargo manifest are pinned to the first ship of a
+ * voyage and to nothing else (`content/cards.ts`).
+ */
+function indexOf(spec: DerelictSpec): number {
+  if (isStarterHull(spec)) return 0;
+  return spec.id === FATHERS_TUG.id ? 2 : 1;
+}
 
 function shipOf(spec: DerelictSpec, seed: number): Ship {
-  return derelictShip(spec, INDEX_OF.get(spec.id)!, new Rng(seed), NO_RUN);
+  return derelictShip(spec, indexOf(spec), new Rng(seed), NO_RUN);
 }
 
 /**
@@ -103,14 +122,23 @@ function reachWithKeys(ship: Ship): Set<RoomId> {
 // ------------------------------------------------------------------- the table
 
 describe("the catalogue of hulls", () => {
-  it("holds the seven classes of the design document, the freighter first", () => {
+  it("holds the eleven classes, the five a voyage opens on first", () => {
     expect(DERELICTS.map((d) => d.id)).toEqual([
-      "freighter", "laboratory", "military", "smuggler", "corsair", "quarantine", "fathers-tug",
+      "freighter", "barge", "ferry", "probe", "tender",
+      "laboratory", "military", "smuggler", "corsair", "quarantine", "fathers-tug",
     ]);
     expect(DERELICTS[0]).toBe(FREIGHTER);
+    expect(STARTER_HULLS.map((d) => d.id)).toEqual([
+      "freighter", "barge", "ferry", "probe", "tender",
+    ]);
     expect(MIDDLE_HULLS.map((d) => d.id)).toEqual([
       "laboratory", "military", "smuggler", "corsair", "quarantine",
     ]);
+    // The two pools never overlap: a hull a voyage opens on is not a hull it
+    // draws its middle from, or the same class would be flown twice in a run.
+    for (const spec of STARTER_HULLS) expect(MIDDLE_HULLS, spec.id).not.toContain(spec);
+    expect(isStarterHull(BARGE)).toBe(true);
+    expect(isStarterHull(CORSAIR)).toBe(false);
     expect(derelictSpec("corsair")).toBe(CORSAIR);
     expect(derelictSpec("cruise liner")).toBeUndefined();
   });
@@ -119,6 +147,14 @@ describe("the catalogue of hulls", () => {
     const table: Array<[DerelictSpec, [number, number], number, number]> = [
       // spec              rooms      alert  sale
       [FREIGHTER, [12, 14], 0, 200],
+      // The four hulls a voyage can open on instead. None of them starts a
+      // sortie with the alert already up: a starting hull is where the rules
+      // are learned, and a gauge at one before the drone has done anything is
+      // the ship answering a move the player has not made yet.
+      [BARGE, [9, 11], 0, 180],
+      [FERRY, [8, 10], 0, 200],
+      [PROBE, [7, 8], 0, 150],
+      [TENDER, [9, 11], 0, 220],
       [LABORATORY, [14, 17], 0, 250],
       [MILITARY, [16, 19], 1, 300],
       [SMUGGLER, [14, 17], 0, 270],
@@ -141,6 +177,14 @@ describe("the catalogue of hulls", () => {
       // a competitor (G27) and the other by a death (G18). A band is only what
       // the hull itself is holding.
       freighter: ["maintenance-bot", "feral-drone", "scout"],
+      // Every starting hull names the scout, and it is not decoration: the
+      // docking bay card stands one in the compartment the drone lands in on
+      // the first ship of any voyage (`content/cards.ts`), and a class whose
+      // band left it out would field a machine that is not its own.
+      barge: ["maintenance-bot", "scout"],
+      ferry: ["maintenance-bot", "scout"],
+      probe: ["scout", "feral-drone"],
+      tender: ["welder-bot", "scout"],
       laboratory: ["scout", "scrapper", "welder-bot", "jammer"],
       military: ["security-unit", "hauler", "arc-sentinel", "sentry-turret"],
       smuggler: ["feral-drone", "scrapper", "welder-bot", "jammer"],
@@ -219,7 +263,7 @@ describe("every hull, generated", () => {
   for (const spec of DERELICTS) {
     it(`passes every invariant on ${SEEDS} seeds: ${spec.id}`, () => {
       for (let seed = 1; seed <= SEEDS; seed++) {
-        const built = buildDerelict(spec, INDEX_OF.get(spec.id)!, new Rng(seed), NO_RUN);
+        const built = buildDerelict(spec, indexOf(spec), new Rng(seed), NO_RUN);
         expect(built.problems, `${spec.id} seed ${seed}`).toEqual([]);
         expect(validateShip(built.ship, shipSpecOf(spec)), `${spec.id} seed ${seed}`).toEqual([]);
         expect(built.ship.size, `${spec.id} seed ${seed}`).toBeGreaterThanOrEqual(spec.rooms[0]);
@@ -280,6 +324,14 @@ describe("every hull, generated", () => {
     expect(count(MILITARY, "sealed")).toBeGreaterThan(0);
     expect(count(LABORATORY, "locked")).toBeGreaterThan(40);
     expect(count(FREIGHTER, "sealed")).toBe(0);
+    // And no hull a voyage opens on welds or holes anything, all five of them:
+    // the generator will not lock a door that is already one, and the one
+    // locked door is where the keycard for the terminal comes from
+    // (`content/cards.ts`, `SUPPLY_LOCKER`).
+    for (const spec of STARTER_HULLS) {
+      expect(count(spec, "sealed"), spec.id).toBe(0);
+      expect(count(spec, "broken"), spec.id).toBe(0);
+    }
   });
 
   it("generates the same hull twice from the same seed", () => {
@@ -294,13 +346,38 @@ describe("every hull, generated", () => {
 // ------------------------------------------------------------------ the voyage
 
 describe("the derelicts of one voyage", () => {
-  it("teaches on a freighter, ends on the father's tug, and draws the middle", () => {
+  it("opens on a starting hull, ends on the father's tug, and draws the middle", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const voyage = derelictsForVoyage(new Rng(seed));
       expect(voyage, `seed ${seed}`).toHaveLength(3);
-      expect(voyage[0], `seed ${seed}`).toBe(FREIGHTER);
+      expect(STARTER_HULLS, `seed ${seed}`).toContain(voyage[0]!);
       expect(voyage[2], `seed ${seed}`).toBe(FATHERS_TUG);
       expect(MIDDLE_HULLS, `seed ${seed}`).toContain(voyage[1]!);
+    }
+  });
+
+  it("draws every one of the five starting hulls over a run of seeds", () => {
+    // The whole of G73: the first ship of a run used to be the freighter on
+    // every seed, and the first ship is the one that decides whether the game
+    // is understood at all. Each class has to be reachable, and none of them
+    // may crowd the others out — a pool where one hull comes up nine times in
+    // ten is the old behaviour with extra rows in it.
+    const seen = new Map<string, number>();
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const id = derelictsForVoyage(new Rng(seed))[0]!.id;
+      seen.set(id, (seen.get(id) ?? 0) + 1);
+    }
+    expect([...seen.keys()].sort()).toEqual(STARTER_HULLS.map((d) => d.id).sort());
+    for (const spec of STARTER_HULLS) {
+      const share = (seen.get(spec.id) ?? 0) / SEEDS;
+      expect(share, `${spec.id}: ${(share * 100).toFixed(0)} % of ${SEEDS} seeds`).toBeGreaterThan(0.1);
+      expect(share, `${spec.id}: ${(share * 100).toFixed(0)} % of ${SEEDS} seeds`).toBeLessThan(0.35);
+    }
+  });
+
+  it("never opens on the training hull, which is nobody's itinerary", () => {
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      expect(derelictsForVoyage(new Rng(seed))[0]!.id, `seed ${seed}`).not.toBe("tutorial");
     }
   });
 
@@ -312,10 +389,158 @@ describe("the derelicts of one voyage", () => {
     expect([...seen].sort()).toEqual(MIDDLE_HULLS.map((d) => d.id).sort());
   });
 
+  it("leaves the middle of a seed where it always was", () => {
+    // The starting hull is drawn after the middle is shuffled, so the rng
+    // stream up to that point is the one every measured number in this game was
+    // taken on: a seed keeps the second hull it has always had, and only the
+    // ship in front of it is new.
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const shuffled = new Rng(seed).shuffle([...MIDDLE_HULLS])[0]!;
+      expect(derelictsForVoyage(new Rng(seed))[1], `seed ${seed}`).toBe(shuffled);
+    }
+  });
+
   it("draws the same voyage from the same seed", () => {
     const a = derelictsForVoyage(new Rng(9)).map((d) => d.id);
     const b = derelictsForVoyage(new Rng(9)).map((d) => d.id);
     expect(a).toEqual(b);
+  });
+});
+
+// ------------------------------------------------------- the starting hulls
+
+/**
+ * What the four hulls beside the freighter promise, on 200 seeds each.
+ *
+ * Each of them exists to teach one thing outright, and each of those lessons is
+ * a structural fact of the ship rather than a line of prose: the barge has more
+ * scrap aboard than a rack has slots, the ferry has two locked doors with the
+ * keys on the dead in front of them, the probe is small and the tender is full
+ * of modules. A class whose lesson only holds on some seeds is a class that
+ * teaches nothing, so all four are held to their promise on every seed.
+ */
+describe("what a starting hull promises", () => {
+  const marksOf = (ship: Ship): string[] => ship.rooms.flatMap((r) => r.marks);
+
+  it("stands nothing but a scout in the compartment the drone lands in", () => {
+    // The onboarding is one weak machine and one pile of scrap, whatever hull
+    // the voyage opened on (design-doc.md, "Обучение конструкцией", 2).
+    for (const spec of STARTER_HULLS) {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const ship = shipOf(spec, seed);
+        const entry = ship.roomAt(ship.entry);
+        expect(entry.marks, `${spec.id} seed ${seed}`).toContain("m:scout");
+        expect(entry.marks, `${spec.id} seed ${seed}`).toContain("%:welder");
+        expect(spec.band, spec.id).toContain("scout");
+      }
+    }
+  });
+
+  it("hides no relic and carries no strain on any of the five", () => {
+    // Both are things a voyage meets once it has something to lose. A guarded
+    // crate on the first hull of a run is a fight the player has no rack for,
+    // and a strain is a clock nobody has been taught to read yet.
+    for (const spec of STARTER_HULLS) {
+      expect(spec.relics ?? [], spec.id).toEqual([]);
+      expect(spec.strains ?? [], spec.id).toEqual([]);
+      expect(spec.virusBonus, spec.id).toBe(0);
+      expect(spec.rival, spec.id).toBe(false);
+      expect(spec.alertStart, spec.id).toBe(0);
+    }
+  });
+
+  it("keeps every one of them to one, two or three machines", () => {
+    for (const spec of STARTER_HULLS) {
+      expect(spec.machines[0], spec.id).toBeGreaterThanOrEqual(1);
+      expect(spec.machines[1], spec.id).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("gives the barge more scrap than a rack can carry home", () => {
+    // The drone that flies the first sortie has six slots and comes out of the
+    // yard with five modules already in them (`content/hulls.ts`), so what it
+    // can carry off a hull is one pile and whatever it decides to throw away.
+    // Measured over 200 seeds: five piles at worst and eleven at the median,
+    // against the freighter's three and four — which is the whole class.
+    const piles = (spec: DerelictSpec): number[] => {
+      const out: number[] = [];
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        out.push(marksOf(shipOf(spec, seed)).filter((m) => m === "%" || m.startsWith("%:")).length);
+      }
+      return out.sort((a, b) => a - b);
+    };
+    const barge = piles(BARGE);
+    const freighter = piles(FREIGHTER);
+    expect(barge[0], `poorest barge: ${barge[0]} piles`).toBeGreaterThanOrEqual(4);
+    expect(barge[SEEDS >> 1]!, `barge median ${barge[SEEDS >> 1]}`).toBeGreaterThanOrEqual(
+      2 * freighter[SEEDS >> 1]!,
+    );
+  });
+
+  it("gives the ferry exactly two locked doors, with both keys on the dead in front of them", () => {
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const ship = shipOf(FERRY, seed);
+      const where = `ferry seed ${seed}`;
+      const locked = ship.doors.filter((d) => d.state === "locked");
+      expect(locked.length, where).toBe(2);
+
+      // Each key lies in a compartment the drone can reach without opening
+      // either of them, and `systems/populate.ts` lays a key on a body — the
+      // one the card marked, or one it makes for it. Two doors, two keys, and
+      // nothing aboard needs a cutter.
+      const keys = locked.map((d) => d.key);
+      expect(new Set(keys).size, where).toBe(2);
+      for (const key of keys) {
+        expect(key, where).toBeDefined();
+        const holder = ship.rooms.find((r) => r.marks.includes(`${KEY_MARK}${key}`));
+        expect(holder, `${where} key ${key}`).toBeDefined();
+        expect(reachWithKeys(ship).has(holder!.id), `${where} key ${key}`).toBe(true);
+      }
+      expect(reachWithKeys(ship).size, where).toBe(ship.size);
+      expect(ship.doors.filter((d) => d.state === "sealed"), where).toHaveLength(0);
+    }
+  });
+
+  it("puts modules rather than credits in the tender's scrap", () => {
+    // A yard tender is where a rack that came off a bad sortie is made whole,
+    // and the welder bot that is still working it is what makes taking them a
+    // decision rather than a walk.
+    let bare = 0;
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const marks = marksOf(shipOf(TENDER, seed));
+      const salvage = marks.filter((m) => m === "%" || m === "X" || m.startsWith("%:") || m.startsWith("X:"));
+      if (salvage.length < 4) bare++;
+      expect(marks, `tender seed ${seed}`).toContain("m:welder-bot");
+    }
+    expect(bare, `${bare} of ${SEEDS} tenders held fewer than four piles`).toBe(0);
+  });
+
+  it("keeps the probe small enough to strip in one sortie", () => {
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const ship = shipOf(PROBE, seed);
+      expect(ship.size, `probe seed ${seed}`).toBeLessThanOrEqual(8);
+      expect(ship.doors.filter((d) => d.state === "sealed"), `probe seed ${seed}`).toHaveLength(0);
+    }
+  });
+
+  it("leaves a keycard aboard every one of them, because the terminal wants one", () => {
+    // The main terminal is raised with a SPIKE or a keycard, the drone leaves
+    // the yard with neither, and a SPIKE is one face of an eleven-way lottery
+    // (`content/objectives.ts`, `content/cards.ts`). So a starting hull with no
+    // lock aboard is a starting hull that cannot be neutralised — measured, and
+    // written up on `SUPPLY_LOCKER`.
+    for (const spec of STARTER_HULLS) {
+      const owed = spec.id === "ferry" ? 2 : 1;
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const ship = shipOf(spec, seed);
+        const locked = ship.doors.filter((d) => d.state === "locked");
+        expect(locked.length, `${spec.id} seed ${seed}`).toBe(owed);
+        for (const door of locked) {
+          const holder = ship.rooms.find((r) => r.marks.includes(`${KEY_MARK}${door.key}`));
+          expect(holder, `${spec.id} seed ${seed} ${door.label}`).toBeDefined();
+        }
+      }
+    }
   });
 });
 

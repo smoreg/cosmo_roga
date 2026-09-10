@@ -42,6 +42,13 @@ export const TOKENS: Record<string, string> = {
   good: THEME.good,
   bad: THEME.bad,
   warn: THEME.warn,
+  // The drawn hull under the honeycomb (hullart.ts): its three steps of tone
+  // and the two marks on it, out of the same palette as everything else.
+  "hull-body": THEME.hullArt.body,
+  "hull-plate": THEME.hullArt.plate,
+  "hull-plate-lit": THEME.hullArt.plateLit,
+  "hull-deep": THEME.hullArt.deep,
+  "hull-rim": THEME.hullArt.rim,
 };
 
 /** Which variable holds a colour the panel asked for, or the colour itself. */
@@ -102,6 +109,27 @@ export const WEB_CSS = `
 .glyph{font-size:14px; fill:var(--soft); letter-spacing:.16em;}
 .glyph.hostile{fill:var(--bad); font-weight:700;}
 
+/* Tiles (?tiles=1). A tile is a symbol of unit rects painted currentColor
+   (src/tiles/sprites.ts), so what fill is to a glyph, color is to a tile — and
+   the pair of rules below is the pair above, said in the other property. That
+   is the whole of the colour policy: whatever painted the letter paints the
+   picture, the one red on machines included (G40), and the compartment's state
+   still wins over it further down the block, exactly as it does for text. No
+   colour is named here that is not already named for glyphs. */
+.tile{color:var(--soft);}
+.tile.hostile{color:var(--bad);}
+/* The pictogram is the compartment's own, and quieter than its name: a label
+   for the box, never one of the things standing in it. */
+.zone-tile{color:var(--fg-dim);}
+/* The seventh thing and everything after it, counted rather than drawn. */
+.tile-more{fill:var(--fg-dim);}
+/* With the flag on, every letter left in the row is centred in the cell a tile
+   would have taken — and tracking is added after the last glyph as well as
+   between them, so a tracked string set from its middle sits half a letter-space
+   left of where it belongs. A pixel at this size, and it comes straight out of
+   the gap the row is measured on. Off in tile mode, unchanged everywhere else. */
+.has-tiles .glyph{letter-spacing:0;}
+
 /* The four states of a compartment, in the order a run meets them. Each takes
    one signal and no more: a dash, a hue, a hue, and then the amber frame. */
 .room.is-unknown .room-box{stroke-dasharray:4 4; stroke:var(--fg-dim); fill-opacity:.25;}
@@ -109,6 +137,7 @@ export const WEB_CSS = `
 .room.is-scanned .room-box{stroke:#2a3238; fill:#0c1115;}
 .room.is-scanned .room-name{fill:var(--fg-dim); font-weight:400;}
 .room.is-scanned .room-id,.room.is-scanned .glyph{fill:var(--fg-dim);}
+.room.is-scanned .tile,.room.is-scanned .zone-tile{color:var(--fg-dim);}
 .room.is-explored .room-box{stroke:var(--bulkhead);}
 .room.is-visible .room-box{stroke:var(--zone);}
 .room.is-visible .room-name{fill:var(--bright);}
@@ -117,6 +146,8 @@ export const WEB_CSS = `
 .room.is-current .room-name{fill:var(--bright);}
 .room.is-current .room-id{fill:var(--airlock);}
 .room.is-current .glyph{fill:var(--bright);}
+.room.is-current .tile{color:var(--bright);}
+.room.is-current .zone-tile{color:var(--airlock);}
 
 /* Machines in there, said on the box rather than only in one small glyph: a red
    cap over the top edge with the count on it. An addition to the compartment's
@@ -136,6 +167,10 @@ export const WEB_CSS = `
    the compartment underfoot carries — the two must not be confusable. */
 .room.is-goal .room-box{stroke:var(--accent); stroke-dasharray:6 3;}
 .room.is-goal .room-name{fill:var(--accent);}
+/* The door a red hazard line has just named (SchematicDoor.target): the
+   same amber dashes a lock wears, on whatever state the door is in. */
+.door-wire.is-goal{stroke:var(--accent); stroke-width:2.5; stroke-dasharray:3 4;}
+.door.is-goal .door-label{fill:var(--accent);}
 
 .room.is-alarmed .room-box{stroke:var(--bad); fill:var(--red-wash);}
 .room.is-alarmed .room-name,.room.is-alarmed .room-id{fill:var(--bad);}
@@ -185,6 +220,10 @@ export const WEB_CSS = `
 .hexmap .room-name{font-size:13px; letter-spacing:.04em;}
 .hexmap .room-id{font-size:10px;}
 .hexmap .glyph{font-size:12px; letter-spacing:.22em;}
+/* The compartment's pictogram sits over the drawn hull here, where the dim ink
+   the box view gives it would sink into the plating. The compartment hue is
+   what the honeycomb already paints an outline with, so it costs no new signal. */
+.hexmap .zone-tile{color:var(--zone);}
 .hexmap .room.is-current .room-halo{fill:none; stroke:var(--accent); stroke-width:7; opacity:.12;}
 .hexmap .hall-wall{stroke:var(--bulkhead); stroke-width:11; stroke-linecap:butt;}
 .hexmap .hall-wall.is-airlock{stroke:var(--airlock);}
@@ -208,6 +247,39 @@ export const WEB_CSS = `
 .hexmap .room.is-unknown .room-box{stroke:#232b31; stroke-dasharray:3 5;}
 .hexmap .room.is-unknown .room-id{fill:#38424a;}
 .hexmap .room.is-unknown .room-name{fill:#2b343a;}
+
+/* The drawn hull under the honeycomb (ui/web/hullart.ts, G81). Three steps of
+   tone and no fewer — the page under the ship, the hull's mass, the plate on
+   that mass — because a hull a shade off the background read as an outline
+   over nothing. Nothing in this block is amber: amber is the doors' and the
+   airlock's, and a hull that spent it on portholes lost the doors among them.
+   Every mark is steel or darker, and the skin line is the one thing brighter. */
+.hexmap .hull-art{stroke:none; opacity:1;}
+.hexmap .hull-skin{fill:var(--hull-body);}
+/* A hole cut out of the hull — the hub of a ring station: the page shows through. */
+.hexmap .hull-hole{fill:var(--bg);}
+.hexmap .hull-rim{fill:none; stroke:var(--hull-rim); stroke-width:3; stroke-linejoin:miter;
+  stroke-miterlimit:6;}
+.hexmap .hull-rim-in{fill:none; stroke:var(--bg); stroke-width:1; stroke-linejoin:miter;
+  stroke-miterlimit:6;}
+.hexmap .hull-wash{fill:var(--bg); opacity:.1;}
+.hexmap .hull-plate{fill:var(--hull-plate);}
+.hexmap .hull-plate-lit{fill:var(--hull-plate-lit); stroke:var(--zone); stroke-width:1.3;}
+.hexmap .hull-plate-rimmed{stroke:var(--hull-rim); stroke-width:1.8;}
+.hexmap .hull-pod .hull-plate{stroke:var(--hull-rim); stroke-width:2;}
+.hexmap .hull-deep{fill:var(--hull-deep);}
+.hexmap .hull-deep-rimmed{stroke:var(--zone); stroke-width:1.3;}
+.hexmap .hull-bell{fill:var(--hull-deep); stroke:var(--hull-rim); stroke-width:1.6;}
+.hexmap .hull-flame{fill:var(--zone); opacity:.22;}
+.hexmap .hull-light{fill:#ffffff; opacity:.045;}
+.hexmap .hull-line{stroke:var(--zone); stroke-width:1; fill:none;}
+.hexmap .hull-glass{fill:var(--zone); opacity:.9;}
+.hexmap .hull-steel{fill:var(--zone);}
+/* Over a hull, an unexplored hexagon lets a little of the plating through:
+   most of a hull is unexplored, and a page of near-black cells over a drawn
+   ship read as holes punched in it. The sibling combinator keeps this to the
+   frames that have a hull at all, so ?hull=0 looks exactly as it did. */
+.hexmap .hull-art ~ .room.is-unknown .room-box{fill-opacity:.55;}
 
 .tug-box{fill:#0d1216; stroke:var(--fg); stroke-width:1.5;}
 .tug-name{font-size:18px; fill:var(--fg);}
@@ -240,6 +312,30 @@ export const WEB_CSS = `
 .pl.slot.is-exposed{background:var(--amber-wash); border-color:var(--accent);
   border-left-width:4px; box-shadow:0 0 0 3px rgba(224,164,88,.10); font-weight:600;}
 .pl.slot.hit{border-color:var(--bad); border-left-color:var(--bad);}
+
+/* The ship's alert, coloured by the rung it is on (panel-html.ts puts the
+   level on the row as a class). Nothing below three: a counter. Three and four
+   are the ship shutting doors and sending its hunter — amber, the terminal's
+   own warn colour rather than the accent, so the one rule about amber (a
+   decision is required *here*) keeps its word. Five is the scuttle countdown:
+   red, and blinking, because it is the one number on the screen that is a
+   deadline. The blink is a CSS animation and not a beat redraw (ui/pulse.ts)
+   because it has to run while the player is thinking, not only on turns —
+   and it is switched off for anyone who asked their system for less motion. */
+.web-alert.is-l3,.web-alert.is-l4{color:var(--warn) !important; font-weight:600;}
+.web-alert.is-l5{color:var(--bad) !important; font-weight:700;
+  animation:salvor-alert .9s steps(2,end) infinite;}
+@keyframes salvor-alert{0%,100%{opacity:1;} 50%{opacity:.35;}}
+@media (prefers-reduced-motion: reduce){.web-alert.is-l5{animation:none;}}
+
+/* The same row lifted above the rack from three up: framed, on a wash of its
+   own colour, so the shape of the panel changes the moment the ship starts
+   answering — which is what the owner asked for in "уровень алерта должен
+   отображаться более очевидно". */
+.pb.web-alarm{border:1px solid var(--warn); background:var(--amber-wash); border-radius:2px;
+  padding:4px 8px; letter-spacing:.06em;}
+.pb.web-alarm.is-l5{border-color:var(--bad); background:var(--red-wash);}
+.pb.web-alarm + .pb{border-top:none; padding-top:0;}
 
 /* The exposed slot said twice: once as its own row in the rack, once as a small
    mark in the bottom-left corner of the map, which is where the owner asked for
@@ -290,7 +386,19 @@ export const WEB_CSS = `
 .web-log div{white-space:pre-wrap;}
 .web-log .plain{color:var(--fg);} .web-log .good{color:var(--good);}
 .web-log .bad{color:var(--bad);} .web-log .warn{color:var(--warn);}
-.web-log .faded{color:var(--fg-dim);}
+/* Age, in three steps and by turn rather than by line count: this turn keeps
+   its tone, the turn before it goes soft, everything older goes dim
+   (ui/logline.ts, logFades). The gap is the same statement without colour —
+   four pixels where one turn ends and the next begins. */
+.web-log .recent{color:var(--soft);} .web-log .old{color:var(--fg-dim);}
+.web-log .turn-gap{margin-top:4px;}
+
+/* The alarm tone: a hazard the drone has been told about (systems/hazards.ts).
+   Red ink that never fades, and the newest one on a red ground across the
+   whole row — the same two rules the terminal draws it by, so a player who
+   reads only the bottom of the screen cannot miss it in either view. */
+.web-log .alarm{color:var(--bad); font-weight:600;}
+.web-log .alarm.live{background:var(--bad); color:var(--bright); margin:0 -14px; padding:1px 14px;}
 
 /* ---------------------------------------------------------------- the overlays */
 .web-over{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;

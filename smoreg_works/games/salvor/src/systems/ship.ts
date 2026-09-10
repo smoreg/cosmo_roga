@@ -29,7 +29,7 @@ import {
 } from "../twist/rig.js";
 import { hint } from "../content/hints.js";
 import { t } from "../i18n.js";
-import { raiseAlert } from "./alert.js";
+import { raiseAlert, standDown } from "./alert.js";
 import { keysHeld } from "./doors.js";
 import { roomList, type ShipSystem } from "./populate.js";
 import { shipState, type ShipState, type ShipWork } from "./shipstate.js";
@@ -52,9 +52,10 @@ import { credit, derelictAboard } from "./voyage.js";
 /**
  * Steps of alert a system costs when it comes up (design-doc.md's `+2`).
  *
- * Steps and not points: each one of them sends a machine after the drone
- * (`systems/alert.ts`), which is what makes bringing the third system up the
- * loudest thing a sortie can do.
+ * Steps and not points: each one of them is a rung of the ship's ladder
+ * (`systems/alert.ts`), so the second system is what brings the hunter. The
+ * third is the exception — it is the switch that turns the ladder off
+ * (`standDown`), and it costs nothing: "обезвреживание вырубает этот процесс".
  */
 const ALERT_PER_SYSTEM = 2;
 
@@ -164,6 +165,9 @@ function raise(game: RoomGame, system: ShipSystem, spec: ObjectiveSpec, tool: Ob
   system.online = true;
   state.online.push(spec.id);
   if (tool === "cell") spendCell(game);
+  // Neutralised: the ship stops answering, and the last system is not the
+  // loud one — the gauge is off before the +2 would have climbed it.
+  if (state.online.length >= OBJECTIVE_COUNT) standDown(game);
   raiseAlert(game, ALERT_PER_SYSTEM);
   game.log.add(objectiveOnlineLine(spec), game.schedule.time, "good", "log.system.online");
   // Through the voyage's own till, which is what says the line and keeps the

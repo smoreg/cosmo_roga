@@ -173,6 +173,9 @@ function loggedKeys(): Set<string> {
     }
     // A key chosen in a branch and logged a few lines later (`twist/rig.ts`).
     for (const m of src.matchAll(/\bkey = "(log\.[\w.]+)";/g)) out.add(m[1]!);
+    // A blow signed by whatever owned it: `blamedOn("log.hit.vent", …)` is the
+    // line `RIG.onDamage` writes for it (`twist/rig.ts`).
+    for (const m of src.matchAll(/\bblamedOn\(\s*"(log\.[\w.]+)"/g)) out.add(m[1]!);
     // `credit()` in systems/voyage.ts logs under the event it is paying for.
     for (const m of src.matchAll(/credit\([\s\S]{0,200}?,\s*"(log\.[\w.]+)"\s*\)/g)) {
       out.add(m[1]!);

@@ -8,6 +8,9 @@ import { panelBlocks, type PanelLine } from "../src/ui/panel.js";
 import { t } from "../src/i18n.js";
 import { THEME } from "../src/ui/theme.js";
 import { exposeHtml, htmlOf, lineHtml } from "../src/ui/web/panel-html.js";
+import { screenHtml } from "../src/ui/web/screen.js";
+import { initialState } from "../src/ui/appstate.js";
+import { HISTORY_ROWS } from "../src/ui/logline.js";
 
 /**
  * The panel as HTML. It draws what `panelBlocks` and `roomActions` decided and
@@ -61,7 +64,7 @@ function count(html: string, needle: string): number {
 }
 
 describe("the HTML panel", () => {
-  it("gives every action a button carrying the index its digit carries", () => {
+  it("gives every action a button carrying its position in the list", () => {
     const game = gameIn();
     put(game, "r2", "security-unit");
     const actions = roomActions(game);
@@ -69,12 +72,12 @@ describe("the HTML panel", () => {
 
     expect(count(html, "<button")).toBe(actions.length);
     actions.forEach((action, i) => {
-      expect(html, action.label).toContain(`data-pick="${i}"`);
+      expect(html, action.label).toContain(`data-line="${i}"`);
       expect(html, action.label).toContain(action.label);
     });
-    // The digit and the index are the same number, which is what makes a click
-    // and a key press the same command (`appReducer`, `pick`).
-    actions.forEach((action, i) => {
+    // The position, never the digit: the ten digits are a window over the list
+    // and a click has nothing to look up (docs/tug-menu-audit.md, defect 6).
+    actions.forEach((action) => {
       if (action.key !== "") expect(html).toContain(`>${action.key}</span>`);
     });
   });
@@ -87,7 +90,7 @@ describe("the HTML panel", () => {
     const html = htmlOf(blocksOf(game, 2), [], actions, 2);
     expect(count(html, "is-cursor")).toBe(1);
     expect(count(html, '<span class="cursor">▸</span>')).toBe(1);
-    expect(html).toContain(`<button type="button" class="act is-cursor" data-pick="2">`);
+    expect(html).toContain(`<button type="button" class="act is-cursor" data-line="2">`);
   });
 
   it("greys a line that cannot be pressed but leaves it pressable", () => {
@@ -100,8 +103,8 @@ describe("the HTML panel", () => {
     };
     const open: Action = { key: "1", label: "go d1  DOCKING   open", cmd: { kind: "go", door: 1 }, enabled: true };
     const html = htmlOf([{ text: "ACTIONS" }], [], [open, shut], -1);
-    expect(html).toContain('class="act is-off" data-pick="1"');
-    expect(html).toContain('class="act" data-pick="0"');
+    expect(html).toContain('class="act is-off" data-line="1"');
+    expect(html).toContain('class="act" data-line="0"');
     // No `disabled`: pressing it prints why, exactly as its digit does.
     expect(html).not.toContain("disabled");
   });
@@ -209,7 +212,11 @@ describe("the HTML panel", () => {
 
     expect(html).toContain("══ ENEMY IN HERE: 1 ");
     expect(html).toContain("S security unit 8/8 melee");
-    expect(count(html, "color:var(--bad)")).toBe(2);
+    // The rule is the loud half and stays red; the line under it now carries
+    // how much of the machine is left, and this one is untouched (G79, and
+    // `contactTone` in ui/panel.ts).
+    expect(count(html, "color:var(--bad)")).toBe(1);
+    expect(count(html, "color:var(--good)")).toBe(1);
   });
 
   it("escapes everything that came out of a content card", () => {
@@ -232,5 +239,49 @@ describe("the HTML panel", () => {
     expect(htmlOf([], [], [], 0)).toBe("");
     expect(htmlOf([{ text: "SALVOR" }], [], [], 0)).toContain("SALVOR");
     expect(htmlOf([{ text: "SALVOR" }], [], [], 0)).not.toContain('<div class="acts">');
+  });
+});
+
+/**
+ * The log on the page: which lines are bright, and where one turn ends.
+ *
+ * The rule itself is `logFades` and is tested on its own (tests/logline.test.ts).
+ * What is checked here is the wiring — that the page carries the three states
+ * as classes the stylesheet has rules for, and not the old count of three.
+ */
+describe("the log on the page", () => {
+  const playing = { ...initialState(), overlay: "none" as const };
+
+  it("carries this turn bright, the last one soft and the rest dim", () => {
+    const game = gameIn();
+    game.log.add("an old thing", 4);
+    game.log.add("the turn before", 5);
+    game.log.add("you fire", 6);
+    game.log.add("the shot lands", 6);
+    game.log.add("something moves behind d4", 6);
+    const html = screenHtml(game, playing, new Set());
+
+    // Five lines and three of them on the newest turn: under the old rule the
+    // first of those three was already grey. The gap marks each turn boundary,
+    // which is the same statement without a colour.
+    expect(html).toContain('<div class="plain old turn-gap">an old thing</div>');
+    expect(html).toContain('<div class="plain recent turn-gap">the turn before</div>');
+    expect(html).toContain('<div class="plain turn-gap">you fire</div>');
+    expect(html).toContain('<div class="plain">the shot lands</div>');
+    expect(html).toContain('<div class="plain">something moves behind d4</div>');
+  });
+
+  it("draws the history card on the page as well as in the terminal", () => {
+    const game = gameIn();
+    for (let i = 0; i < HISTORY_ROWS + 3; i++) game.log.add(`line ${i}`, i);
+    const html = screenHtml(game, { ...playing, overlay: "history", logPage: 1 }, new Set());
+
+    expect(html).toContain(t("log.title"));
+    // Page 1 is a screen further back: the oldest lines, and a footer saying
+    // which of how many. The log itself is still drawn behind the card, so the
+    // card's own rows are what is read here.
+    expect(html).toContain('<div class="keys">line 0</div>');
+    expect(html).not.toContain(`<div class="keys">line ${HISTORY_ROWS + 2}</div>`);
+    expect(html).toContain("2/2");
   });
 });

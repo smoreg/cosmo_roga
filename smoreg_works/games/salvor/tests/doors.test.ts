@@ -5,6 +5,7 @@ import {
   Rng,
   RoomGame,
   performRoom,
+  rememberRoom,
   spawnMonsterIn,
   type Entity,
   type RoomCommand,
@@ -12,7 +13,7 @@ import {
 } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
-import { MONSTERS } from "../src/content/monsters.js";
+import { ENFORCER, MONSTERS } from "../src/content/monsters.js";
 import { moduleBurnLine, moduleKind, type ModuleId } from "../src/content/modules.js";
 import { DOORS, keysHeld } from "../src/systems/doors.js";
 import { roomList, type Body } from "../src/systems/populate.js";
@@ -53,6 +54,14 @@ const DEAD_END = `
   r1: docking
   r2: cargo
   r3: corridor
+`;
+
+/** Two compartments and one door: the trap, drawn as small as it goes. */
+const TRAP = `
+  TUG -a1- r1
+  r1 -d1- r2
+  r1: docking
+  r2: cargo
 `;
 
 /** The same shape with a lock at the far end instead of a plain bulkhead. */
@@ -437,6 +446,65 @@ describe("closing a door", () => {
   });
 });
 
+// ------------------------------------------------------------------- a mine
+
+describe("a mined door", () => {
+  /** The lock the drone lands next to, with a charge on it (`content/hazards.ts`, `mine`). */
+  const MINED = `
+    TUG -a1- r1
+    r1 -[d1:k1]- r2
+    r1 -d2- r3
+    r1: docking
+    r2: storage
+    r3: corridor
+    d1: trap=mine
+    d2: trap=mine
+  `;
+
+  it("lists defuse ahead of the four ways through the lock, and ahead of closing an open one", () => {
+    const game = gameOn(MINED);
+    give(game, "welder");
+    const verbs = (label: string): string[] =>
+      offers(game)
+        .filter((o) => o.cmd.kind === "act" && o.cmd.target === door(game, label))
+        .map((o) => (o.cmd.kind === "act" ? o.cmd.verb : ""));
+    expect(verbs("d1")).toEqual(["defuse", "power", "spike", "cut", "key"]);
+    expect(verbs("d2")).toEqual(["defuse", "close", "weld"]);
+  });
+
+  it("is lifted from either side, whatever the lock says, and drops the job like a weld does", () => {
+    const game = gameOn(MINED);
+    give(game, "welder");
+    expect(act(game, "defuse", "d1").ok).toBe(true);
+    expect(noiseHere(game)).toBe(5);
+    expect(lines(game)).toContain("You work the welder around the charge on d1.");
+    expect(act(game, "defuse", "d1").ok).toBe(true);
+    expect(game.ship.door("d1").trap).toBeUndefined();
+    expect(stateOf(game, "d1")).toBe("locked");
+    expect(lines(game)).toContain("The mine on d1 is dead. Nothing under it now.");
+
+    // A turn spent on anything else starts the two turns over.
+    expect(act(game, "defuse", "d2").ok).toBe(true);
+    game.playerCommand({ kind: "wait" });
+    expect(lines(game)).toContain("You break off the defusing.");
+    expect(act(game, "defuse", "d2").ok).toBe(true);
+    expect(game.ship.door("d2").trap).toBe("mine");
+    expect(act(game, "defuse", "d2").ok).toBe(true);
+    expect(game.ship.door("d2").trap).toBeUndefined();
+  });
+
+  it("wants the welder, and says so for no turn", () => {
+    const game = gameOn(MINED);
+    drop(game, "welder");
+    const refused = act(game, "defuse", "d1");
+    expect(refused.ok).toBe(false);
+    expect(refused.cost).toBe(0);
+    expect(refused.reason).toBe("No WELDER in the rack.");
+    expect(game.inputs).toHaveLength(0);
+    expect(offers(game).find((o) => o.cmd.kind === "act" && o.cmd.verb === "defuse")?.enabled).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------- doors of other rooms
 
 describe("a door the drone is not standing at", () => {
@@ -743,5 +811,66 @@ describe("the offers and the game agree", () => {
     expect(states).toBeGreaterThanOrEqual(300);
     expect(enabled).toBeGreaterThan(100);
     expect(refused).toBeGreaterThan(50);
+  });
+});
+
+/**
+ * The move the whole `D` key exists for (docs/tasks/G64-door-hotkeys.md): a
+ * machine on the far side of a welded seam is a machine that is out of the run.
+ *
+ * It is a rule and not an accident — `Ship.passable` lets nothing but a
+ * `breacher` through `sealed` — so it is worth a test that plays it out rather
+ * than one that asks the graph. Sixty turns is well past anything a machine
+ * could be waiting for: the ENFORCER cuts through in three.
+ */
+describe("a machine welded into a compartment", () => {
+  /** A hunting machine, told where the drone is so that it will come if it can. */
+  function hunter(game: RoomGame, kind: typeof ENFORCER, room: string): Entity {
+    const bot = spawnMonsterIn(kind, game.ship.room(room).id);
+    game.schedule.admit(bot);
+    game.entities.push(bot);
+    rememberRoom(bot, game.ship.room("r1").id);
+    game.refreshSight();
+    return bot;
+  }
+
+  /** The drone welds the one door of the compartment it is standing in. */
+  function sealItIn(game: RoomGame): void {
+    give(game, "welder");
+    for (let turn = 0; turn < 2; turn++) act(game, "weld", "d1");
+    expect(stateOf(game, "d1")).toBe("sealed");
+  }
+
+  it("never gets out, however long the drone waits", () => {
+    const game = gameOn(TRAP);
+    const bot = hunter(game, MONSTERS.find((m) => m.id === "maintenance-bot")!, "r2");
+    expect(bot.breacher).toBeFalsy();
+    sealItIn(game);
+
+    const cargo = game.ship.room("r2").id;
+    for (let turn = 0; turn < 60; turn++) {
+      game.playerCommand({ kind: "wait" });
+      expect(bot.room, `turn ${turn}`).toBe(cargo);
+    }
+    expect(stateOf(game, "d1")).toBe("sealed");
+    expect(game.status).toBe("playing");
+  });
+
+  it("gets out if it is the ENFORCER, because cutting is what a breacher does", () => {
+    // Not a bug and not an oversight: the ship's own hunter is the answer to
+    // the trap, and the price of using one is that the alert can send it.
+    const game = gameOn(TRAP);
+    const bot = hunter(game, ENFORCER, "r2");
+    expect(bot.breacher).toBe(true);
+    sealItIn(game);
+
+    const docking = game.ship.room("r1").id;
+    let arrived = false;
+    for (let turn = 0; turn < 60 && !arrived && game.status === "playing"; turn++) {
+      game.playerCommand({ kind: "wait" });
+      arrived = bot.room === docking;
+    }
+    expect(arrived).toBe(true);
+    expect(stateOf(game, "d1")).toBe("broken");
   });
 });

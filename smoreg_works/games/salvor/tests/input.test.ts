@@ -15,11 +15,14 @@ import {
   titleLines,
   tugHelp,
   toIntent,
+  urlHelp,
   type KeyLike,
 } from "../src/ui/input.js";
+import { t } from "../src/i18n.js";
 import { findSlot, makeStartingRig, type Rig } from "../src/twist/rig.js";
 import { TITLE_LAST_ROW, helpBody, helpBox, titleBox } from "../src/ui/render.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
+import { DEFAULT_LANG, LANGS, setLang } from "../src/i18n.js";
 
 /**
  * The key table is the whole interface: every rule in the game is reached
@@ -79,6 +82,20 @@ describe("key mapping", () => {
     });
   });
 
+  it("aims the blade with c: a relic answers for the cutter it upgrades", () => {
+    const armed = rigWithout("cutter");
+    armed.slots[5] = { kind: "blade", integrity: 14 };
+    expect(toIntent(press("c", "KeyC"), armed)).toEqual({ kind: "module", module: "cutter", slot: 5 });
+    // And with both aboard, the cutter itself answers first, as it does everywhere.
+    const both = makeStartingRig();
+    both.slots[5] = { kind: "blade", integrity: 14 };
+    expect(toIntent(press("c", "KeyC"), both)).toEqual({
+      kind: "module",
+      module: "cutter",
+      slot: findSlot(both, "cutter"),
+    });
+  });
+
   it("puts SPIKE on shift and leaves the bare k dead", () => {
     // `k` is a roguelike player's north. This game has no north, and a key that
     // used to move must not now breach a lock.
@@ -128,22 +145,44 @@ describe("key mapping", () => {
     expect(toIntent(press("M", "KeyM", { shiftKey: true }), rig)).toEqual({ kind: "none" });
   });
 
+  it("opens the bulkheads of the compartment on d, and welds the way back on shift+D", () => {
+    // The letters aim at whichever door the rules offer first, which with two
+    // bulkheads in a compartment is a guess (`ui/appstate.ts`, `aimed`). `d`
+    // names them one row each; `D` is the one move among them worth a key of
+    // its own — shut the way you came (docs/tasks/G64-door-hotkeys.md).
+    expect(toIntent(press("d", "KeyD"), rig)).toEqual({ kind: "doors" });
+    expect(toIntent(press("D", "KeyD", { shiftKey: true }), rig)).toEqual({ kind: "seal" });
+  });
+
+  it("gives the two door keys to nothing else on the keyboard", () => {
+    // The whole printable row, so a letter that quietly grows a second meaning
+    // is caught here rather than by a player who pressed it.
+    const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<>.,?/;'[]-=";
+    for (const key of letters) {
+      const intent = toIntent(press(key), rig);
+      expect(intent.kind === "doors", key).toBe(key === "d");
+      expect(intent.kind === "seal", key).toBe(key === "D");
+    }
+  });
+
   it("has no movement keys left at all", () => {
     // The grid is gone and nothing walks in a direction. `↑`/`↓` are not
-    // movement either: since G40 they move a highlight down a list of text,
-    // which is why the two sideways arrows stay as dead as `hjkl`. `y` is on
-    // that rose too — north-west — which is why the keycard got `a` and not
-    // the letter its own name would have asked for. `m` (G48) is no exception:
-    // it opens a list of compartments, and which one is still a line to press.
-    for (const e of [
-      press("ArrowLeft", "ArrowLeft"),
-      press("ArrowRight", "ArrowRight"),
-      press("j", "KeyJ"),
-      press("y", "KeyY"),
-      press("n", "KeyN"),
-    ]) {
+    // movement either: since G40 they move a highlight down a list of text.
+    // `y` is on that rose too — north-west — which is why the keycard got `a`
+    // and not the letter its own name would have asked for. `m` (G48) is no
+    // exception: it opens a list of compartments, and which one is still a
+    // line to press.
+    for (const e of [press("j", "KeyJ"), press("y", "KeyY"), press("n", "KeyN")]) {
       expect(toIntent(e, rig), e.key).toEqual({ kind: "none" });
     }
+  });
+
+  it("gives the sideways arrows to the `i` card and to nothing else", () => {
+    // They were dead with the grid, and they are not a second way to move the
+    // highlight: `page` only does anything with a card in front of the board
+    // (`ui/appstate.ts`, G72), so nothing about the list changed.
+    expect(toIntent(press("ArrowLeft", "ArrowLeft"), rig)).toEqual({ kind: "page", delta: -1 });
+    expect(toIntent(press("ArrowRight", "ArrowRight"), rig)).toEqual({ kind: "page", delta: 1 });
   });
 
   it("gives both cases of l to the language ring, on every screen there is", () => {
@@ -177,7 +216,10 @@ describe("key mapping", () => {
 
   it("documents every key it accepts", () => {
     const help = [...keyHelp(), ...ruleHelp()].join("\n");
-    const keys = ["1-9", "0", ".", "h", "m", "<", "o", "tab", "s", "e", "w", "p", "K", "f", "c", "?", "shift+R"];
+    const keys = [
+      "1-9", "0", ".", "h", "m", "d", "shift+D", "<", "o", "tab",
+      "s", "e", "w", "p", "K", "f", "c", "?", "shift+R",
+    ];
     for (const token of [...keys, "up/down", "enter", "L"]) {
       expect(help, token).toContain(token);
     }
@@ -187,6 +229,11 @@ describe("key mapping", () => {
     for (const onTug of [true, false]) {
       for (const l of helpBody(onTug)) expect(l.length, l).toBeLessThanOrEqual(54);
     }
+  });
+
+  it("reads PageUp and PageDown as the log's own past, in both directions", () => {
+    expect(toIntent(press("PageUp", "PageUp"))).toEqual({ kind: "history", delta: 1 });
+    expect(toIntent(press("PageDown", "PageDown"))).toEqual({ kind: "history", delta: -1 });
   });
 
   it("ignores a modifier held on its own, and every browser chord", () => {
@@ -231,6 +278,8 @@ describe("the cards fit their frames", () => {
       ...listHelp(),
       "",
       ...charterHelp(),
+      "",
+      ...urlHelp(),
     ]);
     expect(helpBody(false).slice(0, shipHelp().length)).toEqual(shipHelp());
     expect(helpBody(false).slice(shipHelp().length)).toEqual(helpBody(true).slice(tugHelp().length));
@@ -275,16 +324,54 @@ describe("the cards fit their frames", () => {
     expect(card).toContain("SALVAGE");
     expect(card).toContain("NEUTRALIZE");
     // Each block leads with the heading the renderer sets in the bright colour.
-    for (const heading of helpHeadings()) {
-      expect([...helpBody(true), ...helpBody(false)]).toContain(heading);
-    }
+    // The last block is the run's own: what this voyage has already shown you
+    // (G72), and it is on the card only when there is something in it — hence
+    // the list handed in here, which is what a run that has met anything gives.
+    const met = ["SPASM VIRUS"];
+    const bodies = [...helpBody(true, met), ...helpBody(false, met)];
+    for (const heading of helpHeadings()) expect(bodies).toContain(heading);
+    expect(helpBody(false)).not.toContain(t("help.codex.head"));
     expect(helpHeadings()).toEqual([
       tugHelp()[0],
       shipHelp()[0],
       ruleHelp()[0],
       listHelp()[0],
       charterHelp()[0],
+      urlHelp()[0],
+      t("help.codex.head"),
     ]);
+  });
+
+  /**
+   * The settings that live in the address bar and had no other home.
+   *
+   * All five worked before the card mentioned them and none was written down
+   * anywhere a player would look: a voter who wants the music off, or a bug
+   * report worth reproducing, had the source to read and nothing else
+   * (docs/gui-guides.md, "Что применить", C). Checked in every language,
+   * because a translator who reworded a query string would have broken the one
+   * thing on the card that must be typed exactly.
+   */
+  it("names every setting that lives in the URL, in all three languages", () => {
+    const params = ["?seed=", "?view=", "?sound=off", "?training=1", "?debug=1"];
+    for (const lang of LANGS) {
+      setLang(lang);
+      const card = helpBody(false).join("\n");
+      for (const param of params) expect(card, `${lang}: ${param}`).toContain(param);
+      // On the tug as well: it is the card, not the compartment, that answers.
+      for (const param of params) expect(helpBody(true).join("\n"), lang).toContain(param);
+    }
+    setLang(DEFAULT_LANG);
+  });
+
+  /** `PageUp` had no line on the card until it had a meaning (G79). */
+  it("says which key opens the log's own past", () => {
+    for (const lang of LANGS) {
+      setLang(lang);
+      expect(keyHelp().join("\n"), lang).toContain("PgUp");
+      expect(keyHelp().join("\n"), lang).toContain("PgDn");
+    }
+    setLang(DEFAULT_LANG);
   });
 
   /**

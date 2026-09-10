@@ -20,6 +20,7 @@ import {
   expose,
   exposureFor,
   findSlot,
+  findSlotAs,
   graft,
   hostilesIn,
   install,
@@ -28,9 +29,12 @@ import {
   repair,
   rigOf,
   routeDamage,
+  swapSlots,
+  takeFor,
   wrecksIn,
   type HackTarget,
   type Rig,
+  blamedOn,
 } from "../src/twist/rig.js";
 
 /**
@@ -108,17 +112,20 @@ describe("the starting rack", () => {
     const game = gameOn(PAIR);
     expect(rig(game).slots.filter(Boolean)).toHaveLength(5);
     const stats = derivedStats(rig(game));
-    // The starting rack carries no BAFFLE, so both stealth numbers are zero.
+    // The starting rack carries no BAFFLE, so both stealth numbers are zero —
+    // and no LATTICE, so the drone has no flat armour either.
     expect(stats).toEqual({
       speed: 100,
       sight: 1,
       damage: [1, 6, 1],
       noisePenalty: 0,
       machineFovPenalty: 0,
+      defense: 0,
     });
     expect(game.player.speed).toBe(stats.speed);
     expect(game.player.sight).toBe(stats.sight);
     expect(game.player.damage).toEqual(stats.damage);
+    expect(game.player.defense).toBe(stats.defense);
   });
 
   it("falls back to the bare chassis with nothing installed", () => {
@@ -130,6 +137,7 @@ describe("the starting rack", () => {
       damage: [...BARE_CHASSIS.damage],
       noisePenalty: 0,
       machineFovPenalty: 0,
+      defense: 0,
     });
   });
 
@@ -318,6 +326,19 @@ describe("damage routing", () => {
     r.slots[slotOf(r, "plating")] = null;
     r.exposed = null;
     expect(routeDamage(r, 2).toCore).toBe(2);
+  });
+
+  it("signs a blow nothing dealt by whatever owned it, and by 'Something' only when nothing did", () => {
+    const game = gameOn(PAIR);
+    const hits = () => game.log.lines.filter((l) => l.key === "log.hit.vent" || l.key === "log.hit.module");
+    blamedOn("log.hit.vent", () => RIG.onDamage!(game, game.player, 1, undefined));
+    expect(hits().map((l) => l.key)).toEqual(["log.hit.vent"]);
+    expect(hits()[0]!.text.startsWith("Something")).toBe(false);
+
+    // The cause lasts exactly as long as the blow it was named for.
+    RIG.onDamage!(game, game.player, 1, undefined);
+    expect(hits().map((l) => l.key)).toEqual(["log.hit.vent", "log.hit.module"]);
+    expect(hits()[1]!.text.startsWith("Something")).toBe(true);
   });
 
   it("kills when the core runs out", () => {
@@ -625,6 +646,90 @@ const KESTREL_RUN: Omit<RoomGameConfig, "seed"> = {
     },
   },
 };
+
+// ------------------------------------------------------------------ relics
+
+describe("a relic on the rack", () => {
+  /** A full rack: the five the drone undocks with and a welder in the sixth slot. */
+  function full(): Rig {
+    const r = makeStartingRig();
+    r.slots[5] = { kind: "welder", integrity: 3 };
+    return r;
+  }
+
+  it("answers for the module it stands in for, and for nothing else", () => {
+    const r = makeStartingRig();
+    r.slots[findSlot(r, "cutter")!] = { kind: "blade", integrity: 14 };
+    expect(findSlot(r, "cutter")).toBeNull();
+    expect(findSlotAs(r, "cutter")).toBe(0);
+    expect(findSlotAs(r, "laser")).toBeNull();
+    // With the real thing in the rack too, the real thing answers first.
+    r.slots[5] = { kind: "cutter", integrity: 2 };
+    expect(findSlotAs(r, "cutter")).toBe(5);
+  });
+
+  it("asks for a swap against a full rack, naming the slot it upgrades", () => {
+    const r = full();
+    expect(takeFor(r, "blade")).toEqual({ kind: "swap", slot: findSlot(r, "cutter") });
+    expect(takeFor(r, "lattice")).toEqual({ kind: "swap", slot: findSlot(r, "plating") });
+    expect(takeFor(r, "shocker")).toEqual({ kind: "swap", slot: null });
+    // The upgrade first, then the rest worst-first, ties to the lower slot.
+    r.slots[findSlot(r, "scanner")!]!.integrity = 1;
+    r.slots[findSlot(r, "cell")!]!.integrity = 1;
+    const order = swapSlots(r, "blade");
+    expect(order).toHaveLength(6);
+    expect(order[0]).toBe(findSlot(r, "cutter"));
+    expect(order[1]).toBe(findSlot(r, "scanner"));
+    expect(order[2]).toBe(findSlot(r, "cell"));
+    expect(swapSlots(r, "cutter")).toEqual([]);
+  });
+
+  it("takes neither a repair nor a graft, and the rack does not move", () => {
+    const r = full();
+    r.slots[5] = { kind: "blade", integrity: 10 };
+    const before = JSON.stringify(r.slots);
+    expect(repair(r)).toBeUndefined();
+    expect(graft(r, 5)).toBeUndefined();
+    expect(JSON.stringify(r.slots)).toBe(before);
+    // An ordinary module worn beside it is still mended, and the relic skipped.
+    r.slots[0]!.integrity = 1;
+    expect(repair(r)).toMatchObject({ slot: 0, integrity: 2 });
+    expect(r.slots[5]!.integrity).toBe(10);
+  });
+
+  it("is spent by a blow like any slot: the relic's price is that it never comes back", () => {
+    const r = full();
+    r.slots[5] = { kind: "blade", integrity: 14 };
+    r.exposed = 5;
+    expect(routeDamage(r, 5).hits[0]).toMatchObject({ slot: 5, kind: "blade", remaining: 9 });
+    expect(routeDamage(r, 9).hits[0]).toMatchObject({ slot: 5, burned: true });
+    expect(r.slots[5]).toBeNull();
+    expect(r.scars[5]).toBe("blade");
+  });
+
+  it("is the drone's swing when it is the best in the rack, and exposed by it", () => {
+    const r = makeStartingRig();
+    r.slots[5] = { kind: "blade", integrity: 14 };
+    expect(derivedStats(r).damage).toEqual([2, 6, 0]);
+    const game = gameOn(PAIR);
+    rigOf(game.player)!.slots[5] = { kind: "blade", integrity: 14 };
+    put(game, "r1", "maintenance-bot");
+    const cmd: RoomCommand = { kind: "attack", target: hostilesIn(game, game.roomOf(game.player).id)[0]!.id };
+    expect(exposureFor(game, rigOf(game.player)!, cmd)).toBe(5);
+  });
+
+  it("stands in for the plating in the chain, and a crawler eats past it too", () => {
+    const r = makeStartingRig();
+    r.slots[findSlot(r, "plating")!] = { kind: "lattice", integrity: 30 };
+    r.exposed = null;
+    expect(routeDamage(r, 4).hits[0]).toMatchObject({ kind: "lattice", amount: 4 });
+    const eaten = routeDamage(r, 3, ["corrosive"]);
+    expect(eaten.hits).toEqual([]);
+    expect(eaten.toCore).toBe(3);
+    // And the one flat point of armour in the game is on the drone.
+    expect(derivedStats(r).defense).toBe(1);
+  });
+});
 
 describe("replay", () => {
   it("reproduces the rack bit for bit after 200 random commands", () => {

@@ -10,6 +10,7 @@ import {
   type RoomId,
   type Ship,
 } from "@jamrog/engine";
+import { moduleName } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
 import { isTug } from "../content/tug.js";
 import { verbWord, doorStateWord } from "../content/words.js";
@@ -18,7 +19,8 @@ import type { Key } from "../content/i18n/keys.js";
 import { t, tId } from "../i18n.js";
 import { gatedOffers } from "../systems/tug.js";
 import { pickLabel, stationTargets, voyageRecord } from "../systems/voyage.js";
-import { passableForPlayer, travelRoute } from "./auto.js";
+import { wreckAt } from "../twist/rig.js";
+import { dangerAhead, passableForPlayer, travelRoute } from "./auto.js";
 
 /**
  * The numbered action list: "выбираем что делать текстом" (design-doc.md, "Ход
@@ -188,6 +190,10 @@ const DOOR_VERBS: Record<string, string> = {
   spike: "K",
   cut: "c",
   weld: "w",
+  // Lifting a mine off a door (`systems/doors.ts`): a way of dealing with the
+  // door, listed with the ways through it and reached by number only — `w`
+  // is the weld, and one letter cannot mean two turns.
+  defuse: "",
 };
 
 /**
@@ -237,7 +243,10 @@ export function roomActions(game: RoomGame, menu?: Level, moves = false, cursor 
     return keyed((verb !== undefined && tugPicks(game, verb)) || tugActions(game), cursor);
   }
   const list = moves ? travelActions(game) : hereActions(game);
-  if (menu === undefined || typeof menu === "string") return keyed(list, cursor);
+  if (menu === undefined) return keyed(list, cursor);
+  // A string level aboard a derelict is a relic's swap: which module it throws
+  // out of a full rack. The tug's verbs never reach here (`tugPicks`).
+  if (typeof menu === "string") return keyed(swapPicks(game, menu) ?? list, cursor);
   return keyed(doorMethods(game, menu) ?? list, cursor);
 }
 
@@ -323,25 +332,37 @@ interface TugRow {
 }
 
 /**
- * The dock's list, in groups.
+ * The dock's list, in groups, in the order a visit home is spent.
  *
- * Six headings over ten lines, and the owner asked for the grouping after
- * playing it flat: "проанализируй, разбей на группы действий — тип смена точки,
- * десант, отсек с дронами, контракты, и в каждом отделе свои вещи". The groups
- * were already here and had been since G53; what he was looking at was the
- * graphic view, which drew the lines and dropped their headings
- * (`ui/web/panel-html.ts`). Both halves are fixed — the headings render, and
- * `VOYAGE` is split in two, because moving the tug to the next hull is not
- * signing a charter for the one it is tied to.
+ * The owner asked for the grouping after playing it flat: "проанализируй,
+ * разбей на группы действий — тип смена точки, десант, отсек с дронами,
+ * контракты, и в каждом отделе свои вещи". The groups were already here and had
+ * been since G53; what he was looking at was the graphic view, which drew the
+ * lines and dropped their headings (`ui/web/panel-html.ts`). Both halves are
+ * fixed — the headings render, and the voyage is two groups, because moving the
+ * tug to the next hull is not signing a charter for the one it is tied to.
  *
- * Casting off leads and wears no heading of its own. It is the line the run
- * opens on and the one pressed most, and a seventh heading is a row the
- * terminal's sidebar does not have: at home the panel is exactly full, and the
- * row it would take comes off the bottom of the list, where the last group is.
+ * **Casting off is last.** It led the list until now, and the cost of that is
+ * measured rather than argued: `STATION_ORDER` in `systems/voyage.ts` reads the
+ * same verbs for the bots and has cast off in the middle of them, over a
+ * comment recording what happened when it did not — charters fell 1.81 → 0.41 a
+ * voyage, `lastHull` 44 % → 16 %, the itinerary unfunded behind a drone that
+ * had already flown. A player reads top to bottom, and the first line they read
+ * was the one that ends the visit. It is also the one press that cannot be
+ * taken back, and the highlight went home to it every time a group's list fell
+ * away (docs/tug-menu-audit.md, defects 2 and 8).
+ *
+ * **Four headings over ten lines, not six.** Two came off. `DRONE` stood over
+ * one row that already says `buy a hull`, and a heading that repeats its only
+ * line is a row of the panel spent on nothing. `SELL` joined `RIG`: stowing,
+ * fitting and selling are three things done to the same rack, and reading them
+ * as one group is how a player finds out that what they take off can also be
+ * put back. That is two rows of the panel returned — at home it was exactly
+ * full, sixteen of sixteen, and the next line anything added would have pushed
+ * the last group off the screen entirely.
  */
 const TUG_ROWS: readonly TugRow[] = [
-  { verb: "undock", label: "action.dead.undock", empty: "why.tug.noDrone" },
-  { head: "tug.group.drone", verb: "buy", nest: true, empty: "why.hull.none" },
+  { verb: "buy", nest: true, empty: "why.hull.none" },
   { head: "tug.group.repair", verb: "repair", nest: true, empty: "why.rig.whole" },
   { verb: "graft", nest: true, empty: "why.rig.grafted" },
   { verb: "clean", label: "action.dead.clean", empty: "why.rig.clean" },
@@ -349,23 +370,43 @@ const TUG_ROWS: readonly TugRow[] = [
   // One row for every way a module gets onto the drone: the ones already in the
   // hold, and the three the dock has for sale. It is one row and not two
   // because at home the terminal panel is exactly full — ten numbered lines and
-  // six headings is what fits — and because it is the better answer anyway: the
-  // owner could not find the hold at all («не понял, как таскать модули к себе
-  // не экипируя»), and a shelf whose front door is the hold explains both at
-  // once.
-  { verb: "fit", also: "order", nest: true, empty: "why.hold.empty" },
-  { head: "tug.group.sell", verb: "sell", nest: true, empty: "why.rig.empty" },
+  // the headings over them is what fits — and because it is the better answer
+  // anyway: the owner could not find the hold at all («не понял, как таскать
+  // модули к себе не экипируя»), and a shelf whose front door is the hold
+  // explains both at once.
+  { verb: "fit", also: "order", nest: true, empty: "why.hold.shelf" },
+  { verb: "sell", nest: true, empty: "why.rig.empty" },
   { head: "tug.group.voyage", verb: "charter", nest: true, empty: "why.charter.gone" },
   { head: "tug.group.jump", verb: "jump", label: "action.dead.jump", empty: "why.jump.last" },
+  { verb: "undock", label: "action.dead.undock", empty: "why.tug.noDrone" },
 ];
+
+/**
+ * Everything one row of the tug is about: its own verb's offers, and the
+ * second verb's behind them if the row carries one.
+ *
+ * One function because there used to be two, and they disagreed. The row was
+ * built from both verbs and the list under it from `row.verb` alone, so the
+ * dock's shelf — which rides on the hold's row and has no row of its own —
+ * was on no screen in any state of the game. The owner spent four hours
+ * looking for it: «магаз модулей где?» (docs/tug-menu-audit.md, defect 4).
+ *
+ * `own` is handed back beside the whole list because a greyed row has to say
+ * why it is grey, and the answer belongs to the verb the row is named after.
+ */
+function rowTargets(
+  game: RoomGame,
+  row: TugRow,
+): { own: Array<ActionOffer<RoomCommand>>; all: Array<ActionOffer<RoomCommand>> } {
+  const own = stationTargets(game, row.verb);
+  const also = row.also === undefined ? [] : stationTargets(game, row.also);
+  return { own, all: [...own, ...also] };
+}
 
 function tugActions(game: RoomGame): Action[] {
   const rows = TUG_ROWS.map((row) => {
-    const targets = [
-      ...stationTargets(game, row.verb),
-      ...(row.also === undefined ? [] : stationTargets(game, row.also)),
-    ];
-    const line = tugRow(game, row, targets);
+    const { own, all } = rowTargets(game, row);
+    const line = tugRow(game, row, all, own);
     return row.head === undefined ? line : { ...line, head: t(row.head) };
   });
   // Anything the five groups do not claim still gets a line. Nothing offers one
@@ -389,12 +430,19 @@ function tugActions(game: RoomGame): Action[] {
  * One row of the tug: the verb, and what pressing it does about the modules
  * behind it.
  *
- * With more than one thing to aim at, the row steps down a level and `cmd` is
+ * A group steps down a level, however few things are under it, and `cmd` is
  * still the first thing it would have done — so anything reading this list as
- * plain commands gets what it always got. With exactly one it is that one,
- * worded by the system that owns it: stepping into a list to read a single
- * entry is a keystroke spent on nothing, and it is the same rule a bulkhead
- * with one tool follows.
+ * plain commands gets what it always got.
+ *
+ * It used to become that one thing when only one was left, on the argument a
+ * bulkhead with one tool makes: stepping into a list to read a single entry is
+ * a keystroke spent on nothing. A bulkhead can afford it because its list is
+ * about that bulkhead; the tug's ten rows are a menu, and a menu's fourth row
+ * meaning "open the repairs" on one screen and "mend the BATTERY, 4 CR" on the
+ * next is the defect, not the keystroke. `8` was the worst of them: the list of
+ * sales while the rack had two modules in it, and the sale of the last one —
+ * for good, with the word "for good" living on the group's label and so absent
+ * from the line that did it (docs/tug-menu-audit.md, defect 3).
  *
  * With none at all it is still a row, greyed, saying why. That is the half of
  * the rule that keeps the ten numbers still — and the only way a player ever
@@ -404,6 +452,7 @@ function tugRow(
   game: RoomGame,
   row: TugRow,
   offers: ReadonlyArray<ActionOffer<RoomCommand>>,
+  own: ReadonlyArray<ActionOffer<RoomCommand>>,
 ): Action {
   const label = (row.label === undefined ? pickLabel(row.verb) : t(row.label)) ?? row.verb;
   if (offers.length === 0) {
@@ -411,7 +460,7 @@ function tugRow(
     line.why = t(noDrone(game) ? "why.tug.noDrone" : row.empty);
     return line;
   }
-  if (offers.length === 1 || row.nest !== true) return fromOffer(offers[0]!);
+  if (row.nest !== true) return fromOffer(offers[0]!);
 
   const open = offers.find((o) => o.enabled);
   const line: Action = {
@@ -427,22 +476,57 @@ function tugRow(
     enabled: open !== undefined,
     step: row.verb,
   };
-  if (open === undefined) line.why = offers[0]!.why ?? t(row.empty);
+  // The sentence under a dead row belongs to the verb the row is named after.
+  // It used to be the first offer of the whole list, and on the one row that
+  // carries two verbs that was the shelf's: `fit from the hold ▸ (The drone
+  // already carries a CUTTER)`, printed over a hold that had never held
+  // anything (docs/tug-menu-audit.md, defect 5). With nothing of its own to
+  // say, the row says what it is for instead.
+  if (open === undefined) line.why = own[0]?.why ?? t(row.empty);
   return line;
 }
 
-/** The list one level down: every module this verb could be aimed at, then out. */
+/**
+ * The list one level down: every module this verb could be aimed at, then out.
+ *
+ * One target is enough to keep it. The threshold used to be two, and it was
+ * the right answer to a question this function is not the one being asked:
+ * whether stepping *into* a list is worth a keystroke. It is also the answer
+ * every caller got, including `tugStands`, which asks after every single
+ * action whether the level the player is standing in is still a question.
+ *
+ * That is the owner's complaint word for word — «нельзя взять все контракты,
+ * после 2 из 3 выкинет на основное меню». Signing a charter takes it off the
+ * board, the board falls to one, the level is declared dead under the player's
+ * hands and the highlight goes home, to the row that casts off. The same thing
+ * happened on the fourth of five repairs, the fourth of five sales and the
+ * fourth of five stows, none of which he had got round to writing down.
+ *
+ * Whether a group is worth stepping into is decided where it belongs, on the
+ * row itself (`tugRow`).
+ */
 function tugPicks(game: RoomGame, verb: string): Action[] | undefined {
   const row = TUG_ROWS.find((r) => r.verb === verb);
   if (!row || row.nest !== true) return undefined;
-  const offers = stationTargets(game, verb);
-  if (offers.length < 2) return undefined;
+  const offers = rowTargets(game, row).all;
+  if (offers.length === 0) return undefined;
   return [...offers.map(fromOffer), backToRoom()];
 }
 
 /** Is that verb's own list still standing? The level falls away when it is not. */
 export function tugStands(game: RoomGame, verb: string): boolean {
   return isTug(game) && tugPicks(game, verb) !== undefined;
+}
+
+/**
+ * Which of the ten rows a verb is, so a level that closes lands back on the row
+ * it opened from rather than at the top of the list.
+ *
+ * `-1` for anything the tug has no row for, which is the caller's cue to leave
+ * the highlight where it puts it by default.
+ */
+export function tugRowIndex(verb: string): number {
+  return TUG_ROWS.findIndex((r) => r.verb === verb);
 }
 
 /** Is this offer about a bulkhead — a way through one, or shutting one? */
@@ -579,7 +663,8 @@ function hereActions(game: RoomGame): Action[] {
 
   const shots = offers.filter((o) => verbOf(o) === "shoot");
   const late = offers.filter((o) => LATE_VERBS.has(verbOf(o) ?? ""));
-  const spent = new Set([...shots, ...forDoors, ...late]);
+  const swaps = offers.filter((o) => verbOf(o) === "swap");
+  const spent = new Set([...shots, ...forDoors, ...late, ...swaps]);
 
   const out: Action[] = [
     // Attacks come off the entity list rather than off the offers: hitting what
@@ -587,6 +672,8 @@ function hereActions(game: RoomGame): Action[] {
     // a game one day stops advertising it.
     ...attackRows(machinesIn(game, here)),
     ...shots.map(fromOffer),
+    // A relic against a full rack: one line per crate, its slots one level down.
+    ...swapRows(game, here, swaps),
     // Anything lying about: wreckage, crates, bodies, a charter's package.
     // `hide` and `wait` are deliberately dropped — they are letters, not
     // numbers, and a list that repeats the letter row is a list nobody reads.
@@ -631,7 +718,7 @@ function situation(game: RoomGame): {
  * (`systems/doors.ts`, `LOCKED_METHODS` offers four), so no method loses its
  * number to that.
  */
-function keyed(actions: readonly Action[], cursor = 0): Action[] {
+export function keyed(actions: readonly Action[], cursor = 0): Action[] {
   // One level down `0` is spoken for, so the window is nine wide rather than
   // ten — and the window has to know that, or the tenth line of a sub-list is
   // the unreachable one all over again.
@@ -757,7 +844,7 @@ function doorRow(door: Door, ways: readonly DoorWay[], name: (verb: string) => s
  * a lock the drone has no tool for is precisely when a player needs to read the
  * four methods and what each would have cost.
  */
-function doorMenu(door: Door, label: string, ways: readonly DoorWay[]): Action {
+export function doorMenu(door: Door, label: string, ways: readonly DoorWay[]): Action {
   const opener = ways.find((w) => w.enabled);
   return {
     key: "",
@@ -783,7 +870,17 @@ function doorMenu(door: Door, label: string, ways: readonly DoorWay[]): Action {
 function doorMethods(game: RoomGame, id: DoorId): Action[] | undefined {
   const { doors, forDoors } = situation(game);
   const door = doors.find((d) => d.id === id);
-  if (!door || door.state === "airlock" || game.ship.passable(door, { isPlayer: true })) return undefined;
+  if (!door || door.state === "airlock") return undefined;
+  if (game.ship.passable(door, { isPlayer: true })) {
+    // A door the drone could simply walk through is a question only when the
+    // drone has been told what is on the other side of it (`ui/auto.ts`,
+    // `dangerAhead`): then the list is the step in, worded as the plain `go`
+    // it is, and whatever lifts the hazard — which is how a walk that stopped
+    // a door short hands the decision over (docs/tasks/G71-hazard-framework.md).
+    if (dangerAhead(game, door) === undefined) return undefined;
+    const through: DoorWay = { verb: "go", letter: "", cmd: { kind: "go", door: door.id }, enabled: true };
+    return [methodAction(through), ...waysOf(forDoors, id).map(methodAction), backAction(door)];
+  }
   const ways = waysOf(forDoors, id);
   if (ways.length === 0) return undefined;
   return [...ways.map(methodAction), backAction(door)];
@@ -794,7 +891,77 @@ export function doorStands(game: RoomGame, id: DoorId): boolean {
   return doorMethods(game, id) !== undefined;
 }
 
-function methodAction(way: DoorWay): Action {
+// ------------------------------------------------------------------- relics
+
+/** The level a relic's swap opens: `swap:<wreck id>`, one per crate. */
+const SWAP_LEVEL = "swap:";
+
+export function swapLevel(wreck: number): string {
+  return `${SWAP_LEVEL}${wreck}`;
+}
+
+function swapWreck(level: string): number | undefined {
+  if (!level.startsWith(SWAP_LEVEL)) return undefined;
+  const id = Number(level.slice(SWAP_LEVEL.length));
+  return Number.isInteger(id) ? id : undefined;
+}
+
+/**
+ * A relic against a full rack, folded: one line per crate, and the module it
+ * throws out chosen one level down (`twist/rig.ts`, `swapSlots`).
+ *
+ * The rig offers one `swap` per slot, which is six lines on a list of ten
+ * digits — a list with no room left for the door. Folded, the line keeps the
+ * old promise: `cmd` is the first swap, the slot of the module the relic
+ * upgrades, so a harness reading commands presses what it always pressed. With
+ * exactly one module to throw out there is no choice to step into and the line
+ * is that swap — the rule a bulkhead with one tool follows (`doorRow`).
+ */
+function swapRows(game: RoomGame, here: RoomId, swaps: ReadonlyArray<ActionOffer<RoomCommand>>): Action[] {
+  const byCrate = new Map<number, Array<ActionOffer<RoomCommand>>>();
+  for (const o of swaps) {
+    const id = o.cmd.kind === "act" ? o.cmd.target : undefined;
+    if (id === undefined) continue;
+    const list = byCrate.get(id) ?? [];
+    list.push(o);
+    byCrate.set(id, list);
+  }
+  const out: Action[] = [];
+  for (const [id, group] of byCrate) {
+    if (group.length === 1) {
+      out.push(fromOffer(group[0]!));
+      continue;
+    }
+    const wreck = wreckAt(game, here, id);
+    const first = group[0]!;
+    out.push({
+      key: "",
+      label: wreck ? t("action.swapMenu", { module: moduleName(wreck.kind) }) : first.label,
+      cmd: first.cmd,
+      enabled: group.some((o) => o.enabled),
+      step: swapLevel(id),
+    });
+  }
+  return out;
+}
+
+/** The list one level down: every slot the relic could take, and the way back. */
+function swapPicks(game: RoomGame, level: string): Action[] | undefined {
+  const id = swapWreck(level);
+  if (id === undefined) return undefined;
+  const group = gatedOffers(game).filter(
+    (o) => o.cmd.kind === "act" && o.cmd.verb === "swap" && o.cmd.target === id,
+  );
+  if (group.length < 2) return undefined;
+  return [...group.map(fromOffer), backToRoom()];
+}
+
+/** Is that crate still here, and still a choice? The level falls away when not. */
+export function swapStands(game: RoomGame, level: string): boolean {
+  return !isTug(game) && swapPicks(game, level) !== undefined;
+}
+
+export function methodAction(way: DoorWay): Action {
   const out = raw(methodLabel(way.verb), way.cmd, way.enabled);
   if (way.why !== undefined) out.why = way.why;
   return out;
@@ -821,7 +988,7 @@ function methodLabel(verb: string): string {
  * between this line and `backAction`, which sits one level further down and has
  * a bulkhead to name.
  */
-function backToRoom(): Action {
+export function backToRoom(): Action {
   return {
     key: "",
     label: t("action.backRoom"),
@@ -834,7 +1001,7 @@ function backToRoom(): Action {
   };
 }
 
-function backAction(door: Door): Action {
+export function backAction(door: Door): Action {
   return {
     key: "",
     // The bulkhead is named here and nowhere else on this list: one level down
@@ -941,7 +1108,7 @@ function doorOffer(offer: ActionOffer<RoomCommand>, doors: ReadonlySet<number>):
 }
 
 /** Pads to a column, and always leaves at least the one space between fields. */
-function pad(text: string, width: number): string {
+export function pad(text: string, width: number): string {
   return text.length < width ? text.padEnd(width) : `${text} `;
 }
 

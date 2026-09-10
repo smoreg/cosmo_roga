@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { flavourCallsign } from "../src/content/derelicts.js";
-import { RoomGame, spawnMonsterIn, type RoomGameConfig } from "@jamrog/engine";
+import { derelictName, flavourCallsign } from "../src/content/derelicts.js";
+import { RoomGame, hexLayout, spawnMonsterIn, type RoomGameConfig } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { TUG_CALLSIGNS, tugCallsign } from "../src/content/hints.js";
@@ -10,6 +10,8 @@ import { addWreck, applyDerived, findSlot, rigOf } from "../src/twist/rig.js";
 import { schematic } from "../src/ui/schematic.js";
 import { BANNER_WIDTH, bannerLine, schematicInputOf, thingsIn } from "../src/ui/schematic-input.js";
 import { LAYOUT } from "../src/ui/theme.js";
+import { hexSvgOf } from "../src/ui/web/hex-svg.js";
+import { svgOf } from "../src/ui/web/schematic-svg.js";
 
 /**
  * The one adapter between the engine's ship and the picture of it.
@@ -105,6 +107,52 @@ describe("how much of a compartment is drawn", () => {
     expect(roomOf(game, "r3").glyphs).toBe("");
   });
 
+  it("keeps drawing the compartments the drone walked through, smoke or no smoke", () => {
+    // The owner, on a live run: «я сделал 2 шага между комнатами и они
+    // исчезли» (docs/tasks/G83-anonymous-blows.md, 5). Walked compartments
+    // are memory, and memory is not what a smoke-filled compartment blinds:
+    // from inside the smoke the drone sees nothing but the smoke, and the
+    // boxes it has stood in stay solid in every view all the same.
+    const smoked = `
+      TUG -a1- r1
+      r1 -d1- r2 -d2- r3 -d3- r4
+      r3 -d4- r5
+      r1: docking
+      r2: hold
+      r3: hab hazard=smoke
+      r4: reactor
+      r5: cargo
+    `;
+    const game = new RoomGame({ ...config(), firstShip: () => shipFromText(smoked).ship, seed: 11 });
+    const step = (door: string) =>
+      expect(game.playerCommand({ kind: "go", door: game.ship.door(door).id }).ok).toBe(true);
+    step("d1");
+    step("d2");
+    // In the smoke: the compartments behind are remembered, not seen.
+    expect(game.visible).toEqual(new Set([game.ship.room("r3").id]));
+    expect(roomOf(game, "r1").state).toBe("explored");
+    expect(roomOf(game, "r2").state).toBe("explored");
+    step("d3");
+    step("d3");
+    step("d2");
+    expect(roomOf(game, "r2").state).toBe("current");
+    expect(roomOf(game, "r3").state).toBe("explored");
+    expect(roomOf(game, "r4").state).toBe("explored");
+    expect(roomOf(game, "r5").state).toBe("unknown");
+
+    // And every view draws what the adapter remembers: the label of each
+    // walked compartment is on the terminal sheet, in the SVG and in the hexes.
+    const input = schematicInputOf(game);
+    const ascii = schematic(input).lines.map((l) => l.text).join("\n");
+    const svg = svgOf(input);
+    const hexes = hexSvgOf(input, hexLayout(game.ship));
+    for (const label of ["r1", "r2", "r3", "r4"]) {
+      expect(ascii, `${label} on the sheet`).toContain(label);
+      expect(svg, `${label} in the SVG`).toContain(`>${label}<`);
+      expect(hexes, `${label} in the hexes`).toContain(`>${label}<`);
+    }
+  });
+
   it("keeps wreckage on the schematic after the drone has walked away", () => {
     const game = gameIn();
     addWreck(game, game.ship.room("r3").id, "welder", 2);
@@ -131,11 +179,37 @@ describe("how much of a compartment is drawn", () => {
     const data = game.ship.roomAt(game.ship.room("r2").id).data;
     data.bodies = [{ glyph: "†", name: "crew body" }];
     // Whatever else a card left behind must not reach the screen as a crash.
+    // A record that *is* an object is a thing in that compartment and wears its
+    // bucket's mark even with nothing else to say — bodies and crates carry no
+    // `glyph` of their own at all, and dropping them left the deck bare while
+    // the action list offered `search the body` (the owner, 10.09). Only what
+    // is not an object at all falls out.
     data.items = [null, 42, {}, { glyph: "" }, { glyph: "*", label: "the package" }];
 
-    expect(thingsIn(game, game.ship.room("r2").id).map((t) => t.glyph)).toEqual(["†", "*"]);
-    expect(thingsIn(game, game.ship.room("r2").id)[1]!.name).toBe("the package");
-    expect(roomOf(game, "r2").glyphs).toBe("† *");
+    expect(thingsIn(game, game.ship.room("r2").id).map((t) => t.glyph)).toEqual([
+      "†",
+      "*",
+      "*",
+      "*",
+    ]);
+    expect(thingsIn(game, game.ship.room("r2").id)[3]!.name).toBe("the package");
+    expect(roomOf(game, "r2").glyphs).toBe("† * * *");
+  });
+
+  it("marks a body and a crate the catalogue stored without a glyph", () => {
+    // The bug the owner saw: `{id, searched}` and `{id, kind}` are what the
+    // rules store, and neither carries a mark, so nothing was drawn.
+    const game = gameIn();
+    const data = game.ship.roomAt(game.ship.room("r2").id).data;
+    data.bodies = [{ id: 1, searched: false }, { id: 2, searched: true }];
+    data.crates = [{ id: 3, kind: "cargo" }, { id: 4, kind: "contraband" }];
+    data.items = [{ id: 5, kind: "console" }];
+
+    const things = thingsIn(game, game.ship.room("r2").id);
+    expect(things.map((t) => t.glyph)).toEqual(["†", "†", "X", "X", "*"]);
+    expect(things.every((t) => t.name.length > 0)).toBe(true);
+    expect(things[1]!.name).not.toBe(things[0]!.name);
+    expect(things[3]!.name).not.toBe(things[2]!.name);
   });
 });
 
@@ -149,7 +223,7 @@ describe("the line under the schematic", () => {
   it("says whose ship this is when the ship is the tug", () => {
     const game = newGame(4);
     expect(schematicInputOf(game).shipLine).toBe(
-      `${tugCallsign(4)} · your tug · docked to freighter`,
+      `${tugCallsign(4)} · your tug · docked to ${derelictName(currentDerelict(game).spec)}`,
     );
     expect(TUG_CALLSIGNS).toContain(tugCallsign(4));
 
@@ -157,7 +231,7 @@ describe("the line under the schematic", () => {
     expect(undock(game).ok).toBe(true);
     const line = schematicInputOf(game).shipLine;
     expect(line).not.toContain("your tug");
-    expect(line).toContain("freighter");
+    expect(line).toContain(derelictName(currentDerelict(game).spec));
     expect(line).toContain(`${game.ship.rooms.length} rooms`);
   });
 
@@ -203,12 +277,13 @@ describe("the banner over the schematic", () => {
   it("names the tug at home and the hull aboard, and says which is which", () => {
     const game = newGame(4);
     const callsign = flavourCallsign(currentDerelict(game).flavour);
-    expect(bannerLine(game)).toBe(`YOUR TUG «${tugCallsign(4)}» · docked to ${callsign} (freighter)`);
+    const hull = derelictName(currentDerelict(game).spec);
+    expect(bannerLine(game)).toBe(`YOUR TUG «${tugCallsign(4)}» · docked to ${callsign} (${hull})`);
 
     expect(undock(game).ok).toBe(true);
     const aboard = bannerLine(game);
     expect(aboard.startsWith(`DERELICT «${callsign}»`)).toBe(true);
-    expect(aboard).toContain("freighter");
+    expect(aboard).toContain(hull);
     expect(aboard).toContain(`${game.ship.rooms.length} rooms`);
     // The gauge, in the word the tug's own panel already uses for it.
     expect(aboard.endsWith("quiet")).toBe(true);

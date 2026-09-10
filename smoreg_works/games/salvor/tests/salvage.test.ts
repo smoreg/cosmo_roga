@@ -4,11 +4,13 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { MONSTERS, machineByName } from "../src/content/monsters.js";
 import { MAX_GRAFT, MODULES, SCRAP_INTEGRITY, moduleKind } from "../src/content/modules.js";
+import { DOORS } from "../src/systems/doors.js";
 import { buyHull, VOYAGE, voyageOf } from "../src/systems/voyage.js";
 import {
   RIG,
   addWreck,
   capOf,
+  carriedBy,
   findSlot,
   graft,
   hostilesIn,
@@ -464,6 +466,79 @@ describe("the numbered action list", () => {
 
     expect(enabled).toBeGreaterThan(500);
     expect(refused).toBeGreaterThan(0);
+  });
+});
+
+// -------------------------------------------------------------------- relics
+
+describe("a relic against a full rack", () => {
+  /** A blade in a crate, at its base, the way `populate` lays one. */
+  function bladeCrate(game: RoomGame, label: string): number {
+    const wreck = addWreck(game, room(game, label), "blade", MODULES.blade.integrity, "X");
+    wreck.source = "crate";
+    return wreck.id;
+  }
+
+  it("is six lines of one verb, the cutter first, and one press does the swap", () => {
+    const game = gameOn(PAIR);
+    fillRack(game);
+    const id = bladeCrate(game, "r1");
+    const r = rig(game);
+
+    const swaps = RIG.offerActions!(game).filter((o) => o.cmd.kind === "act" && o.cmd.verb === "swap");
+    expect(swaps).toHaveLength(6);
+    expect(swaps[0]!.label).toBe("Q-BLADE for CUTTER");
+    expect(swaps[0]!.cmd).toEqual({ kind: "act", verb: "swap", target: id, slot: findSlot(r, "cutter") });
+    // Every line is aimed at a different slot, and every slot is on the list.
+    const slots = swaps.map((o) => (o.cmd.kind === "act" ? o.cmd.slot : undefined)).sort();
+    expect(slots).toEqual([0, 1, 2, 3, 4, 5]);
+
+    const cutter = findSlot(r, "cutter")!;
+    const turns = game.inputs.length;
+    expect(game.playerCommand(swaps[0]!.cmd).ok).toBe(true);
+    expect(game.inputs).toHaveLength(turns + 1);
+    expect(r.slots[cutter]!.kind).toBe("blade");
+    expect(carriedBy(game.player)).toEqual([{ kind: "cutter", integrity: MODULES.cutter.integrity }]);
+    expect(wrecksIn(game, room(game, "r1"))).toHaveLength(0);
+    // Picking a crate up is hands-on work: the plating is what was risked.
+    expect(r.exposed).toBe(findSlot(r, "plating"));
+    expect(game.log.tail(5).map((m) => m.text)).toContain("Q-BLADE in, CUTTER out and into your arms.");
+  });
+
+  it("is a cutter to a welded bulkhead", () => {
+    // `systems/doors.ts` asks the rack whether it carries a cutter; the blade
+    // answers for one (`findSlotAs`), so the one door a drone without a cutter
+    // cannot pass is a door a blade opens.
+    const SEALED = `
+      TUG -a1- r1
+      r1 -#d1#- r2
+      r1: docking
+      r2: cargo
+    `;
+    const game = new RoomGame({
+      ...GAME_CONFIG,
+      seed: 7,
+      systems: [DOORS],
+      content: { ...SALVOR, monsterChance: () => 0 },
+      firstShip: () => shipFromText(SEALED).ship,
+      firstShipId: "1",
+    });
+    const r = rig(game);
+    const door = game.ship.door("d1").id;
+    const cut = () =>
+      DOORS.offerActions!(game).find(
+        (o) => o.cmd.kind === "act" && o.cmd.verb === "cut" && o.cmd.target === door,
+      );
+
+    r.slots[findSlot(r, "cutter")!] = null;
+    expect(cut()).toBeUndefined();
+    expect(game.playerCommand({ kind: "act", verb: "cut", target: door }).ok).toBe(false);
+
+    r.slots[0] = { kind: "blade", integrity: MODULES.blade.integrity };
+    expect(cut()?.enabled).toBe(true);
+    expect(game.playerCommand({ kind: "act", verb: "cut", target: door }).ok).toBe(true);
+    // And it is the blade that was put under the next blow, not a cutter that is not there.
+    expect(r.exposed).toBe(0);
   });
 });
 

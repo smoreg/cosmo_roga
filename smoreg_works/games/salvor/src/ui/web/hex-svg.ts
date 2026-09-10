@@ -1,5 +1,8 @@
 import { HEX_SPACING, type HexCell, type HexLayout } from "@jamrog/engine";
+import type { HullArt } from "../../content/hulls-art.js";
+import { hullLayer, type Box } from "./hullart.js";
 import { esc } from "./schematic-svg.js";
+import { thingsOf, tileDefs, tileRow, tileRowWidth, zoneTile } from "./tiles.js";
 import type { SchematicDoor, SchematicInput, SchematicRoom } from "../schematic.js";
 
 /**
@@ -25,6 +28,18 @@ import type { SchematicDoor, SchematicInput, SchematicRoom } from "../schematic.
  * layout. `col` and `row` are simply not read here; the states, the glyphs, the
  * machine counts and the door states are the same facts the terminal draws, so
  * the three screens cannot disagree about the ship.
+ *
+ * ## The hull under it
+ *
+ * Given `art`, a drawn ship goes **under** the honeycomb (`hullart.ts`): the
+ * profile the honeycomb was grown inside when the layout honoured it
+ * (`layout.masked`, G82), or a skin traced around the cells when it could not
+ * (G81). It is the first thing in the document, so every duct, corridor,
+ * hexagon and door covers it — the amber marks stay on top, and the map is
+ * the map it was. It widens the frame by what it draws, and nothing else
+ * about the picture moves. Without `art` the output is byte for byte what it
+ * was before there was a hull, which is what `?hull=0` gives and what the
+ * fixture in `tests/hex-svg.test.ts` holds it to.
  */
 
 /** Circumradius of a hexagon: centre to a point. Everything else follows. */
@@ -51,6 +66,46 @@ const TAG_CHAR_W = 7;
 /** What an unexplored compartment says instead of a name. Same as the terminal's. */
 const UNKNOWN = "····";
 
+/**
+ * The tile row inside a hexagon (`?tiles=1`): four cells of twelve units on a
+ * step of fifteen.
+ *
+ * Smaller than the box's sixteen, and the hexagon is why. A pointy-top cell is
+ * widest across its middle and narrows to a point, and the middle is taken by
+ * the name and the id — so the row sits low, where the outline has already
+ * closed in. At `y + 29` the cell is 59 units across; four twelves on a step of
+ * fifteen span 57, and that is the whole of the arithmetic. It is also the
+ * ceiling `docs/tiles-design.md` (2.5) worked out for the honeycomb before any
+ * of this was drawn.
+ *
+ * What the size costs is worth stating plainly, because it is the weakest part
+ * of the feature. Measured across every class, twelve seeds and three depths,
+ * inside the profile G82 grows the cells in: the view runs at 0.80–1.68x on the
+ * itch page, median 1.11, so a twelve-unit tile is 13 CSS px in the middle of
+ * the range and 10 at the worst. That is at or just under the floor of
+ * `docs/gui-guides.md` 6.1 — and unavoidable in a frame that has to hold
+ * nineteen compartments and a hull. What makes it worth doing anyway is the
+ * comparison: the glyph it replaces is `font-size:12` with a fifth of an em of
+ * tracking, so the picture is never smaller than the letter was.
+ */
+const TILE_SIZE = 12;
+const TILE_STEP = 15;
+const TILE_MAX = 4;
+/** Bottom of the row, measured down from the centre: the id's descender clears it. */
+const TILE_BOTTOM = 29;
+
+/**
+ * The compartment's own pictogram, above its name.
+ *
+ * The honeycomb is where this earns the most: twenty-two kinds, each clipped to
+ * seven characters at `font-size:13` (`docs/tiles-design.md`, 1.2), so the shape
+ * of the ship — where the three systems are — is a question the eye can answer
+ * before it reads anything. Fourteen units rather than the box's sixteen, for
+ * the same reason the row is twelve.
+ */
+const ZONE_SIZE = 14;
+const ZONE_TOP = -30;
+
 interface Point {
   x: number;
   y: number;
@@ -61,30 +116,59 @@ interface Point {
  * is a parameter for the same reason it is one in `svgOf`: the terminal draws it
  * separately too.
  */
-export function hexSvgOf(input: SchematicInput, layout: HexLayout, banner = ""): string {
+export function hexSvgOf(
+  input: SchematicInput,
+  layout: HexLayout,
+  banner = "",
+  art?: HullArt,
+  tiles = false,
+): string {
   const at = new Map<number, Point>();
+  const cells: HexCell[] = [];
   for (const room of input.rooms) {
     const cell = layout.cells.get(room.id);
-    if (cell) at.set(room.id, centre(cell));
+    if (cell) {
+      at.set(room.id, centre(cell));
+      cells.push(cell);
+    }
   }
   if (at.size === 0) return "";
-  const box = extent([...at.values()]);
+  const hull = art === undefined ? undefined : hullLayer({
+    cells,
+    airlock: input.tug === undefined ? undefined : layout.cells.get(input.tug.at),
+    at: centre,
+    R,
+    spacing: HEX_SPACING,
+    art,
+    form: layout.masked ? art.form : undefined,
+  });
+  const box = extent([...at.values()], hull?.box);
 
   const corridors = input.doors.filter((d) => layout.corridors.has(d.id));
   const links = input.doors.filter((d) => layout.links.has(d.id) && d.a !== d.b);
   const named = new Map(input.rooms.map((room) => [room.id, room.label]));
 
-  return [
-    `<svg class="schematic hexmap" viewBox="${box.x} ${box.y} ${box.w} ${box.h}" preserveAspectRatio="xMidYMid meet" role="img">`,
+  const body = [
+    hull?.svg ?? "",
     ...links.map((door) => duct(door, at)),
     ...corridors.map((door) => corridor(door, at)),
-    ...input.rooms.map((room) => hex(room, at.get(room.id))),
+    ...input.rooms.map((room) => hex(room, at.get(room.id), tiles)),
     ...corridors.map((door) => tag(door, at)),
     ...stacked(links, at, named),
     banner.length > 0 ? text(box.x + 14, box.y + 26, banner, "banner") : "",
     input.shipLine.length > 0
       ? text(box.x + 14, box.y + box.h - 12, input.shipLine, "ship-line")
       : "",
+  ]
+    .filter((s) => s.length > 0)
+    .join("");
+  // The symbols this frame referenced and none of the rest, read back off the
+  // finished markup. Empty with the flag off, which is what keeps the drawing
+  // byte for byte the one `tests/hex-svg.test.ts` holds a golden file of.
+  return [
+    `<svg class="schematic hexmap${tiles ? " has-tiles" : ""}" viewBox="${box.x} ${box.y} ${box.w} ${box.h}" preserveAspectRatio="xMidYMid meet" role="img">`,
+    tileDefs(body),
+    body,
     "</svg>",
   ]
     .filter((s) => s.length > 0)
@@ -93,22 +177,56 @@ export function hexSvgOf(input: SchematicInput, layout: HexLayout, banner = ""):
 
 // ---------------------------------------------------------------- geometry
 
-/** Axial to pixels, for pointy-top hexagons. */
-function centre(cell: HexCell): Point {
+/**
+ * Axial to pixels, for pointy-top hexagons. Exported with `hexCorners` and
+ * `HEX_R` for the hull's tests, which have to ask where a cell really is
+ * rather than guess the same formula twice.
+ */
+export function hexCentre(cell: HexCell): Point {
   return { x: STEP * (cell.q + cell.r / 2), y: R * 1.5 * HEX_SPACING * cell.r };
 }
 
-function extent(points: readonly Point[]): { x: number; y: number; w: number; h: number } {
+const centre = hexCentre;
+
+/** The drawn hexagon's circumradius, for whoever measures the picture. */
+export const HEX_R = R;
+
+/**
+ * The frame: the hexagons plus room for their labels and the two captions —
+ * and, when there is a hull, whatever it drew past them. The hull's box is
+ * measured off what it actually emits (a pod's bell, a mast's dish), because
+ * a frame guessed from the cells cut the exhausts off every ship in the
+ * sandbox that had engines. The hexagons' own margins are not changed by it.
+ */
+function extent(points: readonly Point[], hull?: Box): { x: number; y: number; w: number; h: number } {
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
-  const x = Math.min(...xs) - INRADIUS - PAD.x;
-  const y = Math.min(...ys) - R - PAD.top;
-  const w = Math.max(...xs) + INRADIUS + PAD.x - x;
-  const h = Math.max(...ys) + R + PAD.bottom - y;
-  return { x: round(x), y: round(y), w: round(w), h: round(h) };
+  let x = Math.min(...xs) - INRADIUS - PAD.x;
+  let y = Math.min(...ys) - R - PAD.top;
+  let right = Math.max(...xs) + INRADIUS + PAD.x;
+  let bottom = Math.max(...ys) + R + PAD.bottom;
+  if (hull) {
+    x = Math.min(x, hull.minX - HULL_PAD.x);
+    y = Math.min(y, hull.minY - HULL_PAD.top);
+    right = Math.max(right, hull.maxX + HULL_PAD.x);
+    bottom = Math.max(bottom, hull.maxY + HULL_PAD.bottom);
+  }
+  return { x: round(x), y: round(y), w: round(right - x), h: round(bottom - y) };
 }
 
+/**
+ * Air between the hull's outermost mark and the edge of the frame: a little
+ * at the sides, and above and below the two captions' own height, so the
+ * banner is never printed across a deck and the ship line never across a
+ * pod. The hexagons keep their own margins, which are wider still.
+ */
+const HULL_PAD = { x: 8, top: 28, bottom: 18 };
+
 /** The six points of a pointy-top hexagon, clockwise from the top. */
+export function hexCorners(c: Point): Point[] {
+  return corners(c);
+}
+
 function corners(c: Point): Point[] {
   const half = INRADIUS;
   return [
@@ -123,7 +241,7 @@ function corners(c: Point): Point[] {
 
 // ------------------------------------------------------------------- hexes
 
-function hex(room: SchematicRoom, c: Point | undefined): string {
+function hex(room: SchematicRoom, c: Point | undefined, tiles: boolean): string {
   if (c === undefined) return "";
   const unknown = room.state === "unknown";
   const points = corners(c)
@@ -134,11 +252,17 @@ function hex(room: SchematicRoom, c: Point | undefined): string {
       ? `<polygon class="room-halo" points="${points}"/>`
       : "",
     `<polygon class="room-box" points="${points}"/>`,
+    // What the compartment is for, over its name. Never on an unknown one:
+    // that is precisely the fact the drone has not found out, and a reactor
+    // drawn on a dashed cell would say otherwise.
+    tiles && !unknown ? zoneTile(room, c.x - ZONE_SIZE / 2, c.y + ZONE_TOP, ZONE_SIZE) : "",
     text(c.x, c.y - 4, unknown ? UNKNOWN : room.name, "room-name", "middle"),
     text(c.x, c.y + 12, room.label, "room-id", "middle"),
   ];
-  if (!unknown && room.glyphs.length > 0) {
-    body.push(text(c.x, c.y + 26, room.glyphs, "glyph", "middle"));
+  // Glyphs on an unknown hexagon are a known hazard's mark and nothing else
+  // (`ui/schematic-input.ts`, `marksOf`).
+  if (room.glyphs.length > 0) {
+    body.push(tiles ? tileRowIn(room, c) : text(c.x, c.y + 26, room.glyphs, "glyph", "middle"));
   }
   if ((room.hostiles ?? 0) > 0) body.push(threat(c, room.hostiles ?? 0));
   const aimed = room.target === true ? " is-goal" : "";
@@ -148,6 +272,24 @@ function hex(room: SchematicRoom, c: Point | undefined): string {
     body.filter((s) => s.length > 0).join(""),
     "</g>",
   ].join("");
+}
+
+/**
+ * The same contents with the pictures in it, centred on the cell.
+ *
+ * Centred and not left-aligned because a hexagon has no left edge to align to:
+ * the row has to grow both ways from the middle or it leans out through one
+ * side of the outline.
+ */
+function tileRowIn(room: SchematicRoom, c: Point): string {
+  const things = thingsOf(room);
+  const spec = { size: TILE_SIZE, step: TILE_STEP, max: TILE_MAX };
+  return tileRow(things, {
+    ...spec,
+    x: round(c.x - tileRowWidth(things.length, spec) / 2),
+    y: round(c.y + TILE_BOTTOM - TILE_SIZE),
+    baseline: round(c.y + TILE_BOTTOM),
+  });
 }
 
 /**
@@ -182,7 +324,7 @@ function corridor(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
   return [
     `<line class="hall-wall is-${door.state}"`,
     ` x1="${round(from.x)}" y1="${round(from.y)}" x2="${round(to.x)}" y2="${round(to.y)}"/>`,
-    `<line class="door-wire is-${door.state}"`,
+    `<line class="door-wire is-${door.state}${door.target === true ? " is-goal" : ""}"`,
     ` x1="${round(from.x)}" y1="${round(from.y)}" x2="${round(to.x)}" y2="${round(to.y)}"/>`,
   ].join("");
 }
@@ -212,7 +354,7 @@ function tag(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
   const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
   const w = door.label.length * TAG_CHAR_W + 8;
   return [
-    `<g class="door is-${door.state}">`,
+    `<g class="door is-${door.state}${door.target === true ? " is-goal" : ""}">`,
     `<rect class="door-tag" x="${round(mid.x - w / 2)}" y="${round(mid.y - TAG_H / 2)}"`,
     ` width="${w}" height="${TAG_H}" rx="2"/>`,
     text(mid.x, mid.y + 4, door.label, "door-label", "middle"),
@@ -299,7 +441,7 @@ function chip(from: Point, to: Point, door: SchematicDoor, far: string, rank: nu
   const label = far.length > 0 ? `${door.label} → ${far}` : door.label;
   const w = label.length * TAG_CHAR_W + 8;
   return [
-    `<g class="door link is-${door.state}">`,
+    `<g class="door link is-${door.state}${door.target === true ? " is-goal" : ""}">`,
     `<rect class="door-tag" x="${round(x - w / 2)}" y="${round(y - TAG_H / 2)}"`,
     ` width="${w}" height="${TAG_H}" rx="2"/>`,
     text(x, y + 4, label, "door-label", "middle"),

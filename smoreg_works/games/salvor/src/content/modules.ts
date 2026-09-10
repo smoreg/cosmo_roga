@@ -71,7 +71,10 @@ export type ModuleId =
   | "laser"
   | "spike"
   | "emitter"
-  | "baffle";
+  | "baffle"
+  | "blade"
+  | "shocker"
+  | "lattice";
 
 export interface ModuleKind {
   readonly id: ModuleId;
@@ -115,6 +118,29 @@ export interface ModuleKind {
   readonly noisePenalty?: number;
   /** Taken off how far a machine notices the drone: one door, and cover holds. */
   readonly machineFovPenalty?: number;
+  /** Flat armour: taken off every blow that lands on the drone while intact. */
+  readonly defense?: number;
+  /**
+   * A relic (design-doc.md, "Модули", G66): found in one guarded crate deep in
+   * a hull and nowhere else. Four things follow, each held by a test in
+   * `tests/relics.test.ts` — the dock never stocks one, no machine drops one,
+   * it goes into a full rack by throwing another module out (`twist/rig.ts`,
+   * `takeFor`), and nothing mends it: not the welder, not scrap, not the bench.
+   * It wears out like any other slot, and that is its price.
+   */
+  readonly relic?: true;
+  /**
+   * The ordinary module this one is a better copy of. A relic with one is
+   * offered into *that* slot first, taken in one press, and the module it
+   * replaces goes into the drone's arms rather than into nothing.
+   */
+  readonly upgrades?: ModuleId;
+  /**
+   * The ordinary module this one answers for wherever the rules ask "is there
+   * a X in the rack": a blade cuts bulkheads the way a cutter does, lattice
+   * takes the plating's place in the damage chain. `findSlotAs` reads it.
+   */
+  readonly countsAs?: ModuleId;
 }
 
 /**
@@ -194,7 +220,47 @@ export const MODULES: Record<ModuleId, ModuleKind> = {
     id: "baffle", name: "BAFFLE", integrity: 4, price: 25,
     noisePenalty: 3, machineFovPenalty: 3,
   },
+  /**
+   * The three relics (G66). No `price`: a relic is not on any shelf, and the
+   * dock's default price is never asked for one — the tug's list reads
+   * `relic` before it reads a price.
+   *
+   * The blade is the cutter's better copy: two dice where the cutter has one,
+   * and it opens a bulkhead the way a cutter does (`countsAs`). The shocker is
+   * an EMP with a third charge and a shorter stun that the numbered list fires,
+   * because letters are the catalogue's and a relic has none. The lattice is
+   * plating twice over, and the one flat point of armour in the game.
+   */
+  blade: {
+    id: "blade", name: "Q-BLADE", integrity: 14,
+    attack: [2, 6, 0], range: 0,
+    relic: true, upgrades: "cutter", countsAs: "cutter",
+  },
+  shocker: {
+    id: "shocker", name: "SHOCKER", integrity: 8,
+    // Fired from the numbered list, so the label is the list's and not a key.
+    active: "#", charges: 3,
+    relic: true,
+  },
+  lattice: {
+    id: "lattice", name: "LATTICE", integrity: 30, defense: 1,
+    relic: true, upgrades: "plating", countsAs: "plating",
+  },
 };
+
+/** Is this kind a relic? The one question four rules ask of the table. */
+export function isRelic(id: ModuleId): boolean {
+  return MODULES[id].relic === true;
+}
+
+/** Every relic the catalogue has, in table order. */
+export const RELICS: readonly ModuleId[] = (Object.keys(MODULES) as ModuleId[]).filter(isRelic);
+
+/**
+ * Turns a machine stays seized after the shocker fires. Shorter than the EMP's
+ * three, because the shocker has a charge more and never needs an empty slot.
+ */
+export const SHOCK_STUN_TURNS = 2;
 
 /**
  * However quiet the drone gets, a machine standing in the same compartment

@@ -521,7 +521,7 @@ describe("the module table", () => {
       expect(r.slots[slot]).toBeNull();
       expect(r.scars[slot]).toBe(id);
       expect(r.burned).toContain(id);
-      expect(moduleBurnLine(id)).toMatch(/^Your [A-Z]+ burns? out\./);
+      expect(moduleBurnLine(id)).toMatch(/^Your [A-Z-]+ burns? out\./);
     }
   });
 

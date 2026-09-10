@@ -61,4 +61,23 @@ export const PALETTE = {
     sealed: "#5a4e42",
     airlock: "#a07a44",
   },
+  /**
+   * The drawn hull under the honeycomb (`ui/web/hullart.ts`), as three steps
+   * of tone and no fewer: `bg` under the ship, `body` for its mass, `plate`
+   * for anything sitting on that mass. A hull filled a shade off the
+   * background read as an outline over nothing and swallowed every frame and
+   * seam drawn inside it (`experiments/hullforms/README.md`). Nothing here is
+   * amber: amber is the doors' and the airlock's, and a hull that spent it on
+   * portholes lost the doors among them.
+   */
+  hullArt: {
+    body: "#1b242c",
+    plate: "#28343e",
+    /** A panel caught in a different light: the bridge, a dish. */
+    plateLit: "#33414d",
+    /** A vent, a bell, a hatch: darker than the background. */
+    deep: "#080b0e",
+    /** The skin line, the one stroke brighter than the steel. */
+    rim: "#8fa8b6",
+  },
 } as const;

@@ -14,6 +14,7 @@ import {
 import { isTug } from "../content/tug.js";
 import { roomName, zoneName } from "../content/zones.js";
 import { t, tId } from "../i18n.js";
+import { codexUnread } from "../systems/codex.js";
 import { dangerWord } from "../systems/contacts.js";
 import { roomList, type ShipSystem } from "../systems/populate.js";
 import { objectiveHere, systemsAboard } from "../systems/ship.js";
@@ -24,6 +25,7 @@ import { doorStateWord } from "../content/words.js";
 import { hostilesIn, rigOf } from "../twist/rig.js";
 import { clipName, omittedActions, UNKNOWN_ROOM, type Action } from "./actions.js";
 import { blowsLastTurn, strikersNear } from "./strikers.js";
+import { debugBlock } from "./debug.js";
 import { thingsIn, tag } from "./schematic-input.js";
 import { LAYOUT, THEME } from "./theme.js";
 
@@ -533,7 +535,7 @@ export function contactsBlock(game: RoomGame, allow = CONTACT_LINES): PanelLine[
     group.flatMap(({ machine, door }) => {
       const line: PanelLine = {
         text: contactLine(machine, inRoom ? undefined : (door?.label ?? "→")),
-        fg: inRoom ? THEME.bad : THEME.warn,
+        fg: contactTone(machine.hp, machine.hpMax),
         id: machine.id,
       };
       // What it did to the drone on the turn just gone, on a line of its own:
@@ -542,15 +544,23 @@ export function contactsBlock(game: RoomGame, allow = CONTACT_LINES): PanelLine[
       return blow ? [line, { text: clip(`   ${blow.what}`), fg: THEME.bad }] : [line];
     });
 
+  // The rules count what is there, not the rows under them: the number over
+  // the compartment is the number on the schematic's badge, read off the same
+  // list (`hostilesIn`), and the two may never disagree — the owner read `6`
+  // on the panel and `7` on the map of one compartment and asked which was
+  // lying (docs/tasks/G83-anonymous-blows.md, 4). Rows the block has no room
+  // for are counted again under it, so the arithmetic still closes.
   const inRoom = shown.filter((c) => c.room === here);
   const beyond = shown.filter((c) => c.room !== here);
   const out: PanelLine[] = [];
   if (inRoom.length > 0) {
-    out.push(contactsBar(t("panel.contacts.here", { n: inRoom.length }), THEME.bad));
+    const n = found.filter((c) => c.room === here).length;
+    out.push(contactsBar(t("panel.contacts.here", { n }), THEME.bad));
     out.push(...rows(inRoom, true));
   }
   if (beyond.length > 0) {
-    out.push(contactsBar(t("panel.contacts.near", { n: beyond.length }), THEME.warn));
+    const n = found.filter((c) => c.room !== here).length;
+    out.push(contactsBar(t("panel.contacts.near", { n }), THEME.warn));
     out.push(...rows(beyond, false));
   }
 
@@ -606,6 +616,31 @@ function contactsOf(
  * turns on and the word is why the fight goes the way it does; none of the
  * three is guessable from the rest of the line the way half a name is.
  */
+/**
+ * A contact's colour, by how much of the machine is left.
+ *
+ * Kyzrati's one way of saying "this one you can finish and that one you cannot"
+ * without making anybody read a number: robots run green to red on remaining
+ * integrity, and the same three colours mean the same three things everywhere
+ * on his screen (docs/gui-guides.md, "Что применить", D). Untouched is green,
+ * hurt is the reading colour, half gone is amber, a quarter left is red.
+ *
+ * It takes the channel the two groups used to share — a line in the room was
+ * red and a line a door away amber — and the groups did not lose anything by
+ * it: each is already under a rule the full width of the panel that names it
+ * and counts it, in those same two colours. That rule is a shape, which is what
+ * peripheral vision reads; the line under it is words, which is what the eye
+ * reads, and the words `5/10` and this colour now say one thing rather than
+ * two. Nothing is coloured that is not also written (docs/gui-guides.md, §4.5).
+ */
+export function contactTone(hp: number, hpMax: number): string {
+  if (hpMax <= 0 || hp >= hpMax) return THEME.hpFull;
+  const share = hp / hpMax;
+  if (share > 0.5) return THEME.fg;
+  if (share > 0.25) return THEME.warn;
+  return THEME.hpLow;
+}
+
 function contactLine(machine: Entity, door: string | undefined): string {
   const hp = `${machine.hp}/${machine.hpMax}`;
   const place = door === undefined ? "" : ` ${door}`;
@@ -905,7 +940,11 @@ function letterRows(game: RoomGame): string[] {
   // `m` leads, because walking is the commonest thing anybody does and the row
   // of letters is where a player looks for a key they have not found yet
   // (docs/tasks/G48-travel-to-a-room.md).
-  const first = [t("panel.letter.move"), t("panel.letter.brace")];
+  // `d` next to `m` because they are the two halves of one question — where to
+  // go, and what is in the way (docs/tasks/G64-door-hotkeys.md). The row is
+  // where a player looks for a key they have not found yet, and welding a door
+  // shut behind the drone is the one move in the game that ends a chase.
+  const first = [t("panel.letter.move"), t("panel.letter.doors"), t("panel.letter.brace")];
   if (game.roomOf(game.player).cover) first.push(t("panel.letter.hide"));
   // Aboard a hull `<` is always the way out — at the airlock it casts off, and
   // anywhere else it walks there (docs/tasks/G48-travel-to-a-room.md), so the
@@ -1005,10 +1044,43 @@ export function slotNumberOf(text: string): number | undefined {
   return Number.isInteger(n) && n >= 1 && n <= 9 ? n - 1 : undefined;
 }
 
+/**
+ * The debug overlay (G68), as the panel's own line shape: `debugBlock`
+ * already decided whether anything is said at all, so an empty array here
+ * means the flag is off and nothing is drawn, in either view.
+ *
+ * Not clipped to `PANEL_WIDTH`: unlike the sidebar blocks this draws the
+ * full screen wide, under the log, so a line naming a machine's room,
+ * behaviour and distance in one breath is not forced to wrap.
+ */
+export function debugBlockLines(game: RoomGame, enabled: boolean): PanelLine[] {
+  return debugBlock(game, enabled).map((text) => ({ text: clipTo(text, DEBUG_LINE_WIDTH), fg: THEME.fgDim }));
+}
+
+/** Long enough that a machine's whole line survives; short enough to stop a runaway list name. */
+const DEBUG_LINE_WIDTH = 160;
+
 function clip(text: string): string {
   return clipTo(text, PANEL_WIDTH);
 }
 
 function clipTo(text: string, width: number): string {
   return text.length <= width ? text : text.slice(0, Math.max(0, width));
+}
+
+/**
+ * `[i] 2`: the badge in the top-left corner of the map, and the count of cards
+ * the run has shown and the player has not opened (`systems/codex.ts`).
+ *
+ * Nothing at all when there is nothing to read, which is most of a careful
+ * sortie. That is the whole of the owner's teaching mode: a mark that appears
+ * when there is something new to say, says how much of it there is, and goes
+ * away when it has been said — «хочет — читает, не хочет — не читает».
+ *
+ * Here rather than in either renderer because both draw it, and the two views
+ * are never allowed to word the same thing twice (`ui/web/screen.ts`).
+ */
+export function codexBadge(game: RoomGame): string | undefined {
+  const unread = codexUnread(game);
+  return unread === 0 ? undefined : t("codex.badge", { n: unread });
 }

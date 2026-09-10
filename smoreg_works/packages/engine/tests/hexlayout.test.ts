@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { hexAdjacent, hexLayout, type HexLayout } from "../src/rooms/gen/hexlayout.js";
+import {
+  MASK_FLOOR,
+  hexAdjacent,
+  hexFit,
+  hexKey,
+  hexLayout,
+  type HexCell,
+  type HexLayout,
+} from "../src/rooms/gen/hexlayout.js";
 import { shipFromText } from "../src/testing/roomfixtures.js";
 import { generateShip } from "../src/rooms/gen/shipgen.js";
 import { Rng } from "../src/sim/rng.js";
@@ -80,6 +88,27 @@ const CTX: CardContext = { flags: new Set<string>(), shipIndex: 0 };
 
 function generated(seed: number): Ship {
   return generateShip(SPEC, new Rng(seed), CTX);
+}
+
+/** The same spec grown on the lattice: the hull the game actually ships. */
+const LATTICE: ShipSpec = { ...SPEC, lattice: true };
+
+function onLattice(seed: number): Ship {
+  return generateShip(LATTICE, new Rng(seed), CTX);
+}
+
+/** A block of cells `w` wide and `h` tall, odd rows shifted half a cell east, as a mask. */
+function block(w: number, h: number, dq = 0, dr = 0): Set<string> {
+  const out = new Set<string>();
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) out.add(hexKey({ q: c - ((r - (r & 1)) >> 1) + dq, r: r + dr }));
+  }
+  return out;
+}
+
+function share(out: HexLayout): number {
+  const doors = out.corridors.size + out.links.size;
+  return doors === 0 ? 1 : out.corridors.size / doors;
 }
 
 describe("the honeycomb layout", () => {
@@ -177,5 +206,144 @@ describe("the honeycomb layout", () => {
     // back is a legal hexagon walk — so this asserts the accounting, not luck.
     expect(out.corridors.size + out.links.size).toBe(4);
     expect(out.offLattice).toEqual([]);
+  });
+});
+
+describe("the honeycomb inside a mask", () => {
+  it("lays every hull it keeps entirely inside the mask, with every door said and most drawn", () => {
+    // A block with room to spare: what a game hands over when it wants the
+    // deck inside a drawn hull. Where the mask is kept, every cell is in it,
+    // every compartment has a cell, and at least MASK_FLOOR of the doors are
+    // corridors — the promise the flag makes. Where it is not kept, the
+    // answer is the layout without it.
+    let kept = 0;
+    for (let seed = 1; seed <= 100; seed++) {
+      const ship = onLattice(seed);
+      const allowed = block(Math.ceil(ship.rooms.length / 3) + 2, 7);
+      const out = hexLayout(ship, { allowed });
+      for (const door of ship.doors) {
+        if (door.a === door.b) continue;
+        expect(out.corridors.has(door.id) !== out.links.has(door.id), `seed ${seed} ${door.label}`).toBe(true);
+      }
+      if (!out.masked) {
+        expect(out).toEqual(hexLayout(ship));
+        continue;
+      }
+      kept++;
+      expect(out.offLattice, `seed ${seed}`).toEqual([]);
+      expect(out.cells.size, `seed ${seed}`).toBe(ship.rooms.length);
+      for (const cell of out.cells.values()) expect(allowed.has(hexKey(cell)), `seed ${seed} ${hexKey(cell)}`).toBe(true);
+      expect(share(out), `seed ${seed}`).toBeGreaterThanOrEqual(MASK_FLOOR);
+    }
+    console.log(`mask kept on ${kept} of 100 lattice hulls`);
+    expect(kept).toBeGreaterThanOrEqual(90);
+  });
+
+  it("keeps the generator's own honeycomb, turned to fit, when the mask holds it", () => {
+    // A hull grown on the lattice has every door a corridor already; inside
+    // a mask that holds that honeycomb under some turn of the lattice, the
+    // layout is that honeycomb — turned, shifted, and with no link in it.
+    for (let seed = 1; seed <= 30; seed++) {
+      const ship = onLattice(seed);
+      const own = hexLayout(ship);
+      // The mask: the honeycomb flipped across the axis and pushed east,
+      // plus a ring of spare cells — so the identity does not fit but a flip does.
+      const allowed = new Set<string>();
+      for (const cell of own.cells.values()) {
+        const at = { q: cell.q + cell.r + 40, r: -cell.r };
+        allowed.add(hexKey(at));
+        allowed.add(hexKey({ q: at.q + 1, r: at.r }));
+      }
+      const out = hexLayout(ship, { allowed });
+      expect(out.masked, `seed ${seed}`).toBe(true);
+      expect(out.links.size, `seed ${seed}`).toBe(0);
+      expect(out.corridors.size, `seed ${seed}`).toBe(own.corridors.size);
+      for (const cell of out.cells.values()) expect(allowed.has(hexKey(cell))).toBe(true);
+    }
+  });
+
+  it("hands the mask back when it cannot hold every compartment", () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const ship = onLattice(seed);
+      const tight = block(ship.rooms.length - 1, 1);
+      const out = hexLayout(ship, { allowed: tight });
+      expect(out.masked, `seed ${seed}`).toBe(false);
+      expect(out).toEqual(hexLayout(ship));
+    }
+  });
+
+  it("hands the mask back when too few doors would come out corridors", () => {
+    // A fan of three subtrees on a single line of cells: the tree cannot be
+    // drawn there — a cell on a line has two neighbours, and the parent is
+    // one of them — so most doors would be links, and the mask is refused.
+    const ship = shipFromText(FAN).ship;
+    const line = block(ship.rooms.length * 3, 1);
+    const out = hexLayout(ship, { allowed: line });
+    expect(out.masked).toBe(false);
+    expect(out).toEqual(hexLayout(ship));
+  });
+
+  it("is a pure function of the graph and the mask, however the mask was written", () => {
+    const ship = onLattice(5);
+    const allowed = block(9, 7);
+    const backwards = new Set([...allowed].reverse());
+    const shuffled = new Set([...allowed].sort());
+    const out = hexLayout(ship, { allowed });
+    expect(hexLayout(ship, { allowed })).toEqual(out);
+    expect(hexLayout(ship, { allowed: backwards })).toEqual(out);
+    expect(hexLayout(ship, { allowed: shuffled })).toEqual(out);
+    expect(hexLayout(onLattice(5), { allowed })).toEqual(out);
+  });
+
+  it("answers masked: false, and the layout it always gave, when asked for none", () => {
+    for (const text of [CHAIN, FAN, LOOP]) expect(layoutOf(text).out.masked).toBe(false);
+    for (let seed = 1; seed <= 10; seed++) {
+      const out = hexLayout(onLattice(seed));
+      expect(out.masked).toBe(false);
+      expect(out.links.size).toBe(0);
+    }
+  });
+
+  it("puts the root on the western end of the mask, and only inside it", () => {
+    // The stern is where a ship is docked against: a mask longer than it is
+    // tall is walked from its west end. The root is the shallowest room.
+    for (let seed = 1; seed <= 20; seed++) {
+      const ship = onLattice(seed);
+      const allowed = block(ship.rooms.length, 3, 100, 50);
+      const out = hexLayout(ship, { allowed });
+      if (!out.masked) continue;
+      const root = ship.rooms.find((room) => room.depth === 0)!;
+      const at = out.cells.get(root.id)!;
+      const west = Math.min(...[...out.cells.values()].map((c) => 2 * c.q + c.r));
+      expect(2 * at.q + at.r - west, `seed ${seed}`).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
+describe("turning a honeycomb into a mask", () => {
+  const bent: ReadonlyMap<number, HexCell> = new Map([
+    [0, { q: 0, r: 0 }],
+    [1, { q: 1, r: 0 }],
+    [2, { q: 2, r: 0 }],
+    [3, { q: 2, r: -1 }],
+  ]);
+
+  it("finds a placement under a flip when no turn alone fits", () => {
+    // The shape bent the other way, moved off: only a flip lands it.
+    const allowed = new Set([hexKey({ q: 10, r: 5 }), hexKey({ q: 11, r: 5 }), hexKey({ q: 12, r: 5 }), hexKey({ q: 11, r: 6 })]);
+    const fit = hexFit(bent, allowed);
+    expect(fit).toBeDefined();
+    for (const cell of fit!.values()) expect(allowed.has(hexKey(cell))).toBe(true);
+    for (const [a, b] of [[0, 1], [1, 2], [2, 3]]) {
+      expect(hexAdjacent(fit!.get(a!)!, fit!.get(b!)!)).toBe(true);
+    }
+  });
+
+  it("keeps the bearing of a honeycomb that fits as it stands, and answers nothing when none does", () => {
+    const asIs = new Set([...bent.values()].map((c) => hexKey({ q: c.q + 3, r: c.r + 2 })));
+    const fit = hexFit(bent, asIs)!;
+    expect(fit.get(0)).toEqual({ q: 3, r: 2 });
+    expect(fit.get(3)).toEqual({ q: 5, r: 1 });
+    expect(hexFit(bent, new Set([hexKey({ q: 0, r: 0 }), hexKey({ q: 1, r: 0 }), hexKey({ q: 2, r: 0 })]))).toBeUndefined();
   });
 });

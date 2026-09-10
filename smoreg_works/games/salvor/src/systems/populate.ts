@@ -7,12 +7,13 @@ import {
   type System,
 } from "@jamrog/engine";
 import { CARD_MODULE, SALVAGE_POOL, type ModuleId } from "../content/cards.js";
-import { specOfShip, type DerelictSpec } from "../content/derelicts.js";
+import { RELIC_CHANCE, RELIC_DEPTH, specOfShip, type DerelictSpec } from "../content/derelicts.js";
 import { MODULES, SCRAP_INTEGRITY, type ModuleId as ModuleKindId } from "../content/modules.js";
-import { MAX_MACHINES, machineAboard } from "../content/monsters.js";
+import { CROWD, MAX_MACHINES, machineAboard } from "../content/monsters.js";
 import { SYSTEM_GLYPH } from "../content/objectives.js";
 import { isTug } from "../content/tug.js";
 import { nextShipId } from "../twist/rig.js";
+import { placeHazards } from "./hazards.js";
 
 /**
  * Turns the marks a card left into things standing in a compartment.
@@ -42,6 +43,12 @@ export interface Wreck {
   integrity: number;
   /** Character the schematic draws it with: `%` scrap, `X` crate. */
   glyph: string;
+  /**
+   * Written only for a relic crate, which is factory-sealed: the virus reads
+   * the source of a pile (`twist/rig.ts`, `WreckSource`), and a pile with none
+   * recorded is the ship's own machinery, which a sealed crate is not.
+   */
+  source?: "crate";
 }
 
 /** A crew body: three credits, and sometimes a keycard. */
@@ -147,7 +154,15 @@ export const POPULATE: System<RoomGame> = {
     const spec = specOfShip(game.ship);
     for (const room of game.ship.rooms) fill(game, spec, room);
     ensureOnboardingScrap(game);
+    // The relic and its guard before the filler: the guard is counted against
+    // the class's budget like the deck's own machines are, so a hull with a
+    // relic is a hull whose crate is held, not a hull with more aboard.
+    placeRelic(game, spec);
     fillToBudget(game, spec);
+    // Hazards last and on their own budget (`content/hazards.ts`, rule 5): a
+    // machine costs whatever the drone does, a hazard costs only a mistake,
+    // so the two never trade against each other.
+    placeHazards(game, spec);
   },
 };
 
@@ -372,11 +387,75 @@ function machineById(game: RoomGame, id: string): MonsterKind | undefined {
   return undefined;
 }
 
+/**
+ * One machine into a compartment, unless the compartment is already as full
+ * as a compartment gets (`CROWD`): a deck that puts four marks in one box is
+ * three machines, and the fourth is simply not there — the budget is a
+ * ceiling, not a promise.
+ */
 function spawn(game: RoomGame, room: Room, kind: MonsterKind | undefined): void {
-  if (!kind) return;
+  if (!kind || crowded(game, room)) return;
   const machine = spawnMonsterIn(kind, room.id);
   game.schedule.admit(machine);
   game.entities.push(machine);
+}
+
+/** Does this compartment already hold as many machines as one may? */
+function crowded(game: RoomGame, room: Room): boolean {
+  return game.entitiesIn(room.id).filter((e) => e.id !== game.player.id).length >= CROWD;
+}
+
+// ------------------------------------------------------------------ relics
+
+/**
+ * One relic crate a hull, and the machine standing over it.
+ *
+ * The crate is a parts crate like any other — `X`, the module at its base,
+ * stripped with the same verb — and what tells the player it is worth a fight
+ * is where it is and what is with it: never nearer than `RELIC_DEPTH` doors,
+ * never in a compartment the run has to enter anyway for a system, and with
+ * one machine of the band spawned into that compartment before the budget's
+ * filler runs, so that the compartment is held whatever the shuffle would have
+ * done with it. The sensor pulse names the crate when it reads the room
+ * (`twist/rig.ts`, `pulse`), so a scan is how a relic is found on purpose
+ * rather than walked into.
+ *
+ * The guard is one of the class's machines, not one over them: it is placed
+ * ahead of the filler and counted by it, and it is skipped only on a hull the
+ * deck alone has already filled to the class's ceiling. A ship's head count is
+ * a fact of its class (`DerelictSpec.machines`, held by `tests/ship-content`),
+ * and a relic changes where the machines stand, not how many there are.
+ *
+ * A hull that names no relic draws nothing and rolls nothing. A hull that
+ * names one draws `RELIC_CHANCE` exactly once, so a seed's stream is the same
+ * length whether the crate came up or not. Exported and handed the class as an
+ * argument so a test can put a relic on a hand-drawn ship stamped as any class
+ * and count what changed.
+ */
+export function placeRelic(game: RoomGame, spec: DerelictSpec | undefined): Room | undefined {
+  const relics = spec?.relics ?? [];
+  if (!spec || relics.length === 0) return undefined;
+  if (!game.rng.chance(RELIC_CHANCE)) return undefined;
+
+  const kind = game.rng.pick(relics);
+  const entry = game.ship.entry;
+  const rooms = game.ship.rooms.filter(
+    (r) => r.id !== entry && r.depth >= RELIC_DEPTH && roomList<ShipSystem>(r, "systems").length === 0,
+  );
+  if (rooms.length === 0) return undefined;
+
+  const room = game.rng.pick(rooms);
+  bucket<Wreck>(room, "wrecks").push({
+    id: nextShipId(game),
+    kind,
+    integrity: crateIntegrity(kind),
+    glyph: "X",
+    source: "crate",
+  });
+  if (machinesAboard(game) < Math.min(spec.machines[1], MAX_MACHINES)) {
+    spawn(game, room, bandPick(game, spec, room.depth) ?? heaviest(game, spec, DEEPEST_BAND));
+  }
+  return room;
 }
 
 // -------------------------------------------------------------- onboarding
