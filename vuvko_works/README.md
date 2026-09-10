@@ -179,14 +179,26 @@ and its engine rooms — and no rim is laid alongside them, since a cap already
 carries hull on three sides and a strip beside it would make the slot read as a
 corner. Toggle in **Options**.
 
-**The 50 ft border is optional, and off by default.** Wrapping a hull in edge
-and corner tiles gives it a rim of half-rooms, which a standard deck plan does
-not have — the core tiles are closed compartments already. It is also where the
-fuel scoops came from: the archive's corner pieces are mostly scoops and gun
-positions, so a border put intake scoops on the back of the ship. **Border** in
-the console: `none` is a bare hull, `sides` plates the flanks and leaves the ends
-to the caps, `full` is the old behaviour. An intake scoop is now also scored
-down on any aft-facing slot, since a scoop faces the way the ship is going.
+**What goes round the outside.** A border of edge and corner tiles all the way
+round is not how a deck plan is drawn — the cores are closed compartments
+already — and the archive's corner pieces are mostly fuel scoops and gun
+positions, which is how intake scoops came to be on the back of a ship.
+
+Where the beam changes, though, a corner earns its place: a step is a right
+angle, and a piece whose hull line runs diagonally turns it into a taper. So
+**Border** defaults to `steps` — the shoulder cells at a change of beam and
+nothing else. Seven tiles in the archive can take a neighbour on two adjacent
+sides *and* cut the corner (`501`, `609`, `AF12`, `E510`, `E511`, `E828`), and a
+shoulder slot is scored strongly toward them. `none` leaves the hull bare,
+`sides` plates the flanks, `full` is all the way round. An intake scoop is also
+scored down on any aft-facing slot, since a scoop faces the way the ship is
+going.
+
+**Wings on a profile hull.** The same matched Port/Starboard pairs ship mode
+uses, hung on the flanks of the longest run of constant beam and centred on it:
+25 of the 32 forms pass the taxonomy's check that a port piece really does join
+on its east edge. Pick one from **Wings** or let the seed choose — it goes
+winged about two times in three.
 
 **The cap is one bay wide, centred**, whatever the section behind it, and the
 reason is in the inventory:

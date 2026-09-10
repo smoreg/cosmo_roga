@@ -170,8 +170,9 @@ button[disabled]{opacity:.4; cursor:not-allowed}
   <div class="field" id="rimField" style="display:none">
     <label for="rim">Border</label>
     <select id="rim">
-      <option value="none" selected>None — bare hull</option>
-      <option value="sides">Sides only</option>
+      <option value="steps" selected>Chamfer the beam changes</option>
+      <option value="none">None — bare hull</option>
+      <option value="sides">Sides plated</option>
       <option value="full">All round</option>
     </select>
   </div>
@@ -669,7 +670,7 @@ for (const id of ["beam","rows","hull","sets","filter","family","profile","rim",
 function syncControls(){
   const hull = document.getElementById("hull").value;
   const ship = hull === "ship", prof = hull === "profile";
-  document.getElementById("familyField").style.display = ship ? "" : "none";
+  document.getElementById("familyField").style.display = ship || prof ? "" : "none";
   document.getElementById("profileField").style.display = prof ? "" : "none";
   document.getElementById("rimField").style.display = prof ? "" : "none";
   document.getElementById("beam").disabled = ship || prof;

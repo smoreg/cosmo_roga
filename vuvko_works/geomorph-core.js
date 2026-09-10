@@ -404,7 +404,7 @@ function fit(tile, slot, relax){
     /* Where the hull changes beam, a piece that cuts the corner reads as a
        chamfer instead of a notch. Only 23 tiles in the archive draw their hull
        line diagonally, so this is a preference, not a requirement. */
-    if (slot.chamfer && tax.slope >= 0.45 && tax.cut > 0.12) score += 4;
+    if (slot.chamfer && tax.slope >= 0.45 && tax.cut > 0.12) score += 8;
     /* A fuel intake scoop faces the way the ship is going. Putting one on the
        stern is the sort of thing only a generator does. */
     if (slot.aft && /intake|scoop/.test(tile.search)) score -= 6;
@@ -761,13 +761,19 @@ function layoutProfile(opts, deal, place){
     for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++)
       capped.add((c.x/G + dx) + "," + (c.y/G + dy));
 
-  /* The 50 ft border is optional, and off by default. Wrapping a hull in edge
-     and corner tiles gives it a rim of half-rooms, which a standard deck plan
-     does not have — the core tiles are closed compartments already — and the
-     archive's corner pieces are mostly fuel scoops and gun positions, which is
-     how intake scoops came to be on the back of a ship. "sides" plates the
-     flanks and leaves the ends to the caps; "full" is the old behaviour. */
-  const wantRim = opts.rim || "none";
+  /* What goes round the outside.
+
+     A border of edge and corner tiles all the way round is not how a deck plan
+     is drawn — the cores are closed compartments already — and the archive's
+     corner pieces are mostly fuel scoops and gun positions, which is how intake
+     scoops came to be on the back of a ship.
+
+     But where the beam changes, a corner earns its place: a step is a right
+     angle, and a piece whose hull line runs diagonally turns it into a taper.
+     That is "steps", the default — the shoulder cells at a change of beam and
+     nothing else. "sides" plates the flanks as well, "full" is all the way
+     round, "none" leaves the hull bare. */
+  const wantRim = opts.rim || "steps";
 
   /* Every cell that touches the hull from outside, corners included — except
      the shoulder of a step. At an inner corner the band would wrap a cell with
@@ -807,9 +813,19 @@ function layoutProfile(opts, deal, place){
     w: isCore(gx-1, gy), e: isCore(gx+1, gy),
   });
   const lastRow = prof.length * 2;              // in half-bay cells
+  /* A shoulder: the cell in the notch where a narrow section meets a wide one,
+     touching hull on two sides at right angles. Fill that with a tile whose
+     hull line cuts the corner and the step reads as a taper. */
+  const shoulder = key => {
+    const [gx, gy] = key.split(",").map(Number);
+    const f = {n:isCore(gx,gy-1), s:isCore(gx,gy+1), w:isCore(gx-1,gy), e:isCore(gx+1,gy)};
+    const on = ["n","s","w","e"].filter(k=>f[k]);
+    return on.length === 2 && !(f.n && f.s) && !(f.e && f.w);
+  };
   for (const key of (wantRim === "none" ? [] : [...rim].sort())){
     if (used.has(key)) continue;
     const [kx, ky] = key.split(",").map(Number);
+    if (wantRim === "steps" && !shoulder(key)) continue;
     // "sides" leaves the bow and stern faces to the caps.
     if (wantRim === "sides" && (ky < 0 || ky >= lastRow)) continue;
     const [gx, gy] = key.split(",").map(Number);
@@ -836,6 +852,38 @@ function layoutProfile(opts, deal, place){
     slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner", role:"fuel",
       chamfer:step, aft: gy >= lastRow});
   }
+  /* Wings, if a form is chosen or the seed asks for one: a matched Port and
+     Starboard pair hung on the flanks of the longest section of constant beam,
+     centred on it, the same way ship mode does it. */
+  const famSel = opts.family || "";
+  let fam = null, station = {from:0, to:prof.length - 1};
+  if (famSel && famSel !== "none" && !famSel.startsWith("ac:"))
+    fam = FAMILIES.find(f=>f.key === famSel) || null;
+  else if (!famSel){
+    let best = {from:0, to:0, w:0};
+    for (let i = 0; i < prof.length; i++){
+      let j = i;
+      while (j + 1 < prof.length && prof[j+1] === prof[i]) j++;
+      if (j - i >= best.to - best.from){ best = {from:i, to:j, w:prof[i]}; }
+      i = j;
+    }
+    const span = (best.to - best.from + 1) * 100;
+    const fits = FAMILIES.filter(f=>f.h <= span && f.pairOK);
+    if (fits.length && rnd() < 0.66) fam = pick(fits);
+    station = best;
+  }
+  if (fam){
+    const w = prof[station.from];
+    const x0 = (maxW - w) * 50;
+    const y = station.from*100 +
+      Math.round(((station.to - station.from + 1)*100 - fam.h) / 100) * 50;
+    const i = Math.floor(rnd() * fam.port.length);
+    const port = fam.port[i];
+    const star = fam.star.find(t=>t.label === port.label) || fam.star[i % fam.star.length];
+    place(port, x0 - fam.w, y, fam.w, fam.h, 0);
+    place(star, x0 + w*100, y, fam.w, fam.h, 0);
+  }
+
   neighbours(slots);
 
   /* What shape a slot wants is not a guess — it is how many sides face another
@@ -891,8 +939,9 @@ function layoutProfile(opts, deal, place){
     if (m) fill(other, m);
   }
   return {W:(maxW*100) + 100, H:(rows*100) + 100 + (caps.length ? 200 : 0),
-          beam:maxW, rows, relaxed,
-          profile: prof.join("-"), familyLabel: prof.join("-") + " hull"};
+          beam:maxW, rows, relaxed, family: fam ? fam.key : null,
+          profile: prof.join("-"),
+          familyLabel: prof.join("-") + " hull" + (fam ? " · " + fam.code + " wings" : "")};
 }
 
 /* The same piece seen in a mirror. The archive draws many tiles twice, once
