@@ -618,9 +618,72 @@ async function build(){
     }
   }
 
-  const doors = pickDoors(contacts(rast, reg), zoneOf, zones, walls);
+  const doors = pickDoors(contacts(rast, reg), zoneOf, zones, walls,
+                          stubs(plan, rast, reg, zoneOf));
   dressUp(zones, doors, cellList, byKey, walls);
   return {plan, rast, reg, geom, hexFt, cells:cellList, byKey, zones, walls, doors};
+}
+
+/* Where the geomorph system says two tiles join.
+
+   Every tile edge carries its connections at the quarter points — counting the
+   doorway gaps along 189 core tiles puts them at 25 ft and 75 ft — so a shared
+   edge of 100 ft has two and one of 50 ft has one. That is a rule about the
+   tiles, not a guess from the artwork, and it is what makes a plan walkable:
+   lay two geomorphs side by side and there are two ways between them.
+
+   Each stub is turned into a room-to-room connection by looking a few feet
+   either side of the boundary and asking which compartment is there. */
+function stubs(plan, rast, reg, zoneOf){
+  const tiles = plan.put.filter(p=>!p.tile.overlay);
+  const zoneAt = (x, y) => {
+    const px = Math.round(x * PX_FT), py = Math.round(y * PX_FT);
+    if (px < 0 || py < 0 || px >= rast.w || py >= rast.h) return undefined;
+    return zoneOf.get(reg[py*rast.w + px]);
+  };
+  /* The stub is a gap in the wall; step off it until a room answers. */
+  const probe = (x, y, dx, dy) => {
+    for (const d of [3, 6, 9, 12, 15]){
+      const z = zoneAt(x + dx*d, y + dy*d);
+      if (z !== undefined) return z;
+    }
+    return undefined;
+  };
+  const out = [];
+  for (let i = 0; i < tiles.length; i++){
+    for (let j = i + 1; j < tiles.length; j++){
+      const a = tiles[i], b = tiles[j];
+      const vertical = (a.x + a.w === b.x) || (b.x + b.w === a.x);
+      const horizontal = (a.y + a.h === b.y) || (b.y + b.h === a.y);
+      let from, to, at, dx, dy;
+      if (vertical){
+        from = Math.max(a.y, b.y); to = Math.min(a.y + a.h, b.y + b.h);
+        if (to - from < 50) continue;
+        at = (a.x + a.w === b.x) ? b.x : a.x;
+        dx = 1; dy = 0;
+      } else if (horizontal){
+        from = Math.max(a.x, b.x); to = Math.min(a.x + a.w, b.x + b.w);
+        if (to - from < 50) continue;
+        at = (a.y + a.h === b.y) ? b.y : a.y;
+        dx = 0; dy = 1;
+      } else continue;
+      /* One connection per 50 ft of shared edge, at its middle — and if the
+         middle lands in a bulkhead, a few feet either way along the edge before
+         giving up. A join that finds no room on one side is a tank or a wing
+         with nothing inside it, and there is nothing to open. */
+      for (let t = from; t + 50 <= to; t += 50){
+        for (const off of [25, 20, 30, 15, 35]){
+          const mid = t + off;
+          const x = vertical ? at : mid, y = vertical ? mid : at;
+          const za = probe(x, y, -dx, -dy), zb = probe(x, y, dx, dy);
+          if (za === undefined || zb === undefined || za === zb) continue;
+          out.push({a:za, b:zb, x, y});
+          break;
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /** Which tile is under a point, in feet. Overlays are vehicles, not rooms. */
@@ -649,7 +712,7 @@ function zoneKind(roles){
    about where you can go — so keep a spanning tree, which makes the ship
    walkable, plus a share of the rest for loops: the proportion smoreg's
    hullforms generator settled on. */
-function pickDoors(list, zoneOf, zones, walls){
+function pickDoors(list, zoneOf, zones, walls, stubList){
   /* Every wall, indexed by the pair of rooms it separates. */
   const byPair = new Map();
   for (const w of walls){
@@ -713,12 +776,36 @@ function pickDoors(list, zoneOf, zones, walls){
     }
     edges.push({a, b, n, wall:best});
   }
+  /* A stub is not a candidate — it is where the tile was drawn to open. Those
+     go in whatever the tree and the loop share decide. */
+  const fixed = [];
+  const claimed = new Set();
+  for (const st of stubList || []){
+    const key = st.a < st.b ? st.a + ":" + st.b : st.b + ":" + st.a;
+    const options = byPair.get(key);
+    if (!options) continue;
+    let best = null, bd = Infinity;
+    for (const w of options){
+      if (claimed.has(w)) continue;
+      const d = Math.hypot(w.mx - st.x, w.my - st.y);
+      if (d < bd){ bd = d; best = w; }
+    }
+    if (!best) continue;
+    claimed.add(best);
+    fixed.push({a:st.a, b:st.b, n:Infinity, wall:best, stub:true});
+  }
   edges.sort((p, q)=>q.n - p.n);
 
   const parent = zones.map((_, i)=>i);
   const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
   const doors = [];
+  for (const e of fixed){
+    const ra = find(e.a), rb = find(e.b);
+    if (ra !== rb) parent[ra] = rb;
+    doors.push({...e, tree:true});
+  }
   for (const e of edges){
+    if (doors.some(d=>d.wall === e.wall)) continue;
     const ra = find(e.a), rb = find(e.b);
     if (ra !== rb){ parent[ra] = rb; doors.push({...e, tree:true}); }
   }

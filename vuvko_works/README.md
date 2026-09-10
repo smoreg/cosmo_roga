@@ -394,7 +394,23 @@ compartment is not a wall and stays the faint line of the hexagon itself. So the
 map has one geometry rather than two, and the drawing is the same object the
 movement rules read — the arrangement in `experiments/hullforms`.
 
-Which walls have doors comes from the artwork. A crossing of three feet or less
+**Two doors to a 100 ft join, one to a 50 ft join.** That is a rule about the
+tiles rather than a reading of the artwork, and it is the geomorph system's own:
+every tile edge carries its connections at the quarter points — counting the
+doorway gaps along 189 core tiles puts them at 25 ft and 75 ft — so laying two
+geomorphs side by side gives two ways between them. Each stub is turned into a
+room-to-room door by looking a few feet either side of the boundary and asking
+which compartment is there; the door then lands on the lattice edge nearest it,
+and goes in whatever the tree and the loop share would have decided.
+
+Not every stub becomes a door, and the two reasons are worth knowing. A join
+whose far side is a fuel tank or a solid wing finds no room to open into — on a
+2-1-2, 20 of the 26 stubs the rule asks for have a compartment on both sides.
+And two rooms that share a single hexagon have no wall between them at that
+size, so there is nowhere to draw one: of those 20, 17 become doors. On a 2-2-2,
+where the tiles are all full-width bays, it is 22 of 22 and 21 doors.
+
+Which further walls have doors comes from the artwork. A crossing of three feet or less
 with a different room on each side is somewhere a door can be; the thickness
 cutoff is what stops the hull, the fuel tanks and the space between two hulls
 from becoming doorways. Each connection then lands on the wall nearest where the
