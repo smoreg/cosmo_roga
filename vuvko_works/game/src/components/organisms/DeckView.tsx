@@ -147,6 +147,22 @@ const SCHEMATIC_BLUR = 0.22;
  * afford to be high; it is the blur that was hiding the ship, not the opacity.
  */
 const BACKDROP_OPACITY = 0.72;
+/**
+ * How firmly the lattice sits on top of the ship.
+ *
+ * The two are in tension and both are needed: the rooms are the map, but the
+ * hexagons are what you actually move on, and a grid you have to look for is
+ * a grid you will misjudge a move on. Once the plan underneath became legible
+ * the old lattice stopped holding its own against it — so the edges gain
+ * weight and colour rather than the fills gaining opacity, because it is the
+ * edges that say where a hex begins and the fills that would bury the ship.
+ * The fill still goes up, but only enough to keep the room colours reading
+ * through the artwork.
+ */
+const HEX_FILL_OPACITY = 0.6;
+const HEX_EDGE = "#46606f";
+/** In hex widths, so the lattice keeps its weight at any scale. */
+const HEX_EDGE_WIDTH = 0.019;
 
 /**
  * The map: the ship underneath and the hex lattice over it.
@@ -314,9 +330,9 @@ export function DeckView(props: DeckViewProps) {
                   className="hex"
                   points={pointsToPath(shape.points)}
                   fill={roomFill(deck.zones.get(shape.zoneId)?.kind ?? "")}
-                  fillOpacity={0.42}
-                  stroke="#26313a"
-                  strokeWidth={unit * 0.012}
+                  fillOpacity={HEX_FILL_OPACITY}
+                  stroke={HEX_EDGE}
+                  strokeWidth={unit * HEX_EDGE_WIDTH}
                   style={onPick === undefined ? undefined : { cursor: "pointer" }}
                   onClick={
                     onPick === undefined
