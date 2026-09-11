@@ -1064,8 +1064,18 @@ function clip(text: string): string {
   return clipTo(text, PANEL_WIDTH);
 }
 
+/**
+ * A row of the sidebar in its columns, and the mark when it did not fit.
+ *
+ * The `slice` used to be silent, so `2 attack security unit 8/8 #1` came out
+ * as a whole-looking line that had quietly lost the `#1` — the one thing
+ * telling it from the line above. Lines of the list are fitted before either
+ * view sees them (`ui/actions.ts`, `fitLabel`), so what reaches here is the
+ * blocks; this is the backstop, and it is not allowed to be quiet.
+ */
 function clipTo(text: string, width: number): string {
-  return text.length <= width ? text : text.slice(0, Math.max(0, width));
+  if (text.length <= width) return text;
+  return width <= 1 ? text.slice(0, Math.max(0, width)) : `${text.slice(0, width - 1)}\u2026`;
 }
 
 /**

@@ -136,7 +136,9 @@ describe("every line fits the panel", () => {
   it("cuts a system's line down rather than letting it wrap off the panel", () => {
     const long = "CR 9999   KEYS 3   HOLD 3   RIVAL ▮▮▯   and more besides";
     const game = gameIn("r2", [{ name: "test-wide", panelLines: () => [{ text: long }] }]);
-    expect(lines(game)).toContain(long.slice(0, PANEL_WIDTH));
+    // And it says that it cut: the `slice` used to be silent, so a row that had
+    // lost its end looked like a row that had all of it (G85, 2).
+    expect(lines(game)).toContain(`${long.slice(0, PANEL_WIDTH - 1)}…`);
   });
 });
 
@@ -231,11 +233,13 @@ describe("the blocks, in the doc's own order", () => {
     // mission block arrived and the action list learned to ask for only the
     // rows it needs (G56): the panel found the space again, and four doors fit
     // in four lines. What this test is about is the row that counts what does
-    // not fit, so the fixture squeezes until something does not.
+    // not fit, so the fixture squeezes until something does not — two machines
+    // since the doors came back onto the action list and it asks for four rows
+    // more than it did (G87); a third squeezes past this rung to the bare
+    // labels of the test below.
     const game = gameIn();
     put(game, "r2", "security-unit");
     put(game, "r2", "scout");
-    put(game, "r2", "maintenance-bot");
     const out = lines(game);
     const room = out.findIndex((l) => l.startsWith("CARGO BAY r2"));
     const end = out.indexOf("", room);
@@ -1072,5 +1076,27 @@ describe("the flash", () => {
     expect(panelColour(line, new Set())).toBe(THEME.fg);
     // An action line starts with a space, so it is never read as a slot.
     expect(slotNumberOf(" 2 go d1  DOCKING   open")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------- the mark of a cut
+
+/**
+ * The sidebar's backstop, and why it is no longer silent (G85, 2).
+ *
+ * Lines of the numbered list are fitted before either view sees them
+ * (`ui/actions.ts`, `fitLabel`), so what still reaches the panel's own `slice`
+ * is a block: a compartment with a long name, a machine's row. A row cut
+ * without a mark is a row that looks whole, and a player who cannot see that
+ * something was dropped has no reason to look for it.
+ */
+describe("a sidebar row that did not fit says so", () => {
+  it("ends in … and stays inside the panel's width", () => {
+    const game = gameIn();
+    const long = "x".repeat(PANEL_WIDTH + 8);
+    const rows = panelBlocks(game, [{ key: "1", label: long, cmd: { kind: "wait" }, enabled: true }], 0);
+    const cut = rows.map((l) => l.text).find((text) => text.includes("x"))!;
+    expect(cut.length).toBe(PANEL_WIDTH);
+    expect(cut.endsWith("…")).toBe(true);
   });
 });

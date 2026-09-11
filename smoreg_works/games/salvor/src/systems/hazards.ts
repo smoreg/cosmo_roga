@@ -211,6 +211,24 @@ function tell(game: RoomGame): void {
 }
 
 /**
+ * The hazard whose red line this player turn ended in `[i]`, if one did.
+ *
+ * `toldAfter` is the stamp `tell` leaves when it writes the line: the value
+ * `inputs.length` had on the turn the warning went out. It changes on every
+ * command the drone spends a turn on and never in between, so comparing it is
+ * the same question as "was that line about now" — and it is a better question
+ * than the one the codex used to ask the log, because contacts and the rival
+ * both log after hazards do and their line is the one sitting at the end.
+ */
+export function signThisTurn(game: RoomGame): string | undefined {
+  const visits = game.currentShip.visits;
+  for (const rec of hazardRecords(game)) {
+    if (rec.told === visits && rec.toldAfter === game.inputs.length) return rec.id;
+  }
+  return undefined;
+}
+
+/**
  * Hazards the drone has been told about this sortie, by a name that survives
  * a record being removed: what a walk snapshots to notice a new sign
  * (`ui/auto.ts`, `makeWatch`).

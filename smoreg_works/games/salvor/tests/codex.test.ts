@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { RoomGame, type LogLine, type RoomGameConfig } from "@jamrog/engine";
+import { RoomGame, type RoomGameConfig } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { CODEX, CODEX_IDS, alertCodexId, codexFor } from "../src/content/codex.js";
@@ -217,37 +217,67 @@ describe("the register writes a thing down once", () => {
 // ------------------------------------------------------------------ the alarm
 
 /**
- * The red line's own card. G71 writes the line with the tone `alarm` and the
- * key `log.hazard.tell.<id>`; the tone is not in the engine's union yet, so the
- * cast here is the whole of this file's dependency on that task — and the id is
- * one this table already has, so the wiring is proved without waiting for it.
+ * A hull with frost one door away, so the real HAZARD system writes the real
+ * red line: nothing here fakes a log entry, because what broke was exactly the
+ * order the systems write in.
  */
-function alarmLine(game: RoomGame, key: string): void {
-  game.log.add("…", game.schedule.time, "alarm" as LogLine["tone"], key);
+const FROSTED = `
+  TUG -a1- r1
+  r1 -d1- r2
+  r2 -d2- r3
+  r1: docking explored
+  r2: cargo explored
+  r3: hab hazard=frost
+`;
+
+function frosted(seed = 7): RoomGame {
+  return new RoomGame({ ...config(), firstShip: () => shipFromText(FROSTED).ship, seed });
 }
 
-describe("the last line of the log decides which card `i` opens", () => {
-  it("opens the hazard's own card rather than the oldest unread one", () => {
-    const game = run();
-    noticeCodex(game, "spasm");
-    alarmLine(game, "log.hazard.tell.vented");
+/** The step into the cargo bay: the sign about the ice beyond it goes out here. */
+function stepIn(game: RoomGame): void {
+  expect(game.playerCommand({ kind: "go", door: game.ship.door("d1").id }).ok).toBe(true);
+}
 
-    expect(alarmCodexId(game)).toBe("vented");
-    expect(codexQueue(game)[0]).toBe("vented");
+/** One turn spent in place, which gives no sign of its own. */
+function waitOne(game: RoomGame): void {
+  expect(game.playerCommand({ kind: "wait" }).ok).toBe(true);
+}
+
+describe("the sign given this turn decides which card `i` opens", () => {
+  it("opens the hazard's own card rather than the oldest unread one", () => {
+    const game = frosted();
+    noticeCodex(game, "spasm");
+    stepIn(game);
+
+    expect(game.log.lines.some((l) => l.key === "log.hazard.tell.frost")).toBe(true);
+    expect(alarmCodexId(game)).toBe("frost");
+    expect(codexQueue(game)[0]).toBe("frost");
     const state = press(idle(), "i", game);
     expect(state.overlay).toBe("codex");
-    expect(codexView(game, state)?.entry.id).toBe("vented");
+    expect(codexView(game, state)?.entry.id).toBe("frost");
   });
 
-  it("reads the key and not the wording, and ignores every other tone", () => {
-    const game = run();
-    game.log.add("…", game.schedule.time, "warn", "log.hazard.tell.vented");
-    expect(alarmCodexId(game)).toBeUndefined();
+  it("keeps the hazard's card when a later system logs the last line of the turn", () => {
+    const game = frosted();
+    stepIn(game);
+    // What CONTACTS and RIVAL do: they run after HAZARD, so their line — a
+    // machine walking in, the rival coming aboard — is the one at the end of
+    // the log while the red line is still the one asking for `i`.
+    game.log.add("\u2026", game.schedule.time, "bad", "log.rival.aboard");
+    game.log.add("\u2026", game.schedule.time, "bad", "log.hit.module");
 
-    alarmLine(game, "log.door.cut.done");
-    expect(alarmCodexId(game)).toBeUndefined();
+    expect(game.log.tail(1)[0]!.key).toBe("log.hit.module");
+    expect(alarmCodexId(game)).toBe("frost");
+    expect(codexQueue(game)[0]).toBe("frost");
+  });
 
-    alarmLine(game, "log.hazard.tell.nothing-like-this");
+  it("claims nothing before the sign and nothing once the turn is over", () => {
+    const game = frosted();
+    expect(alarmCodexId(game)).toBeUndefined();
+    stepIn(game);
+    expect(alarmCodexId(game)).toBe("frost");
+    waitOne(game);
     expect(alarmCodexId(game)).toBeUndefined();
   });
 });

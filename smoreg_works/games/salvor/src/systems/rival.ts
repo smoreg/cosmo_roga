@@ -251,6 +251,21 @@ function pickSpawnRoom(game: RoomGame, rng: Rng): RoomId | undefined {
 
 const MODULE_IDS = Object.keys(MODULES) as ModuleId[];
 
+/**
+ * A coil off the competitor's haul, as spent as the rest of that haul.
+ *
+ * `addWreck` left the count off, and a wreck with no count is worth the kind's
+ * own full one — so an EMP knocked off the rival was a free full magazine,
+ * which is the most valuable thing in this game, while the integrity beside it
+ * was drawn half gone (`LOOT_INTEGRITY`). Half of the count, by the same word
+ * this file has always used for that haul, and no die is thrown for it: a
+ * draw here would move every seed in the game (`tests/replay.test.ts`).
+ */
+function spentCharges(kind: ModuleId): number | undefined {
+  const full = MODULES[kind].charges;
+  return full === undefined ? undefined : Math.floor(full / 2);
+}
+
 /** What it has taken off this hull already. Two modules, half spent. */
 function pickLoot(rng: Rng): ModuleId[] {
   const loot: ModuleId[] = [];
@@ -413,7 +428,14 @@ function dropAll(game: RoomGame, self: Entity): void {
 
 function drop(game: RoomGame, room: RoomId, kind: ModuleId): void {
   const st = rivalState(game);
-  const wreck = addWreck(game, room, kind, rivalRng(game, st).int(LOOT_INTEGRITY[0], LOOT_INTEGRITY[1]));
+  const wreck = addWreck(
+    game,
+    room,
+    kind,
+    rivalRng(game, st).int(LOOT_INTEGRITY[0], LOOT_INTEGRITY[1]),
+    "%",
+    spentCharges(kind),
+  );
   // Where it came from, for the bargain (G34): a rival's loot is not the same
   // thing as a machine's scrap, though it is salvaged the same way.
   wreck.source = "rival";

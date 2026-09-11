@@ -3,7 +3,7 @@ import { RoomGame, spawnMonsterIn, type RoomGameConfig } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
-import { roomActions, type Action } from "../src/ui/actions.js";
+import { keyed, roomActions, type Action } from "../src/ui/actions.js";
 import { panelBlocks, type PanelLine } from "../src/ui/panel.js";
 import { t } from "../src/i18n.js";
 import { THEME } from "../src/ui/theme.js";
@@ -283,5 +283,56 @@ describe("the log on the page", () => {
     expect(html).toContain('<div class="keys">line 0</div>');
     expect(html).not.toContain(`<div class="keys">line ${HISTORY_ROWS + 2}</div>`);
     expect(html).toContain("2/2");
+  });
+});
+
+// ------------------------------------------------- the two views say the same
+
+/**
+ * The rule of this repo that G85 found broken: two views never word the same
+ * thing differently.
+ *
+ * `attack security unit 8/8 #1` is twenty-seven columns in a list that has
+ * twenty-five. The terminal used to `slice` it and lose the `#1` — the only
+ * thing telling it from the line above it — while the page printed it whole,
+ * so the two screens disagreed about what the player was choosing between.
+ * Both now draw the one line `fitLabel` made, and this is what proves it.
+ */
+describe("the page and the terminal draw the same line", () => {
+  it("shortens twins the same way in both, and neither prints the long form", () => {
+    const game = gameIn();
+    put(game, "r2", "security-unit");
+    put(game, "r2", "security-unit");
+    const actions = roomActions(game);
+
+    const twins = actions.filter((a) => a.cmd.kind === "attack");
+    expect(twins.map((a) => a.label)).toEqual(["attack security 8/8 #1", "attack security 8/8 #2"]);
+
+    const html = htmlOf(blocksOf(game), [], actions, 0);
+    const rows = panelBlocks(game, actions, 0).map((l) => l.text);
+    for (const line of twins) {
+      expect(html).toContain(`<span class="label">${line.label}</span>`);
+      expect(rows.some((r) => r.includes(line.label))).toBe(true);
+    }
+    // The block above the list still names the machine in full — it has the
+    // columns for it. What may not survive anywhere is the line that was over
+    // budget, in either view.
+    expect(html).not.toContain("attack security unit");
+    expect(rows.some((r) => r.includes("attack security unit"))).toBe(false);
+  });
+
+  it("puts the price on the row under the line, in both views", () => {
+    const game = gameIn();
+    const priced = keyed([
+      { key: "", label: t("action.purge", { module: "THRUSTERS", left: 2 }), cmd: { kind: "wait" }, enabled: true },
+    ]);
+    const line = priced[0]!;
+    expect(line.label).toBe("purge THRUSTERS");
+    expect(line.extra).toBe("(welder, 2 turns)");
+
+    const html = htmlOf(blocksOf(game), [], priced, 0);
+    expect(html).toContain('<span class="extra">(welder, 2 turns)</span>');
+    const rows = panelBlocks(game, priced, 0).map((l) => l.text);
+    expect(rows).toContain("   (welder, 2 turns)");
   });
 });

@@ -10,14 +10,16 @@ import {
   type RoomGameConfig,
   type Twist,
 } from "@jamrog/engine";
-import { shipFromText } from "@jamrog/engine/testing";
+import { BOTS_ROOMS, seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
+import { LANGS, setLang } from "../src/i18n.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import { DOORS } from "../src/systems/doors.js";
 import { addWreck, applyDerived, findSlot, install, rigOf } from "../src/twist/rig.js";
 import {
   ACTION_KEYS,
   ACTION_WIDTH,
+  fitLabel,
   MAX_ACTIONS,
   omittedActions,
   roomActions,
@@ -246,23 +248,46 @@ describe("what the compartment offers", () => {
     const machine = put(game, "r2", "security-unit");
     const wreck = addWreck(game, game.ship.room("r2").id, "thrusters", 2);
 
-    // No doors at all: every one of them is a row of the map since G48, worded
-    // after the compartment it leads to and saying how far. What is left here
-    // is what happens *in* this compartment — and `close d1`, which is not a
-    // way through a bulkhead but a decision about one, and which was silently
-    // swallowed before G40 (the owner's second playtest could not shut a door
-    // on an ENFORCER).
+    // The four door rows are the mock-up of design-doc.md, "Экран", back to
+    // the byte: what it costs, which door, where it goes, what stands in the
+    // way. They came off this list in G48 and a sweep of the shipped game found
+    // what that cost — no row of the numbered list was a step through a door,
+    // and a player reading only numbers stood in a compartment with a ship
+    // system on none of 150 seeds (docs/tasks/G87-playability.md, 1).
+    //
+    // `close` went the other way, onto `d` with the rest of what can be done
+    // *to* a bulkhead (G64): it was 52.7 % of every pressable row, and on
+    // 35.7 % of screens it was the whole list. It keeps a row here on the one
+    // turn it is a decision — a machine in sight through the door — which the
+    // fixture has none of.
     expect(labels(game)).toEqual([
       "attack security unit 8/8",
       "salvage THRUSTERS 2/12",
-      "close d1",
-      "close d4",
+      "go d1  DOCKING   open",
+      "go d4  HAB BLOCK open",
+      "open d3 STORAGE   locked",
+      "cut d6 CORRIDOR  sealed",
     ]);
 
     const actions = roomActions(game);
     expect(actions[0]!.cmd).toEqual({ kind: "attack", target: machine.id });
     expect(actions[1]!.cmd).toEqual({ kind: "act", verb: "salvage", target: wreck.id });
-    expect(actions[2]!.cmd).toEqual({ kind: "act", verb: "close", target: game.ship.door("d1").id });
+    expect(actions[2]!.cmd).toEqual({ kind: "go", door: game.ship.door("d1").id });
+  });
+
+  it("shuts a bulkhead off the numbered list when something is coming through it", () => {
+    // The one case `close` keeps a row of its own for: a machine in sight on
+    // the far side is this turn's question, and the answer to a turn may not be
+    // behind a key nobody mentioned (docs/tasks/G40-tug-clarity.md, 7).
+    const game = gameIn();
+    expect(labels(game).some((l) => l.startsWith("close"))).toBe(false);
+
+    put(game, "r5", "security-unit");
+    expect(game.visible.has(game.ship.room("r5").id)).toBe(true);
+    const shut = roomActions(game).find((a) => a.label === "close d4");
+    expect(shut?.cmd).toEqual({ kind: "act", verb: "close", target: game.ship.door("d4").id });
+    // And only that door: `d1` leads to an empty DOCKING and stays on `d`.
+    expect(labels(game)).not.toContain("close d1");
   });
 
   it("numbers the first ten and leaves the rest keyless", () => {
@@ -568,13 +593,17 @@ describe("the ways through one bulkhead", () => {
     const game = gameIn();
     const map = roomActions(game, undefined, true);
     // One lock in the fixture, so one row that steps down; the welded seam has
-    // a single answer and wears it, and the compartment's own list has no door
-    // rows left to carry a level at all.
+    // a single answer and wears it.
     expect(map.filter((a) => typeof a.step === "number")).toHaveLength(1);
     for (const head of ["DOCKING", "HAB", "CORRIDOR"]) {
       expect(map.find((a) => a.label.startsWith(head))!.step, head).toBeUndefined();
     }
-    expect(roomActions(game).some((a) => a.step !== undefined)).toBe(false);
+    // The compartment's own list counts the same way, for the same reason: the
+    // same lock, and no level under anything the drone can simply walk through.
+    const here = roomActions(game);
+    expect(here.filter((a) => typeof a.step === "number").map((a) => a.label)).toEqual([
+      "open d3 STORAGE   locked",
+    ]);
   });
 });
 
@@ -671,10 +700,11 @@ describe("the map of where the drone can walk", () => {
     // is standing in is not a destination.
     expect(map(game).some((a) => a.label.includes("CARGO"))).toBe(false);
     expect(map(game).some((a) => a.label.startsWith("attack"))).toBe(false);
-    // …and the compartment's own list has no doors on it at all: they were the
-    // same four rows said twice on a twenty-eight column panel, and the map is
-    // where they are said better (G48).
-    expect(labels(game).some((l) => l.startsWith("go "))).toBe(false);
+    // What is on the map and on no other list is the *walk*: the compartment's
+    // own rows are single steps through the bulkheads it has (G87), and a route
+    // of several doors is what only a destination can express.
+    expect(map(deepGame()).some((a) => a.travel !== undefined)).toBe(true);
+    expect(roomActions(deepGame()).some((a) => a.travel !== undefined)).toBe(false);
   });
 
   it("does not name a compartment nobody has seen", () => {
@@ -992,4 +1022,100 @@ describe("every offered action is one the sim accepts", () => {
     // A property nobody exercised is a green test that proves nothing.
     expect(tried).toBeGreaterThan(600);
   });
+});
+
+// ------------------------------------------------------- twenty-five columns
+
+/**
+ * The lines a sweep of real play found over budget, and what they must become.
+ *
+ * The table is a measurement, not an invention: 56 706 screens of careful play
+ * in three languages produced 52 distinct lines longer than `ACTION_WIDTH` and
+ * 3 470 sightings of them (G85, 2). The terminal used to `slice` them and the
+ * page used to print them whole, so what a player lost first was the end of
+ * the line — which is where the facts are.
+ */
+const OVER: Array<[string, string, string?]> = [
+  ["coger caja de carga (8 CR)", "coger caja de carga", "(8 CR)"],
+  ["purge EMITTER (welder, 2 turns)", "purge EMITTER", "(welder, 2 turns)"],
+  ["purgar EMISOR (soldador, 2)", "purgar EMISOR", "(soldador, 2)"],
+  ["\u043f\u0440\u043e\u0436\u0438\u0433: \u0414\u0412\u0418\u0413\u0410\u0422\u0415\u041b\u0418 (\u0441\u0432\u0430\u0440\u043a\u0430)", "\u043f\u0440\u043e\u0436\u0438\u0433: \u0414\u0412\u0418\u0413\u0410\u0422\u0415\u041b\u0418", "(\u0441\u0432\u0430\u0440\u043a\u0430)"],
+  ["attack security unit 8/8 #1", "attack security 8/8 #1"],
+  ["attack maintenance bot 4/4", "attack maintenance 4/4"],
+  ["atacar dron salvaje 3/3 #2", "atacar dron 3/3 #2"],
+  ["\u0430\u0442\u0430\u043a\u0430: \u043e\u0434\u0438\u0447\u0430\u043b\u044b\u0439 \u0434\u0440\u043e\u043d 3/3 #1", "\u0430\u0442\u0430\u043a\u0430: \u043e\u0434\u0438\u0447\u0430\u043b\u044b\u0439 3/3 #1"],
+  ["\u0430\u0442\u0430\u043a\u0430: \u0434\u0443\u0433\u043e\u0432\u043e\u0439 \u0441\u0442\u0440\u0430\u0436 10/10", "\u0430\u0442\u0430\u043a\u0430: \u0434\u0443\u0433\u043e\u0432\u043e\u0439 10/10"],
+  ["desguazar IMPULSORES 12/12", "desguazar IMPULSOR\u2026 12/12"],
+];
+
+/** Every figure of a line: hit points, a price, the `#2` that tells twins apart. */
+function figures(text: string): string {
+  return (text.match(/#?\d+(?:\/\d+)?/g) ?? []).join(" ");
+}
+
+describe("a line of the list gives up the least it can to fit", () => {
+  it("moves the price down a row, then drops words of the name, then marks the cut", () => {
+    for (const [raw, label, extra] of OVER) {
+      const fit = fitLabel(raw);
+      expect(fit.label, raw).toBe(label);
+      expect(fit.extra, raw).toBe(extra);
+      expect(fit.label.length, raw).toBeLessThanOrEqual(ACTION_WIDTH);
+    }
+  });
+
+  it("never loses a figure or a #N, whatever it drops", () => {
+    for (const [raw] of OVER) {
+      const fit = fitLabel(raw);
+      expect(figures(`${fit.label} ${fit.extra ?? ""}`), raw).toBe(figures(raw));
+    }
+  });
+
+  it("leaves a line that fits exactly as it was", () => {
+    for (const text of ["leave a1 TUG       out", "1234567890123456789012345"]) {
+      expect(fitLabel(text)).toEqual({ label: text });
+    }
+  });
+
+  it("says with \u2026 that a line it could not shorten was cut", () => {
+    const single = fitLabel("antidisestablishmentarianismistic");
+    expect(single.label).toHaveLength(ACTION_WIDTH);
+    expect(single.label.endsWith("\u2026")).toBe(true);
+  });
+});
+
+/**
+ * The same, on the game rather than on a table: whatever the bots meet over
+ * thirty voyages in three languages, no line of any list is over budget.
+ *
+ * The table above is the shape of the answer and this is its coverage — a
+ * machine named in some language nobody measured, a module bought at a price
+ * nobody priced, is a red line here rather than a clipped row on a screenshot.
+ */
+describe("no line of any list is over budget in real play", () => {
+  it("over thirty careful voyages in three languages", () => {
+    let lines = 0;
+    for (const lang of LANGS) {
+      setLang(lang);
+      for (const seed of seedRange(1, 30)) {
+        const game = newGame(seed);
+        const bot = BOTS_ROOMS.careful!();
+        const rng = new Rng(seed ^ 0x99);
+        let idle = 0;
+        for (let step = 0; step < 900 && !game.isOver() && idle < 12; step++) {
+          const before = game.inputs.length;
+          for (const a of roomActions(game)) {
+            expect(a.label.length, `${lang}: \u00ab${a.label}\u00bb`).toBeLessThanOrEqual(ACTION_WIDTH);
+            if (a.extra !== undefined) {
+              expect(a.extra.length, `${lang}: \u00ab${a.extra}\u00bb`).toBeLessThanOrEqual(ACTION_WIDTH);
+            }
+            lines++;
+          }
+          game.playerCommand(bot(game, rng));
+          idle = game.inputs.length > before ? 0 : idle + 1;
+        }
+      }
+    }
+    setLang("en");
+    expect(lines, "the control: lists were drawn at all").toBeGreaterThan(50_000);
+  }, 120_000);
 });

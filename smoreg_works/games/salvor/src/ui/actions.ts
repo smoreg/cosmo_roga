@@ -80,10 +80,11 @@ export interface Action {
   /** Why it cannot be pressed. Shown in the log when it is pressed anyway. */
   why?: string;
   /**
-   * A second row under the line. Nothing sets it since the letters under a
-   * locked door became that door's own list; both renderers still draw it, so
-   * it stays as the panel's contract rather than being deleted out from under
-   * them.
+   * A second row under the line, drawn by both renderers.
+   *
+   * Set by `fitLabel`, and by nothing else: when a line will not go into its
+   * twenty-five columns and the part that overflows is the price in brackets,
+   * the price moves down here rather than being cut off the end.
    */
   extra?: string;
   /**
@@ -204,9 +205,10 @@ const DOOR_VERBS: Record<string, string> = {
  * defect the list carried until G40. A door verb is a *way through* a door, so
  * the door block folds it into that door's one line — and a door already open
  * takes the plain `go` line, which meant every `close` `systems/doors.ts`
- * offered was silently swallowed and no bulkhead could ever be shut. Closing
- * one on something that is shooting through it is not a way through it; it is
- * its own decision and it gets its own line (docs/tasks/G40-tug-clarity.md, 7).
+ * offered was silently swallowed and no bulkhead could ever be shut.
+ *
+ * It keeps a line here only when it is this turn's decision — a machine in
+ * sight through the door — and lives on `d` otherwise (`threatBeyond`).
  */
 const LATE_VERBS = new Set(["close", "work", "upload"]);
 
@@ -678,8 +680,12 @@ function hereActions(game: RoomGame): Action[] {
     // `hide` and `wait` are deliberately dropped — they are letters, not
     // numbers, and a list that repeats the letter row is a list nobody reads.
     ...offers.filter((o) => !spent.has(o) && o.cmd.kind === "act").map(fromOffer),
+    // The bulkheads, back where the design document draws them.
+    ...doorRows(game, here, doors, forDoors),
     ...airlockRow(doors),
-    ...late.map(fromOffer),
+    // `close` only where shutting one is this turn's decision: a machine in
+    // sight on the other side. Everywhere else it lives on `d`.
+    ...late.filter((o) => verbOf(o) !== "close" || threatBeyond(game, here, o)).map(fromOffer),
   ];
 
   return pressableFirst(out);
@@ -726,12 +732,80 @@ export function keyed(actions: readonly Action[], cursor = 0): Action[] {
   const limit = nested ? MAX_ACTIONS - 1 : MAX_ACTIONS;
   const from = windowStart(cursor, actions.filter((a) => a.step !== null).length, limit);
   let at = 0;
-  return actions.map((a) => {
+  return actions.map((line) => {
+    const a = fitted(line);
     if (a.step === null) return { ...a, key: BACK_KEY };
     const i = at++;
     const on = i - from;
     return on >= 0 && on < limit ? { ...a, key: ACTION_KEYS[on]! } : a;
   });
+}
+
+/**
+ * The list as every view gets it: inside its columns before the views fork.
+ *
+ * Here rather than in either renderer, and that is the point. The terminal used
+ * to `slice` the row at the panel's width and the page used to print the label
+ * whole, so on the 3 470 screens in 56 706 where a line was over budget the two
+ * views said different words — against the rule that they never may — and the
+ * terminal said them with nothing to show that anything was missing.
+ */
+function fitted(a: Action): Action {
+  const { label, extra } = fitLabel(a.label);
+  if (label === a.label && extra === undefined) return a;
+  return extra === undefined ? { ...a, label } : { ...a, label, extra };
+}
+
+/**
+ * One line of the list in `ACTION_WIDTH` columns, losing the least it can.
+ *
+ * What a line has to keep is not its end but its facts: the figures — hit
+ * points, the `#2` that is the only thing telling two identical machines apart
+ * — and the first word, which is the verb. So the order of sacrifice is the
+ * order of what a player can do without:
+ *
+ * 1. the price in brackets at the end goes to the row below (`Action.extra`),
+ *    which is where `purge EMITTER (welder, 2 turns)` keeps its two turns;
+ * 2. then the name gives up words from its end, because `attack maintenance
+ *    4/4` is still the same machine and still on four hit points;
+ * 3. then the name itself is cut, and says so with `…` — never the figures.
+ */
+export function fitLabel(text: string, width = ACTION_WIDTH): { label: string; extra?: string } {
+  if (text.length <= width) return { label: text };
+  const price = /\s(\([^()]*\))$/.exec(text);
+  if (price !== null) {
+    const head = text.slice(0, price.index);
+    if (head.length <= width) return { label: head, extra: price[1]! };
+  }
+  return { label: squeeze(text, width) };
+}
+
+function squeeze(text: string, width: number): string {
+  const words = text.split(" ");
+  // The tail is every trailing word that carries a figure or a tag: that is
+  // the state of the thing, and it is the reason the line exists.
+  let from = words.length;
+  while (from > 1 && /[0-9#]/.test(words[from - 1]!)) from--;
+  const head = words[0]!;
+  const tail = words.slice(from);
+  const name = words.slice(1, from);
+  while (name.length > 1 && joined(head, name, tail).length > width) name.pop();
+
+  const line = joined(head, name, tail);
+  if (line.length <= width) return line;
+  const over = line.length - width;
+  const last = name[name.length - 1];
+  if (last !== undefined && last.length > over + 1) {
+    name[name.length - 1] = `${last.slice(0, last.length - over - 1)}\u2026`;
+    return joined(head, name, tail);
+  }
+  // A line with no name to give up: one word, or figures all the way. The mark
+  // is still owed, because a row that was cut must never look whole.
+  return `${line.slice(0, Math.max(0, width - 1))}\u2026`;
+}
+
+function joined(head: string, name: readonly string[], tail: readonly string[]): string {
+  return [head, ...name, ...tail].join(" ");
 }
 
 /**
@@ -773,22 +847,100 @@ function airlockLabel(door: Door): string {
 // -------------------------------------------------------------------- doors
 
 /**
- * The airlock, and it is the only door left on the compartment's own list.
+ * The airlock, worded as the way out of the hull rather than as a way about it.
  *
- * Every other door came off it when walking became a destination
- * (docs/tasks/G48-travel-to-a-room.md): the map `m` opens says where each one
- * leads, how far and what stands in the way, so the same four bulkheads listed
- * twice on a twenty-eight column panel were four rows taken from the salvage,
- * the bodies and the ship's own systems — which have nowhere else to be.
- *
- * The airlock stays because it is not a way about the ship but a way out of it:
- * the map does not carry it, `leave` is not `go`, and the row that says how to
+ * The map does not carry it, `leave` is not `go`, and the row that says how to
  * go home is the one a lost player looks for (docs/tasks/G40-tug-clarity.md).
  */
 function airlockRow(doors: readonly Door[]): Action[] {
   const airlock = doors.find((d) => d.state === "airlock");
   if (!airlock) return [];
   return [raw(airlockLabel(airlock), { kind: "leave" }, true)];
+}
+
+/**
+ * One line per bulkhead of this compartment: `go d1  DOCKING   open`, exactly
+ * as design-doc.md, "Экран" draws it.
+ *
+ * G48 took the doors off this list, and it was right about what it was fixing:
+ * walking wants a destination rather than a hinge, so `m` opens a map ordered
+ * by distance and picking a compartment walks the whole way there. What it did
+ * not survive is that `m` is a key, and a player who has not been told about it
+ * reads the numbered list and nothing else. A sweep of 33 000 screens of the
+ * shipped game found no row of that list that is a step through a door —
+ * 52.7 % of them were `close dN` — and a player pressing only numbered rows
+ * stood in a compartment with a ship system on none of 150 seeds
+ * (docs/tasks/G87-playability.md).
+ *
+ * So the rows are back and `close` has gone the other way, onto `d` where the
+ * rest of what can be done *to* a door already lives (G64) — which is the same
+ * number of door rows as before, spent on the one thing a player aboard a hull
+ * does more than anything else. Everything G48 built stays: `m` is still the
+ * map and still walks a whole route, `<` still finds the airlock, and a shut
+ * bulkhead still opens the priced list of ways through it (G46) rather than
+ * putting one of them on the row.
+ */
+function doorRows(
+  game: RoomGame,
+  here: RoomId,
+  doors: readonly Door[],
+  offers: ReadonlyArray<ActionOffer<RoomCommand>>,
+): Action[] {
+  return [...doors]
+    .filter((door) => door.state !== "airlock")
+    .sort((a, b) => rank(a) - rank(b) || a.id - b.id)
+    .map((door) => {
+      const at = { leadsTo: game.ship.other(door, here) };
+      const label = (verb: string): string => doorLine(verb, door, farName(game, door, here));
+      // A door the drone can walk through is the step through it and nothing
+      // else. Asking `doorRow` would grey it out: the ways *through* an open
+      // bulkhead are the welding torch and the empty set.
+      if (game.ship.passable(door, { isPlayer: true })) {
+        return { ...raw(label("go"), { kind: "go", door: door.id }, true), ...at };
+      }
+      return { ...doorRow(door, waysOf(offers, door.id), label), ...at };
+    });
+}
+
+/**
+ * `go d1  DOCKING   open`: what it costs, which door, where it goes, what
+ * stands in the way.
+ *
+ * The compartment's name gives way when a language runs long, and it gives way
+ * at a word (`clipName`): the schematic names it too, and a name cut
+ * mid-syllable reads as a typo rather than as a width.
+ */
+function doorLine(verb: string, door: Door, name: string): string {
+  const head = pad(`${verbWord(verb)} ${door.label}`, VERB_W);
+  const state = doorStateWord(door.state);
+  const width = Math.min(NAME_W, Math.max(2, ACTION_WIDTH - head.length - state.length));
+  return head + pad(clipName(name, width - 1), width) + state;
+}
+
+/** What is on the other side, if the drone has any right to know its name. */
+export function farName(game: RoomGame, door: Door, here?: RoomId): string {
+  const at = here ?? game.roomOf(game.player).id;
+  const far = game.ship.roomAt(game.ship.other(door, at));
+  return far.explored || far.scanned || game.visible.has(far.id) ? roomName(far) : UNKNOWN_ROOM;
+}
+
+/**
+ * Is there a machine in sight through that bulkhead? The one case where
+ * shutting a door is this turn's decision rather than housekeeping.
+ *
+ * `close` was 52.7 % of every pressable row of the list and on 35.7 % of
+ * screens it was the whole of it, which is a list that teaches a player it has
+ * nothing to offer. It kept a line here rather than moving wholesale to `d`
+ * because of what it is for: a bulkhead shut on something that is shooting
+ * through it is the answer to that turn, and the answer to a turn may not be
+ * behind a key nobody mentioned (docs/tasks/G40-tug-clarity.md, 7).
+ */
+function threatBeyond(game: RoomGame, here: RoomId, offer: ActionOffer<RoomCommand>): boolean {
+  const target = offer.cmd.kind === "act" ? offer.cmd.target : undefined;
+  const door = target === undefined ? undefined : game.ship.doors[target];
+  if (!door) return false;
+  const far = game.ship.other(door, here);
+  return game.visible.has(far) && machinesIn(game, far).length > 0;
 }
 
 /**

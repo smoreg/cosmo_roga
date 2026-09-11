@@ -5,6 +5,7 @@ import { machineByName } from "../content/monsters.js";
 import { rigOf } from "../twist/rig.js";
 import { alertState } from "./alert.js";
 import { GHOST_NAME } from "./ghost.js";
+import { signThisTurn } from "./hazards.js";
 import { rivalKind } from "./rival.js";
 import { virusOf } from "./virus.js";
 
@@ -37,19 +38,6 @@ interface CodexRecord {
   /** The part of `seen` the player has not opened yet: what the badge counts. */
   unread: CodexId[];
 }
-
-/**
- * The tone G71 writes an alarm line with, read as a plain string.
- *
- * `LogLine.tone` is a union the engine owns and `"alarm"` is being added to it
- * by another task in this wave. Typed as `string` here so this file compiles
- * both before and after that lands, and so an unknown tone is simply a tone
- * that is not this one rather than a crash.
- */
-const ALARM_TONE: string = "alarm";
-
-/** The key family a hazard's warning line carries: `log.hazard.tell.<id>`. */
-const HAZARD_TELL = "log.hazard.tell.";
 
 /**
  * The live record, made on demand.
@@ -114,24 +102,18 @@ export function codexUnread(game: RoomGame): number {
 }
 
 /**
- * The hazard the last line of the log was about, if the last line was a
- * warning about one.
+ * The hazard this player turn warned about, if it warned about one.
  *
  * This is the whole of the connection between the red line and the key: the
  * line ends in `[i]`, and `i` opens the card for *that* hazard rather than the
- * oldest unread one. It reads the line's `key` rather than its wording, which
- * is what `LogLine.key` exists for — the sentence is translated, the key is not.
+ * oldest unread one. Asked of the hazard's own record rather than of the log,
+ * because contacts and the rival run after hazards: their line — a machine
+ * walking in, the rival coming aboard — is the last line of the log while the
+ * red line is still the one asking for `i`, and it used to steal the key.
  */
 export function alarmCodexId(game: RoomGame): CodexId | undefined {
-  const lines = game.log.tail(1);
-  const last = lines[lines.length - 1];
-  if (last === undefined) return undefined;
-  const tone: string = last.tone;
-  if (tone !== ALARM_TONE) return undefined;
-  const key = last.key;
-  if (key === undefined || !key.startsWith(HAZARD_TELL)) return undefined;
-  const id = key.slice(HAZARD_TELL.length);
-  return codexFor(id) === undefined ? undefined : id;
+  const id = signThisTurn(game);
+  return id !== undefined && codexFor(id) !== undefined ? id : undefined;
 }
 
 /**

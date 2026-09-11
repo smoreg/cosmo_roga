@@ -640,8 +640,13 @@ export function addWreck(
   kind: ModuleId,
   integrity: number,
   glyph = "%",
+  charges?: number,
 ): Wreck {
   const wreck: Wreck = { id: nextShipId(game), kind, integrity, glyph };
+  // Left off for a pile nobody counted — a factory crate, a machine's scrap —
+  // and the kind's own full count is what those are worth. Given, it is what
+  // this copy has left, and laying a coil down never refilled it.
+  if (charges !== undefined) wreck.charges = charges;
   wrecksIn(game, room).push(wreck);
   return wreck;
 }
@@ -941,9 +946,8 @@ function swapIn(game: RoomGame, rig: Rig, wreck: Wreck, slot: number): Outcome {
     // The drone's own part, laid down: sealed as far as the ship's virus is
     // concerned, because it never was the ship's — and with whatever charges
     // it had left, because laying a coil down is not recharging it.
-    const pile = addWreck(game, here, out.kind, out.integrity);
+    const pile = addWreck(game, here, out.kind, out.integrity, "%", out.charges);
     pile.source = "crate";
-    if (out.charges !== undefined) pile.charges = out.charges;
     key = "log.swap.dropped";
   }
   installAt(rig, slot, wreck.kind, wreck.integrity, wreck.charges);

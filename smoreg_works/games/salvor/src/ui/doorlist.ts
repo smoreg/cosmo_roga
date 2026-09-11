@@ -3,15 +3,14 @@ import { moduleName } from "../content/modules.js";
 import { isTug } from "../content/tug.js";
 import { gatedOffers } from "../systems/tug.js";
 import { doorStateWord, verbWord } from "../content/words.js";
-import { roomName } from "../content/zones.js";
 import { t } from "../i18n.js";
 import {
   ACTION_WIDTH,
-  UNKNOWN_ROOM,
   backAction,
   backToRoom,
   clipName,
   doorMenu,
+  farName,
   keyed,
   methodAction,
   pad,
@@ -318,12 +317,6 @@ function doorLabel(game: RoomGame, door: Door, verb: string): string {
   const state = doorStateWord(door.state);
   const width = Math.min(NAME_W, Math.max(2, ACTION_WIDTH - head.length - state.length));
   return head + pad(clipName(farName(game, door), width - 1), width) + state;
-}
-
-/** What is on the other side, if the drone has any right to know its name. */
-function farName(game: RoomGame, door: Door): string {
-  const far = game.ship.roomAt(game.ship.other(door, game.roomOf(game.player).id));
-  return far.explored || far.scanned || game.visible.has(far.id) ? roomName(far) : UNKNOWN_ROOM;
 }
 
 /** Columns for `close d1`, and for the compartment behind the door. */

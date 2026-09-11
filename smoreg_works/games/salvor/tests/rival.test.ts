@@ -7,7 +7,7 @@ import { voyageOf } from "../src/systems/voyage.js";
 import { RIVAL, startRival, rivalKind } from "../src/systems/rival.js";
 import { rivalState, type RivalState } from "../src/systems/rivalstate.js";
 import type { ShipSystem } from "../src/systems/populate.js";
-import { wrecksIn } from "../src/twist/rig.js";
+import { addWreck, findSlot, rigOf, wrecksIn } from "../src/twist/rig.js";
 
 /**
  * The rival, on hand-drawn ships rather than on seeds: every question here is
@@ -272,6 +272,40 @@ describe("the rival can be robbed", () => {
     expect(wreck.integrity).toBeGreaterThanOrEqual(2);
     expect(wreck.integrity).toBeLessThanOrEqual(3);
     expect((wreck as { source?: string }).source).toBe("rival");
+  });
+
+  it("hands over a coil as spent as the rest of its haul, not a full one", () => {
+    const game = gameOn(OPEN_LINE);
+    withRival(game);
+    const self = inReach(game);
+    const here = game.roomOf(game.player).id;
+    // Its haul, said out loud: the one module in this game that spends charges,
+    // and the relic that spends three of them.
+    self.data!.loot = ["emp", "shocker"];
+
+    game.playerCommand({ kind: "attack", target: self.id });
+    game.playerCommand({ kind: "attack", target: self.id });
+    const piles = wrecksIn(game, here);
+    expect(piles.map((w) => w.kind)).toEqual(["emp", "shocker"]);
+    // Half of two and half of three: an EMP off the competitor is one shot,
+    // and it used to be two — a free full magazine, the most valuable thing
+    // there is (G85, 4).
+    expect(piles.map((w) => w.charges)).toEqual([1, 1]);
+  });
+
+  it("puts a coil on the rack with the charges the pile had, nought included", () => {
+    const game = gameOn(OPEN_LINE);
+    withRival(game);
+    const here = game.roomOf(game.player).id;
+    const rig = rigOf(game.player)!;
+    // The empty EMP the task names, laid down where the drone stands: what
+    // `addWreck` is now told, and what salvaging it has to give back.
+    const empty = addWreck(game, here, "emp", 3, "%", 0);
+    expect(empty.charges).toBe(0);
+
+    expect(game.playerCommand({ kind: "act", verb: "salvage", target: empty.id }).ok).toBe(true);
+    expect(findSlot(rig, "emp")).not.toBeNull();
+    expect(rig.slots[findSlot(rig, "emp")!]!.charges).toBe(0);
   });
 
   it("leaves everything it carried when it is killed outright", () => {
