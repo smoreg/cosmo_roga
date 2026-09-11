@@ -388,8 +388,8 @@ export const EN = {
   // otherwise be filed under: three lines, two refusals and a gauge are one
   // mechanic, and a translator reading down this file should meet them at once.
   "action.rival.payoff": "pay off RIVAL ({price} CR)",
-  "action.rival.aside": "stand aside (+{price} CR)",
-  "action.rival.split": "split the sale",
+  "action.rival.aside": "leave: RIVAL pays {price} CR",
+  "action.rival.split": "give RIVAL half the sale",
   "why.rival.spent": "It has nothing left to bring up.",
   "why.rival.notHere": "The rival is not in this compartment.",
   "why.rival.dealt": "The deal on this hull is already struck.",
@@ -417,6 +417,11 @@ export const EN = {
   "log.helm.board": "The board at the HELM: {flavour}.",
   "log.charter.signed": "Signed: {charter}.",
   "log.charter.filled": "{charter} filled:",
+  // Said at the airlock for every signed job that did not pay, and why: a
+  // charter that fails in silence reads as one that was never checked.
+  "log.charter.missed.salvage": "{charter} not filled: {have} of {need} CR of salvage.",
+  "log.charter.missed.retrieve": "{charter} not filled: the crate is still aboard.",
+  "log.charter.missed.upload": "{charter} not filled: the upload at the console never finished.",
   "log.credit": "{why} +{amount} CR. {total} CR.",
   "log.hull.bought": "A {hull} comes off the rack: {trait}. {credits} CR left.",
   "log.hull.tow": "The {hull} goes under tow:",
@@ -430,6 +435,7 @@ export const EN = {
   "log.bench.clean": "The bench burns the virus out of your {module}.",
   "log.jump": "The tug burns for the {hull}. {credits} CR left.",
   "log.jump.warn": "{hull}: {up} of {of} systems online. A jump leaves the hull behind.",
+  "log.jump.left": "Left behind: {charters}.",
   "log.voyage.undock": "The clamps let go.",
   "log.voyage.home": "The airlock cycles. The tug is waiting, and the derelict is still breathing.",
   "log.voyage.won": "The tug answers on your father's callsign. You take it home. You win.",
@@ -529,7 +535,7 @@ export const EN = {
   "why.hold.noDrone": "There is no drone to fit it to.",
   "why.hold.none": "Nothing in the hold under that number.",
   "why.charter.none": "Nothing on the board under that number.",
-  "why.charter.late": "The {hull} is already open. Nobody signs after that.",
+  "why.charter.late": "Charter board closed: the {hull} is already open.",
   "why.undock.aboard": "You are already aboard.",
   "why.undock.noDrone": "There is no drone on the rails.",
   "why.undock.sold": "The {hull} is under tow. Jump to the next hull.",
@@ -561,14 +567,20 @@ export const EN = {
   "action.undock.todo": "cast off {left}",
   "undock.left.damaged": "{n} dmg",
   "undock.left.charter": "no job",
+  // The same debt when it is the only one: then the row has room to say what
+  // casting off does to the board.
+  "undock.left.board": "— board closes",
   "action.repair": "{module} {price} CR",
   "action.clean": "clean {module} ({price} CR)",
   "action.graft": "{module} +1 base  {price} CR",
   "action.order": "buy {module} {price} CR",
-  "action.fit": "{module} {integrity}",
+  "action.fit": "{module} {integrity}/{max}",
   "action.sell": "{module} {left}/{max}  {price} CR",
   "action.charter": "take {charter} ({price})",
   "action.jump": "jump → {hull} {price} CR",
+  // The jump row when it leaves systems raised behind: what is dropped, and
+  // what the hull would have sold for. The group heading already says "jump".
+  "action.jump.drop": "drop {up}/{of}, sale {cr} CR",
   // The last line of a door's own list, and the only place on it the door is
   // named: one level down there is no heading to carry `d3`.
   "action.back": "back ({door})",
@@ -632,7 +644,7 @@ export const EN = {
   "panel.rival": "RIVAL {gauge}",
   "panel.evac": "EVAC {n}",
   "panel.goal": "GOAL  NEUTRALIZE  {cr} CR",
-  "panel.goal.bare": "GOAL  NEUTRALIZE",
+  "panel.goal.bare": "GOAL  3 SYSTEMS, OUT ALIVE",
   "panel.goal.done": "ALL THREE ONLINE  +{cr} CR",
   "panel.goal.out": "< out through the airlock",
   "panel.goal.noTool": "NOTHING ABOARD RAISES IT",
@@ -662,7 +674,7 @@ export const EN = {
   // Added with the tug-clarity pass (G40).
   "why.rack.hullFull": "The rack is full.",
   "action.hull.onRack": "{hull} — on the rack",
-  "panel.contact.hit": "hit {module}",
+  "panel.contact.hit": "burns {module}",
 
   // The contacts block, made unmissable (G47). The bar is drawn to the panel's
   // full width around whichever of the two labels applies, so both are short by
@@ -723,7 +735,7 @@ export const EN = {
   "title.view.judges": "The jam's judges expect ASCII: that is what a fresh session opens in.",
   "title.seed.empty": "type digits",
   "title.seed.typing": "digits then Enter · nothing then Enter draws at random · Esc cancels",
-  "title.start": "1 casts off — or any key that is not on this list",
+  "title.start": "1 or space casts off",
   "title.keys.head": "CONTROLS ABOARD",
   "title.keys.1": "?  help      m  walk      o  explore      Tab  fight",
   "title.keys.2": "i  what is this      V  view      Enter  do the lit line",
@@ -877,6 +889,21 @@ export const EN = {
   "codex.scout.wrong": "Hiding. Cover is not cover from this one.",
   "codex.scout.helps": "Three hit points, and the wreck carries a scanner.",
   "codex.scout.lore": "It does not fight you. It tells the ship where you are.",
+  "codex.enforcer.title": "ENFORCER",
+  "codex.enforcer.what": "The ship's hunter. It goes where you were last seen or heard, and every hit lands on the weakest module on the rack.",
+  "codex.enforcer.wrong": "Welding a door and waiting. It cuts a locked bulkhead open in three turns, and cover does not hide you from it.",
+  "codex.enforcer.helps": "Ten hit points and an emitter in the wreck. Or be gone: it searches where it heard you, then gives up the chase.",
+  "codex.enforcer.lore": "It has no name on the manifest. Crews knew it by the sound of a door.",
+  "codex.security-unit.title": "SECURITY UNIT",
+  "codex.security-unit.what": "The ship's guard. Eight hit points and no tricks: it sees a compartment ahead and walks straight at you.",
+  "codex.security-unit.wrong": "Trading blows on a worn rack. Eight hit points is a long fight, and every blow it lands comes off a module.",
+  "codex.security-unit.helps": "A cutter ends it fastest, and its wreck carries one. A welded door holds it.",
+  "codex.security-unit.lore": "Standard issue on any hull whose cargo was worth insuring.",
+  "codex.scrapper.title": "SCRAPPER",
+  "codex.scrapper.what": "A deep-hull machine that hunts in company. Every hit lands on the weakest module on the rack, and it runs when badly hurt.",
+  "codex.scrapper.wrong": "Flying in with a worn module on the rack. It skips everything else and goes for that one.",
+  "codex.scrapper.helps": "Mend or stow the weak module before you cast off. Six hit points, and its wreck carries an EMP.",
+  "codex.scrapper.lore": "It takes ships apart for the parts. A drone is parts too.",
 
   "codex.frost.title": "FROST",
   "codex.frost.what": "Ice on every surface. While you stand in it the THRUSTERS lose 20 speed, and every machine aboard gets extra turns on you.",
@@ -1103,4 +1130,8 @@ export const EN = {
   "log.door.defuse.done": "The mine on {door} is dead. Nothing under it now.",
   "why.door.noTrap": "{door} carries no mine.",
   "log.work.break.defuse": "You break off the defusing.",
+
+  // G88 B: the panel's own lines.
+  "panel.systems.lost": "not found:",
+  "panel.letters.tugTop": "? help",
 } as const;

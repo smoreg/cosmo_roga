@@ -46,6 +46,7 @@ import { DEFAULT_TITLE, titleLines, titleScreen } from "../src/ui/title.js";
 import { ENGINE_KEYS, logText } from "../src/ui/logline.js";
 import { BOX_PAD_X, helpBody, helpBox, titleBox } from "../src/ui/render.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
+import { MAX_LEVEL, SCUTTLE_WARN } from "../src/systems/alert.js";
 
 /**
  * Three languages, one table, and the four things that can go wrong with that.
@@ -626,6 +627,63 @@ describe("the widths hold in all three languages", () => {
         const line = bannerLine(game);
         expect(line.length, `${lang}: ${line}`).toBeLessThanOrEqual(BANNER_WIDTH);
         expect(line, `${lang}: banner clipped`).not.toContain("…");
+      }
+    }
+  });
+
+  it("cuts the banner at a word rather than through one", () => {
+    // `(корса` on 6 % of frames: a word cut short reads as a typo, a line that
+    // stops at a whole word reads as a width (docs/tasks/G87-playability.md).
+    const game = states()[0]!;
+    game.currentShip.data.name = Array.from({ length: 12 }, () => "KESTREL").join(" ");
+    for (const lang of LANGS) {
+      setLang(lang);
+      const line = bannerLine(game);
+      expect(line.length, `${lang}: ${line}`).toBeLessThanOrEqual(BANNER_WIDTH);
+      expect(line.endsWith("KESTREL"), `${lang}: ${line}`).toBe(true);
+    }
+  });
+
+  /**
+   * The lines G88 wrote that no fresh screen draws: a module back from the
+   * hold, the jump with systems raised, the board as the only debt, the
+   * scuttle's countdown, the father's tug, the airlock's missed charters and
+   * the jump's dropped ones. Each at its widest, in the column it is drawn in.
+   */
+  it("keeps the lines no fresh run reaches inside their columns", () => {
+    const LOG_WIDTH = SCREEN_WIDTH - 2;
+    const ids = ["salvage", "retrieve", "upload", "neutralize"];
+    for (const lang of LANGS) {
+      setLang(lang);
+      const widest = (Object.keys(MODULES) as ModuleId[])
+        .map((id) => tIn(lang, `module.${id}` as Key))
+        .reduce((a, b) => (b.length > a.length ? b : a));
+      const hull = DERELICTS.map(derelictName).reduce((a, b) => (b.length > a.length ? b : a));
+      const charter = (id: string): string => tIn(lang, `charter.name.${id}` as Key);
+
+      for (const label of [
+        tIn(lang, "action.fit", { module: widest, integrity: 13, max: 14 }),
+        tIn(lang, "action.jump.drop", { up: 2, of: 3, cr: 360 }),
+        tIn(lang, "action.undock.todo", { left: tIn(lang, "undock.left.board") }),
+      ]) {
+        expect(label.length, `${lang}: ${label}`).toBeLessThanOrEqual(ACTION_WIDTH);
+      }
+      for (const text of [
+        tIn(lang, "panel.alertScuttle", { gauge: "▮".repeat(MAX_LEVEL), n: SCUTTLE_WARN }),
+        tIn(lang, "panel.goal.bare"),
+        tIn(lang, "panel.keys", { n: 9 }),
+        `   ${tIn(lang, "panel.contact.hit", { module: widest })}`,
+      ]) {
+        expect(text.length, `${lang}: ${text}`).toBeLessThanOrEqual(PANEL_WIDTH);
+      }
+      for (const line of [
+        ...ids.slice(0, 3).map((id) =>
+          tIn(lang, `log.charter.missed.${id}` as Key, { charter: charter(id), have: 999, need: 999 }),
+        ),
+        tIn(lang, "log.jump.left", { charters: ids.map(charter).join(", ") }),
+        tIn(lang, "why.charter.late", { hull }),
+      ]) {
+        expect(line.length, `${lang}: ${line}`).toBeLessThanOrEqual(LOG_WIDTH);
       }
     }
   });

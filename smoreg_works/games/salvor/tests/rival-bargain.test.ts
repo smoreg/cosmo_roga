@@ -197,8 +197,8 @@ describe("the three lines of the bargain", () => {
     const { game } = met();
     const labels = roomActions(game).map((a) => a.label);
     expect(labels).toContain("pay off RIVAL (100 CR)");
-    expect(labels).toContain("stand aside (+100 CR)");
-    expect(labels).toContain("split the sale");
+    expect(labels).toContain("leave: RIVAL pays 100 CR");
+    expect(labels).toContain("give RIVAL half the sale");
   });
 
   it("are offered on no hull the other tug never came to", () => {

@@ -32,7 +32,8 @@ import { currentDerelict, derelictAboard, voyageOf } from "../src/systems/voyage
 import { isTug } from "../src/content/tug.js";
 import { CALLSIGNS, flavourCallsign } from "../src/content/derelicts.js";
 import { roomName } from "../src/content/zones.js";
-import { LANGS, setLang, t } from "../src/i18n.js";
+import { DEFAULT_LANG, LANGS, setLang, t } from "../src/i18n.js";
+import { OBJECTIVES, objectiveName } from "../src/content/objectives.js";
 
 /** A callsign too long for the heading's column, so the class has to stand in. */
 const LONG_CALLSIGN = CALLSIGNS.findIndex((c) => c.length > 12);
@@ -410,6 +411,9 @@ describe("the action list on the panel", () => {
 describe("the row of letters is always the last row of the panel", () => {
   const KEYS = "o explore  Tab fight  ? help";
   const TUG_KEYS = "0 back  ? help";
+  // At the top of the tug's list `0` is the tenth row, cast off, and the foot
+  // may not name a second thing for it (docs/tasks/G88-polish-by-map.md, B6).
+  const TUG_TOP = "? help";
 
   it("holds on a compartment with more in it than the panel can hold", () => {
     const game = gameIn();
@@ -453,7 +457,7 @@ describe("the row of letters is always the last row of the panel", () => {
       // At home the row names the two keys that do something there and no
       // others: `o`, `Tab`, `m`, `.` and `<` all belong to the half of the game
       // played aboard a hull (docs/tasks/G53-tug-is-a-menu.md, 2).
-      expect(out[out.length - 1], `seed ${seed}`).toBe(isTug(game) ? TUG_KEYS : KEYS);
+      expect(out[out.length - 1], `seed ${seed}`).toBe(isTug(game) ? TUG_TOP : KEYS);
     }
   });
 
@@ -464,11 +468,16 @@ describe("the row of letters is always the last row of the panel", () => {
     // 7). One level down counts as well — a bulkhead's ways through it, or a
     // tug verb's modules — because that is where the list is longest.
     const game = newGame(4);
+    let nested = 0;
     for (const level of [undefined, "sell", "buy", "graft"] as const) {
-      const drawn = panelBlocks(game, roomActions(game, level)).map((l) => l.text);
+      const list = roomActions(game, level);
+      const down = list.some((a) => a.step === null);
+      if (down) nested++;
+      const drawn = panelBlocks(game, list).map((l) => l.text);
       expect(drawn.length, String(level)).toBe(PANEL_HEIGHT);
-      expect(drawn[drawn.length - 1], String(level)).toBe(TUG_KEYS);
+      expect(drawn[drawn.length - 1], String(level)).toBe(down ? TUG_KEYS : TUG_TOP);
     }
+    expect(nested).toBeGreaterThan(0);
 
     const hull = gameIn("r2");
     for (let i = 0; i < 12; i++) addWreck(hull, hull.ship.room("r2").id, "welder", 2);
@@ -678,7 +687,7 @@ describe("the contacts block", () => {
     rig.exposed = rig.slots.findIndex((s) => s?.kind === "plating");
     RIG.onDamage!(game, game.player, 1, machine);
 
-    expect(contacts(game)[2]).toBe("   hit PLATING");
+    expect(contacts(game)[2]).toBe("   burns PLATING");
     // One turn on with nothing said, and the line is gone again.
     game.log.add("You wait.", game.schedule.time + 1, "plain");
     expect(contacts(game)).toHaveLength(2);
@@ -800,7 +809,9 @@ describe("the mission block", () => {
     // Each un-raised system carries the compartment it stands in, once that
     // compartment has been seen: every system is drawn with the same `+` on the
     // schematic, so the id is the only thing that tells one from another.
-    expect(out[goal + 1]).toBe("·engine r2 ·reac r3 ·term r4");
+    // Full words, over two rows when one will not hold them
+    // (docs/tasks/G88-polish-by-map.md, B5).
+    expect(out.slice(goal + 1, goal + 3)).toEqual(["·ENGINE r2 ·REACTOR r3", "·TERMINAL r4"]);
     // Above the rack, which is where the counters and the old `SHIP` line were.
     expect(goal).toBeLessThan(out.findIndex((l) => l.startsWith("CORE  ")));
   });
@@ -808,9 +819,11 @@ describe("the mission block", () => {
   it("ticks a system off as it comes up", () => {
     const game = hullIn("r1");
     shipState(game).online.push("engine", "terminal");
-    // Short forms: `REACTOR` is three columns longer than the `CORE` it
-    // replaced, so a row with one address on it no longer fits in twenty-eight.
-    expect(lines(game)).toContain("✓engine ·reac r3 ✓term");
+    // The four-letter forms are gone: a row that will not hold the words wraps.
+    const out = lines(game);
+    const at = out.indexOf("✓ENGINE ·REACTOR r3");
+    expect(at).toBeGreaterThan(0);
+    expect(out[at + 1]).toBe("✓TERMINAL");
   });
 
   it("asks about a system nobody has found rather than dotting it like the rest", () => {
@@ -826,11 +839,37 @@ describe("the mission block", () => {
       room.scanned = false;
     }
     game.refreshSight();
-    expect(lines(game)).toContain("·engine r2 ?reac ?term");
+    // In words, not a `?` a player has to be told the meaning of
+    // (docs/tasks/G88-polish-by-map.md, B5).
+    const unseen = lines(game);
+    expect(unseen[unseen.indexOf("·ENGINE r2") + 1]).toBe("not found: REACTOR TERMINAL");
+    expect(unseen.some((l) => /\?[A-Z]/.test(l))).toBe(false);
 
     // Sweeping one of them turns the question into an address.
     game.ship.room("r3").scanned = true;
-    expect(lines(game)).toContain("·engine r2 ·reac r3 ?term");
+    const swept = lines(game);
+    expect(swept[swept.indexOf("·ENGINE r2 ·REACTOR r3") + 1]).toBe("not found: TERMINAL");
+  });
+
+  it("says the three systems in no more than two rows, in every language", () => {
+    const game = hullIn("r1");
+    for (const lang of LANGS) {
+      setLang(lang);
+      for (const seen of [true, false]) {
+        for (const id of ["r2", "r3", "r4"]) {
+          game.ship.room(id).explored = seen;
+          game.ship.room(id).scanned = seen;
+        }
+        game.refreshSight();
+        const rows = missionBlock(game).slice(1).map((l) => l.text);
+        for (const row of rows) expect(row.length, `${lang} ${row}`).toBeLessThanOrEqual(PANEL_WIDTH);
+        const names = OBJECTIVES.map(objectiveName);
+        const wrap = rows.filter((row) => names.some((n) => row.includes(n)));
+        expect(wrap.length, `${lang} ${seen}`).toBeLessThanOrEqual(2);
+        for (const n of names) expect(wrap.join(" "), `${lang} ${n}`).toContain(n);
+      }
+    }
+    setLang(DEFAULT_LANG);
   });
 
   it("says the goal is out of reach when nothing in the rack raises anything", () => {
@@ -843,11 +882,20 @@ describe("the mission block", () => {
     rigOf(game.player)!.slots.fill(null);
     applyDerived(game.player);
 
+    // Which system wants which tool, and the three marks still under it
+    // (docs/tasks/G88-polish-by-map.md, B4): six rows, the block's whole budget.
     const block = missionBlock(game).map((l) => l.text);
-    expect(block[0]).toBe("NOTHING ABOARD RAISES IT");
-    expect(block[1]).toBe("< out through the airlock");
-    expect(block.some((l) => l.startsWith("GOAL"))).toBe(false);
+    expect(block).toEqual([
+      "NOTHING ABOARD RAISES IT",
+      "ENGINE: CUTTER/WELDER",
+      "REACTOR: CELL",
+      "TERMINAL: SPIKE/keycard",
+      "·ENGINE r2 ·REACTOR r3",
+      "·TERMINAL r4",
+    ]);
     expect(missionBlock(game)[0]!.fg).toBe(THEME.bad);
+    // Short of rows it keeps the heading and the first system, never the price.
+    expect(missionBlock(game, 2).map((l) => l.text)).toEqual(["NOTHING ABOARD RAISES IT", "ENGINE: CUTTER/WELDER"]);
 
     // One tool back and it is a goal again.
     install(rigOf(game.player)!, "cell", 8);
@@ -1017,11 +1065,35 @@ describe("the panel at home", () => {
     const text = out.map((l) => l.text);
 
     expect(text[0]).toBe(`SALVOR  tug → ${flavourCallsign(currentDerelict(game).flavour)}`);
-    expect(text[text.length - 1]).toBe("0 back  ? help");
+    expect(text[text.length - 1]).toBe("? help");
     for (const station of ["DOCK", "HOLD", "BENCH", "HELM"]) {
       expect(text.some((l) => l.includes(station)), station).toBe(false);
     }
     for (const line of text) expect(line.length, line).toBeLessThanOrEqual(PANEL_WIDTH);
+  });
+
+  it("draws every numbered row of the list at home, cast off and the jump included", () => {
+    // Eight guaranteed rows hid the last two of the ten, the two that leave,
+    // under `… 2 more` on 34 % of screens at home (docs/tasks/G88-polish-by-map.md, B7).
+    let home = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const game = newGame(seed);
+      const bot = BOTS_ROOMS.careful!();
+      const rng = new Rng(seed ^ 0x5bf03635);
+      for (let step = 0; step < 400 && !game.isOver(); step++) {
+        if (isTug(game)) {
+          home++;
+          const list = roomActions(game);
+          const drawn = panelBlocks(game, list).map((l) => l.text);
+          for (const a of list.filter((row) => row.key !== "")) {
+            expect(drawn.some((r) => r.includes(`${a.key} ${a.label}`)), `seed ${seed} step ${step}: ${a.label}`).toBe(true);
+          }
+        }
+        const cmd = bot(game, rng);
+        if (!game.playerCommand(cmd).ok) game.playerCommand({ kind: "wait" });
+      }
+    }
+    expect(home).toBeGreaterThan(0);
   });
 
   it("prints the whole tug as four headed groups of ten numbered rows", () => {
@@ -1046,7 +1118,7 @@ describe("the panel at home", () => {
     // each are gone (docs/tug-menu-audit.md, П7).
     expect(out).not.toContain("DRONE");
     expect(out).not.toContain("SELL");
-    expect(out).toContain(" 0 cast off no job");
+    expect(out).toContain(" 0 cast off — board closes");
     expect(out.filter((l) => /^[▸ ]\d /.test(l))).toHaveLength(10);
 
     // No compartment block, no doors and no second way out: the tug is not a

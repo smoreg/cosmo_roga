@@ -173,12 +173,16 @@ describe("the title card", () => {
     expect(state.exploring).toBe(false);
   });
 
-  it("goes down on any key, and that key does nothing else", () => {
+  it("goes down on `1` and the space bar, and that key does nothing else", () => {
     const game = newRun();
-    for (const e of [press("1", "Digit1"), press("q", "KeyQ"), press("R", "KeyR")]) {
+    for (const e of [press("1", "Digit1"), press(" ", "Space")]) {
       const next = key(initialState(), e, game);
       expect(next.overlay, e.key).toBe("none");
       expect(next.effect, e.key).toEqual({ kind: "idle" });
+    }
+    // A letter stays on the menu (docs/tasks/G88-polish-by-map.md, B3).
+    for (const e of [press("q", "KeyQ"), press("R", "KeyR")]) {
+      expect(key(initialState(), e, game).overlay, e.key).toBe("title");
     }
   });
 
@@ -1002,6 +1006,52 @@ describe("a stop the player can answer", () => {
     // Nothing to open: the second press is the walk again, which will say so.
     expect(key(stopped, explore, game).effect).toEqual({ kind: "explore" });
   });
+
+  it("stops a door short of a known hazard one door off, as it does two doors off", () => {
+    // The smoke in HAB was entered on the first click and on the first press of
+    // its door row, while LAB beyond it stopped first (docs/tasks/G88-polish-by-map.md, B1).
+    const game = smokedRun();
+    const d2 = game.ship.door("d2").id;
+    const hab = game.ship.room("r3").id;
+    const row = listOf(game, playing(game)).find((a) => a.leadsTo === hab)!;
+    expect(row.travel).toBe(hab);
+    expect(row.cmd).toEqual({ kind: "go", door: d2 });
+
+    const first = appReducer(playing(game), { kind: "room", id: hab }, game);
+    expect(first.effect).toEqual({ kind: "travel", to: hab });
+    const stopped = stopAt(first, game, "d2");
+    expect(stopped.warned).toEqual({ ask: `travel:${hab}`, door: d2 });
+    const second = appReducer(stopped, { kind: "room", id: hab }, game);
+    expect(second.effect).toEqual({ kind: "travel", to: hab, through: d2 });
+    expect(game.inputs).toEqual([]);
+  });
+});
+
+describe("a click on a box the map has no row for", () => {
+  it("steps through the door of a neighbour nobody has seen, as that door's row does", () => {
+    // 1 707 clicks of 1 707 on such a box did nothing at all, on sixty seeds
+    // (docs/tasks/G88-polish-by-map.md, B1).
+    const game = newRun();
+    const hab = game.ship.room("r5");
+    hab.explored = false;
+    hab.scanned = false;
+    game.ship.door("d4").state = "closed";
+    game.refreshSight();
+    const map = listOf(game, { ...playing(game), moves: true });
+    expect(map.some((a) => a.leadsTo === hab.id)).toBe(false);
+
+    const clicked = appReducer(playing(game), { kind: "room", id: hab.id }, game);
+    expect(clicked.effect).toEqual({ kind: "command", cmd: { kind: "go", door: game.ship.door("d4").id } });
+  });
+
+  it("still does nothing for a box that is no door away", () => {
+    const game = deepRun();
+    game.ship.room("r7").explored = false;
+    game.ship.room("r7").scanned = false;
+    game.refreshSight();
+    const clicked = appReducer(playing(game), { kind: "room", id: game.ship.room("r7").id }, game);
+    expect(clicked.effect).toEqual({ kind: "pass" });
+  });
 });
 
 describe("the module letters", () => {
@@ -1647,6 +1697,19 @@ describe("the doors of the compartment", () => {
     for (const e of [press("d", "KeyD"), press("D", "KeyD", { shiftKey: true })]) {
       const state = key(playing(game), e, game);
       expect(state.effect, e.key).toEqual({ kind: "log", text: t("why.tug.noWalk") });
+    }
+  });
+
+  it("puts the help card away at home on `o` and `Tab`, and writes nothing behind it", () => {
+    // Both used to answer `why.tug.noWalk` into the log with the card still
+    // open over it (docs/tasks/G88-polish-by-map.md, B3).
+    const game = tugRun();
+    for (const e of [press("o", "KeyO"), press("Tab", "Tab")]) {
+      const open = key(playing(game), press("?", "Slash", { shiftKey: true }), game);
+      expect(open.overlay).toBe("help");
+      const next = key(open, e, game);
+      expect(next.overlay, e.key).toBe("none");
+      expect(next.effect, e.key).toEqual({ kind: "idle" });
     }
   });
 });

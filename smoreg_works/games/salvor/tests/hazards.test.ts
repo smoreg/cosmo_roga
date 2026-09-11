@@ -13,7 +13,7 @@ import {
 } from "@jamrog/engine";
 import { BOTS_ROOMS, seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
-import { DERELICTS, derelictShip, type DerelictSpec } from "../src/content/derelicts.js";
+import { DERELICTS, derelictShip, stampClass, type DerelictSpec } from "../src/content/derelicts.js";
 import {
   FROST_PENALTY,
   HAZARDS,
@@ -27,6 +27,7 @@ import { ES } from "../src/content/i18n/es.js";
 import { RU } from "../src/content/i18n/ru.js";
 import { MODULES, moduleName, type ModuleId } from "../src/content/modules.js";
 import { MONSTERS } from "../src/content/monsters.js";
+import { TUTORIAL_SPEC } from "../src/content/tutorial.js";
 import { TILE_BY_GLYPH } from "../src/tiles/sprites.js";
 import { alertState } from "../src/systems/alert.js";
 import { hazardLine, placeHazards, signsGiven } from "../src/systems/hazards.js";
@@ -750,6 +751,29 @@ describe("the placer", () => {
       expect(hazardRecords(game), `${armed.id} seed ${seed}`).toEqual([]);
       expect(placeHazards(game, armed)).toEqual([]);
     }
+  });
+
+  it("leaves the hull after the training one clean as well, and arms the one after that", () => {
+    // A training run's first real hull is its first hull: the training hull
+    // used to take the clean deck with it (docs/tasks/G88-polish-by-map.md, A2).
+    const armed = DERELICTS.find((d) => (d.hazards?.length ?? 0) > 0)!;
+    let armedOn = 0;
+    for (const seed of seedRange(1, 20)) {
+      const game = new RoomGame({
+        ...config(line("")),
+        seed,
+        firstShip: () => {
+          const ship = shipFromText(line("")).ship;
+          stampClass(ship, TUTORIAL_SPEC);
+          return ship;
+        },
+      });
+      game.travelTo("2", { generate: (rng) => derelictShip(armed, 1, rng, ctx) });
+      expect(hazardRecords(game), `${armed.id} after the tutorial, seed ${seed}`).toEqual([]);
+      game.travelTo("3", { generate: (rng) => derelictShip(armed, 2, rng, ctx) });
+      if (hazardRecords(game).length > 0) armedOn++;
+    }
+    expect(armedOn, "the third hull of a training run is an ordinary hull").toBeGreaterThan(0);
   });
 
   it("survives a save: the record, the trap and the opaque room all round-trip", () => {

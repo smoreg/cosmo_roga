@@ -155,7 +155,7 @@ describe("the first thing a player ever does", () => {
       };
 
       expect(state.overlay).toBe("title");
-      press("z"); // any key at all clears the title
+      press("1"); // the title's first row casts off
       expect(state.overlay, `seed ${seed}`).toBe("none");
 
       // The line, wherever the ten rows put it — and they put it in the same
@@ -183,7 +183,7 @@ describe("the first thing a player ever does", () => {
     // The row that casts off comes last and is a checklist of what the visit
     // home has left undone; a fresh board has one thing on it
     // (docs/tug-menu-audit.md, "what a designer would do", 5, and П7).
-    expect(labels()[9]).toBe("cast off no job");
+    expect(labels()[9]).toBe("cast off — board closes");
     expect(labels().some((l) => l.startsWith("take a charter"))).toBe(true);
     expect(roomActions(game)).toHaveLength(10);
     expect(roomActions(game).every((a) => a.key !== "")).toBe(true);
@@ -191,7 +191,7 @@ describe("the first thing a player ever does", () => {
     // And the same ten from anywhere aboard, because nothing about them is
     // about where the drone is standing.
     for (const door of [1, 2, 3]) expect(game.playerCommand({ kind: "go", door }).ok).toBe(true);
-    expect(labels()[9]).toBe("cast off no job");
+    expect(labels()[9]).toBe("cast off — board closes");
 
     // The board itself, one level down, and the first line of it is the point
     // of the game: raise three systems and the tug sells the hull whole.

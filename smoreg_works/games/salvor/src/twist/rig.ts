@@ -181,7 +181,7 @@ export function rigFrom(slots: ReadonlyArray<Slot | null>, size = SLOT_COUNT): R
  * over knows — the hold, the drone's arms, a pile off a rack. Absent means the
  * kind's own count: a crate is full, and so is a machine's scrap.
  */
-function makeSlot(kind: ModuleId, integrity: number, charges?: number, base?: number): Slot {
+function makeSlot(kind: ModuleId, integrity: number, charges?: number, base?: number, bonus?: number): Slot {
   const k = moduleKind(kind);
   // A hull's own copy of a module is sturdier than the catalogue's (SPARK's
   // CUTTER is 13 against 11), and that ceiling travels with the module: the
@@ -190,9 +190,16 @@ function makeSlot(kind: ModuleId, integrity: number, charges?: number, base?: nu
   // shaved points off a module the player had paid for, and it let a slot exist
   // whose integrity was above its own cap, which the rack drew as
   // `"▯".repeat(-2)` and the screen could not survive.
+  //
+  // The graft travels the same way. The bench's two points were bolted to the
+  // module, not to the rails: a grafted module stowed and fitted again came
+  // back at the catalogue's cap, the points were gone, and the fit line still
+  // printed the number it had gone in with (docs/tasks/G88-polish-by-map.md, A3).
   const cap = Math.max(base ?? k.integrity, k.integrity);
-  const slot: Slot = { kind, integrity: clamp(integrity, 1, cap) };
+  const grafted = clamp(bonus ?? 0, 0, MAX_GRAFT);
+  const slot: Slot = { kind, integrity: clamp(integrity, 1, cap + grafted) };
   if (cap !== k.integrity) slot.base = cap;
+  if (grafted > 0) slot.bonus = grafted;
   if (k.charges !== undefined) slot.charges = charges ?? k.charges;
   return slot;
 }
@@ -233,10 +240,11 @@ export function install(
   integrity: number,
   charges?: number,
   base?: number,
+  bonus?: number,
 ): number | undefined {
   const i = rig.slots.findIndex((s) => s === null);
   if (i < 0) return undefined;
-  installAt(rig, i, kind, integrity, charges, base);
+  installAt(rig, i, kind, integrity, charges, base, bonus);
   return i;
 }
 
@@ -248,8 +256,9 @@ export function installAt(
   integrity: number,
   charges?: number,
   base?: number,
+  bonus?: number,
 ): void {
-  rig.slots[i] = makeSlot(kind, integrity, charges, base);
+  rig.slots[i] = makeSlot(kind, integrity, charges, base, bonus);
   rig.scars[i] = null;
 }
 
@@ -773,6 +782,8 @@ export interface Carried {
    * the arms is a spent EMP on the rails.
    */
   charges?: number;
+  /** Points the bench grafted on, 1..MAX_GRAFT. Bought once, kept through the hold. */
+  bonus?: number;
 }
 
 /** One armful, with its charges when the thing has any. */
@@ -781,10 +792,12 @@ export function carriedFrom(
   integrity: number,
   charges?: number,
   base?: number,
+  bonus?: number,
 ): Carried {
   const out: Carried = { kind, integrity };
   if (base !== undefined && base !== moduleKind(kind).integrity) out.base = base;
   if (charges !== undefined) out.charges = charges;
+  if (bonus !== undefined && bonus > 0) out.bonus = bonus;
   return out;
 }
 
@@ -949,7 +962,7 @@ function swapIn(game: RoomGame, rig: Rig, wreck: Wreck, slot: number): Outcome {
   const carrying = carriedBy(game.player);
   let key: Key;
   if (carrying.length < CARRY_LIMIT) {
-    setCarried(game.player, [...carrying, carriedFrom(out.kind, out.integrity, out.charges, out.base)]);
+    setCarried(game.player, [...carrying, carriedFrom(out.kind, out.integrity, out.charges, out.base, out.bonus)]);
     key = "log.swap.carried";
   } else {
     // The drone's own part, laid down: sealed as far as the ship's virus is

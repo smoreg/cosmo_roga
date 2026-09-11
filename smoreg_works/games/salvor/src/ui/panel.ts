@@ -8,8 +8,8 @@ import {
   OBJECTIVES,
   SYSTEM_GLYPH,
   objectiveName,
-  objectiveShort,
   toolName,
+  type ObjectiveSpec,
 } from "../content/objectives.js";
 import { isTug } from "../content/tug.js";
 import { roomName, zoneName } from "../content/zones.js";
@@ -136,13 +136,21 @@ export function panelBlocks(
   actions: readonly Action[],
   cursor = -1,
 ): PanelLine[] {
-  const foot = footBlocks(game);
+  const foot = footBlocks(game, actions.some((a) => a.step === null));
   // Rows the list is owed: what it is guaranteed, or what it actually has to
   // draw when that is less. Measured rather than assumed, because the blocks
   // above it pay for the difference — a compartment with four things to do in
   // it used to hand eight rows to a list that wanted five and print `… 3 more
   // doors` under a panel with three blank rows on it.
-  const need = Math.min(LIST_FLOOR, listHeight(actions));
+  //
+  // At home the list is owed all of itself. Its ten rows are the same ten in
+  // the same order on every visit and cast off and the jump are the last two,
+  // so eight guaranteed rows hid exactly those two under `… 2 more` on 34 % of
+  // screens at home (docs/tasks/G88-polish-by-map.md, B7). And the count under
+  // it too, when a verb no group claims makes an eleventh line.
+  const need = isTug(game)
+    ? listHeight(actions) + (omittedActions(actions).length > 0 ? 1 : 0)
+    : Math.min(LIST_FLOOR, listHeight(actions));
   const fits = (rows: readonly PanelLine[]): boolean =>
     PANEL_HEIGHT - rows.length - foot.length >= need;
   // The compartment's own content is what gives way when the panel is short of
@@ -167,8 +175,15 @@ export function panelBlocks(
   // standing in this compartment. They pay after the compartment and its doors
   // — both of those are the numbered list said a second way — and before the
   // contacts, which are neither said twice nor about next week.
+  //
+  // Before either of them, though, the air between the blocks. The three marks
+  // take two rows since they are full words, and a blank row outranking them
+  // hid the goal's addresses on more screens than the no-tool line ever did
+  // (docs/tasks/G88-polish-by-map.md, B4 and B5).
+  const airless = (rows: readonly PanelLine[]): boolean =>
+    fits(squeezeAir(rows, PANEL_HEIGHT - foot.length - need));
   for (let allow = MISSION_LINES - 1; allow >= MISSION_FLOOR; allow--) {
-    if (fits(head)) break;
+    if (airless(head)) break;
     head = headBlocks(game, 0, CONTACT_LINES, 1, allow);
   }
   // Only then the contacts, and only the ones a door away: this is the block
@@ -178,17 +193,21 @@ export function panelBlocks(
   // is the whole defect the block exists to answer.
   const floor = Math.max(1, Math.min(contactsHere(game), CONTACT_LINES));
   for (let allow = CONTACT_LINES - 1; allow >= floor; allow--) {
-    if (fits(head)) break;
+    if (airless(head)) break;
     head = headBlocks(game, 0, allow, 1, MISSION_FLOOR);
   }
-  // The last thing there is to give, once every block has given what it can:
-  // the air between them. A blank row belongs to the layout and a numbered
+  // The air between the blocks, taken once the list's own repetitions have
+  // gone and before the goal or a contact would. A blank row belongs to the layout and a numbered
   // line belongs to the interface, and until this the layout won — on 3.4 % of
   // turns aboard (1 657 of 48 691, and 1 395 of those with a machine in the
   // compartment) the panel drew `ACTIONS`, then a count, and not one line of
   // the list. What it hid on seed 4 was `close d7`: the door the enforcer was
   // shooting through (G85, 0).
   head = squeezeAir(head, PANEL_HEIGHT - foot.length - need);
+  // At home, then the charters the tug has signed, a row each: every one of
+  // them is said again aboard, under the goal, and here they stood between
+  // the list and its last two rows, the two that leave (B7).
+  if (isTug(game)) head = squeezeAir(head, PANEL_HEIGHT - foot.length - need, (l) => /^[✓·] /.test(l.text));
 
   const { rows, omitted } = fitList(actions, PANEL_HEIGHT - head.length - foot.length, cursor);
   const out = [...head, ...rows];
@@ -343,9 +362,12 @@ export function missionBlock(game: RoomGame, allow = MISSION_LINES): PanelLine[]
   // The three marks answer "how far along am I" and nothing else, so once they
   // are all ✓ they are a row of the panel spent on a question nobody is asking
   // any more. The two lines above them say what to do instead.
-  const systems: PanelLine[] = goal.length > 1 ? [] : [
-    { text: clip(systemsLine(game, aboard.map((s) => s.kind))) },
-  ];
+  // All three up, and nothing else: the goal saying "nothing aboard raises it"
+  // is two lines too, and it is exactly when the marks are still being read
+  // (docs/tasks/G88-polish-by-map.md, B4).
+  const systems: PanelLine[] = shipState(game).online.length >= OBJECTIVE_COUNT
+    ? []
+    : systemsLines(game, aboard.map((s) => s.kind)).map((text) => ({ text: clip(text) }));
 
   // The system in this compartment, whether or not the rack can pay for it.
   const found = objectiveHere(game);
@@ -369,7 +391,7 @@ export function missionBlock(game: RoomGame, allow = MISSION_LINES): PanelLine[]
   const short = [...goal, ...systems, ...here];
   if (short.length <= allow) return short;
   const floor = [...goal, ...(here.length > 0 ? here : systems)];
-  return floor.length <= allow ? floor : goal;
+  return floor.length <= allow ? floor : goal.slice(0, Math.max(allow, MISSION_FLOOR));
 }
 
 /**
@@ -405,12 +427,18 @@ function goalLines(game: RoomGame): PanelLine[] {
   // aboard, in stretches of a median 25 turns and a worst of 483, and no line
   // of the screen said a word about it (docs/tasks/G87-playability.md, 2). The
   // way out is the second line, because "leave and come back with a tool" is
-  // the whole of what is left to do — which tool is on the greyed row that
-  // raises each system (`systems/ship.ts`, `needsLine`).
-  if (!isTug(game) && nothingRaises(game)) {
+  // the whole of what is left to do. Which tool, for which system, is a row
+  // each under it — `TERMINAL: SPIKE/keycard` — because the greyed row that
+  // said so stood only in that system's own compartment
+  // (docs/tasks/G88-polish-by-map.md, B4). Those rows are what to come back
+  // with, and `<` is on the row of letters at the foot, so the `< out` line
+  // this block used to end on gives its row to the three marks instead: with
+  // all three systems stuck, the block is exactly the six rows it may use.
+  const stuck = isTug(game) ? [] : unraisable(game);
+  if (stuck.length > 0) {
     return [
       { text: clip(t("panel.goal.noTool")), fg: THEME.bad },
-      { text: clip(t("panel.goal.out")), fg: THEME.accent },
+      ...stuck.map((o) => ({ text: clip(`${objectiveName(o)}: ${o.jobs.map((j) => toolName(j.tool)).join("/")}`) })),
     ];
   }
   const text = price > 0 ? t("panel.goal", { cr: price }) : t("panel.goal.bare");
@@ -418,20 +446,21 @@ function goalLines(game: RoomGame): PanelLine[] {
 }
 
 /**
- * Is every system still standing aboard beyond what the drone is carrying?
+ * The systems still standing aboard when every one of them is beyond what the
+ * drone is carrying, and none when any of them is not.
  *
  * The rack's own question, asked of the systems rather than of the rack: a
  * spec's `needs` is what decides it (`content/objectives.ts`), so a module
  * added to the game is answered here without a word being written.
  */
-function nothingRaises(game: RoomGame): boolean {
+function unraisable(game: RoomGame): ObjectiveSpec[] {
   const online = shipState(game).online;
   const left = OBJECTIVES.filter(
     (o) => !online.includes(o.id) && systemsAboard(game).some((s) => s.kind === o.id),
   );
   const rig = rigOf(game.player);
   const keys = keysHeld(game.player);
-  return left.length > 0 && left.every((o) => o.needs(rig, keys) === undefined);
+  return left.every((o) => o.needs(rig, keys) === undefined) ? left : [];
 }
 
 /** The hull the tug is tied to, without writing a voyage on a run that has none. */
@@ -453,30 +482,29 @@ function dockedDerelict(game: RoomGame): DerelictState | undefined {
  * Only for a compartment the drone has actually been in or swept: naming the
  * room of a system nobody has found yet would hand over the map.
  *
- * Full names, and the four-letter forms only when a language cannot fit them.
- * The short forms are what the panel carried before, and they are exactly what
- * the owner could not read: `терм ·` is not a word, a state or an instruction.
+ * Full names always, over two rows when one will not hold them. The
+ * four-letter forms the row fell back to are exactly what the owner could not
+ * read: `?прив ·реак r16` is not a word, a state or an instruction.
+ *
+ * A system nobody has found is said in words, `not found: TERMINAL`. `?` was
+ * the third mark G87 added so that "not found" stopped reading as "found, and
+ * not telling you where" — and on 56.5 % of screens it was still a glyph a
+ * player had to be told the meaning of (docs/tasks/G88-polish-by-map.md, B5).
  */
-function systemsLine(game: RoomGame, kinds: readonly string[]): string {
+function systemsLines(game: RoomGame, kinds: readonly string[]): string[] {
   const online = shipState(game).online;
-  const specs = OBJECTIVES.filter((o) => kinds.includes(o.id));
   const where = systemRooms(game);
-  const row = (name: (o: (typeof specs)[number]) => string): string =>
-    specs
-      .map((o) => {
-        const up = online.includes(o.id);
-        const at = up ? undefined : where.get(o.id);
-        // Three marks and not two. `·ENGINE` was printed for a system that is
-        // up nowhere and for one nobody has found yet alike, and 76 % of the
-        // systems still standing are in compartments the drone has not been in
-        // — so on 56.7 % of screens the row read as "found, and we are not
-        // telling you where" (docs/tasks/G87-playability.md, 2).
-        const mark = up ? "✓" : at === undefined ? "?" : "·";
-        return [`${mark}${name(o)}`, at].filter((part) => part !== undefined).join(" ");
-      })
-      .join(" ");
-  const full = row(objectiveName);
-  return full.length <= PANEL_WIDTH ? full : row(objectiveShort);
+  const specs = OBJECTIVES.filter((o) => kinds.includes(o.id));
+  const lost = specs.filter((o) => !online.includes(o.id) && !where.has(o.id));
+  const tokens = specs
+    .filter((o) => !lost.includes(o))
+    .map((o) => (online.includes(o.id) ? `✓${objectiveName(o)}` : `·${objectiveName(o)} ${where.get(o.id)}`));
+  // The words and the names as one piece where a row holds them, so the label
+  // never hangs off the end of the row above its own names.
+  const names = lost.map(objectiveName);
+  const whole = [t("panel.systems.lost"), ...names].join(" ");
+  if (lost.length > 0) tokens.push(...(whole.length <= PANEL_WIDTH ? [whole] : [t("panel.systems.lost"), ...names]));
+  return wrapped(tokens, " ");
 }
 
 /** Which compartment each system stands in, of the ones the drone has seen. */
@@ -721,8 +749,8 @@ function contactLine(machine: Entity, door: string | undefined): string {
  * since G53 and `stationGuide` hands back nothing; the call goes with the
  * concept.
  */
-export function footBlocks(game: RoomGame): PanelLine[] {
-  return letterRows(game).map((line) => ({ text: clip(line), fg: THEME.fgDim }));
+export function footBlocks(game: RoomGame, nested = false): PanelLine[] {
+  return letterRows(game, nested).map((line) => ({ text: clip(line), fg: THEME.fgDim }));
 }
 
 /**
@@ -731,10 +759,14 @@ export function footBlocks(game: RoomGame): PanelLine[] {
  * offered the chance to shorten itself, and what is left of them is what the
  * panel may not lose.
  */
-function squeezeAir(head: readonly PanelLine[], want: number): PanelLine[] {
+function squeezeAir(
+  head: readonly PanelLine[],
+  want: number,
+  gives = (line: PanelLine): boolean => line.text === "",
+): PanelLine[] {
   const out = [...head];
   for (let i = out.length - 1; i >= 0 && out.length > want; i--) {
-    if (out[i]!.text === "") out.splice(i, 1);
+    if (gives(out[i]!)) out.splice(i, 1);
   }
   return out;
 }
@@ -1004,12 +1036,14 @@ function contentLine(glyph: string, name: string, right: string): string {
  * of them off the panel — and the row that says how to leave is the one a lost
  * player is looking for.
  */
-function letterRows(game: RoomGame): string[] {
+function letterRows(game: RoomGame, nested: boolean): string[] {
   // At home none of them do anything: there is nowhere to walk, nothing to
   // brace against, no cover and nothing to fight (docs/tasks/G53-tug-is-a-menu.md,
   // 2). A row of keys that answer with a refusal is a row that teaches the
-  // wrong half of the game.
-  if (isTug(game)) return [t("panel.letters.tug")];
+  // wrong half of the game. And `0 back` only one level down: at the top `0`
+  // is the tenth row, cast off, and the foot named a second thing for the same
+  // key on 64.9 % of screens at home (docs/tasks/G88-polish-by-map.md, B6).
+  if (isTug(game)) return [t(nested ? "panel.letters.tug" : "panel.letters.tugTop")];
   // `m` leads, because walking is the commonest thing anybody does and the row
   // of letters is where a player looks for a key they have not found yet
   // (docs/tasks/G48-travel-to-a-room.md).
@@ -1039,12 +1073,12 @@ function letterRows(game: RoomGame): string[] {
  * long is a row rot.js wraps — which pushes the line saying `? help` off the
  * bottom, the exact defect G40 existed to fix.
  */
-function wrapped(tokens: readonly string[]): string[] {
+function wrapped(tokens: readonly string[], gap = "  "): string[] {
   const rows: string[] = [];
   for (const token of tokens) {
     const last = rows.length - 1;
     const row = rows[last];
-    if (row !== undefined && row.length + 2 + token.length <= PANEL_WIDTH) rows[last] = `${row}  ${token}`;
+    if (row !== undefined && row.length + gap.length + token.length <= PANEL_WIDTH) rows[last] = `${row}${gap}${token}`;
     else rows.push(token);
   }
   return rows;

@@ -32,6 +32,7 @@ import {
   doneBy,
   offerCharters,
   salvageCharter,
+  salvageTarget,
   type Charter,
   type CharterId,
 } from "../content/charters.js";
@@ -340,10 +341,11 @@ export interface Voyage {
   credits: number;
   /**
    * Modules the tug keeps for the next drone. At most `HOLD_LIMIT`. A module
-   * that spends charges keeps its count through the hold: stowing a coil and
-   * fitting it again is not a recharge (`twist/rig.ts`, `Carried`).
+   * that spends charges keeps its count through the hold, and a grafted one
+   * keeps its graft: stowing a coil and fitting it again is not a recharge,
+   * and stowing a grafted module is not a refund (`twist/rig.ts`, `Carried`).
    */
-  hold: Array<{ kind: ModuleId; integrity: number; charges?: number; base?: number }>;
+  hold: Array<{ kind: ModuleId; integrity: number; charges?: number; base?: number; bonus?: number }>;
   /** The drone on the rails, or nothing at all — which is half of losing. */
   hull?: HullId;
   /** Keycards the drone is carrying. Written by `systems/doors.ts`, read here. */
@@ -689,7 +691,18 @@ function payCharters(game: RoomGame, state: DerelictState): void {
 
   for (const charter of voyage.charters) {
     if (charter.id === "neutralize" || voyage.paid.includes(charter.id)) continue;
-    if (!doneBy(charter.id, home, game.ship, state.spec)) continue;
+    if (!doneBy(charter.id, home, game.ship, state.spec)) {
+      // Said here, with what is missing: most signed charters never pay, and
+      // until this line nothing on the screen ever said one had not
+      // (docs/tasks/G87-playability.md, "Мелочи").
+      const missed = tId("log.charter.missed", charter.id, "", {
+        charter: charterName(charter),
+        have: home.loot,
+        need: salvageTarget(state.spec),
+      });
+      if (missed) game.log.add(missed, game.schedule.time, "warn", `log.charter.missed.${charter.id}`);
+      continue;
+    }
     voyage.paid.push(charter.id);
     credit(game, charter.payout, t("log.charter.filled", { charter: charterName(charter) }));
   }
@@ -876,7 +889,7 @@ function autoFit(game: RoomGame): void {
     // came back as integrity above its own cap — and the rack drew that as a
     // negative repeat count and took the screen down with it (found by the
     // swarm on seed 7, step 115).
-    installAt(rig, slot, held.kind, held.integrity, held.charges, held.base);
+    installAt(rig, slot, held.kind, held.integrity, held.charges, held.base, held.bonus);
     fitted.push(held);
   }
   if (fitted.length === 0) return;
@@ -1064,16 +1077,18 @@ export function stowSlot(game: RoomGame, slot: number): Outcome {
   // player quietly build a drone with no game in it.
   if (fullSlots(rig) <= 1) return FAIL(t("why.rig.last"));
 
-  // A stowed module keeps its integrity and loses its graft: what the hold
-  // holds is the module, and the bonus was bolted to the rails of a hull that
-  // may well not be there when it comes back out.
+  // A stowed module keeps its integrity, its charges and its graft: what the
+  // hold holds is the module, and the bench's points were paid for the module.
+  // They used to stay on the rails — the hold did not carry `bonus` — so a
+  // grafted 12/12 came back out as 11/11 while the log still said 12
+  // (docs/tasks/G88-polish-by-map.md, A3).
   const max = capOf(module);
   removeSlot(rig, slot);
   // The virus is the rack's, not the module's, and a rack with a hole in it is
   // not carrying one: handing the sick module to the hold would put the mark on
   // whatever moves up into the slot.
   if (infectedSlot(game) === slot) clearVirus(game.player);
-  voyage.hold.push(carriedFrom(module.kind, module.integrity, module.charges, module.base));
+  voyage.hold.push(carriedFrom(module.kind, module.integrity, module.charges, module.base, module.bonus));
   applyDerived(game.player);
   game.log.add(
     t("log.hold.stow", { module: moduleName(module.kind), integrity: module.integrity, max }),
@@ -1134,13 +1149,17 @@ export function fitFromHold(game: RoomGame, i: number): Outcome {
   if (!rig || voyage.hull === undefined) return FAIL(t("why.hold.noDrone"));
   if (!held) return FAIL(t("why.hold.none"));
 
-  const slot = install(rig, held.kind, held.integrity, held.charges, held.base);
+  const slot = install(rig, held.kind, held.integrity, held.charges, held.base, held.bonus);
   if (slot === undefined) return FAIL(t("why.rack.full"));
 
   voyage.hold.splice(i, 1);
   applyDerived(game.player);
+  // The number on the rails, not the number in the hold: the rack clamps what
+  // it is handed, and a line that repeats the hold's figure is a line that
+  // can lie about what was just bolted on.
+  const fitted = rig.slots[slot]!;
   game.log.add(
-    t("log.hold.fit", { module: moduleName(held.kind), integrity: held.integrity, slot: slot + 1 }),
+    t("log.hold.fit", { module: moduleName(fitted.kind), integrity: fitted.integrity, slot: slot + 1 }),
     game.schedule.time,
     "good",
     "log.hold.fit",
@@ -1228,7 +1247,7 @@ function unload(game: RoomGame): void {
   const room = Math.max(0, HOLD_LIMIT - voyage.hold.length);
   if (room === 0) return;
   const landed = carried.slice(0, room);
-  voyage.hold.push(...landed.map((c) => carriedFrom(c.kind, c.integrity, c.charges, c.base)));
+  voyage.hold.push(...landed.map((c) => carriedFrom(c.kind, c.integrity, c.charges, c.base, c.bonus)));
   setCarried(game.player, carried.slice(room));
   game.log.add(
     t("log.carry.home", { n: landed.length }),
@@ -1298,6 +1317,13 @@ export function jump(game: RoomGame): Outcome {
   const spec = voyage.derelicts[next];
   if (!spec) return FAIL(t("why.jump.last"));
   if (!spend(game, JUMP_PRICE)) return FAIL(t(NOT_ENOUGH));
+
+  // The board is rolled again at the next hull, so a job signed here and not
+  // filled is gone the moment the tug moves: named, rather than just dropped.
+  const dropped = voyage.charters.filter((c) => !charterDone(game, c)).map(charterName);
+  if (dropped.length > 0) {
+    game.log.add(t("log.jump.left", { charters: dropped.join(", ") }), game.schedule.time, "warn", "log.jump.left");
+  }
 
   voyage.current = next;
   if (!voyage.state[next]) voyage.state[next] = freshDerelict(game, spec, String(next + 1));
@@ -1791,8 +1817,10 @@ function castOffLeft(voyage: Voyage, rig: Rig | undefined): string[] {
   if (hurt > 0) out.push(t("undock.left.damaged", { n: hurt }));
   // Only while there is one to sign: a board the drone has cleared is not a
   // thing left undone, and neither is one that never had anything on it.
+  // Alone on the row there is room to say what casting off does to the board;
+  // beside the damage there is not, and the short word stands in for it.
   if (voyage.charters.length === 0 && voyage.offered.length > 0) {
-    out.push(t("undock.left.charter"));
+    out.push(t(hurt > 0 ? "undock.left.charter" : "undock.left.board"));
   }
   return out;
 }
@@ -1846,9 +1874,17 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
   if (verb === "jump") {
     const next = voyage.derelicts[voyage.current + 1];
     if (next) {
+      // With systems raised on this hull the row says what the jump walks away
+      // from — the sale — rather than where it flies: the group's heading
+      // already says that, and half the voyages that sell nothing dropped a
+      // hull two systems short (docs/problem-map-2026-09-11.md).
+      const here = currentDerelict(game);
+      const sale = here.deal === "split" ? Math.floor(here.spec.salePrice / 2) : here.spec.salePrice;
       out.push(
         offer(
-          t("action.jump", { hull: derelictName(next), price: JUMP_PRICE }),
+          here.sold || here.online.length === 0
+            ? t("action.jump", { hull: derelictName(next), price: JUMP_PRICE })
+            : t("action.jump.drop", { up: here.online.length, of: OBJECTIVE_COUNT, cr: sale }),
           { kind: "act", verb: "jump" },
           voyage.credits >= JUMP_PRICE,
           t(NOT_ENOUGH),
@@ -1978,7 +2014,7 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
     voyage.hold.forEach((held, i) => {
       out.push(
         offer(
-          t("action.fit", { module: moduleName(held.kind), integrity: held.integrity }),
+          t("action.fit", { module: moduleName(held.kind), integrity: held.integrity, max: capOf(held) }),
           { kind: "act", verb: "fit", target: HOLD_TARGET + i },
           rig.slots.some((s) => s === null),
           t("why.rack.full"),

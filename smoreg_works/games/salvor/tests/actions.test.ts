@@ -687,12 +687,13 @@ describe("the map of where the drone can walk", () => {
   it("marks the compartment the run is for", () => {
     // The map averaged 8.2 pressable rows and reached 25, more than five on
     // 71.4 % of screens, and said nothing about which of them was worth the
-    // walk (docs/tasks/G87-playability.md, 2). The glyph is the one the
-    // schematic already draws in the box, so there is nothing new to learn.
+    // walk (docs/tasks/G87-playability.md, 2). Not `+`: that is the rack's
+    // mark of a grafted module on the same panel (docs/tasks/G88-polish-by-map.md, B8).
     const game = gameIn();
     const storage = game.ship.room("r4");
     storage.data.systems = [{ id: 1, kind: "engine", online: false, glyph: "+" }];
-    expect(map(game).map((a) => a.label)).toContain("+STORAGE  r4  d3 locked");
+    expect(map(game).map((a) => a.label)).toContain("◆STORAGE  r4  d3 locked");
+    expect(map(game).some((a) => a.label.startsWith("+"))).toBe(false);
 
     // It goes when the system does: a mark on a finished errand is a lie.
     shipState(game).online.push("engine");
@@ -894,7 +895,7 @@ describe("the same list, on the tug", () => {
     // A board with nothing signed on it is the one thing a fresh screen has
     // left undone, so the row that casts off says so instead of naming the
     // hull (docs/tug-menu-audit.md, "what a designer would do", 5).
-    expect(list[9]).toBe("cast off no job");
+    expect(list[9]).toBe("cast off — board closes");
     expect(list.some((l) => l.startsWith("go "))).toBe(false);
     expect(list.some((l) => l.startsWith("leave"))).toBe(false);
     // Every verb of the tug is here, on the first screen, with nothing walked to.

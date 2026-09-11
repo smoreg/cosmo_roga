@@ -31,7 +31,7 @@ import {
   voyageOf,
 } from "../src/systems/voyage.js";
 import { ACTION_WIDTH, roomActions, tugStands, type Action } from "../src/ui/actions.js";
-import { rigOf, findSlot } from "../src/twist/rig.js";
+import { capOf, rigOf, findSlot } from "../src/twist/rig.js";
 import { PANEL_WIDTH, panelBlocks } from "../src/ui/panel.js";
 import { schematicInputOf } from "../src/ui/schematic-input.js";
 
@@ -462,7 +462,7 @@ describe("the row that casts off", () => {
 
     // A board with nothing signed on it is the whole of a fresh screen's debt.
     expect(voyageOf(game).charters).toHaveLength(0);
-    expect(castOff(game)).toBe("cast off no job");
+    expect(castOff(game)).toBe("cast off — board closes");
 
     rig.slots[slots[0]!]!.integrity = 1;
     rig.slots[slots[1]!]!.integrity = 1;
@@ -526,6 +526,33 @@ describe("the hold", () => {
     expect(game.playerCommand({ kind: "act", verb: "fit", target: 2100 }).ok).toBe(true);
     expect(voyageOf(game).hold).toEqual([]);
     expect(rig.slots.find((s) => s?.kind === kind)?.integrity).toBe(3);
+  });
+
+  it("keeps a module's graft through the hold, and the fit line says what went on the rails", () => {
+    // The swarm's reproduction (docs/tasks/G88-polish-by-map.md, A3): graft
+    // slot 0 to 12/12, stow it, fit it back — and it came back 11/11 while the
+    // log said 12, because the hold carried `base` and `charges` but not
+    // `bonus`, and the fit line printed the hold's figure rather than the rack's.
+    const game = newGame(1);
+    voyageOf(game).credits = 999;
+    const rig = rigOf(game.player)!;
+    const slot = filled(game)[0]!;
+    const kind = rig.slots[slot]!.kind;
+    expect(game.playerCommand({ kind: "act", verb: "graft", slot }).ok).toBe(true);
+    const grafted = rig.slots[slot]!;
+    const max = capOf(grafted);
+    expect(grafted.bonus).toBe(1);
+    expect(grafted.integrity).toBe(max);
+
+    expect(stow(game, slot)).toEqual([{ kind, integrity: max, bonus: 1 }]);
+    expect(game.playerCommand({ kind: "act", verb: "fit", target: 2100 }).ok).toBe(true);
+    const back = rig.slots.find((s) => s?.kind === kind)!;
+    expect(back.bonus).toBe(1);
+    expect(capOf(back)).toBe(max);
+    expect(back.integrity).toBe(max);
+    const line = game.log.lines.at(-1)!;
+    expect(line.key).toBe("log.hold.fit");
+    expect(line.text).toContain(`(${max})`);
   });
 
   it("holds its limit and refuses the next, with the reason on the line", () => {

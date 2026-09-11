@@ -379,6 +379,17 @@ describe("a system coming online", () => {
     // With the key on it: `<` leaves from any compartment aboard (G48), so the
     // line between the work and the money is one keystroke long.
     expect(said[0]).toContain("`<`");
+
+    // In the order it happened: the system comes up, the ship stands down for
+    // it, and the sale is the conclusion of both. "The ship stands down" used
+    // to be printed a line above the system that made it stand down (G88, A4).
+    const all = lines(game);
+    const online = all.indexOf("TERMINAL ONLINE. The ship notices.");
+    const down = all.findIndex((l) => l.startsWith("The ship stands down"));
+    const paid = all.indexOf(said[0]!);
+    expect(online, "the third system is said").toBeGreaterThanOrEqual(0);
+    expect(down, "the stand-down is said").toBeGreaterThan(online);
+    expect(paid).toBeGreaterThan(down);
   });
 
   it("has no panel line of its own: the goal is the panel's to place", () => {

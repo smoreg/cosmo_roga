@@ -276,6 +276,36 @@ export const CODEX: Readonly<Record<CodexId, CodexEntry>> = {
     modules: ["emitter"],
     lore: "codex.scout.lore",
   },
+  // The three that kill most often (docs/problem-map-2026-09-11.md): the
+  // alarm's hunter, the guard every hull carries, and the deep hulls' pack.
+  // What they do is plain enough; what the player gets wrong is not.
+  enforcer: {
+    id: "enforcer",
+    title: "codex.enforcer.title",
+    what: "codex.enforcer.what",
+    wrong: "codex.enforcer.wrong",
+    helps: "codex.enforcer.helps",
+    modules: ["cutter", "blade", "emp", "shocker"],
+    lore: "codex.enforcer.lore",
+  },
+  "security-unit": {
+    id: "security-unit",
+    title: "codex.security-unit.title",
+    what: "codex.security-unit.what",
+    wrong: "codex.security-unit.wrong",
+    helps: "codex.security-unit.helps",
+    modules: ["cutter", "welder"],
+    lore: "codex.security-unit.lore",
+  },
+  scrapper: {
+    id: "scrapper",
+    title: "codex.scrapper.title",
+    what: "codex.scrapper.what",
+    wrong: "codex.scrapper.wrong",
+    helps: "codex.scrapper.helps",
+    modules: ["emp"],
+    lore: "codex.scrapper.lore",
+  },
 
   // ------------------------------------------ the hazards (content/hazards.ts)
   //

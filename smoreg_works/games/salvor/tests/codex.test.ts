@@ -8,7 +8,7 @@ import { EN } from "../src/content/i18n/en.js";
 import { ES } from "../src/content/i18n/es.js";
 import { RU } from "../src/content/i18n/ru.js";
 import { MODULES, RELICS, type ModuleId } from "../src/content/modules.js";
-import { BLOOM_KIND, CRAWLER, JAMMER, SENTRY_TURRET } from "../src/content/monsters.js";
+import { BLOOM_KIND, CRAWLER, ENFORCER, JAMMER, MONSTERS, SENTRY_TURRET } from "../src/content/monsters.js";
 import { STRAINS } from "../src/content/viruses.js";
 import { DEFAULT_LANG, LANGS, setLang, t, type Lang } from "../src/i18n.js";
 import { MAX_LEVEL, alertState } from "../src/systems/alert.js";
@@ -96,6 +96,12 @@ describe("every card the tables ask for exists", () => {
     ...HAZARD_IDS.map((id) => [id, "hazard"] as [string, string]),
     ...RELICS.map((id) => [id, "relic"] as [string, string]),
     ...[SENTRY_TURRET, JAMMER, BLOOM_KIND, CRAWLER].map((m) => [m.id, "machine"] as [string, string]),
+    // The three that kill most often (G88). Looked up in the catalogue rather
+    // than written as strings, so a renamed machine is a red line here and not
+    // a card that nobody can ever be shown.
+    ...[ENFORCER, ...["security-unit", "scrapper"].map((id) => MONSTERS.find((m) => m.id === id)!)].map(
+      (m) => [m.id, "killer"] as [string, string],
+    ),
     ["ghost", "drone"],
     ["rival", "drone"],
   ];

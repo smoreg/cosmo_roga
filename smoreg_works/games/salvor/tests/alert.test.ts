@@ -23,8 +23,10 @@ import {
   shipFromText,
 } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
+import { stampClass } from "../src/content/derelicts.js";
 import { CROWD, ENFORCER, MONSTERS, type Machine } from "../src/content/monsters.js";
 import { TUG_ID, isTug } from "../src/content/tug.js";
+import { TUTORIAL_SPEC } from "../src/content/tutorial.js";
 import {
   ALERT,
   DOOR_PERIOD,
@@ -116,12 +118,16 @@ const INERT: Machine = {
   speed: 1, fovRadius: 1, behaviour: "static", sight: 0, minDepth: 0, maxDepth: 99, weight: 10,
 };
 
-function gameOn(text: string, seed = 11, over: Partial<RoomContentPack> = {}): RoomGame {
+function gameOn(text: string, seed = 11, over: Partial<RoomContentPack> = {}, training = false): RoomGame {
   return new RoomGame({
     ...GAME_CONFIG,
     seed,
     content: { ...SALVOR, monsterChance: () => 0, ...over },
-    firstShip: () => shipFromText(text).ship,
+    firstShip: () => {
+      const ship = shipFromText(text).ship;
+      if (training) stampClass(ship, TUTORIAL_SPEC);
+      return ship;
+    },
     firstShipId: "1",
     systems: [ALERT],
   });
@@ -130,6 +136,14 @@ function gameOn(text: string, seed = 11, over: Partial<RoomContentPack> = {}): R
 /** The usual ship for a clock test: empty, and whatever wakes up stays put. */
 function quietShip(text: string, seed = 11): RoomGame {
   return gameOn(text, seed, { monstersForDepth: () => [INERT] });
+}
+
+/**
+ * The same, as a training run: the first hull is stamped as the tutorial's,
+ * so the one after it is the hull the game is learned on (`isFirstShip`).
+ */
+function trainingShip(text: string, seed = 11): RoomGame {
+  return gameOn(text, seed, { monstersForDepth: () => [INERT] }, true);
 }
 
 /**
@@ -252,6 +266,24 @@ describe("the alert is the ship's clock", () => {
     expect(st.level).toBe(1);
   });
 
+  it("keeps the 80-turn clock for the hull after the training one, and hurries on the one after that", () => {
+    // The training hull stands in front of the itinerary and used to take the
+    // slow clock with it, so the first real hull of a training run ran on 40
+    // (docs/tasks/G88-polish-by-map.md, A2).
+    const game = trainingShip(LINE, 4243);
+    game.travelTo("2", { generate: () => shipFromText(LINE).ship });
+    const second = alertState(game);
+    wait(game, 79);
+    expect(second.level, "the hull after the tutorial is the run's first").toBe(0);
+    wait(game, 1);
+    expect(second.level).toBe(1);
+
+    game.travelTo("3", { generate: () => shipFromText(LINE).ship });
+    const third = alertState(game);
+    wait(game, 40);
+    expect(third.level, "the one after it runs on the ordinary clock").toBe(1);
+  });
+
   it("a raise at the top of the gauge costs the ship nothing", () => {
     const game = quietShip(LINE, 64064);
     decoyHunter(game, "r4");
@@ -326,6 +358,32 @@ describe("the ladder: every rung once, on the way up", () => {
     expect(logged(first, "Alert: HUNTING.")).toBe(1);
     raiseAlert(first);
     expect(enforcers(first).length, "the hunter still comes").toBe(1);
+  });
+
+  it("wakes nothing at two and three on the hull after the training one either", () => {
+    const game = trainingShip(OPEN_WALKED, 79);
+    game.travelTo("2", { generate: () => shipFromText(OPEN_WALKED).ship });
+    raiseAlert(game, 3);
+    expect(machines(game).length, "the first real hull of a training run is the first hull").toBe(0);
+    expect(logged(game, "Alert: HUNTING.")).toBe(1);
+  });
+
+  it("never sends the hunter after the drone on the training hull", () => {
+    // Six compartments and one scout, built to be learned on
+    // (`content/tutorial.ts`): the ENFORCER on it is a lesson nobody asked for.
+    const game = trainingShip(OPEN_WALKED, 80);
+    raiseAlert(game, MAX_LEVEL);
+    expect(alertState(game).level).toBe(MAX_LEVEL);
+    expect(enforcers(game).length, "not on the rung the hunter comes on").toBe(0);
+    // Nor when the top of the gauge would replace one: fifteen turns, held loud
+    // so the gauge stays up there.
+    loudWait(game, 16);
+    expect(enforcers(game).length, "not from the top of the gauge either").toBe(0);
+
+    // The hull after it is an ordinary hull as far as the hunter is concerned.
+    game.travelTo("2", { generate: () => shipFromText(OPEN_WALKED).ship });
+    raiseAlert(game, HUNTER_LEVEL);
+    expect(enforcers(game).length).toBe(1);
   });
 
   it("wakes tougher machines from level four: the hunter carries +1 at four and +2 at five", () => {

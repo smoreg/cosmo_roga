@@ -13,7 +13,6 @@ import {
 import { moduleName } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
 import { isTug } from "../content/tug.js";
-import { SYSTEM_GLYPH } from "../content/objectives.js";
 import { verbWord, doorStateWord } from "../content/words.js";
 import { roomName } from "../content/zones.js";
 import type { Key } from "../content/i18n/keys.js";
@@ -638,8 +637,13 @@ function travelRow(
     return { ...doorRow(shut, waysOf(offers, shut.id), () => label), label, ...at };
   }
   // One open door and nothing beyond it: the step itself, not a walk that would
-  // announce its own arrival a tenth of a second later.
-  if (route.length === 1) return { ...raw(label, { kind: "go", door: route[0].id }, true), ...at };
+  // announce its own arrival a tenth of a second later. Unless the drone has
+  // been told what is beyond it: then it is a walk like any other, so it stops
+  // a door short and the second press goes in — the rule every distance keeps
+  // (docs/tasks/G83-anonymous-blows.md, 3).
+  if (route.length === 1 && dangerAhead(game, route[0]) === undefined) {
+    return { ...raw(label, { kind: "go", door: route[0].id }, true), ...at };
+  }
   return { ...raw(label, { kind: "go", door: route[0].id }, true), travel: room.id, ...at };
 }
 
@@ -671,9 +675,11 @@ export function roomLabel(room: Room, right: string, mark = ""): string {
  *
  * The map averaged 8.2 pressable rows and reached 25, more than five on 71.4 %
  * of screens, and not one of them said which compartment was worth walking to
- * (docs/tasks/G87-playability.md, 2). One column answers it, and the two glyphs
- * are the ones the schematic already draws in the box and the compartment block
- * already lists — a mark a player has been taught costs nothing to read.
+ * (docs/tasks/G87-playability.md, 2). One column answers it. A charter's crate
+ * or console takes the mark the compartment block already lists; a system
+ * takes `◆` rather than the schematic's `+`, because `+` on this panel is
+ * also the rack's mark of a grafted module, one screen apart
+ * (docs/tasks/G88-polish-by-map.md, B8).
  *
  * Only for a compartment the drone may name at all: `known` already filters the
  * map to those, and a mark on an unseen box would hand over the ship.
@@ -681,7 +687,7 @@ export function roomLabel(room: Room, right: string, mark = ""): string {
 function goalMark(game: RoomGame, room: Room): string {
   const online = shipState(game).online;
   for (const system of roomList<ShipSystem>(room, "systems")) {
-    if (!online.includes(system.kind)) return SYSTEM_GLYPH;
+    if (!online.includes(system.kind)) return GOAL_MARK;
   }
   for (const item of roomList<RoomItem>(room, "items")) {
     if (item.kind === "charter-item" && item.taken !== true) return BUCKET_GLYPH.items;
@@ -927,7 +933,10 @@ function doorRows(
       // else. Asking `doorRow` would grey it out: the ways *through* an open
       // bulkhead are the welding torch and the empty set.
       if (game.ship.passable(door, { isPlayer: true })) {
-        return { ...raw(label("go"), { kind: "go", door: door.id }, true), ...at };
+        const step = { ...raw(label("go"), { kind: "go", door: door.id }, true), ...at };
+        // A known hazard beyond it makes the row the same walk the map's row is,
+        // with the same stop and the same second press (`travelRow`).
+        return dangerAhead(game, door) === undefined ? step : { ...step, travel: at.leadsTo };
       }
       return { ...doorRow(door, waysOf(offers, door.id), label), ...at };
     });
@@ -1227,6 +1236,9 @@ function rank(door: Door): number {
 /** Columns for `go d4`, and for the compartment it leads to. */
 const VERB_W = 7;
 const NAME_W = 10;
+
+/** The map's mark of a compartment holding a system still to raise (`goalMark`). */
+const GOAL_MARK = "◆";
 
 /** Columns on the travel list: the compartment's name, then its `rN`. */
 const ROOM_W = 10;

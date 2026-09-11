@@ -314,10 +314,17 @@ describe("every row of the menu can be clicked", () => {
 // -------------------------------------------------------------- what the keys do
 
 describe("every key of the menu does what its row promises", () => {
-  it("casts off on `1`, and on any key that is not a row or a way around one", () => {
-    for (const e of [press("1", "Digit1"), press("q", "KeyQ"), press("z", "KeyZ"), press("R", "KeyR")]) {
+  it("casts off on `1`, the space bar and the digits no row wears, and on nothing else", () => {
+    for (const e of [press("1", "Digit1"), press(" ", "Space"), press("5", "Digit5")]) {
       const next = key(title(), e);
       expect(next.overlay, e.key).toBe("none");
+      expect(next.effect, e.key).toEqual({ kind: "idle" });
+    }
+    // A letter is not a voyage: a player reaching for one used to be flown out
+    // of the dock by it (docs/tasks/G88-polish-by-map.md, B3).
+    for (const e of [press("q", "KeyQ"), press("z", "KeyZ"), press("R", "KeyR"), press("Tab"), press("o", "KeyO")]) {
+      const next = key(title(), e);
+      expect(next.overlay, e.key).toBe("title");
       expect(next.effect, e.key).toEqual({ kind: "idle" });
     }
   });
@@ -390,6 +397,14 @@ describe("every key of the menu does what its row promises", () => {
       for (let turn = 0; turn < 12 && paging.overlay === "help"; turn++) paging = key(paging, press("?"));
       expect(paging.overlay, "the last page of ?").toBe("title");
       expect(paging.titleHelp).toBe(false);
+      // Through the log's own card too: `PageUp` over the help card and `Esc`
+      // used to land in a voyage nobody had started, the flag still set
+      // (docs/tasks/G88-polish-by-map.md, B2).
+      const history = key(opened, press("PageUp"));
+      expect(history.overlay).toBe("history");
+      const back = key(history, press("Escape"));
+      expect(back.overlay, "PageUp, Esc").toBe("title");
+      expect(back.titleHelp).toBe(false);
     }
   });
 
@@ -607,8 +622,10 @@ describe("the screen remembers settings and never remembers progress", () => {
     const chosen: TitleSettings = { view: "hex", sound: false, seed: 99 };
     const state = withSettings(title(), chosen);
     expect(state.settings).toEqual(chosen);
-    // `shift+R` from anywhere: another ship, the same choices about the screen.
-    const again = appReducer(state, toIntent(press("R", "KeyR")), newGame(7));
+    // `shift+R` in a run: another ship, the same choices about the screen. (On
+    // the menu itself it is a letter like any other and stays put.)
+    const again = appReducer({ ...state, overlay: "none" }, toIntent(press("R", "KeyR")), newGame(7));
+    expect(again.effect).toEqual({ kind: "newRun" });
     expect(again.overlay).toBe("none");
     expect(again.settings.view).toBe("hex");
     expect(again.settings.sound).toBe(false);

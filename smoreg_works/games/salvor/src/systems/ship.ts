@@ -165,11 +165,15 @@ function raise(game: RoomGame, system: ShipSystem, spec: ObjectiveSpec, tool: Ob
   system.online = true;
   state.online.push(spec.id);
   if (tool === "cell") spendCell(game);
+  // The cause before its consequences: the system is up, and *then* the ship
+  // stands down or climbs the gauge. It used to read the other way round —
+  // "the ship stands down" a line above the system that made it
+  // (docs/tasks/G88-polish-by-map.md, A4).
+  game.log.add(objectiveOnlineLine(spec), game.schedule.time, "good", "log.system.online");
   // Neutralised: the ship stops answering, and the last system is not the
   // loud one — the gauge is off before the +2 would have climbed it.
   if (state.online.length >= OBJECTIVE_COUNT) standDown(game);
   raiseAlert(game, ALERT_PER_SYSTEM);
-  game.log.add(objectiveOnlineLine(spec), game.schedule.time, "good", "log.system.online");
   // Through the voyage's own till, which is what says the line and keeps the
   // running total in it. The import is the one that goes the other way as well
   // — `systems/voyage.ts` reads `shipState` from here — and it is a call at

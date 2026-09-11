@@ -26,13 +26,13 @@ import {
 } from "../content/hazards.js";
 import { moduleBurnLine, moduleName } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
-import { TUG_ID, isTug } from "../content/tug.js";
+import { isTug } from "../content/tug.js";
 import { verbWord } from "../content/words.js";
 import { roomName } from "../content/zones.js";
 import { t } from "../i18n.js";
 import { capitalize } from "../names.js";
 import { applyDerived, blamedOn, derivedStats, findSlot, rigOf, routeDamage } from "../twist/rig.js";
-import { raiseAlert } from "./alert.js";
+import { isFirstShip, raiseAlert } from "./alert.js";
 import {
   doorHazard,
   hazardRecords,
@@ -84,7 +84,9 @@ const DONE = (): Outcome => ({ ok: true, cost: TURN_COST });
  * airlock, welded shut, nor on the airlock compartment — the first step of a
  * sortie is never the one that blows.
  *
- * Never on the first derelict of a voyage, whatever its class. The report's
+ * Never on the first derelict of a voyage, whatever its class — and that is
+ * the alert's reading of "first" (`systems/alert.ts`, `isFirstShip`), which
+ * in a training run is the hull after the training one as well. The report's
  * budget table gives the first hull one point at most; this game gives it
  * none, because it is the hull the game is learned on and a rule is what the
  * tutorial can rely on where a low roll is not.
@@ -93,7 +95,7 @@ export function placeHazards(game: RoomGame, spec: DerelictSpec | undefined): Ha
   const placed: HazardRecord[] = [];
   const pool = spec?.hazards ?? [];
   const threat = spec?.threat ?? 0;
-  if (pool.length === 0 || threat <= 0 || isFirstDerelict(game)) return placed;
+  if (pool.length === 0 || threat <= 0 || isFirstShip(game)) return placed;
 
   const store = hazardStore(game);
   let spent = threatAboard(store);
@@ -134,15 +136,6 @@ function placeOnDoor(game: RoomGame, store: readonly HazardRecord[], id: HazardI
   );
   if (doors.length === 0) return undefined;
   return { id, door: game.rng.pick(doors).id, known: false };
-}
-
-/**
- * The run's first derelict: the same reading `systems/alert.ts` uses for the
- * tutorial clock. The first *derelict*, not the first ship in the store — a
- * run starts on the tug.
- */
-function isFirstDerelict(game: RoomGame): boolean {
-  return game.ships.ids().find((id) => id !== TUG_ID) === game.shipId;
 }
 
 // ------------------------------------------------------------------ the sign

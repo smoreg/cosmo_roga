@@ -792,4 +792,25 @@ describe("a module's own ceiling survives the hold and the arms", () => {
     expect(rig.slots[0]!.integrity).toBe(13);
     expect(capOf(rig.slots[0]!)).toBe(13);
   });
+
+  it("keeps the bench's graft when a module is carried, and never more than the bench allows", () => {
+    // The graft is the module's, not the rails': a grafted module put down and
+    // picked up again used to come back at the catalogue's cap
+    // (docs/tasks/G88-polish-by-map.md, A3).
+    const base = moduleKind("cutter").integrity;
+    const held = carriedFrom("cutter", base + 1, undefined, undefined, 1);
+    expect(held.bonus).toBe(1);
+    expect(carriedFrom("cutter", base).bonus, "no graft, no field").toBeUndefined();
+
+    const rig = rigFrom([null, null], 2);
+    const slot = install(rig, held.kind, held.integrity, held.charges, held.base, held.bonus)!;
+    expect(rig.slots[slot]!.bonus).toBe(1);
+    expect(capOf(rig.slots[slot]!)).toBe(base + 1);
+    expect(rig.slots[slot]!.integrity).toBe(base + 1);
+
+    // Handed more graft than the bench ever sells, the rack keeps the bench's ceiling.
+    installAt(rig, 1, "cutter", 99, undefined, undefined, 9);
+    expect(rig.slots[1]!.bonus).toBe(MAX_GRAFT);
+    expect(rig.slots[1]!.integrity).toBe(base + MAX_GRAFT);
+  });
 });

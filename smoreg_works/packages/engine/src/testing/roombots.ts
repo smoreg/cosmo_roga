@@ -612,6 +612,21 @@ export function makeCarefulBot(): RoomBot {
   /** The ship underfoot, and what the drone could do when it stepped onto it. */
   let ship: string | undefined;
   let kit: Kit | undefined;
+  /**
+   * The sortie has been judged failing, and stays judged until the ship or the
+   * drone changes — never a turn at a time.
+   *
+   * `failing` reads the drone's abilities, and a compartment can take one away
+   * for exactly as long as the drone stands in it: measured, a room effect that
+   * costs speed made the bot read "I am weaker" inside, turn for the airlock,
+   * get its speed back one door out, read "I am fine", turn round and walk back
+   * in — for the rest of the run, on the threshold of one compartment. A
+   * decision to go home is a decision about the trip, so it is kept until the
+   * trip ends: the ship underfoot changes, or a hull comes off the rack
+   * (`replaced`). Wins over 200 seeds 8 → 12, and the one run that used to be
+   * still walking when the harness gave up now ends.
+   */
+  let spent = false;
 
   return (game, _rng) => {
     visits.turn(game);
@@ -645,9 +660,13 @@ export function makeCarefulBot(): RoomBot {
     if (game.shipId !== ship) {
       ship = game.shipId;
       kit = kitOf(game.player);
+      spent = false;
     }
-    if (replaced(kit!, game.player)) kit = kitOf(game.player);
-    const spent = failing(kit!, game.player);
+    if (replaced(kit!, game.player)) {
+      kit = kitOf(game.player);
+      spent = false;
+    }
+    spent ||= failing(kit!, game.player);
 
     const inHere = game.entitiesIn(here).filter(enemyOf(game));
     // The counter resets on a genuine escape — nothing in sight at all — not

@@ -15,6 +15,7 @@ import { FREIGHTER, type DerelictSpec } from "../src/content/derelicts.js";
 import { tugCallsign, tugOpening, voyageOpening } from "../src/content/hints.js";
 import { GHOST, HULLS, SCRAPPER, SPARK, STARTING_CREDITS, hullSlots } from "../src/content/hulls.js";
 import { MAX_GRAFT, moduleKind } from "../src/content/modules.js";
+import { salvageCharter, salvageTarget, type Charter } from "../src/content/charters.js";
 import { ALERT, alertState, raiseAlert } from "../src/systems/alert.js";
 import { DOORS } from "../src/systems/doors.js";
 import { POPULATE, roomList, type Crate, type ShipSystem } from "../src/systems/populate.js";
@@ -977,6 +978,70 @@ describe("the warning a jump would drop the hull", () => {
 
     atHome(game);
     expect(lines(game).some((l) => l.includes("systems online"))).toBe(false);
+  });
+});
+
+/**
+ * What the voyage used to drop without a word (G88, C4): a signed job that did
+ * not pay, the sale a jump walks away from, and the charters it abandons.
+ */
+describe("what a charter and a jump leave behind", () => {
+  it("says at the airlock which signed job did not pay, and why", () => {
+    const game = gameOn(DERELICT, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
+    const voyage = voyageOf(game);
+    const retrieve: Charter = { id: "retrieve", text: "RETRIEVE", payout: 25 };
+    voyage.charters.push(salvageCharter(FREIGHTER), retrieve);
+
+    standIn(game, "r1");
+    expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
+
+    expect(lines(game)).toContain(
+      t("log.charter.missed.salvage", { charter: "SALVAGE", have: 0, need: salvageTarget(FREIGHTER) }),
+    );
+    expect(lines(game)).toContain("RETRIEVE not filled: the crate is still aboard.");
+    expect(voyage.paid).toEqual([]);
+  });
+
+  it("says nothing about a job that paid", () => {
+    const game = gameOn(DERELICT, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
+    voyageOf(game).charters.push(salvageCharter(FREIGHTER));
+    (game.player.data ??= {}).loot = salvageTarget(FREIGHTER);
+
+    standIn(game, "r1");
+    expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
+
+    expect(voyageOf(game).paid).toEqual(["salvage"]);
+    expect(lines(game).some((l) => l.includes("not filled"))).toBe(false);
+  });
+
+  it("names the hull on the jump row while nothing aboard it is raised", () => {
+    const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
+    standIn(game, "r1");
+    expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
+    expect(stationTargets(game, "jump")[0]!.label).toMatch(/^jump → /);
+  });
+
+  it("names the sale on the jump row, and the dropped charters in the log", () => {
+    const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
+    raiseIn(game, "r2", 3);
+    standIn(game, "r1");
+    expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
+
+    expect(stationTargets(game, "jump")[0]!.label).toBe(
+      `drop 1/${OBJECTIVE_COUNT}, sale ${FREIGHTER.salePrice} CR`,
+    );
+
+    voyageOf(game).charters.push(salvageCharter(FREIGHTER));
+    voyageOf(game).credits = 500;
+    expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(true);
+    expect(lines(game)).toContain("Left behind: SALVAGE.");
+  });
+
+  it("puts the ceiling on a module fitted from the hold", () => {
+    const game = gameOn(DERELICT);
+    VOYAGE.beforeLevelLeave!(game, 0, "airlock");
+    voyageOf(game).hold.push({ kind: "cutter", integrity: 2 });
+    expect(stationTargets(game, "fit")[0]!.label).toBe(`CUTTER 2/${moduleKind("cutter").integrity}`);
   });
 });
 

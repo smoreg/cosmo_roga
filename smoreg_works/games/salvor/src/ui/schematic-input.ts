@@ -541,8 +541,16 @@ function tagOf(data: Record<string, unknown>, key: string): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/**
+ * Cut at a word, the way `clipName` cuts a name: a banner ending `(корса`
+ * reads as a typo, one ending at a whole word reads as a width. The separator
+ * a cut leaves dangling goes with it.
+ */
 function clipTo(text: string, width: number): string {
-  return text.length <= width ? text : text.slice(0, Math.max(0, width));
+  if (text.length <= width) return text;
+  const word = text.lastIndexOf(" ", width);
+  const cut = word > 0 ? text.slice(0, word) : text.slice(0, Math.max(0, width));
+  return cut.replace(/[\s·:,]+$/, "");
 }
 
 /**

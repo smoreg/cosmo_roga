@@ -557,13 +557,12 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
     return newRunState(state);
   }
 
-  // The start screen: a menu where every row is a key, and an "any key" behind
-  // the four numbered ones. `1` casts off, `2` casts off with the training
-  // prompts on, `3` opens the help card and comes back, `4` types a seed.
-  // Anything else still starts, so nobody spends their first move on a keypress
-  // they meant as a click — which is also the gesture a browser wants before it
-  // will play a sound. (`L`, `V`, `S` and `` ` `` never reach here: the shell
-  // reads them first, and bare modifiers are dropped by `isChord`.)
+  // The start screen: a menu where every row is a key. `1` casts off, `2` casts
+  // off with the training prompts on, `3` opens the help card and comes back,
+  // `4` types a seed; the space bar and the digits no row wears cast off too,
+  // and nothing else does (docs/tasks/G88-polish-by-map.md, B3). (`L`, `V`, `S`
+  // and `` ` `` never reach here: the shell reads them first, and bare
+  // modifiers are dropped by `isChord`.)
   if (state.overlay === "title") {
     if (state.seedText !== undefined) return typingSeed(state, intent);
     // A digit names a key and a click names a row, and on this screen the two
@@ -593,10 +592,14 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
     // other three keys excluded from "any key starts": a player reaching for
     // the highlight, or backing out of nothing, has not asked for a voyage.
     if (intent.kind === "help") return titleRow(state, game, "help");
-    if (intent.kind === "page" || intent.kind === "dismiss") return withEffect(state, IDLE);
+    // What still casts off without a row of its own: the digits no row wears,
+    // and the space bar. Every other key used to as well, which is how a player
+    // reaching for a letter found themselves in a voyage nobody had chosen.
+    // (`.` shares the space bar's intent and comes along with it.)
+    const go = intent.kind === "pick" || (intent.kind === "command" && intent.cmd.kind === "wait");
     // Whatever the run has already done, the first key is not the moment to
     // announce it: the title sits in front of a voyage that has not started.
-    return started(state, game);
+    return go ? started(state, game) : withEffect(state, IDLE);
   }
 
   // A sortie's own ending is a card and not a mode: any key at all puts it
@@ -749,8 +752,14 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       if (stop) return stop;
       const list = roomActions(game, undefined, true);
       const at = list.findIndex((line) => line.leadsTo === intent.id);
-      if (at < 0) return withEffect(state, PASS);
-      return chosen({ ...state, moves: true, doors: false, menu: undefined, cursor: at }, game, at);
+      if (at >= 0) return chosen({ ...state, moves: true, doors: false, menu: undefined, cursor: at }, game, at);
+      // A box the map has no name for — a neighbour nobody has been in — is
+      // still the far side of one of this compartment's doors, and that door's
+      // row is what the click presses. Every one of those clicks used to do
+      // nothing at all: 1 707 of 1 707 on sixty seeds (docs/tasks/G88-polish-by-map.md, B1).
+      const own = roomActions(game).findIndex((line) => line.leadsTo === intent.id);
+      if (own < 0) return withEffect(state, PASS);
+      return chosen({ ...state, moves: false, doors: false, menu: undefined, cursor: own }, game, own);
     }
     case "module":
       return act(state, game, () => ({ kind: "command", cmd: aimed(game, intent.module, intent.slot) }));
@@ -763,12 +772,13 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       });
     case "command":
       return act(state, game, () => ({ kind: "command", cmd: intent.cmd }));
+    // The card in front of the board eats these as it eats every other key
+    // (`stopped`); at home the answer used to be written behind a card that
+    // stayed open.
     case "explore":
-      if (isTug(game)) return nowhereToWalk(state, game);
-      return act(state, game, () => ({ kind: "explore" }), true);
+      return stopped(state, game) ?? (isTug(game) ? nowhereToWalk(state, game) : act(state, game, () => ({ kind: "explore" }), true));
     case "fight":
-      if (isTug(game)) return nowhereToWalk(state, game);
-      return act(state, game, () => ({ kind: "fight", melee: intent.melee }));
+      return stopped(state, game) ?? (isTug(game) ? nowhereToWalk(state, game) : act(state, game, () => ({ kind: "fight", melee: intent.melee })));
   }
 }
 
@@ -907,9 +917,15 @@ function historyTurned(state: AppState, game: RoomGame, delta: number): AppState
   return { ...state, logPage: at, effect: IDLE };
 }
 
-/** The history card, put away. Never a turn: it never spent one to open. */
+/**
+ * The history card, put away. Never a turn: it never spent one to open.
+ *
+ * Onto the start screen when that is where the help card it replaced was
+ * opened from: `3`, `PageUp`, `Esc` used to land in a voyage nobody had
+ * started, with `titleHelp` still set (docs/tasks/G88-polish-by-map.md, B2).
+ */
 function closedHistory(state: AppState): AppState {
-  return { ...state, overlay: "none", logPage: 0, effect: IDLE };
+  return { ...state, overlay: state.titleHelp ? "title" : "none", titleHelp: false, logPage: 0, effect: IDLE };
 }
 
 /**

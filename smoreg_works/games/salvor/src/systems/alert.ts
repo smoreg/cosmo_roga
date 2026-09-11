@@ -15,12 +15,13 @@ import {
   type Ship,
   type System,
 } from "@jamrog/engine";
-import { specOfShip } from "../content/derelicts.js";
+import { classOfShip, specOfShip } from "../content/derelicts.js";
 import type { Key } from "../content/i18n/keys.js";
 import { CROWD, ENFORCER, MAX_MACHINES, machineName } from "../content/monsters.js";
 import { OBJECTIVE_COUNT } from "../content/objectives.js";
 import { PALETTE } from "../content/palette.js";
 import { TUG_ID, isTug } from "../content/tug.js";
+import { TUTORIAL_ID } from "../content/tutorial.js";
 import { roomName } from "../content/zones.js";
 import { t } from "../i18n.js";
 import { blamedOn, hostilesIn } from "../twist/rig.js";
@@ -50,7 +51,7 @@ import { canSeeDrone } from "./sight.js";
 
 /** Top of the gauge. Every number below is design-doc.md's. */
 export const MAX_LEVEL = 5;
-/** Turns aboard between time-driven raises. The run's first derelict is the tutorial. */
+/** Turns aboard between time-driven raises. The run's first derelict is the one learned on (`isFirstShip`). */
 const PERIOD_FIRST_SHIP = 80;
 export const PERIOD = 40;
 /**
@@ -370,13 +371,14 @@ function climb(game: RoomGame, st: AlertState, level: number): void {
     game.log.add(t("log.alert.scuttle", { n: SCUTTLE_WARN }), game.schedule.time, "bad", "log.alert.scuttle");
   }
 
-  // The tutorial hull wakes nothing extra: its ladder is doors and the hunter.
+  // The first hull wakes nothing extra: its ladder is doors and the hunter —
+  // and on the training hull not even the hunter.
   if (rung.posted + rung.sent > 0 && !isFirstShip(game)) {
     const rng = alertRng(game);
     for (let i = 0; i < rung.posted; i++) wake(game, rng, level, false);
     for (let i = 0; i < rung.sent; i++) wake(game, rng, level, true);
   }
-  if (rung.hunter && !hunterAboard(game)) sendEnforcer(game, level);
+  if (rung.hunter && !hunterAboard(game) && !isTutorialHull(game)) sendEnforcer(game, level);
 }
 
 /**
@@ -957,7 +959,7 @@ export const ALERT: System<RoomGame> = {
       if (st.scuttleFrom >= 0 && scuttleDue(st)) vent(game, st);
       if (st.turnsAboard - st.lastHunter >= HUNTER_PERIOD) {
         st.lastHunter = st.turnsAboard;
-        if (!hunterAboard(game)) sendEnforcer(game, st.level);
+        if (!hunterAboard(game) && !isTutorialHull(game)) sendEnforcer(game, st.level);
         pointEveryoneAtTheDrone(game);
       }
     }
@@ -1002,13 +1004,33 @@ export const ALERT: System<RoomGame> = {
 };
 
 /**
- * The run's first derelict is the tutorial, and its clock runs half as fast.
+ * The run's first derelict — the hull the game is learned on: its clock runs
+ * half as fast, its ladder wakes nothing, and `systems/hazards.ts` leaves it
+ * clean.
  *
  * The first *derelict*, not the first ship in the store: a run starts on the
  * tug (`GAME_CONFIG.firstShipId`), so the store's first id is home, and read
  * that way no derelict was ever the first one — every hull ran on the forty-turn
  * clock and the tutorial pace existed only in the fixture tests.
+ *
+ * And in a training run, the hull *after* the training one as well. The
+ * training hull stands in front of the itinerary (`systems/voyage.ts`) and
+ * read as the first derelict it took the slow clock and the clean deck with
+ * it: the first real hull of a training run met the forty-turn clock, the
+ * full ladder and its class's hazards — everything the same hull is spared
+ * in an ordinary run. Measured over 200 careful training voyages: 6 wins
+ * against 15 once that hull counts as first too, and the first real hull
+ * sold on 19 voyages against 64. The training hull keeps its own slow clock;
+ * it is where the ladder is read for the first time.
  */
-function isFirstShip(game: RoomGame): boolean {
-  return game.ships.ids().find((id) => id !== TUG_ID) === game.shipId;
+export function isFirstShip(game: RoomGame): boolean {
+  const ids = game.ships.ids().filter((id) => id !== TUG_ID);
+  const at = ids.indexOf(game.shipId);
+  return at === 0 || (at === 1 && isTutorialHull(game, ids[0]));
+}
+
+/** Is this stored ship — the one underfoot, unless another is named — the training hull? */
+function isTutorialHull(game: RoomGame, id = game.shipId): boolean {
+  const ship = game.ships.get(id)?.ship;
+  return ship !== undefined && classOfShip(ship) === TUTORIAL_ID;
 }
