@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Rng, RoomGame, spawnMonsterIn, type Entity, type RoomGameConfig, type Twist } from "@jamrog/engine";
-import { shipFromText } from "@jamrog/engine/testing";
+import { BOTS_ROOMS, seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import { DOORS } from "../src/systems/doors.js";
@@ -264,7 +264,9 @@ describe("the blocks, in the doc's own order", () => {
     // label — is the defect the bots swept up (G55, 5).
     expect(out[room]).toBe("CARGO BAY r2  doors d1 d3 +2");
     expect(out[room]!.length).toBeLessThanOrEqual(PANEL_WIDTH);
-    expect(out[room + 1]).toBe("");
+    // The blank row under it is the air, and on a panel this crowded the air
+    // has already gone to the list (G85, 0).
+    expect(out[room + 1]).toBe("ACTIONS");
   });
 
   it("never cuts a door label in half, whatever the compartment is called", () => {
@@ -487,12 +489,17 @@ describe("the row of letters is always the last row of the panel", () => {
     // The compartment keeps its name and its doors and gives up the rest.
     const room = out.findIndex((l) => l.startsWith("CARGO BAY r2"));
     expect(out[room]).toContain("doors d1");
-    expect(out[room + 1]).toBe("");
     expect(out.some((l) => l.startsWith(" % scrap"))).toBe(false);
-    // The list keeps as many of its own lines as the panel has rows for, and
-    // says how many it could not draw.
-    expect(out.filter((l) => /^ \d /.test(l)).length).toBeGreaterThanOrEqual(4);
-    expect(out.some((l) => l.startsWith("… "))).toBe(true);
+    // And the blank row that used to sit between the block and the list has
+    // gone the same way: the air is the last thing the panel gives, and it
+    // gives it rather than draw a list with nothing on it (G85, 0).
+    expect(out[room + 1]).toBe("ACTIONS");
+    // And with the air paid over to it the list now draws every line it has,
+    // so there is nothing left to count: the block above gave its contents and
+    // the layout gave its blank rows, in that order (G85, 0).
+    const numbered = out.filter((l) => /^[ ▸]\d /.test(l));
+    expect(numbered.length).toBe(roomActions(game).filter((a) => a.key !== "").length);
+    expect(out.some((l) => l.startsWith("… "))).toBe(false);
     // Where the doors went: they are rows of the map now, one `m` away, and
     // the compartment's own list is only what happens in this compartment.
     expect(roomActions(game, undefined, true).map((a) => a.label)).toContain("DOCKING   r1  1 door");
@@ -1202,6 +1209,112 @@ describe("a relic in the rack is marked", () => {
       for (const id of RELICS) {
         expect(t(codexFor(id)!.what as never), `${lang} ${id}`).toContain(RELIC_MARK);
       }
+    }
+    setLang("en");
+  });
+});
+
+// ------------------------------------------------------- the list is never gone
+
+/**
+ * The numbered list always has lines on it (G85, 0).
+ *
+ * `panelBlocks` lets every block above the list shorten itself in turn, and
+ * when that was not enough it handed `fitList` a budget of one row — which
+ * went to the count, so the panel printed `ACTIONS`, then `… 6 more`, and not
+ * one line of the list. Measured over 200 careful voyages: 1 657 turns aboard
+ * of 48 691, and 1 395 of those with a machine in the compartment. On seed 4
+ * what it hid was `close d7` — the door the enforcer was shooting through.
+ *
+ * The rows now come out of the air between the blocks, nearest the list first:
+ * a blank row belongs to the layout and a numbered line is the interface.
+ */
+describe("the numbered list always has lines on it", () => {
+  /** The turns the playability sweep named, shortest first. */
+  const CAUGHT: Array<[number, number]> = [
+    [4, 20],
+    [5, 19],
+    [44, 89],
+    [2, 70],
+    [3, 119],
+    [1, 123],
+  ];
+
+  /** Rows of the panel that are lines of the numbered list. */
+  function listed(rows: readonly { text: string }[]): string[] {
+    return rows.map((l) => l.text).filter((text) => /^[ ▸][1234567890] /.test(text));
+  }
+
+  function playTo(seed: number, steps: number): RoomGame {
+    const game = newGame(seed);
+    const bot = BOTS_ROOMS.careful!();
+    const rng = new Rng(seed ^ 0x5bf03635);
+    for (let step = 0; step < steps; step++) {
+      if (game.isOver()) break;
+      if (!game.playerCommand(bot(game, rng)).ok) game.playerCommand({ kind: "wait" });
+    }
+    return game;
+  }
+
+  it("on every turn the sweep caught it empty, whatever the cursor is on", () => {
+    for (const [seed, steps] of CAUGHT) {
+      const game = playTo(seed, steps);
+      for (let cursor = 0; cursor < 5; cursor++) {
+        const actions = roomActions(game, undefined, false, cursor);
+        expect(actions.length, `seed ${seed} step ${steps}: nothing to do`).toBeGreaterThan(0);
+        const rows = listed(panelBlocks(game, actions, cursor));
+        expect(rows.length, `seed ${seed} step ${steps} cursor ${cursor}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("names the door being shot through on the turn that hid it", () => {
+    const game = playTo(4, 20);
+    const rows = listed(panelBlocks(game, roomActions(game), 0));
+    expect(rows.some((r) => r.includes("close d7"))).toBe(true);
+  });
+
+  it("over 200 careful voyages, on every turn aboard", () => {
+    let turns = 0;
+    let cut = 0;
+    for (const seed of seedRange(1, 200)) {
+      const game = newGame(seed);
+      const bot = BOTS_ROOMS.careful!();
+      const rng = new Rng(seed ^ 0x5bf03635);
+      for (let step = 0; step < 1500 && !game.isOver(); step++) {
+        if (!isTug(game)) {
+          const actions = roomActions(game);
+          if (actions.length > 0) {
+            turns++;
+            const rows = listed(panelBlocks(game, actions, 0));
+            expect(rows.length, `seed ${seed} step ${step}: the list drew nothing`).toBeGreaterThan(0);
+            if (rows.length < actions.filter((a) => a.key !== "").length) cut++;
+          }
+        }
+        if (!game.playerCommand(bot(game, rng)).ok) game.playerCommand({ kind: "wait" });
+      }
+    }
+    expect(turns, "the control: the list was drawn at all").toBeGreaterThan(40_000);
+    // And it is whole far more often than it was: 37.7 % of these turns used to
+    // end in a count, against 9.6 % now.
+    expect(cut / turns, "turns whose list did not fit").toBeLessThan(0.15);
+  }, 600_000);
+
+  it("does not offer the arrows for a list they cannot move", () => {
+    // Every one of the 5 236 turns that still ends in a count has a digit on
+    // every line, so `↑↓` moves the highlight and nothing else. The arrows are
+    // named on the other kind of count — a list too long for ten keys, where
+    // they slide the digits along it — and that one is proved on a compartment
+    // with sixteen things to do in it, above.
+    const game = playTo(4, 20);
+    const actions = roomActions(game);
+    expect(actions.filter((a) => a.key === "")).toHaveLength(0);
+    const more = panelBlocks(game, actions, 0).map((l) => l.text).find((r) => r.startsWith("… "));
+    if (more !== undefined) expect(more).not.toContain("↑");
+    for (const lang of LANGS) {
+      setLang(lang);
+      expect(t("panel.more", { n: 3 })).not.toContain("↑");
+      expect(t("panel.more.arrows", { n: 3 })).toContain("↑");
     }
     setLang("en");
   });

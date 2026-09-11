@@ -181,10 +181,27 @@ export function panelBlocks(
     if (fits(head)) break;
     head = headBlocks(game, 0, allow, 1, MISSION_FLOOR);
   }
+  // The last thing there is to give, once every block has given what it can:
+  // the air between them. A blank row belongs to the layout and a numbered
+  // line belongs to the interface, and until this the layout won — on 3.4 % of
+  // turns aboard (1 657 of 48 691, and 1 395 of those with a machine in the
+  // compartment) the panel drew `ACTIONS`, then a count, and not one line of
+  // the list. What it hid on seed 4 was `close d7`: the door the enforcer was
+  // shooting through (G85, 0).
+  head = squeezeAir(head, PANEL_HEIGHT - foot.length - need);
+
   const { rows, omitted } = fitList(actions, PANEL_HEIGHT - head.length - foot.length, cursor);
   const out = [...head, ...rows];
-  if (omitted > 0) {
-    out.push({ text: clip(t("panel.more", { n: Math.min(omitted, 99) })), fg: THEME.fgDim });
+  if (omitted > 0 && out.length < PANEL_HEIGHT - foot.length) {
+    // The arrows are named only where they lead somewhere. They slide the ten
+    // digits along a longer list (`ui/actions.ts`, `windowStart`), so they
+    // reach a line that never got a key — and move nothing at all on a list
+    // that has a digit on every line and simply ran out of rows. Every one of
+    // the 5 236 turns in 200 careful voyages that still ends in a count is
+    // that second kind, and the line used to promise the keys anyway.
+    const reachable = omittedActions(actions).length > 0;
+    const said = t(reachable ? "panel.more.arrows" : "panel.more", { n: Math.min(omitted, 99) });
+    out.push({ text: clip(said), fg: THEME.fgDim });
   }
   // The keys go on the panel's last rows, always — the owner's words are
   // "подсказки по хоткеям всегда снизу справа" (docs/tasks/G48-travel-to-a-room.md).
@@ -708,6 +725,20 @@ export function footBlocks(game: RoomGame): PanelLine[] {
   return letterRows(game).map((line) => ({ text: clip(line), fg: THEME.fgDim }));
 }
 
+/**
+ * The head inside `want` rows, paid for with the blank rows between its blocks,
+ * nearest the list first. Blanks only: every block above has already been
+ * offered the chance to shorten itself, and what is left of them is what the
+ * panel may not lose.
+ */
+function squeezeAir(head: readonly PanelLine[], want: number): PanelLine[] {
+  const out = [...head];
+  for (let i = out.length - 1; i >= 0 && out.length > want; i--) {
+    if (out[i]!.text === "") out.splice(i, 1);
+  }
+  return out;
+}
+
 /** Rows the whole list would take if nothing were in its way, headings and all. */
 function listHeight(actions: readonly Action[]): number {
   return actions
@@ -758,8 +789,11 @@ function fitList(
   if (keyless === 0 && height <= budget) return { rows: groups.flat(), omitted: 0 };
 
   // One row goes to the count itself, so the list never eats the line that says
-  // there is more of it.
-  const room = Math.max(0, budget - 1);
+  // there is more of it — unless that row is the only one the list has, in
+  // which case the count goes and the line stays. `… 6 more` over nothing is
+  // the panel naming an interface and then refusing to draw it.
+  const first = groups[0]?.length ?? 0;
+  const room = budget - 1 >= first ? budget - 1 : Math.max(0, Math.min(budget, first));
   const rows: PanelLine[] = [];
   let kept = 0;
   for (const group of groups) {
