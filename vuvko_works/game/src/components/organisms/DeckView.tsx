@@ -159,7 +159,7 @@ const BACKDROP_OPACITY = 0.72;
  * The fill still goes up, but only enough to keep the room colours reading
  * through the artwork.
  */
-const HEX_FILL_OPACITY = 0.6;
+const HEX_FILL_OPACITY = 0.75;
 const HEX_EDGE = "#46606f";
 /** In hex widths, so the lattice keeps its weight at any scale. */
 const HEX_EDGE_WIDTH = 0.019;
