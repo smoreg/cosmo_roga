@@ -9,7 +9,19 @@ import prettier from "eslint-config-prettier/flat";
 import house from "./eslint-rules/index.js";
 
 export default tseslint.config(
-  { ignores: ["dist", "storybook-static", "coverage", "node_modules", "public"] },
+  {
+    ignores: [
+      "dist",
+      "storybook-static",
+      "coverage",
+      "node_modules",
+      "public",
+      /* Vendored verbatim from vuvko_works/geomorph-core.js. It is someone
+         else's code in someone else's style; linting it would only invite
+         edits that the next sync would throw away. */
+      "src/vendor/geomorph-core.js",
+    ],
+  },
 
   js.configs.recommended,
 

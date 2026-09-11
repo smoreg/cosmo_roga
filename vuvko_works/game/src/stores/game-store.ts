@@ -16,6 +16,7 @@ import type { RawDeckExport } from "../core/deck";
 import type { GameEvent } from "../core/events";
 import type { Axial } from "../core/hex";
 import { buildMission } from "../core/mission";
+import { generateDeck } from "../render/generate";
 import { rollMission } from "../core/missions";
 import type { MissionBrief } from "../core/missions";
 import { createRng } from "../core/rng";
@@ -39,8 +40,12 @@ export interface GameStore {
 
   /** Roll a mission type and a hull, and show the briefing. */
   roll: () => void;
-  /** Begin the mission that was rolled. */
-  launch: (raw: RawDeckExport, overrides?: Partial<MissionSettings>) => void;
+  /** True while a hull is being generated. */
+  generating: boolean;
+  /** What went wrong generating, if anything. */
+  generatorError: string | null;
+  /** Generate the rolled hull and begin the mission. */
+  launch: (overrides?: Partial<MissionSettings>) => Promise<void>;
   /** Back to the briefing, rolling the next one. */
   toBriefing: () => void;
   start: (raw: RawDeckExport, overrides?: Partial<MissionSettings>) => void;
@@ -63,6 +68,8 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
   }
 
   return {
+    generating: false,
+    generatorError: null,
     brief: null,
     roller: createRng(String(Date.now())),
     deck: null,
@@ -94,9 +101,24 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
       set({ brief, roller: next });
     },
 
-    launch(raw, overrides) {
+    async launch(overrides) {
       const brief = get().brief;
-      get().start(raw, { seed: brief?.seed ?? "boarding-1", ...overrides });
+      if (brief === null) return;
+      set({ generating: true, generatorError: null });
+      try {
+        const raw = await generateDeck({
+          profile: brief.profile.code,
+          seed: brief.seed,
+          tilesBaseUrl: `${import.meta.env.BASE_URL}geomorphs/`,
+        });
+        get().start(raw, { seed: brief.seed, ...overrides });
+        set({ generating: false });
+      } catch (problem) {
+        /* A hull that will not build is worth saying out loud rather than
+           dropping the player into a mission they did not ask for. */
+        const reason = problem instanceof Error ? problem.message : "the hull would not build";
+        set({ generating: false, generatorError: reason });
+      }
     },
 
     toBriefing() {

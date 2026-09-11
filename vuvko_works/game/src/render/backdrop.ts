@@ -13,6 +13,7 @@
  */
 
 import type { TilePlacement } from "../core/types";
+import { loadImage } from "./images";
 
 /** The source artwork is drawn at 60 px to a 5 ft square. */
 const SOURCE_PX_PER_FOOT = 12;
@@ -26,26 +27,6 @@ export interface BlueprintOptions {
   readonly pxPerFoot?: number;
   readonly ink?: string;
   readonly signal?: AbortSignal;
-}
-
-function loadImage(src: string, signal?: AbortSignal): Promise<HTMLImageElement> {
-  return new Promise(function attempt(resolve, reject) {
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = function done() {
-      resolve(image);
-    };
-    image.onerror = function failed() {
-      reject(new Error(`could not load tile: ${src}`));
-    };
-    if (signal !== undefined) {
-      signal.addEventListener("abort", function cancel() {
-        image.src = "";
-        reject(new Error("aborted"));
-      });
-    }
-    image.src = src;
-  });
 }
 
 /**

@@ -3,13 +3,11 @@ import { GameScreen } from "../components/organisms/GameScreen";
 import { MissionBriefing } from "../components/organisms/MissionBriefing";
 import { OutcomeDialog } from "../components/organisms/OutcomeDialog";
 import { liveSpawners } from "../core/topology";
-import type { RawDeckExport } from "../core/deck";
 import { describeAll } from "../lib/log";
 import { useBlueprint } from "../hooks/useBlueprint";
 import { useMissionInput } from "../hooks/useMissionInput";
 import { useGameStore } from "../stores/game-store";
 import { useUiStore } from "../stores/ui-store";
-import deckExport from "../assets/decks/hollow-tide-35ft.json";
 
 /**
  * Where the tiles are served from, relative to the page.
@@ -30,7 +28,7 @@ export function GamePage() {
     return ui.go;
   });
   const { deck, state, dispatch, finishTurn, events, unreachableRooms } = store;
-  const { brief, roll, launch, toBriefing } = store;
+  const { brief, roll, launch, toBriefing, generating, generatorError } = store;
   const input = useMissionInput(deck, state, dispatch);
 
   /* The ship's own artwork, drawn once per deck. Null until it is ready, and
@@ -67,8 +65,10 @@ export function GamePage() {
   );
 
   function boardIt(): void {
-    launch(deckExport as unknown as RawDeckExport);
-    go("mission");
+    void launch().then(function aboard() {
+      if (useGameStore.getState().deck !== null) go("mission");
+      return undefined;
+    });
   }
 
   function nextContract(): void {
@@ -79,7 +79,14 @@ export function GamePage() {
 
   if (screen === "briefing" || deck === null || state === null) {
     return (
-      <MissionBriefing brief={brief} onRoll={roll} onLaunch={boardIt} lastOutcome={lastOutcome} />
+      <MissionBriefing
+        brief={brief}
+        onRoll={roll}
+        onLaunch={boardIt}
+        lastOutcome={lastOutcome}
+        busy={generating}
+        error={generatorError}
+      />
     );
   }
 

@@ -6,3 +6,6 @@ public/decks
 package-lock.json
 src/core/test/*.json
 src/assets/decks/*.json
+
+# Vendored verbatim; reformatting it would make every sync a diff.
+src/vendor/geomorph-core.js

@@ -23,7 +23,9 @@
     "check": "npm run format && npm run lint && npm run typecheck && npm run test",
     "design:bundle": "esbuild scripts/design-bundle.tsx --bundle --platform=node --format=esm --jsx=automatic --loader:.css=empty --loader:.json=json --outfile=.design-bundle.mjs --external:react --external:react-dom && node .design-bundle.mjs && rm .design-bundle.mjs",
     "deploy:itch": "npm run build && bash scripts/deploy-itch.sh",
-    "assets:atlas": "python3 scripts/bake_tile_atlas.py"
+    "assets:atlas": "python3 scripts/bake_tile_atlas.py",
+    "sync:core": "node scripts/sync-geomorph-core.mjs",
+    "assets:index": "node scripts/build-tile-index.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",

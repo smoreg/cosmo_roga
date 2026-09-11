@@ -8,10 +8,15 @@ export interface MissionBriefingProps {
   readonly onLaunch: () => void;
   /** Shown when a mission has just been finished. */
   readonly lastOutcome?: "win" | "loss" | null | undefined;
+  /** True while the hull is being generated. */
+  readonly busy?: boolean | undefined;
+  /** Why the hull would not build, if it would not. */
+  readonly error?: string | null | undefined;
 }
 
 /** The screen between missions: what was rolled, and whether to take it. */
-export function MissionBriefing({ brief, onRoll, onLaunch, lastOutcome }: MissionBriefingProps) {
+export function MissionBriefing(props: MissionBriefingProps) {
+  const { brief, onRoll, onLaunch, lastOutcome, busy = false, error } = props;
   return (
     <div className="briefing">
       <div className="briefing__sheet">
@@ -50,11 +55,30 @@ export function MissionBriefing({ brief, onRoll, onLaunch, lastOutcome }: Missio
           </>
         )}
 
+        {error == null ? null : (
+          <p
+            className="briefing__how"
+            style={{ color: "var(--stamp)", borderColor: "var(--stamp)" }}
+          >
+            The hull would not build: {error}
+          </p>
+        )}
+
+        {error == null ? null : (
+          <p
+            className="briefing__how"
+            style={{ color: "var(--stamp)", borderColor: "var(--stamp)" }}
+          >
+            The hull would not build: {error}
+          </p>
+        )}
+
         <div className="briefing__actions">
           <button
             type="button"
             className="briefing__button briefing__button--ghost"
             onClick={onRoll}
+            disabled={busy}
           >
             Roll again
           </button>
@@ -62,9 +86,9 @@ export function MissionBriefing({ brief, onRoll, onLaunch, lastOutcome }: Missio
             type="button"
             className="briefing__button"
             onClick={onLaunch}
-            disabled={brief === null}
+            disabled={brief === null || busy}
           >
-            Board it
+            {busy ? "Building the hull…" : "Board it"}
           </button>
         </div>
       </div>

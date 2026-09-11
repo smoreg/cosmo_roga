@@ -1,7 +1,12 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/main.tsx", ".storybook/{main,preview}.{ts,tsx}"],
-  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{ts,js}"],
-  "ignoreDependencies": ["oxlint", "lefthook"],
+  "entry": [".storybook/{main,preview}.{ts,tsx}"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.mjs"],
+  "ignoreDependencies": ["lefthook"],
+  "ignore": [
+    "src/vendor/geomorph-core.js",
+    "src/vendor/geomorph-core.d.ts",
+    "src/test/setup-dom.ts"
+  ],
   "vitest": { "config": ["vitest.config.ts"] }
 }

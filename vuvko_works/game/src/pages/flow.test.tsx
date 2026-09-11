@@ -1,4 +1,13 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import deckExport from "../assets/decks/hollow-tide-35ft.json";
+
+/* Generating a hull rasterises tiles onto a canvas, which jsdom does not
+   have. The flow being tested here is the one around generation, so the
+   generator itself is stood in for by the deck that ships with the game. */
+vi.mock("../render/generate", () => ({
+  generateDeck: vi.fn(() => Promise.resolve(deckExport)),
+  ensureLibrary: vi.fn(),
+}));
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
@@ -36,6 +45,14 @@ function buttonSaying(host: HTMLElement, label: string): HTMLButtonElement {
         .join(" | ")}`,
     );
   return found;
+}
+
+/** Press Board it and wait for the hull to come back. */
+async function board(host: HTMLElement): Promise<void> {
+  buttonSaying(host, "Board it").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await act(async () => {
+    await Promise.resolve();
+  });
 }
 
 beforeEach(() => {
@@ -92,13 +109,11 @@ describe("the run", () => {
     page.stop();
   });
 
-  it("boards the ship, and the mission runs on the rolled seed", () => {
+  it("boards the ship, and the mission runs on the rolled seed", async () => {
     const page = mountPage();
     const brief = useGameStore.getState().brief;
 
-    act(() => {
-      buttonSaying(page.host, "Board it").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await board(page.host);
     const store = useGameStore.getState();
     expect(useUiStore.getState().screen).toBe("mission");
     expect(store.deck).not.toBeNull();
@@ -109,11 +124,9 @@ describe("the run", () => {
     page.stop();
   });
 
-  it("shows the outcome when the mission ends, and goes back for the next one", () => {
+  it("shows the outcome when the mission ends, and goes back for the next one", async () => {
     const page = mountPage();
-    act(() => {
-      buttonSaying(page.host, "Board it").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await board(page.host);
 
     /* Win it outright by levelling the spawn zones. */
     act(() => {
@@ -141,11 +154,9 @@ describe("the run", () => {
     page.stop();
   });
 
-  it("says so when both drones were lost", () => {
+  it("says so when both drones were lost", async () => {
     const page = mountPage();
-    act(() => {
-      buttonSaying(page.host, "Board it").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await board(page.host);
     act(() => {
       const store = useGameStore.getState();
       useGameStore.setState({ state: { ...store.state!, outcome: "loss" } });
