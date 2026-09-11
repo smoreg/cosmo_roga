@@ -189,11 +189,11 @@ interface Rung {
  * hulls sold to 6, so there the ladder is the word, the doors and the hunter.
  */
 const LADDER: Readonly<Record<number, Rung>> = {
-  1: { word: "alert.noticed", posted: 0, sent: 0, hunter: false },
-  2: { word: "alert.searching", posted: 1, sent: 0, hunter: false },
-  3: { word: "alert.hunting", posted: 0, sent: 1, hunter: false },
-  4: { word: "alert.hunter", posted: 0, sent: 0, hunter: true },
-  5: { word: "alert.scuttle", posted: 0, sent: 0, hunter: true },
+  1: { word: "alert.noticed", posted: 0, sent: 0, hunter: 1 >= HUNTER_LEVEL },
+  2: { word: "alert.searching", posted: 1, sent: 0, hunter: 2 >= HUNTER_LEVEL },
+  3: { word: "alert.hunting", posted: 0, sent: 1, hunter: 3 >= HUNTER_LEVEL },
+  4: { word: "alert.hunter", posted: 0, sent: 0, hunter: 4 >= HUNTER_LEVEL },
+  5: { word: "alert.scuttle", posted: 0, sent: 0, hunter: 5 >= HUNTER_LEVEL },
 };
 
 // ------------------------------------------------------------------- the state
@@ -769,11 +769,6 @@ export function standDown(game: RoomGame): void {
  */
 function neutralised(game: RoomGame, st: AlertState): boolean {
   return st.frozen || onlineSystems(game) >= OBJECTIVE_COUNT;
-}
-
-/** The same question, for the panel and the tests. */
-export function alertOff(game: RoomGame): boolean {
-  return !isTug(game) && neutralised(game, alertState(game));
 }
 
 // ------------------------------------------------------- between two sorties

@@ -11,11 +11,9 @@ import {
   appReducer,
   crashSummary,
   crashed,
-  droneLost,
   firstLine,
   initialState,
   listOf,
-  shipSold,
   stoppedAt,
   syncStatus,
   walkEnded,
@@ -1436,18 +1434,6 @@ describe("the endings", () => {
       expect(game.status).toBe("dead");
       expect(syncStatus(state, game).overlay).toBe("dead");
     });
-  });
-
-  it("holds a sortie's own ending until the voyage says otherwise", () => {
-    // `lost` and `sold` belong to the economy (G26); the transitions exist here
-    // so the screen in front of them is a value like every other overlay.
-    const game = newRun(104);
-    const lost = droneLost(playing(game));
-    expect(lost.overlay).toBe("lost");
-    expect(syncStatus(lost, game).overlay).toBe("lost");
-    expect(shipSold(playing(game)).overlay).toBe("sold");
-    // Broken outranks both: the run is not in a state to be summarised.
-    expect(droneLost(crashed(playing(game), ["boom"])).overlay).toBe("crash");
   });
 });
 

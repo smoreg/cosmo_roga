@@ -21,7 +21,7 @@ import { STARTING_CREDITS, STARTING_HULL } from "../src/content/hulls.js";
 import { moduleName } from "../src/content/modules.js";
 import { TUG_ID, TUG_KINDS, TUG_ROOMS, isTug, stationName, tugShip } from "../src/content/tug.js";
 import { alertState } from "../src/systems/alert.js";
-import { TUG, gatedOffers, stationGuide } from "../src/systems/tug.js";
+import { TUG, gatedOffers } from "../src/systems/tug.js";
 import { VOYAGE } from "../src/systems/voyage.js";
 import {
   HOLD_LIMIT,
@@ -181,13 +181,11 @@ describe("the tug's graph", () => {
     // Both were G40's answer to a tug you had to walk: a row of compartment
     // names among the counters, then a four-row guide at the foot of the panel
     // saying which of them sold and which mended. There is nothing left for
-    // either to point at — every verb is on the one list — and `stationGuide`
-    // stays only until `ui/panel.ts` stops calling it (G54).
-    const game = onTug();
+    // either to point at — every verb is on the one list.
+    onTug();
     expect(TUG.panelLines).toBeUndefined();
     expect(TUG.offerActions).toBeUndefined();
     expect(TUG.performCommand).toBeUndefined();
-    expect(stationGuide(game)).toEqual([]);
   });
 });
 

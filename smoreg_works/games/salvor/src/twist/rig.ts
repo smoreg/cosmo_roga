@@ -821,13 +821,6 @@ export function setCarried(player: Entity, carry: readonly Carried[]): void {
   else data.carry = [...carry];
 }
 
-/** Take everything the drone is carrying, and leave it carrying nothing. */
-export function unloadCarried(player: Entity): Carried[] {
-  const carry = carriedBy(player);
-  setCarried(player, []);
-  return carry;
-}
-
 /**
  * `act carry {wreck}`: a module off the pile and into the drone's arms.
  *

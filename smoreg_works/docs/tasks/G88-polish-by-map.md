@@ -122,6 +122,29 @@ sold mean 0.44, sorties med 4, turns med 197, lastHull 56 %, stuck 0 (текст
 `HUNTER_LEVEL` в `LADDER`; `stationGuide`, `droneLost`/`shipSold`, `sizecheck.test.ts`;
 `creditsOf` и `machinesIn` дубли; врущие комментарии. Поведение не меняется.
 
+Статус: done 11.09 (`task/g88d` @ 0f7bb64) · девять коммитов, один на пункт: 4dfa992 fortnight2
+из exclude · 1faab8f шесть мёртвых экспортов (`alertOff`, `unloadCarried`, `STOCK_SIZE`,
+`MIN_MACHINE_FOV` салвора, `CORE_HP` салвора, `hexCorners`/`inside` из `hullforms.ts` — у
+второго `hexCorners` есть тёзка в `ui/web/hex-svg.ts`, использующийся, не трогали) · 5c170f3
+`creditsOf` в `rival.ts` заменён на импорт из `purse.ts` (лист, цикла нет) · bbc0b76 `LADDER`
+берёт ступень охотника из `HUNTER_LEVEL` (`N >= HUNTER_LEVEL` вместо литералов) · 27dc8e3
+`stationGuide`/`StationRow` убраны вместе с утверждением в `tug.test.ts` и своим упоминанием в
+комментарии `panel.ts` · 5e6b574 `droneLost`/`shipSold` убраны вместе с их единственным
+изолированным тестом (остальные тесты того же describe уже проверяют настоящий путь через
+`raisedBy`/`syncStatus`) · ff25d8d `sizecheck.test.ts` удалён · c97032e `machinesIn` в
+`ui/actions.ts` заменён на `hostilesIn` из `twist/rig.ts` (тот же код); одноимённый в
+`ui/schematic-input.ts` не трогали — другое поведение (не фильтрует фракцию), и коллизия имён
+пропала сама, раз в `actions.ts` своего `machinesIn` больше нет · 0f7bb64 враньё в комментариях:
+`.claude/CLAUDE.md` 198 → 2182 теста, `README.md` ~1600 → 2182 (+ пометка про fortnight2 отдельно);
+две строки счёта строк в `docs/adr/0003-decoupling.md`; `cards.ts`/`doors.ts` — «until G18»/«until
+G26» переписаны на факт (обе задачи закрыты недели назад); `tIn` в `i18n.ts` и комментарии
+`ui/web/screen.ts` — называли `helpBody`/`TITLE_LINES`, которых там больше нет.
+
+Время `npm test`: 119 файлов/2429 тестов/48.38 с → после п.1 98/2184/23.77 с → после п.2–9 (мёртвый
+код и один тест меньше) 97/2182/19–21 с. Гейт: `npm test` 97/2182 зелёные, `typecheck` чисто,
+`build` чисто (543.17 kB). careful/32: `win=0% stuck=0 sold mean=0.44 sorties med=4 turns med=197
+lastHull=56%` — совпадает с планкой день-в-день. Фикстуры `voyage-*.json` не трогали.
+
 ## Владение и пересечения
 - A: `packages/engine/src/testing/roombots.ts`, `systems/alert.ts`, `systems/hazards.ts`,
   `systems/ship.ts` (порядок строки), `content/tutorial.ts`/`systems/tutorial.ts` (каратель),

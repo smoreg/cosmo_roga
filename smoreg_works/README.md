@@ -26,7 +26,7 @@
 npm install                          # свяжет воркспейсы
 
 npm run dev                          # SALVOR на http://localhost:5173
-npm test                             # ~1600 тестов: движок, аудио, обе игры
+npm test                             # 2182 теста: движок, аудио, salvor (fortnight2 заморожена, свой прогон)
 npm run typecheck                    # типы по всему монорепо
 npm run build                        # сборка SALVOR
 npm run zip                          # dist + games/salvor/salvor-web.zip для itch.io

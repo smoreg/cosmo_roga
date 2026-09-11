@@ -466,34 +466,9 @@ export function hexCentre(cell: HexCell, R: number): Point {
   return { x: Math.sqrt(3) * R * (cell.q + cell.r / 2), y: 1.5 * R * cell.r };
 }
 
-/** The six corners of a tiling cell, clockwise from the top. */
-export function hexCorners(cell: HexCell, R: number): Point[] {
-  const c = hexCentre(cell, R);
-  const half = (Math.sqrt(3) / 2) * R;
-  return [
-    { x: c.x, y: c.y - R },
-    { x: c.x + half, y: c.y - R / 2 },
-    { x: c.x + half, y: c.y + R / 2 },
-    { x: c.x, y: c.y + R },
-    { x: c.x - half, y: c.y + R / 2 },
-    { x: c.x - half, y: c.y - R / 2 },
-  ];
-}
-
 /** The mirror of a cell across the keel row: the same column, the same distance below. */
 export function mirrored(cell: HexCell): HexCell {
   return { q: cell.q + cell.r, r: -cell.r };
-}
-
-/** Is the point inside the polygon, by the crossing rule? */
-export function inside(p: Point, poly: Polygon): boolean {
-  let hit = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i]!;
-    const b = poly[j]!;
-    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
-  }
-  return hit;
 }
 
 /** Deterministic 32-bit generator, the sandbox's. Seeded by the caller, never by the clock. */

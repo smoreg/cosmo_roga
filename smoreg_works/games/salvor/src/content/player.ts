@@ -3,17 +3,6 @@ import { STARTING_HULL, type HullKind } from "./hulls.js";
 import { applyDerived, makeStartingRig } from "../twist/rig.js";
 
 /**
- * CORE hit points on the cheapest chassis. Never healed — three mistakes end
- * the run (design-doc.md).
- *
- * The number the game is written around, and the floor of the ladder rather
- * than a constant now: a hull carries its own (`HullKind.core`), three on a
- * SCRAPPER and five on a GHOST, because what a dear drone buys is room and
- * life («дорогие дроны имеют больше слотов и чуть больше ядра» — the owner).
- */
-export const CORE_HP = 3;
-
-/**
  * The drone, as the hull it was bought as.
  *
  * No position: on a ship there are no tiles, and the room is set by `RoomGame`

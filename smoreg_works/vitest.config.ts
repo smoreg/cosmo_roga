@@ -10,6 +10,8 @@ export default defineConfig({
     environment: "node",
     include: ["packages/*/tests/**/*.test.ts", "games/*/tests/**/*.test.ts"],
     // _template is a scaffold, not a game: its files still hold placeholders.
-    exclude: ["**/node_modules/**", "games/_template/**"],
+    // fortnight2 is frozen (jam entry nobody touches) and its suite eats a third
+    // of the run; salvor is the live game.
+    exclude: ["**/node_modules/**", "games/_template/**", "games/fortnight2/**"],
   },
 });

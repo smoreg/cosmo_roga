@@ -109,8 +109,10 @@ export function t(key: Key, params?: Params): string {
 }
 
 /**
- * The same, in a language the caller names. For tests, and for the one place
- * that has to print three languages at once: the title's `EN · ES · RU`.
+ * The same, in a language the caller names. Tests only — production code
+ * always reads the language that is on (`t`); the title's `EN · ES · RU` is
+ * the language codes themselves, uppercased (`ui/title.ts`, `langOptions`),
+ * not three calls through this.
  */
 export function tIn(lang: Lang, key: Key, params?: Params): string {
   const pattern = TABLES[lang][key] ?? EN[key];

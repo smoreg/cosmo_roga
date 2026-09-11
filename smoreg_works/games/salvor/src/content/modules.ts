@@ -263,13 +263,6 @@ export const RELICS: readonly ModuleId[] = (Object.keys(MODULES) as ModuleId[]).
 export const SHOCK_STUN_TURNS = 2;
 
 /**
- * However quiet the drone gets, a machine standing in the same compartment
- * still has eyes. Without this floor a BAFFLE would be invisibility, and the
- * module is meant to buy a door of distance, not immunity.
- */
-export const MIN_MACHINE_FOV = 2;
-
-/**
  * How much integrity a module pulled out of a wreck still has. Never full:
  * salvage keeps the rack alive, it never restores it.
  */

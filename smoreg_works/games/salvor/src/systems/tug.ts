@@ -40,28 +40,6 @@ export function gatedOffers(game: RoomGame): Array<ActionOffer<RoomCommand>> {
   return game.systems.flatMap((s) => s.offerActions?.(game) ?? []);
 }
 
-/** One row of the panel's foot while the drone is home. Nothing fills it now. */
-export interface StationRow {
-  text: string;
-  here: boolean;
-}
-
-/**
- * The rows the panel prints under the numbered list while the drone is home.
- *
- * Empty since the stations became a menu: it used to be a four-row map of the
- * compartments — `DOCK  buy undock`, and so on — telling the player where to
- * walk for the verbs that were not on the list in front of them. Every one of
- * those verbs is now on that list, so the map has nothing left to point at.
- *
- * The name stays because `ui/panel.ts` calls it and that file is another
- * agent's this week; G54 is what drops the call and puts the tug's own state
- * block there instead (docs/tasks/G54-two-ships-confusion.md, 1).
- */
-export function stationGuide(_game: RoomGame): StationRow[] {
-  return [];
-}
-
 export const TUG: System<RoomGame> = {
   name: "tug",
 

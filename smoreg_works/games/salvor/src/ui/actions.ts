@@ -1,5 +1,4 @@
 import {
-  isAlive,
   type ActionOffer,
   type Door,
   type DoorId,
@@ -21,7 +20,7 @@ import { roomList, type RoomItem, type ShipSystem } from "../systems/populate.js
 import { shipState } from "../systems/shipstate.js";
 import { gatedOffers } from "../systems/tug.js";
 import { pickLabel, stationTargets, voyageRecord } from "../systems/voyage.js";
-import { wreckAt } from "../twist/rig.js";
+import { hostilesIn, wreckAt } from "../twist/rig.js";
 import { dangerAhead, passableForPlayer, travelRoute } from "./auto.js";
 import { BUCKET_GLYPH } from "./schematic-input.js";
 
@@ -709,7 +708,7 @@ function hereActions(game: RoomGame): Action[] {
     // Attacks come off the entity list rather than off the offers: hitting what
     // is in the room is the engine's own verb, and it stays on the list even if
     // a game one day stops advertising it.
-    ...attackRows(machinesIn(game, here)),
+    ...attackRows(hostilesIn(game, here)),
     ...shots.map(fromOffer),
     // A relic against a full rack: one line per crate, its slots one level down.
     ...swapRows(game, here, swaps),
@@ -980,7 +979,7 @@ function threatBeyond(game: RoomGame, here: RoomId, offer: ActionOffer<RoomComma
   const door = target === undefined ? undefined : game.ship.doors[target];
   if (!door) return false;
   const far = game.ship.other(door, here);
-  return game.visible.has(far) && machinesIn(game, far).length > 0;
+  return game.visible.has(far) && hostilesIn(game, far).length > 0;
 }
 
 /**
@@ -1273,12 +1272,6 @@ function attackRows(machines: readonly Entity[]): Action[] {
     const twins = rows.filter((r) => r.label === row.label).length;
     return twins > 1 ? { ...row, label: `${row.label} #${n}` } : row;
   });
-}
-
-function machinesIn(game: RoomGame, room: RoomId): Entity[] {
-  return game.entities.filter(
-    (e) => e.room === room && e.id !== game.player.id && e.faction !== game.player.faction && isAlive(e),
-  );
 }
 
 function fromOffer(offer: ActionOffer<RoomCommand>): Action {

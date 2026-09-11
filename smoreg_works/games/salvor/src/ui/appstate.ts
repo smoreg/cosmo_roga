@@ -1153,20 +1153,6 @@ export function walkEnded(state: AppState): AppState {
   return { ...state, exploring: false, effect: IDLE };
 }
 
-/**
- * The drone did not come back. Not the end of the run — the tug buys another
- * one if the account can carry it — so it is an overlay of its own rather than
- * `dead`, and the voyage economy (G26) is what raises it.
- */
-export function droneLost(state: AppState): AppState {
-  return ending(state, "lost");
-}
-
-/** The ship was neutralised and sold. The other half of the same transition. */
-export function shipSold(state: AppState): AppState {
-  return ending(state, "sold");
-}
-
 function ending(state: AppState, overlay: Overlay): AppState {
   if (state.crash !== undefined) return state;
   return { ...state, overlay, exploring: false, effect: IDLE };

@@ -28,10 +28,11 @@ import {
 import { t } from "../i18n.js";
 import { addWreck, hostilesIn, registerDamageVeto } from "../twist/rig.js";
 import { notePost, raiseAlert } from "./alert.js";
+import { creditsOf } from "./purse.js";
 import { rivalState, type RivalState } from "./rivalstate.js";
 import { roomList, type ShipSystem } from "./populate.js";
 import { shipState } from "./shipstate.js";
-import { credit, derelictAboard, spend, voyageRecord, type RivalDeal } from "./voyage.js";
+import { credit, derelictAboard, spend, type RivalDeal } from "./voyage.js";
 
 /**
  * The rival: another tug's drone, working the same derelict (design-doc.md,
@@ -477,11 +478,6 @@ function robbed(game: RoomGame, self: Entity): void {
 /** The deal struck on the hull under the drone, if one was (G34). */
 function dealOf(game: RoomGame): RivalDeal | undefined {
   return derelictAboard(game)?.deal;
-}
-
-/** What the account holds, read without starting a voyage (`voyageRecord`). */
-function creditsOf(game: RoomGame): number {
-  return voyageRecord(game)?.credits ?? 0;
 }
 
 /** A rival within talking distance, on a hull nobody has struck a deal on. */

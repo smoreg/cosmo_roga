@@ -539,9 +539,6 @@ function holds(voyage: Voyage, rig: Rig | undefined, id: ModuleId): boolean {
 /** The three, in the order the dock lists them. */
 const SHELF: readonly ModuleId[] = ["cutter", "plating", "thrusters"];
 
-/** Modules on the dock's shelf at once. */
-export const STOCK_SIZE = SHELF.length;
-
 /**
  * What the dock charges — and the ceiling on it is measured, not chosen.
  *

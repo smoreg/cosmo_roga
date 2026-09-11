@@ -678,7 +678,9 @@ const BRIDGE: RoomCard = {
 /**
  * Where the last drone died, on a ship that already killed one. The ship is not
  * a place the run visits twice unchanged: the rack you lost is lying in it, and
- * so is whatever is wearing it now. Unreachable until G18 raises the flag.
+ * so is whatever is wearing it now. Unreachable: nothing sets `deathFlag` —
+ * G18 shipped the same idea through `systems/ghost.ts`'s own death records
+ * instead.
  */
 const DRONE_WRECK: RoomCard = {
   name: "wreck of your drone",

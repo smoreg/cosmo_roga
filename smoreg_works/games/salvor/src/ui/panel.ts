@@ -746,8 +746,7 @@ function contactLine(machine: Entity, door: string | undefined): string {
  *
  * It used to carry the map of the tug above the letters — four rows saying
  * which compartment sold and which mended. There are no compartments to map
- * since G53 and `stationGuide` hands back nothing; the call goes with the
- * concept.
+ * since G53.
  */
 export function footBlocks(game: RoomGame, nested = false): PanelLine[] {
   return letterRows(game, nested).map((line) => ({ text: clip(line), fg: THEME.fgDim }));

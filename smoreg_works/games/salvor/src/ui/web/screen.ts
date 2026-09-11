@@ -29,7 +29,7 @@ import { WEB_ROOT_CLASS } from "./styles.js";
  * card is in front of them.
  *
  * Every word on it comes out of a function the terminal renderer already calls —
- * `bannerLine`, `panelBlocks`, `listOf`, `helpBody`, `TITLE_LINES`,
+ * `bannerLine`, `panelBlocks`, `listOf`, `helpPages`, `titleScreen`,
  * `endingBanners`, `runSummary` — and there is not a string of prose in this
  * file. That is deliberate and load-bearing: the two views must not be able to
  * disagree about what the game says, and a localisation pass has one table to
@@ -276,7 +276,7 @@ function titleValueHtml(item: TitleItem): string {
 }
 
 /**
- * The help card. `helpBody` is the whole of it, and the three colours are the
+ * The help card. `helpPages` is the whole of it, and the three colours are the
  * three the terminal uses: a heading, the key table, and prose.
  */
 function helpCard(game: RoomGame, page: number): string[] {

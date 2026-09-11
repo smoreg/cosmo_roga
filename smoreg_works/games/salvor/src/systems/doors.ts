@@ -177,7 +177,7 @@ function setKeys(player: Entity, keys: number): void {
   (player.data ??= {}).keys = Math.max(0, keys);
 }
 
-/** Credits picked up off the dead, until G26 gives the run a purse of its own. */
+/** Credits picked up off the dead: the drone's own pocket, banked into the purse when the hold is emptied. */
 function addLoot(player: Entity, amount: number): void {
   const data = (player.data ??= {});
   data.loot = (typeof data.loot === "number" ? data.loot : 0) + amount;
