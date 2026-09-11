@@ -4,6 +4,12 @@ import { tileGeometry, tileUrl } from "./backdrop";
 const SOURCE = { pxPerFoot: 12, bleedFeet: 10 };
 const BAKED = { pxPerFoot: 2, bleedFeet: 10 };
 
+/* Three real entries from the tile index: a plain [100x100], a [100x50], and
+   the connecting gangway that bleeds seven squares down and two across. */
+const SQUARE = { w: 100, h: 100, px: [1440, 1440] as const };
+const HALF = { w: 100, h: 50, px: [1440, 840] as const };
+const GANGWAY = { w: 100, h: 100, px: [1440, 2040] as const };
+
 describe("sizing a tile in the plan's feet", () => {
   it("reads the source artwork at its own resolution", () => {
     /* A [100x100] tile arrives as 1440 px: 120 ft of image around 100 ft of
@@ -62,16 +68,35 @@ describe("sizing a tile in the plan's feet", () => {
     const guessed = tileGeometry(1440, 2040, 0, SOURCE);
     expect(guessed.footprintHeightFeet).toBe(150);
 
-    const declared = tileGeometry(1440, 2040, 0, SOURCE, { w: 100, h: 100 });
+    const declared = tileGeometry(1440, 2040, 0, SOURCE, GANGWAY);
     expect(declared.imageHeightFeet).toBe(170);
     expect(declared.footprintWidthFeet).toBe(100);
     expect(declared.footprintHeightFeet).toBe(100);
   });
 
   it("still swaps a declared footprint on a quarter turn", () => {
-    const turned = tileGeometry(1440, 840, 90, SOURCE, { w: 100, h: 50 });
+    const turned = tileGeometry(1440, 840, 90, SOURCE, HALF);
     expect(turned.footprintWidthFeet).toBe(50);
     expect(turned.footprintHeightFeet).toBe(100);
+  });
+
+  it("ignores the file's own pixels entirely when the index knows the tile", () => {
+    /* The point of reading the index: the answer must not depend on which
+       bake was downloaded. Hand it a tile at every resolution the atlas has
+       ever been baked at — and one at none of them — and it comes back with
+       the same hundred feet each time. Inferring from the pixels in hand is
+       what produced a sixth-scale plan, and then a third-scale one. */
+    for (const pxPerFoot of [12, 4, 3, 2, 0.5]) {
+      const geometry = tileGeometry(120 * pxPerFoot, 120 * pxPerFoot, 0, SOURCE, SQUARE);
+      expect(geometry.imageWidthFeet, `baked at ${String(pxPerFoot)}`).toBe(120);
+      expect(geometry.footprintWidthFeet, `baked at ${String(pxPerFoot)}`).toBe(100);
+    }
+  });
+
+  it("falls back to measuring only a tile the index has never heard of", () => {
+    const measured = tileGeometry(480, 480, 0, { pxPerFoot: 4, bleedFeet: 10 });
+    expect(measured.imageWidthFeet).toBe(120);
+    expect(measured.footprintWidthFeet).toBe(100);
   });
 });
 

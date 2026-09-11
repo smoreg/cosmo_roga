@@ -16,22 +16,39 @@ import type { TilePlacement } from "../core/types";
 import manifest from "../assets/tiles/manifest.json";
 import { loadImage } from "./images";
 
+/** A tile's own dimensions: its footprint in feet, its artwork in source px. */
+export interface DeclaredTile {
+  /** The footprint the tile occupies on the plan, in feet. */
+  readonly w: number;
+  readonly h: number;
+  /** The whole image including bleed, in source pixels. */
+  readonly px: readonly [number, number];
+}
+
 /**
  * What each tile says it measures, by path.
  *
- * The index the generator lays out from carries every tile's declared size, so
- * the renderer does not have to infer one from the image and a guess at the
- * bleed. Built once, on first use.
+ * The index the generator lays out from carries every tile's footprint *and*
+ * the size of its artwork, so the renderer never has to work either one out
+ * from the file it happens to have been handed. Built once, on first use.
  */
-let declaredSizes: Map<string, { w: number; h: number }> | null = null;
+let declaredTiles: Map<string, DeclaredTile> | null = null;
 
-function declaredSize(path: string): { w: number; h: number } | undefined {
-  declaredSizes ??= new Map(
-    manifest.tiles.map(function entry(tile) {
-      return [tile.path, { w: tile.w, h: tile.h }] as const;
-    }),
-  );
-  return declaredSizes.get(path);
+function indexTiles(): Map<string, DeclaredTile> {
+  const index = new Map<string, DeclaredTile>();
+  for (const tile of manifest.tiles) {
+    const [wide, tall] = tile.px;
+    /* A tile with no recorded artwork size cannot be measured from the index,
+       so leave it out and let it fall back rather than record a nonsense. */
+    if (wide === undefined || tall === undefined) continue;
+    index.set(tile.path, { w: tile.w, h: tile.h, px: [wide, tall] });
+  }
+  return index;
+}
+
+function declaredTile(path: string): DeclaredTile | undefined {
+  declaredTiles ??= indexTiles();
+  return declaredTiles.get(path);
 }
 
 /** What the source artwork is drawn at, and what a bake falls back to. */
@@ -45,17 +62,22 @@ interface AtlasDescriptor {
 }
 
 /**
- * How the tiles on disk are actually drawn.
+ * How the tiles on disk are actually drawn — the last resort only.
  *
- * What ships is a downscaled bake, not the source artwork, and the two are not
- * the same resolution. Assuming the source's was exactly the bug that made the
- * deck plan shrink to a sixth of its size and look as though it had gone: the
- * only safe number is the one the bake wrote down.
+ * Every tile the generator can place is in the index, and the index says how
+ * big its artwork is, so this is consulted only for a path that is not. It is
+ * kept because a hand-made export may name artwork the shipped index does not
+ * carry, and half a plan beats none.
+ *
+ * The answer is remembered, but a *failure* is not: memoising one meant a
+ * single missed fetch — the file not yet baked, a page left open across a
+ * rebake — pinned the fallback resolution for the life of the tab, and every
+ * tile afterwards drew small however many times the plan was redrawn.
  */
 let atlasPromise: Promise<AtlasDescriptor> | null = null;
 
 function describeAtlas(base: string): Promise<AtlasDescriptor> {
-  atlasPromise ??= fetch(`${base}atlas.json`, { cache: "force-cache" })
+  atlasPromise ??= fetch(`${base}atlas.json`, { cache: "no-cache" })
     .then(function read(response) {
       if (!response.ok) throw new Error(String(response.status));
       return response.json() as Promise<Partial<AtlasDescriptor>>;
@@ -67,7 +89,9 @@ function describeAtlas(base: string): Promise<AtlasDescriptor> {
       };
     })
     .catch(function unbaked(): AtlasDescriptor {
-      /* No descriptor: the source library is being served directly. */
+      /* No descriptor: assume the source library is being served directly,
+         and ask again next time rather than living with the guess. */
+      atlasPromise = null;
       return { pxPerFoot: SOURCE_PX_PER_FOOT, bleedFeet: DEFAULT_BLEED_FEET };
     });
   return atlasPromise;
@@ -103,28 +127,36 @@ export interface TileGeometry {
 }
 
 /**
- * How big a tile image is, in the plan's own feet.
+ * How big a tile is, in the plan's own feet.
  *
- * Two numbers, and each has its own source of truth. The *image* is however
- * many pixels the bake wrote divided by however many pixels a foot it wrote
- * them at — reading a four-pixel bake as though it were the twelve-pixel
- * source is what shrank every tile to a sixth of its size. The *footprint* is
- * the tile's declared size, which is not the image less a fixed bleed: an
- * eighth of the library bleeds unevenly, and one connecting gangway carries
- * thirty-five feet of overhang on one axis and ten on the other. Subtracting
- * ten all round puts that tile seventy feet out.
+ * Both numbers come from the tile index, and neither is measured off the file
+ * that happened to be downloaded. That is the whole point: what ships is a
+ * downscaled bake, the bake resolution has already changed twice, and every
+ * time the renderer inferred feet from the pixels in hand it got them wrong —
+ * once by a factor of six, once by three. The index records the artwork in
+ * *source* pixels, and the source resolution is a fact about the index rather
+ * than about anything on disk, so `px / 12` is the image's size in feet at
+ * every bake resolution there will ever be, including none at all.
  *
- * Both are pure arithmetic, so both can be checked without a canvas.
+ * The footprint is likewise declared, not derived. It is not the image less a
+ * fixed bleed: an eighth of the library bleeds unevenly, and one connecting
+ * gangway carries thirty-five feet of overhang down and ten across, so taking
+ * ten off all round puts that tile fifty feet out.
+ *
+ * Only a tile the index has never heard of falls back to measuring, and that
+ * is the one case where there is nothing better to do.
  */
 export function tileGeometry(
   imageWidthPx: number,
   imageHeightPx: number,
   rotation: number,
   atlas: { pxPerFoot: number; bleedFeet: number },
-  declared?: { readonly w: number; readonly h: number },
+  declared?: DeclaredTile,
 ): TileGeometry {
-  const imageWidthFeet = imageWidthPx / atlas.pxPerFoot;
-  const imageHeightFeet = imageHeightPx / atlas.pxPerFoot;
+  const imageWidthFeet =
+    declared === undefined ? imageWidthPx / atlas.pxPerFoot : declared.px[0] / SOURCE_PX_PER_FOOT;
+  const imageHeightFeet =
+    declared === undefined ? imageHeightPx / atlas.pxPerFoot : declared.px[1] / SOURCE_PX_PER_FOOT;
   const tileWidthFeet = declared?.w ?? imageWidthFeet - atlas.bleedFeet * 2;
   const tileHeightFeet = declared?.h ?? imageHeightFeet - atlas.bleedFeet * 2;
   const turned = isQuarterTurned(rotation);
@@ -173,7 +205,7 @@ export async function renderBlueprint(
       image.naturalHeight,
       placement.rotation,
       atlas,
-      declaredSize(placement.path),
+      declaredTile(placement.path),
     );
     const { imageWidthFeet, imageHeightFeet } = geometry;
 
