@@ -110,6 +110,11 @@ pure, cheap to test exhaustively, and a bug there is a gameplay bug. It is at
 100% of functions and ~99% of lines, including a property-based check that the
 same seed and command list always produce the same state.
 
+A **pre-push hook** runs all of this before anything reaches the remote, and
+refuses the push if it fails. Hooks are not installed by cloning, so once per
+checkout: `git config core.hooksPath .githooks`. See
+[`../../.githooks/README.md`](../../.githooks/README.md).
+
 Type-aware linting is the slowest step, so the pre-commit hook
 ([`lefthook.yml`](lefthook.yml)) runs only format, oxlint and typecheck — a hook
 people wait ten seconds for is a hook people skip.
