@@ -1,0 +1,115 @@
+.briefing {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 20px;
+  background: var(--void);
+  color: var(--ink);
+  font: 400 var(--font-md)/var(--line-md) var(--font-body);
+  overflow: auto;
+}
+
+.briefing__sheet {
+  width: min(520px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  padding: 22px 24px 20px;
+}
+
+.briefing__eyebrow {
+  font: 700 var(--font-xs)/1 var(--font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0 0 14px;
+}
+
+.briefing__outcome {
+  font: 700 var(--font-xs)/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+.briefing__title {
+  font: 700 var(--font-lg)/var(--line-lg) var(--font-body);
+  margin: 0 0 6px;
+}
+
+.briefing__line {
+  color: var(--dim);
+  margin: 0 0 18px;
+  max-width: 46ch;
+}
+
+.briefing__facts {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 6px 12px;
+  margin: 0 0 18px;
+  font: 400 var(--font-sm)/var(--line-sm) var(--font-mono);
+}
+
+.briefing__facts dt {
+  color: var(--dim);
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding-top: 2px;
+}
+
+.briefing__facts dd {
+  margin: 0;
+}
+
+.briefing__shape {
+  display: block;
+  color: var(--dim);
+  font-size: var(--font-sm);
+  margin-top: 3px;
+}
+
+.briefing__seed {
+  color: var(--door);
+}
+
+.briefing__how {
+  font: 400 var(--font-sm)/var(--line-sm) var(--font-body);
+  color: var(--dim);
+  border-left: 2px solid var(--rule);
+  padding-left: 12px;
+  margin: 0 0 22px;
+  max-width: 52ch;
+}
+
+.briefing__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.briefing__button {
+  font: 700 var(--font-sm)/1 var(--font-body);
+  padding: 10px 18px;
+  background: var(--ink);
+  color: var(--void);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+.briefing__button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.briefing__button--ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--rule);
+}
+
+@container (max-width: 520px) {
+  .briefing__actions {
+    flex-direction: column-reverse;
+  }
+}

@@ -1,0 +1,8 @@
+dist
+storybook-static
+coverage
+node_modules
+public/decks
+package-lock.json
+src/core/test/*.json
+src/assets/decks/*.json

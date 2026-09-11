@@ -1,0 +1,14 @@
+# Fast checks only. The type-aware ESLint pass is the slowest thing here and
+# belongs in CI: a hook people wait ten seconds for is a hook people skip.
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: "*.{ts,tsx,css,json,md}"
+      run: npx prettier --check {staged_files}
+    lint-fast:
+      glob: "*.{ts,tsx}"
+      run: npx oxlint {staged_files}
+    typecheck:
+      glob: "*.{ts,tsx}"
+      run: npx tsc -b --noEmit

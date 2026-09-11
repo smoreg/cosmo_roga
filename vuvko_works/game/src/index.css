@@ -1,0 +1,89 @@
+/* Tokens carried over from the prototype, which took them from hexmap.html so
+   a mission and the deck plan under it read as one drawing. */
+:root {
+  --void: #0e1114;
+  --deck: #12161a;
+  --ink: #dfe6e6;
+  --dim: #8e9a9b;
+  --rule: #39434a;
+  --panel: #181d22;
+  --stamp: #c8503f;
+  --door: #e8c15a;
+  --grid: #1d242a;
+  --drone: #6fc3d6;
+  --ship: #c8503f;
+  --node: #5fbf9b;
+  --spawn: #d4574a;
+
+  /* Body copy sits a little under --ink. On a near-black ground, text this
+     light blooms for the roughly half of readers with some astigmatism, and
+     a thin monospace face makes it worse. ~12:1 instead of ~16:1 — still far
+     past AAA, and easier to sit in front of. --ink stays as it was for the
+     map, which shares its palette with hexmap.html. */
+  --ink-text: #c7d0d0;
+
+  /* Courier leads, as asked. The rest of the stack is there because Courier
+     New was digitised from a typeball without the ink spread that gave it
+     weight on paper, so its stems stay hairline at UI sizes — on anything that
+     has a better-hinted monospace, use it. */
+  --font-mono:
+    Courier, "Courier New", ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono",
+    "Roboto Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-body: var(--font-mono);
+
+  /* Five sizes, and no sixth. Four of them cluster tightly — a dense readout
+     cannot afford editorial jumps — and the display size deliberately breaks
+     the pattern, because a title screen is not on the same scale as a stat
+     row. Nothing goes below 11px. */
+  --font-xs: 0.6875rem; /* 11px — timestamps, footnotes, sub-labels */
+  --font-sm: 0.8125rem; /* 13px — log entries, secondary readouts */
+  --font-md: 0.875rem; /* 14px — buttons, body copy, primary stats */
+  --font-lg: 1.125rem; /* 18px — dialog headings, the numbers that matter */
+  --font-display: 2.75rem; /* 44px — the title screen, and nothing else */
+
+  --line-xs: 1.3;
+  --line-sm: 1.35;
+  --line-md: 1.45;
+  --line-lg: 1.5;
+  --line-display: 1.1;
+
+  /* Small text on a dark ground needs a little air, or anti-aliasing closes
+     the gaps between glyphs. */
+  --tracking-tight: 0.01em;
+  --tracking-label: 0.08em;
+
+  /* Touch wants 44px; the legal floor of 24 is not a usability target. */
+  --tap-target: 44px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* Left at the browser's own size, so the scale respects a reader who has
+     turned theirs up. */
+  font-size: 100%;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--void);
+  color: var(--ink-text);
+  font-family: var(--font-body);
+  font-size: var(--font-md);
+  line-height: var(--line-md);
+}
+
+/* Every number that changes at runtime holds its column. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

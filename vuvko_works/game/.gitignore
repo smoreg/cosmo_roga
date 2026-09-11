@@ -1,0 +1,23 @@
+node_modules/
+dist/
+storybook-static/
+coverage/
+*.tsbuildinfo
+
+# Baked deck backdrops are derived from CC BY-NC artwork that is fetched, not
+# committed. Build them with scripts/bake_tiles.py.
+public/decks/
+
+# Rendered previews for Claude Design, rebuilt by `npm run design:bundle`.
+design-bundle/
+.design-bundle.mjs
+
+# The downscaled tile set: a CC BY-NC derivative, rebuilt with
+# `npm run assets:atlas`. Not committed; see public/geomorphs/README.md.
+public/geomorphs/
+
+# Music: see public/audio/ATTRIBUTION.md before shipping any of it.
+public/audio/music/
+
+# itch deploy target
+.env

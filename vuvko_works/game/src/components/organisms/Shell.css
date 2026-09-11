@@ -1,0 +1,89 @@
+/* The frame every out-of-mission screen sits in. One place for the centred
+   card, so the splash, the loader, the title and settings agree. */
+
+.shell {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 20px;
+  background: var(--void);
+  color: var(--ink-text);
+  font: 400 var(--font-md) / var(--line-md) var(--font-body);
+  overflow: auto;
+  container-type: inline-size;
+}
+
+.shell__card {
+  width: min(520px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  padding: 24px;
+}
+
+.shell__eyebrow {
+  font: 700 var(--font-xs) / 1 var(--font-mono);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0 0 14px;
+}
+
+.shell__title {
+  font: 700 var(--font-lg) / var(--line-lg) var(--font-body);
+  margin: 0 0 8px;
+}
+
+.shell__display {
+  font: 700 var(--font-display) / var(--line-display) var(--font-body);
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+
+.shell__line {
+  color: var(--dim);
+  margin: 0 0 20px;
+  max-width: 48ch;
+}
+
+.shell__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.shell__button {
+  font: 700 var(--font-md) / 1 var(--font-body);
+  min-height: var(--tap-target);
+  padding: 0 20px;
+  background: var(--ink);
+  color: var(--void);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+.shell__button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.shell__button--ghost {
+  background: transparent;
+  color: var(--ink-text);
+  border-color: var(--rule);
+}
+
+.shell__button--wide {
+  width: 100%;
+  justify-content: center;
+}
+
+@container (max-width: 460px) {
+  .shell__actions {
+    flex-direction: column-reverse;
+  }
+
+  .shell__actions .shell__button {
+    width: 100%;
+  }
+}

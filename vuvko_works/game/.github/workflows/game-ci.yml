@@ -1,0 +1,108 @@
+name: game
+
+on:
+  push:
+    branches: [main]
+    paths: ["vuvko_works/game/**"]
+  pull_request:
+    paths: ["vuvko_works/game/**"]
+
+defaults:
+  run:
+    working-directory: vuvko_works/game
+
+jobs:
+  fast:
+    name: format and fast lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          {
+            node-version: 22,
+            cache: npm,
+            cache-dependency-path: vuvko_works/game/package-lock.json,
+          }
+      - run: npm ci
+      - run: npx prettier --check .
+      - run: npx oxlint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    needs: fast
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          {
+            node-version: 22,
+            cache: npm,
+            cache-dependency-path: vuvko_works/game/package-lock.json,
+          }
+      - run: npm ci
+      - run: npx tsc -b --noEmit
+
+  lint:
+    name: type-aware lint
+    runs-on: ubuntu-latest
+    needs: fast
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          {
+            node-version: 22,
+            cache: npm,
+            cache-dependency-path: vuvko_works/game/package-lock.json,
+          }
+      - run: npm ci
+      - run: npx eslint .
+
+  test:
+    runs-on: ubuntu-latest
+    needs: fast
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          {
+            node-version: 22,
+            cache: npm,
+            cache-dependency-path: vuvko_works/game/package-lock.json,
+          }
+      - run: npm ci
+      - run: npx vitest run --coverage
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [typecheck, lint]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          {
+            node-version: 22,
+            cache: npm,
+            cache-dependency-path: vuvko_works/game/package-lock.json,
+          }
+      - run: npm ci
+      - run: npm run build
+      - run: npm run build-storybook
+
+  deadcode:
+    name: knip
+    runs-on: ubuntu-latest
+    needs: fast
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          {
+            node-version: 22,
+            cache: npm,
+            cache-dependency-path: vuvko_works/game/package-lock.json,
+          }
+      - run: npm ci
+      - run: npx knip

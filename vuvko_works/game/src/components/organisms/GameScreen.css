@@ -1,0 +1,153 @@
+/* One component, two shapes. The breakpoint is where a 280px column stops
+   leaving enough room for the map to be worth looking at.
+   
+   Container queries rather than media queries: the screen should respond to
+   the space it is actually given, so it lays out correctly inside a Storybook
+   frame or a design-system preview card, not only at a real viewport width. */
+
+.screen {
+  container-type: inline-size;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  background: var(--void);
+  color: var(--ink);
+  font: 400 var(--font-md)/var(--line-md) var(--font-body);
+}
+
+.screen__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  padding: 9px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+}
+
+.screen__ship {
+  font-weight: 700;
+}
+
+.screen__stats {
+  font: 400 var(--font-sm)/var(--line-sm) var(--font-mono);
+  color: var(--dim);
+}
+
+.screen__stats b {
+  color: var(--ink);
+}
+
+.screen__spacer {
+  flex: 1;
+}
+
+.screen__button {
+  font: 700 var(--font-sm)/1 var(--font-body);
+  padding: 8px 14px;
+  background: var(--ink);
+  color: var(--void);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+}
+
+.screen__button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.screen__outcome {
+  font: 700 var(--font-sm)/1 var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.screen__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  min-height: 0;
+}
+
+.screen__map {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--rule);
+}
+
+.screen__side {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 14px;
+  overflow: auto;
+  background: var(--panel);
+}
+
+.screen__sideHeading {
+  font: 700 var(--font-xs)/1 var(--font-mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0;
+}
+
+.screen__log {
+  border-top: 1px solid var(--rule);
+  background: var(--panel);
+  padding: 8px 14px 10px;
+  height: 168px;
+  overflow: auto;
+}
+
+.screen__hint {
+  font: 400 var(--font-sm)/var(--line-sm) var(--font-mono);
+  color: var(--door);
+  margin: 0 0 6px;
+}
+
+.screen__note {
+  font: 400 var(--font-xs)/var(--line-xs) var(--font-mono);
+  color: var(--dim);
+  margin: 0;
+}
+
+@container (max-width: 860px) {
+  .screen__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .screen__map {
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* The squad becomes a strip you swipe rather than a column. */
+  .screen__side {
+    grid-auto-flow: column;
+    grid-auto-columns: 240px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .screen__sideHeading,
+  .screen__hint {
+    font: 400 var(--font-sm)/var(--line-sm) var(--font-mono);
+    color: var(--door);
+    margin: 0 0 6px;
+  }
+
+  .screen__note {
+    display: none;
+  }
+
+  .screen__log {
+    height: 128px;
+  }
+
+  .screen__stats {
+    width: 100%;
+  }
+}
