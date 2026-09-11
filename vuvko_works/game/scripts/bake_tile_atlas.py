@@ -12,6 +12,15 @@ This writes a separate, downscaled *version* of the artwork. It is a derivative
 work, so it carries its own notice: see the README.md and LICENCE.md written
 alongside it.
 
+**Four pixels to the foot is not an arbitrary default.** Map generation
+rasterises a hull at exactly that, so at 4 px/ft the tiles go down one for one
+with no resampling, and the rooms that come out match the source artwork
+exactly. Measured on one ship: 4 px/ft finds the same 26 compartments and the
+same 44,810 sq ft of floor as the full-resolution art, while 3 px/ft finds 33
+and 2 px/ft finds 53 — thin walls go sub-pixel, smear, and cut rooms in half.
+It is resolution that does this, not compression: lossless at 2 px/ft is no
+better than quality 70.
+
     python3 scripts/bake_tile_atlas.py            # default 3 px per foot
     python3 scripts/bake_tile_atlas.py --px-per-foot 2 --quality 70
 """
@@ -115,8 +124,8 @@ def main() -> None:
     parser.add_argument("--tiles", type=Path, default=shared / "geomorphs")
     parser.add_argument("--taxonomy", type=Path, default=shared / "tiles.taxonomy.json")
     parser.add_argument("--out", type=Path, default=root / "public" / "geomorphs")
-    parser.add_argument("--px-per-foot", type=float, default=3.0)
-    parser.add_argument("--quality", type=int, default=76)
+    parser.add_argument("--px-per-foot", type=float, default=4.0)
+    parser.add_argument("--quality", type=int, default=60)
     parser.add_argument("--limit", type=int, default=0, help="stop after N tiles, for a quick look")
     args = parser.parse_args()
 
@@ -155,6 +164,23 @@ def main() -> None:
         written += 1
         if written % 200 == 0:
             print(f"  {written}/{len(wanted)}  {human(total)}", flush=True)
+
+    # What the renderer needs to know about this bake. Assuming the source
+    # resolution is exactly the bug this file exists to prevent: a downscaled
+    # tile read as full resolution draws at a fraction of its size.
+    (args.out / "atlas.json").write_text(
+        json.dumps(
+            {
+                "pxPerFoot": args.px_per_foot,
+                "sourcePxPerFoot": SOURCE_PX_PER_FOOT,
+                "bleedFeet": 10,
+                "tiles": written,
+                "format": "webp",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
     (args.out / "README.md").write_text(
         README.format(

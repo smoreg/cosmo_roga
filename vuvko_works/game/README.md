@@ -160,6 +160,45 @@ Without the tile library the map falls back to a schematic drawn from the
 deck's own shapes and the tile footprints in the plan — enough structure to
 read as a plan rather than a stain, and it needs no assets at all.
 
+### Two things the tiles taught us the hard way
+
+**Never assume the artwork's resolution.** What ships is a downscaled bake, not
+the source. Reading a 2 px/ft bake as though it were the 12 px/ft source makes
+every tile a sixth of its size, and the deck plan looks as though it has simply
+gone. The bake now writes `atlas.json` beside the tiles saying what it did, and
+the renderer reads it. `tileGeometry()` is pulled out on its own so the
+arithmetic can be checked without a canvas.
+
+**The atlas resolution is set by map generation, not by how it looks.**
+Generation rasterises a hull at 4 px/ft, so a 4 px/ft atlas goes down one for
+one with no resampling and the rooms match the source exactly. Below that,
+thin walls fall under a pixel, smear, and cut compartments in half. On one
+ship:
+
+| Atlas             | Rooms found | Floor found      |
+| ----------------- | ----------- | ---------------- |
+| 12 px/ft (source) | 26          | 44,810 sq ft     |
+| **4 px/ft**       | **26**      | **44,810 sq ft** |
+| 3 px/ft           | 33          | 41,474 sq ft     |
+| 2 px/ft           | 53          | 36,883 sq ft     |
+
+It is resolution that does this and not compression — lossless at 2 px/ft is no
+better than quality 70.
+
+**Tiles are clipped to their own footprints.** The 10 ft bleed exists so a
+tile's art runs past its edge to meet its neighbour's, which means neighbours
+draw the same strip twice. Painted one over the other, two antialiased edges do
+not overlay, they accumulate, and the join reads as a denser band once
+everything is flattened to one ink — 0.4% of one measured plan, up to a third
+of an alpha step too dark, most of it along tile boundaries. Clipping drops the
+duplicate strip so there is nothing to accumulate, and snapping the clip to
+whole pixels stops a hairline appearing instead.
+
+Blurring tiles individually would make this worse, not better: each tile's blur
+fades its own edges into the bleed, and the composite then joins two
+artificially faded edges. The blur belongs after compositing, on the whole
+image, where the only edge left is the real outside of the ship.
+
 `GameScreen` is responsive by **container query**, not media query: it responds
 to the space it is given rather than the browser window, so it lays out
 correctly inside a Storybook frame and a design-system preview card as well as

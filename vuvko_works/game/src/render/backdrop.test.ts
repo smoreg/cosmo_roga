@@ -1,0 +1,68 @@
+import { describe, expect, it } from "vitest";
+import { tileGeometry, tileUrl } from "./backdrop";
+
+const SOURCE = { pxPerFoot: 12, bleedFeet: 10 };
+const BAKED = { pxPerFoot: 2, bleedFeet: 10 };
+
+describe("sizing a tile in the plan's feet", () => {
+  it("reads the source artwork at its own resolution", () => {
+    /* A [100x100] tile arrives as 1440 px: 120 ft of image around 100 ft of
+       tile, with ten feet of bleed on every side. */
+    const geometry = tileGeometry(1440, 1440, 0, SOURCE);
+    expect(geometry.imageWidthFeet).toBe(120);
+    expect(geometry.footprintWidthFeet).toBe(100);
+    expect(geometry.footprintHeightFeet).toBe(100);
+  });
+
+  it("reads a downscaled bake at its own resolution, not the source's", () => {
+    /* The bug this pins: the same tile baked at 2 px/ft is 240 px. Read as
+       12 px/ft it measures 20 ft instead of 120, and the whole deck plan
+       draws at a sixth of its size — which looks like it has disappeared. */
+    const wrong = tileGeometry(240, 240, 0, SOURCE);
+    expect(wrong.imageWidthFeet).toBe(20);
+
+    const right = tileGeometry(240, 240, 0, BAKED);
+    expect(right.imageWidthFeet).toBe(120);
+    expect(right.footprintWidthFeet).toBe(100);
+  });
+
+  it("gives the same feet whatever resolution the bake used", () => {
+    for (const pxPerFoot of [12, 6, 3, 2, 1.5, 1]) {
+      const geometry = tileGeometry(120 * pxPerFoot, 120 * pxPerFoot, 0, {
+        pxPerFoot,
+        bleedFeet: 10,
+      });
+      expect(geometry.imageWidthFeet).toBeCloseTo(120, 6);
+      expect(geometry.footprintWidthFeet).toBeCloseTo(100, 6);
+    }
+  });
+
+  it("swaps the footprint on a quarter turn, and not otherwise", () => {
+    /* A [100x50] tile: 120 x 70 ft of image, 100 x 50 ft of tile. */
+    const upright = tileGeometry(1440, 840, 0, SOURCE);
+    expect(upright.footprintWidthFeet).toBe(100);
+    expect(upright.footprintHeightFeet).toBe(50);
+
+    for (const rotation of [90, 270, -90, 450]) {
+      const turned = tileGeometry(1440, 840, rotation, SOURCE);
+      expect(turned.footprintWidthFeet, `at ${String(rotation)}`).toBe(50);
+      expect(turned.footprintHeightFeet, `at ${String(rotation)}`).toBe(100);
+    }
+    for (const rotation of [180, 360, 0]) {
+      const flipped = tileGeometry(1440, 840, rotation, SOURCE);
+      expect(flipped.footprintWidthFeet, `at ${String(rotation)}`).toBe(100);
+    }
+  });
+});
+
+describe("finding a tile", () => {
+  it("asks for the baked webp, not the source png", () => {
+    expect(tileUrl("./geomorphs/", "Geomorphs/100x100 End/701 [100x100] Bridge.png")).toBe(
+      "./geomorphs/Geomorphs/100x100 End/701 [100x100] Bridge.webp",
+    );
+  });
+
+  it("leaves anything that is not a png alone", () => {
+    expect(tileUrl("./geomorphs/", "a/b.webp")).toBe("./geomorphs/a/b.webp");
+  });
+});
