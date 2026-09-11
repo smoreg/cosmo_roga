@@ -8,6 +8,9 @@ export interface MissionBriefingProps {
   readonly onLaunch: () => void;
   /** Shown when a mission has just been finished. */
   readonly lastOutcome?: "win" | "loss" | null | undefined;
+  /** The ship this contract's seed builds, named before you board it. */
+  readonly hull?:
+    { name: string; widthFeet: number; heightFeet: number; tiles: number } | null | undefined;
   /** True while the hull is being generated. */
   readonly busy?: boolean | undefined;
   /** Why the hull would not build, if it would not. */
@@ -16,7 +19,7 @@ export interface MissionBriefingProps {
 
 /** The screen between missions: what was rolled, and whether to take it. */
 export function MissionBriefing(props: MissionBriefingProps) {
-  const { brief, onRoll, onLaunch, lastOutcome, busy = false, error } = props;
+  const { brief, onRoll, onLaunch, lastOutcome, hull, busy = false, error } = props;
   return (
     <div className="briefing">
       <div className="briefing__sheet">
@@ -42,6 +45,17 @@ export function MissionBriefing(props: MissionBriefingProps) {
             <p className="briefing__line">{brief.type.objective}</p>
 
             <dl className="briefing__facts">
+              {hull == null ? null : (
+                <>
+                  <dt>Ship</dt>
+                  <dd>
+                    {hull.name}
+                    <span className="briefing__shape">
+                      {hull.widthFeet} &times; {hull.heightFeet} ft, {hull.tiles} sections
+                    </span>
+                  </dd>
+                </>
+              )}
               <dt>Hull</dt>
               <dd>
                 {brief.profile.name} <Tag>{brief.profile.code}</Tag>

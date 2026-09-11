@@ -16,7 +16,8 @@ import type { RawDeckExport } from "../core/deck";
 import type { GameEvent } from "../core/events";
 import type { Axial } from "../core/hex";
 import { buildMission } from "../core/mission";
-import { generateDeck } from "../render/generate";
+import { generateDeck, previewHull } from "../render/generate";
+import type { HullPreview } from "../render/generate";
 import { rollMission } from "../core/missions";
 import type { MissionBrief } from "../core/missions";
 import { createRng } from "../core/rng";
@@ -27,6 +28,8 @@ import type { DeckMap, GameState } from "../core/types";
 export interface GameStore {
   /** What was rolled for this mission, shown on the briefing and after. */
   brief: MissionBrief | null;
+  /** The ship that seed builds, known before boarding it. */
+  hull: HullPreview | null;
   /** Advances with every roll, so two missions are never the same. */
   roller: RngState;
   deck: DeckMap | null;
@@ -55,6 +58,17 @@ export interface GameStore {
   finishTurn: () => void;
 }
 
+/** Laying the tiles out is cheap; it is drawing them that is not. */
+function previewOf(brief: MissionBrief): HullPreview | null {
+  try {
+    return previewHull(brief.profile.code, brief.seed);
+  } catch {
+    /* Without the tile index there is no hull to describe, and the briefing
+       simply says less. Boarding will report the real reason. */
+    return null;
+  }
+}
+
 export const useGameStore = create<GameStore>(function createStore(set, get) {
   function dispatch(command: Command): void {
     const { deck, state } = get();
@@ -68,6 +82,7 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
   }
 
   return {
+    hull: null,
     generating: false,
     generatorError: null,
     brief: null,
@@ -98,7 +113,7 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
 
     roll() {
       const [brief, next] = rollMission(get().roller);
-      set({ brief, roller: next });
+      set({ brief, roller: next, hull: previewOf(brief), generatorError: null });
     },
 
     async launch(overrides) {
@@ -126,6 +141,7 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
       set({
         brief,
         roller: next,
+        hull: previewOf(brief),
         deck: null,
         state: null,
         events: [],

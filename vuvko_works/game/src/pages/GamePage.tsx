@@ -28,7 +28,7 @@ export function GamePage() {
     return ui.go;
   });
   const { deck, state, dispatch, finishTurn, events, unreachableRooms } = store;
-  const { brief, roll, launch, toBriefing, generating, generatorError } = store;
+  const { brief, hull, roll, launch, toBriefing, generating, generatorError } = store;
   const input = useMissionInput(deck, state, dispatch);
 
   /* The ship's own artwork, drawn once per deck. Null until it is ready, and
@@ -84,6 +84,7 @@ export function GamePage() {
         onRoll={roll}
         onLaunch={boardIt}
         lastOutcome={lastOutcome}
+        hull={hull}
         busy={generating}
         error={generatorError}
       />

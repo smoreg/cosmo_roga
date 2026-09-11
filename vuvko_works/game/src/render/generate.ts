@@ -25,6 +25,63 @@ export function ensureLibrary(): void {
   libraryLoaded = true;
 }
 
+export interface HullPreview {
+  readonly name: string;
+  readonly widthFeet: number;
+  readonly heightFeet: number;
+  readonly tiles: number;
+}
+
+/**
+ * What ship this seed would build, without drawing a pixel of it.
+ *
+ * Laying tiles out is fast and needs no canvas; it is rasterising them that
+ * costs. So the briefing can name the ship it is offering — and name it
+ * correctly, because boarding runs the same layout from the same seed and gets
+ * the same hull.
+ */
+export function previewHull(profile: string, seed: string): HullPreview {
+  ensureLibrary();
+  const plan = hullFor(profile, seed);
+  return {
+    name: plan.name,
+    widthFeet: plan.W,
+    heightFeet: plan.H,
+    tiles: plan.put.length,
+  };
+}
+
+/**
+ * The seed the hull is actually laid out from.
+ *
+ * The generator draws the ship's name last, from a stream the seed alone
+ * decides — so two profiles that happen to consume the same number of draws
+ * come out as the same ship. `1-2-3` and `3-2-1` are mirror images of each
+ * other and do exactly that. Mixing the profile into the seed separates them,
+ * and costs nothing: the same contract still builds the same ship every time.
+ */
+export function hullSeed(profile: string, seed: string): string {
+  return `${seed}:${profile}`;
+}
+
+function hullFor(profile: string, seed: string) {
+  return layout({
+    seed: hullSeed(profile, seed),
+    hull: "profile",
+    profile,
+    beam: 2,
+    rows: 4,
+    sets: "all",
+    family: "",
+    rim: "none",
+    symmetric: "soft",
+    q: "",
+    spin: false,
+    mega: true,
+    vehic: false,
+  });
+}
+
 export interface GenerateOptions {
   /** One of the four hull profiles: "1-2-1", "1-2-3", "2-1-2", "3-2-1". */
   readonly profile: string;
@@ -37,21 +94,7 @@ export interface GenerateOptions {
 export async function generateDeck(options: GenerateOptions): Promise<RawDeckExport> {
   ensureLibrary();
 
-  const plan = layout({
-    seed: options.seed,
-    hull: "profile",
-    profile: options.profile,
-    beam: 2,
-    rows: 4,
-    sets: "all",
-    family: "",
-    rim: "none",
-    symmetric: "soft",
-    q: "",
-    spin: false,
-    mega: true,
-    vehic: false,
-  });
+  const plan = hullFor(options.profile, options.seed);
 
   const mask = await rasterise(plan, {
     tilesBaseUrl: options.tilesBaseUrl,
