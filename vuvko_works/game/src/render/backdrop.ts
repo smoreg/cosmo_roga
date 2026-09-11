@@ -13,7 +13,26 @@
  */
 
 import type { TilePlacement } from "../core/types";
+import manifest from "../assets/tiles/manifest.json";
 import { loadImage } from "./images";
+
+/**
+ * What each tile says it measures, by path.
+ *
+ * The index the generator lays out from carries every tile's declared size, so
+ * the renderer does not have to infer one from the image and a guess at the
+ * bleed. Built once, on first use.
+ */
+let declaredSizes: Map<string, { w: number; h: number }> | null = null;
+
+function declaredSize(path: string): { w: number; h: number } | undefined {
+  declaredSizes ??= new Map(
+    manifest.tiles.map(function entry(tile) {
+      return [tile.path, { w: tile.w, h: tile.h }] as const;
+    }),
+  );
+  return declaredSizes.get(path);
+}
 
 /** What the source artwork is drawn at, and what a bake falls back to. */
 const SOURCE_PX_PER_FOOT = 12;
@@ -86,20 +105,28 @@ export interface TileGeometry {
 /**
  * How big a tile image is, in the plan's own feet.
  *
- * The arithmetic that broke: read a 2 px/ft bake as though it were the 12 px/ft
- * source and every tile comes out a sixth of its size. Pulled out on its own so
- * it can be checked without a canvas.
+ * Two numbers, and each has its own source of truth. The *image* is however
+ * many pixels the bake wrote divided by however many pixels a foot it wrote
+ * them at — reading a four-pixel bake as though it were the twelve-pixel
+ * source is what shrank every tile to a sixth of its size. The *footprint* is
+ * the tile's declared size, which is not the image less a fixed bleed: an
+ * eighth of the library bleeds unevenly, and one connecting gangway carries
+ * thirty-five feet of overhang on one axis and ten on the other. Subtracting
+ * ten all round puts that tile seventy feet out.
+ *
+ * Both are pure arithmetic, so both can be checked without a canvas.
  */
 export function tileGeometry(
   imageWidthPx: number,
   imageHeightPx: number,
   rotation: number,
   atlas: { pxPerFoot: number; bleedFeet: number },
+  declared?: { readonly w: number; readonly h: number },
 ): TileGeometry {
   const imageWidthFeet = imageWidthPx / atlas.pxPerFoot;
   const imageHeightFeet = imageHeightPx / atlas.pxPerFoot;
-  const tileWidthFeet = imageWidthFeet - atlas.bleedFeet * 2;
-  const tileHeightFeet = imageHeightFeet - atlas.bleedFeet * 2;
+  const tileWidthFeet = declared?.w ?? imageWidthFeet - atlas.bleedFeet * 2;
+  const tileHeightFeet = declared?.h ?? imageHeightFeet - atlas.bleedFeet * 2;
   const turned = isQuarterTurned(rotation);
   return {
     imageWidthFeet,
@@ -137,14 +164,16 @@ export async function renderBlueprint(
     const image = await loadImage(tileUrl(options.tilesBaseUrl, placement.path), options.signal);
     if (options.signal?.aborted === true) throw new Error("aborted");
 
-    /* The image carries the bleed, so its own footprint is the declared tile
-       plus ten feet on every side. The export's x,y is the tile's corner, not
-       the bleed's, which is why the centre has to be worked back from it. */
+    /* The image carries the bleed, and the bleed is symmetric about each axis
+       even where it is not the usual ten feet — so whatever the overhang, the
+       image is centred on the tile. The export's x,y is the tile's corner,
+       which is why the centre has to be worked back from it. */
     const geometry = tileGeometry(
       image.naturalWidth,
       image.naturalHeight,
       placement.rotation,
       atlas,
+      declaredSize(placement.path),
     );
     const { imageWidthFeet, imageHeightFeet } = geometry;
 

@@ -53,6 +53,26 @@ describe("sizing a tile in the plan's feet", () => {
       expect(flipped.footprintWidthFeet, `at ${String(rotation)}`).toBe(100);
     }
   });
+  it("believes the tile's declared size over the image less a fixed bleed", () => {
+    /* CB05, the connecting gangway: a 100 x 100 ft tile drawn into a
+       120 x 170 ft image, because it bleeds two squares across and seven
+       down. Taking ten feet off every side makes it 100 x 150 and puts fifty
+       feet of it in the wrong place. An eighth of the library bleeds
+       unevenly like this. */
+    const guessed = tileGeometry(1440, 2040, 0, SOURCE);
+    expect(guessed.footprintHeightFeet).toBe(150);
+
+    const declared = tileGeometry(1440, 2040, 0, SOURCE, { w: 100, h: 100 });
+    expect(declared.imageHeightFeet).toBe(170);
+    expect(declared.footprintWidthFeet).toBe(100);
+    expect(declared.footprintHeightFeet).toBe(100);
+  });
+
+  it("still swaps a declared footprint on a quarter turn", () => {
+    const turned = tileGeometry(1440, 840, 90, SOURCE, { w: 100, h: 50 });
+    expect(turned.footprintWidthFeet).toBe(50);
+    expect(turned.footprintHeightFeet).toBe(100);
+  });
 });
 
 describe("finding a tile", () => {

@@ -28,7 +28,7 @@ export interface DeckViewProps {
   /** The route the selected drone would take, one arrow per step. */
   readonly arrows?: readonly ArrowStep[] | undefined;
   readonly showLabels?: boolean | undefined;
-  /** How far out of focus the ship sits, in hex widths. */
+  /** How far out of focus the ship sits, in feet of ship. */
   readonly backdropBlur?: number | undefined;
 }
 
@@ -127,6 +127,28 @@ function tileFootprint(path: string): [number, number] | null {
 }
 
 /**
+ * How far out of focus the ship sits — in feet of ship, not in hexes.
+ *
+ * Blur has to be measured against the thing being blurred. A bulkhead is about
+ * a foot thick and a console rather less, so a radius tied to the hex instead
+ * scaled the smear to thirty-five feet and wiped out every line the plan is
+ * worth having: the ship came back as a few dim clouds and read as missing
+ * rather than as background. Two thirds of a foot softens the artwork's own
+ * antialiasing without touching anything you would want to recognise.
+ */
+const BACKDROP_BLUR_FEET = 0.7;
+/** Blobs the size of rooms, so this one genuinely does scale with the hex. */
+const SCHEMATIC_BLUR = 0.22;
+/**
+ * Under the lattice, not behind it.
+ *
+ * The plan's own ink covers under a fifth of the canvas — thin lines on empty
+ * deck — so what reaches the eye is that fraction again through this. It can
+ * afford to be high; it is the blur that was hiding the ship, not the opacity.
+ */
+const BACKDROP_OPACITY = 0.72;
+
+/**
  * The map: the ship underneath and the hex lattice over it.
  *
  * The backdrop is held back by opacity, not by blur. It should read as a
@@ -137,7 +159,7 @@ function tileFootprint(path: string): [number, number] | null {
  */
 export function DeckView(props: DeckViewProps) {
   const { deck, state, backdropUrl, selected, reachable, forceable, arrows } = props;
-  const { onPick, onHover, showLabels = false, backdropBlur = 0.09 } = props;
+  const { onPick, onHover, showLabels = false, backdropBlur = BACKDROP_BLUR_FEET } = props;
 
   const layout = useMemo(
     function computeLayout() {
@@ -215,10 +237,12 @@ export function DeckView(props: DeckViewProps) {
         <defs>
           {/* Enough to push the plan behind the glass without dissolving it:
             the detail is the point, it just must not compete with the
-            lattice. The schematic is hex-shaped blobs and needs more. */}
+            lattice. The schematic is hex-shaped blobs and needs more, and
+            those really are hex-sized, so that one stays a fraction of a
+            hex. */}
           <filter id={blurId} x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur
-              stdDeviation={unit * (backdropUrl === undefined ? 0.22 : backdropBlur)}
+              stdDeviation={backdropUrl === undefined ? unit * SCHEMATIC_BLUR : backdropBlur}
             />
           </filter>
         </defs>
@@ -266,7 +290,7 @@ export function DeckView(props: DeckViewProps) {
               </g>
             </g>
           ) : (
-            /* The ship itself, sharp, held back by opacity rather than by blur. */
+            /* The ship itself, held back by opacity rather than by blur. */
             <image
               href={backdropUrl}
               x={0}
@@ -274,7 +298,7 @@ export function DeckView(props: DeckViewProps) {
               width={deck.sizeFeet[0]}
               height={deck.sizeFeet[1]}
               preserveAspectRatio="none"
-              opacity={0.6}
+              opacity={BACKDROP_OPACITY}
               filter={`url(#${blurId})`}
               aria-hidden="true"
             />

@@ -25,7 +25,8 @@
     "deploy:itch": "npm run build && bash scripts/deploy-itch.sh",
     "assets:atlas": "python3 scripts/bake_tile_atlas.py",
     "sync:core": "node scripts/sync-geomorph-core.mjs",
-    "assets:index": "node scripts/build-tile-index.mjs"
+    "assets:index": "node scripts/build-tile-index.mjs",
+    "screenshot": "node scripts/screenshot.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",
@@ -53,6 +54,7 @@
     "knip": "^6.35.1",
     "lefthook": "^2.1.12",
     "oxlint": "^1.82.0",
+    "playwright": "^1.63.0",
     "prettier": "^3.9.6",
     "storybook": "^10.6.0",
     "typescript": "^6.0.3",

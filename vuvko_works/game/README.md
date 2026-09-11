@@ -160,7 +160,7 @@ Without the tile library the map falls back to a schematic drawn from the
 deck's own shapes and the tile footprints in the plan — enough structure to
 read as a plan rather than a stain, and it needs no assets at all.
 
-### Two things the tiles taught us the hard way
+### Four things the tiles taught us the hard way
 
 **Never assume the artwork's resolution.** What ships is a downscaled bake, not
 the source. Reading a 2 px/ft bake as though it were the 12 px/ft source makes
@@ -198,6 +198,42 @@ Blurring tiles individually would make this worse, not better: each tile's blur
 fades its own edges into the bleed, and the composite then joins two
 artificially faded edges. The blur belongs after compositing, on the whole
 image, where the only edge left is the real outside of the ship.
+
+**A tile's footprint is what the tile declares, not the image less a fixed
+bleed.** Ten feet on every side holds for 1,572 of the 1,789 tiles and for none
+of the rest: `CB05 [100x100] Connecting Gangway` is drawn into 120 x 170 ft,
+seven squares of overhang down and two across. Subtracting ten all round makes
+it 100 x 150 and puts fifty feet of gangway in the wrong place. The tile index
+already carries every declared size, so `tileGeometry()` takes it and only
+falls back to the constant when a path is not in the index. The bleed is
+symmetric about each axis even when it is uneven, so the image is always
+centred on the tile — that part of the original routine was right.
+
+**Blur has to be measured against the thing being blurred.** The backdrop's
+radius was a fraction of a hex, which at 35 ft hexes is a 3 ft smear over
+artwork whose features — bulkheads, consoles, a hangar door — are about a foot
+across. The result was a few dim clouds that read as a missing ship rather than
+as background, which is what a hex-sized radius will always do to foot-sized
+detail. It is now 0.7 ft, in feet of ship: enough to take the hard edge off the
+artwork's own antialiasing, not nearly enough to lose a bulkhead. The schematic
+fallback keeps its hex-relative blur, because those blobs really are hex-sized.
+
+### Looking at it
+
+Everything the map is built from is tested without a browser — but the stage
+that draws cannot be: generation needs a canvas and jsdom has none. That made
+the deck plan the one part nobody had actually looked at, which is how it came
+to be drawing at a sixth of its size without a test noticing.
+
+    npm run build
+    npx vite preview --port 4321 &
+    CHROMIUM=/usr/bin/chromium npm run screenshot -- http://localhost:4321/ /tmp/game.png
+
+`scripts/screenshot.mjs` clicks through the loader, the title and the briefing,
+waits for a hull to generate, and writes a PNG — reporting console errors, page
+errors and failed requests on the way, because a blank map is usually one of
+those. `CHROMIUM` is optional and points at a browser already on the machine;
+without it Playwright wants its own download.
 
 `GameScreen` is responsive by **container query**, not media query: it responds
 to the space it is given rather than the browser window, so it lays out
