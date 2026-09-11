@@ -27,7 +27,7 @@ import {
   routeDamage,
   type HackTarget,
 } from "../twist/rig.js";
-import { hint } from "../content/hints.js";
+import { hint, turnRoom } from "../content/hints.js";
 import { t } from "../i18n.js";
 import { raiseAlert, standDown } from "./alert.js";
 import { keysHeld } from "./doors.js";
@@ -281,7 +281,15 @@ function jobWith(spec: ObjectiveSpec, tool: ObjectiveJob["tool"] | undefined): O
  * (docs/owner-queue.md, 5).
  */
 function sayTheRules(game: RoomGame): void {
-  if (systemsAboard(game).length > 0 && objectiveHere(game)) hint(game, "objective");
+  // One line a turn, and only on a turn nothing else has claimed
+  // (`content/hints.ts`, `turnRoom`). Neither of these two is the teaching —
+  // they are a nudge beside it — and both questions are asked again every turn
+  // the drone stands where they are true, so a turn given up costs the line
+  // nothing. On a training run the chain says both of them in the compartment
+  // they are about, so neither speaks here at all (`content/hints.ts`,
+  // `CHAIN_SAYS`).
+  if (turnRoom(game).taken) return;
+  if (systemsAboard(game).length > 0 && objectiveHere(game) && hint(game, "objective")) return;
   // The pocket itself and not the voyage's copy of it: `voyageOf` refreshes
   // that copy on read and would write a whole voyage — itinerary, charters, a
   // draw off `game.rng` — on a hull that has none (`systems/voyage.ts`). A

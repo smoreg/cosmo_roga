@@ -1,12 +1,14 @@
 import { App } from "./ui/app.js";
+import { seedFromUrl } from "./ui/title.js";
 import { LAYOUT, SCREEN_WIDTH, SCREEN_HEIGHT } from "./ui/theme.js";
 
 const mount = document.getElementById("game");
 if (!mount) throw new Error("#game mount point missing from index.html");
 
-// ?seed=123 reproduces a voyage exactly — the cheapest bug-report channel there is.
-const fromUrl = new URLSearchParams(window.location.search).get("seed");
-const seed = fromUrl !== null && /^\d+$/.test(fromUrl) ? Number(fromUrl) >>> 0 : (Math.random() * 0xffffffff) >>> 0;
+// ?seed=123 reproduces a voyage exactly — the cheapest bug-report channel there
+// is. Anything else in the parameter is not a seed, and what the game does about
+// that is `ui/title.ts`'s to say: a random ship here, the training hull there.
+const seed = seedFromUrl(window.location.search) ?? ((Math.random() * 0xffffffff) >>> 0);
 
 /**
  * 95×42 square cells at the design font size want 1710 px, which no laptop

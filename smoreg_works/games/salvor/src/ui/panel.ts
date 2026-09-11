@@ -15,6 +15,7 @@ import { isTug } from "../content/tug.js";
 import { roomName, zoneName } from "../content/zones.js";
 import { t, tId } from "../i18n.js";
 import { codexUnread } from "../systems/codex.js";
+import { keysHeld } from "../systems/doors.js";
 import { dangerWord } from "../systems/contacts.js";
 import { roomList, type ShipSystem } from "../systems/populate.js";
 import { objectiveHere, systemsAboard } from "../systems/ship.js";
@@ -380,8 +381,40 @@ function goalLines(game: RoomGame): PanelLine[] {
       { text: clip(t("panel.goal.out")), fg: THEME.good },
     ];
   }
+  // Nothing in the rack raises anything still standing: the run's goal has
+  // stopped being a goal, and the block says so instead of repeating a price.
+  //
+  // A sweep of the shipped game found the drone in this state on 24 % of turns
+  // aboard, in stretches of a median 25 turns and a worst of 483, and no line
+  // of the screen said a word about it (docs/tasks/G87-playability.md, 2). The
+  // way out is the second line, because "leave and come back with a tool" is
+  // the whole of what is left to do — which tool is on the greyed row that
+  // raises each system (`systems/ship.ts`, `needsLine`).
+  if (!isTug(game) && nothingRaises(game)) {
+    return [
+      { text: clip(t("panel.goal.noTool")), fg: THEME.bad },
+      { text: clip(t("panel.goal.out")), fg: THEME.accent },
+    ];
+  }
   const text = price > 0 ? t("panel.goal", { cr: price }) : t("panel.goal.bare");
   return [{ text: clip(text), fg: THEME.accent }];
+}
+
+/**
+ * Is every system still standing aboard beyond what the drone is carrying?
+ *
+ * The rack's own question, asked of the systems rather than of the rack: a
+ * spec's `needs` is what decides it (`content/objectives.ts`), so a module
+ * added to the game is answered here without a word being written.
+ */
+function nothingRaises(game: RoomGame): boolean {
+  const online = shipState(game).online;
+  const left = OBJECTIVES.filter(
+    (o) => !online.includes(o.id) && systemsAboard(game).some((s) => s.kind === o.id),
+  );
+  const rig = rigOf(game.player);
+  const keys = keysHeld(game.player);
+  return left.length > 0 && left.every((o) => o.needs(rig, keys) === undefined);
 }
 
 /** The hull the tug is tied to, without writing a voyage on a run that has none. */
@@ -416,7 +449,13 @@ function systemsLine(game: RoomGame, kinds: readonly string[]): string {
       .map((o) => {
         const up = online.includes(o.id);
         const at = up ? undefined : where.get(o.id);
-        return [`${up ? "✓" : "·"}${name(o)}`, at].filter((part) => part !== undefined).join(" ");
+        // Three marks and not two. `·ENGINE` was printed for a system that is
+        // up nowhere and for one nobody has found yet alike, and 76 % of the
+        // systems still standing are in compartments the drone has not been in
+        // — so on 56.7 % of screens the row read as "found, and we are not
+        // telling you where" (docs/tasks/G87-playability.md, 2).
+        const mark = up ? "✓" : at === undefined ? "?" : "·";
+        return [`${mark}${name(o)}`, at].filter((part) => part !== undefined).join(" ");
       })
       .join(" ");
   const full = row(objectiveName);

@@ -15,6 +15,7 @@ import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { LANGS, setLang } from "../src/i18n.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import { DOORS } from "../src/systems/doors.js";
+import { shipState } from "../src/systems/shipstate.js";
 import { addWreck, applyDerived, findSlot, install, rigOf } from "../src/twist/rig.js";
 import {
   ACTION_KEYS,
@@ -682,6 +683,33 @@ describe("the ten keys are a window, not the first ten lines", () => {
 
 describe("the map of where the drone can walk", () => {
   const map = (game: RoomGame): Action[] => roomActions(game, undefined, true);
+
+  it("marks the compartment the run is for", () => {
+    // The map averaged 8.2 pressable rows and reached 25, more than five on
+    // 71.4 % of screens, and said nothing about which of them was worth the
+    // walk (docs/tasks/G87-playability.md, 2). The glyph is the one the
+    // schematic already draws in the box, so there is nothing new to learn.
+    const game = gameIn();
+    const storage = game.ship.room("r4");
+    storage.data.systems = [{ id: 1, kind: "engine", online: false, glyph: "+" }];
+    expect(map(game).map((a) => a.label)).toContain("+STORAGE  r4  d3 locked");
+
+    // It goes when the system does: a mark on a finished errand is a lie.
+    shipState(game).online.push("engine");
+    expect(map(game).map((a) => a.label)).toContain("STORAGE   r4  d3 locked");
+  });
+
+  it("marks a charter's crate and console with the mark the compartment block uses", () => {
+    const game = gameIn();
+    game.ship.room("r5").data.items = [{ id: 1, kind: "charter-item" }];
+    // The mark is paid for out of the name column, which is the one that gives
+    // way on this row anyway: `HAB BLOCK` in nine is `HAB`, cut at the word.
+    expect(map(game).map((a) => a.label)).toContain("*HAB      r5  1 door");
+
+    // Carried out, and the row stops advertising it.
+    game.ship.room("r5").data.items = [{ id: 1, kind: "charter-item", taken: true }];
+    expect(map(game).map((a) => a.label)).toContain("HAB BLOCK r5  1 door");
+  });
 
   it("lists the compartments it knows of, nearest first, and the way back", () => {
     const game = gameIn();

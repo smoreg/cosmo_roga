@@ -4,8 +4,12 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import { DOORS } from "../src/systems/doors.js";
-import { RIG, addWreck, applyDerived, capOf, graft, install, rigOf, type Rig } from "../src/twist/rig.js";
+import { RELIC_MARK, RIG, addWreck, applyDerived, capOf, graft, install, rigOf, type Rig } from "../src/twist/rig.js";
 import { MAX_ACTIONS, roomActions } from "../src/ui/actions.js";
+import { RELICS } from "../src/content/modules.js";
+import { codexFor } from "../src/content/codex.js";
+import { initialState } from "../src/ui/appstate.js";
+import { screenHtml } from "../src/ui/web/screen.js";
 import {
   NO_FLASH,
   PANEL_HEIGHT,
@@ -789,7 +793,7 @@ describe("the mission block", () => {
     // Each un-raised system carries the compartment it stands in, once that
     // compartment has been seen: every system is drawn with the same `+` on the
     // schematic, so the id is the only thing that tells one from another.
-    expect(out[goal + 1]).toBe("·engine r2 ·core r3 ·term r4");
+    expect(out[goal + 1]).toBe("·engine r2 ·reac r3 ·term r4");
     // Above the rack, which is where the counters and the old `SHIP` line were.
     expect(goal).toBeLessThan(out.findIndex((l) => l.startsWith("CORE  ")));
   });
@@ -797,7 +801,62 @@ describe("the mission block", () => {
   it("ticks a system off as it comes up", () => {
     const game = hullIn("r1");
     shipState(game).online.push("engine", "terminal");
-    expect(lines(game)).toContain("✓ENGINE ·CORE r3 ✓TERMINAL");
+    // Short forms: `REACTOR` is three columns longer than the `CORE` it
+    // replaced, so a row with one address on it no longer fits in twenty-eight.
+    expect(lines(game)).toContain("✓engine ·reac r3 ✓term");
+  });
+
+  it("asks about a system nobody has found rather than dotting it like the rest", () => {
+    // `·CORE` was printed for a system that is up nowhere and for one the drone
+    // has never been near alike, and three quarters of the systems still
+    // standing are in compartments nobody has entered: the row read as "found,
+    // and we are not telling you where" on 56.7 % of screens
+    // (docs/tasks/G87-playability.md, 2).
+    const game = hullIn("r1");
+    for (const id of ["r3", "r4"]) {
+      const room = game.ship.room(id);
+      room.explored = false;
+      room.scanned = false;
+    }
+    game.refreshSight();
+    expect(lines(game)).toContain("·engine r2 ?reac ?term");
+
+    // Sweeping one of them turns the question into an address.
+    game.ship.room("r3").scanned = true;
+    expect(lines(game)).toContain("·engine r2 ·reac r3 ?term");
+  });
+
+  it("says the goal is out of reach when nothing in the rack raises anything", () => {
+    // A drone whose rack has nothing for any system still standing is in a
+    // state it cannot get out of by walking, and the sweep found it there on
+    // 24 % of turns aboard, in stretches of a median 25 turns and a worst of
+    // 483, with no line of the screen saying so. The goal line is the one that
+    // has to stop repeating a price (docs/tasks/G87-playability.md, 2).
+    const game = hullIn("r1");
+    rigOf(game.player)!.slots.fill(null);
+    applyDerived(game.player);
+
+    const block = missionBlock(game).map((l) => l.text);
+    expect(block[0]).toBe("NOTHING ABOARD RAISES IT");
+    expect(block[1]).toBe("< out through the airlock");
+    expect(block.some((l) => l.startsWith("GOAL"))).toBe(false);
+    expect(missionBlock(game)[0]!.fg).toBe(THEME.bad);
+
+    // One tool back and it is a goal again.
+    install(rigOf(game.player)!, "cell", 8);
+    applyDerived(game.player);
+    expect(missionBlock(game)[0]!.text).toMatch(/^GOAL {2}NEUTRALIZE/);
+  });
+
+  it("keeps calling it a goal while one system is still within reach", () => {
+    // Two of the three beyond the rack is not the state above: the line may
+    // only give up when every one of them is.
+    const game = hullIn("r1");
+    const rig = rigOf(game.player)!;
+    rig.slots.fill(null);
+    install(rig, "cell", 8);
+    applyDerived(game.player);
+    expect(missionBlock(game)[0]!.text).toMatch(/^GOAL {2}NEUTRALIZE/);
   });
 
   it("says what is in this compartment even with nothing in the rack for it", () => {
@@ -808,8 +867,8 @@ describe("the mission block", () => {
     rigOf(game.player)!.slots.fill(null);
     applyDerived(game.player);
 
-    const found = panelBlocks(game, roomActions(game)).find((l) => l.text.startsWith("+ CORE"));
-    expect(found?.text).toBe("+ CORE CELL, 2 turns");
+    const found = panelBlocks(game, roomActions(game)).find((l) => l.text.startsWith("+ REACTOR"));
+    expect(found?.text).toBe("+ REACTOR CELL, 2 turns");
     expect(found?.fg).toBe(THEME.fgDim);
   });
 
@@ -1098,5 +1157,52 @@ describe("a sidebar row that did not fit says so", () => {
     const cut = rows.map((l) => l.text).find((text) => text.includes("x"))!;
     expect(cut.length).toBe(PANEL_WIDTH);
     expect(cut.endsWith("…")).toBe(true);
+  });
+});
+
+// ------------------------------------------------------------ the relic's mark
+
+/**
+ * A relic is marked in the rack, in every view (G85, 5).
+ *
+ * The rack drew `+` for a graft and `\u25c0` for the exposed slot and nothing at
+ * all for a relic — so the bench refusing to mend or graft one
+ * (`systems/voyage.ts`, `repair`) was the first the player heard that the
+ * module was different from the five beside it. The mark is the tile set's own
+ * two-by-two block, which is what tells a relic there too.
+ */
+describe("a relic in the rack is marked", () => {
+  it("wears the mark beside its name in the ASCII panel, the page and the hexagons", () => {
+    const game = gameIn();
+    const rack = rigOf(game.player)!;
+    install(rack, "blade", 14);
+    applyDerived(game.player);
+
+    const row = panelBlocks(game, []).map((l) => l.text).find((text) => text.includes("Q-BLADE"))!;
+    expect(row).toContain(`Q-BLADE${RELIC_MARK}`);
+    expect(row.length).toBeLessThanOrEqual(PANEL_WIDTH);
+
+    const state = { ...initialState(), overlay: "none" as const };
+    for (const map of ["graph", "hex"] as const) {
+      const html = screenHtml(game, state, new Set(), undefined, map);
+      expect(html, map).toContain(`Q-BLADE${RELIC_MARK}`);
+    }
+  });
+
+  it("marks none of the five modules that are not relics", () => {
+    const game = gameIn();
+    const rows = panelBlocks(game, []).map((l) => l.text).filter((t) => slotNumberOf(t) !== undefined);
+    expect(rows).toHaveLength(6);
+    for (const row of rows) expect(row, row).not.toContain(RELIC_MARK);
+  });
+
+  it("says what the mark means on the relic's own card, in all three languages", () => {
+    for (const lang of LANGS) {
+      setLang(lang);
+      for (const id of RELICS) {
+        expect(t(codexFor(id)!.what as never), `${lang} ${id}`).toContain(RELIC_MARK);
+      }
+    }
+    setLang("en");
   });
 });

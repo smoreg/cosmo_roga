@@ -405,13 +405,20 @@ function fresh(game: RoomGame): Voyage {
   // Four hulls, drawn once: the freighter that teaches the game, two of the
   // five in between, and the father's tug (design-doc.md, "Типы дереликтов").
   const drawn = derelictsForVoyage(game.rng);
-  // A training run swaps the first of them for a hull built to be learned on —
-  // six compartments, one machine, one bulkhead, three systems
-  // (`content/tutorial.ts`, docs/tasks/G69-tutorial.md). The draw above still
-  // happens and still costs the rng exactly what it always did, so a seed is
-  // the same voyage from the second hull on; the training flag reaches here on
-  // the drone itself, because this runs inside the constructor.
-  const derelicts = isTraining(game.player) ? [TUTORIAL_SPEC, ...drawn.slice(1)] : drawn;
+  // A training run puts a hull built to be learned on in *front* of them — six
+  // compartments, one machine, one bulkhead, three systems (`content/tutorial.ts`,
+  // docs/tasks/G69-tutorial.md). The draw above still happens and still costs
+  // the rng exactly what it always did, so a seed is the same voyage from the
+  // second hull on; the training flag reaches here on the drone itself, because
+  // this runs inside the constructor.
+  //
+  // Added rather than swapped in, which it used to be, and the difference is a
+  // starter hull: the training hull sells for 60 CR against the 150–220 of the
+  // one it was displacing, so the lesson cost the player the best-paying wreck
+  // of the voyage. Measured over 40 careful runs it cost 20.5 CR and left the
+  // itinerary a hull short; prepending is the same voyage with a lesson in
+  // front of it (docs/tasks/G86-tutorial-and-title.md, 7).
+  const derelicts = isTraining(game.player) ? [TUTORIAL_SPEC, ...drawn] : drawn;
   const first = derelicts[0]!;
   return {
     credits: STARTING_CREDITS,
@@ -2064,6 +2071,12 @@ export const VOYAGE: System<RoomGame> = {
       "log.opening.voyage",
     );
     dock(game);
+    // And, under the three, that the mouse works — which no line of the game
+    // said in any language while the owner played with one
+    // (docs/tasks/G87-playability.md, 3). Last of the opening, so the three
+    // lines above it stay the instruction they are; once, because `hint` is the
+    // once-a-run door every such line goes through.
+    hint(game, "mouse");
   },
 
   performCommand(game, actor, cmd): Outcome | undefined {

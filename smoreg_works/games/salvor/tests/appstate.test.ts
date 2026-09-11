@@ -175,11 +175,22 @@ describe("the title card", () => {
 
   it("goes down on any key, and that key does nothing else", () => {
     const game = newRun();
-    for (const e of [press("1", "Digit1"), press("?", "Slash"), press("q", "KeyQ"), press("R", "KeyR")]) {
+    for (const e of [press("1", "Digit1"), press("q", "KeyQ"), press("R", "KeyR")]) {
       const next = key(initialState(), e, game);
       expect(next.overlay, e.key).toBe("none");
       expect(next.effect, e.key).toEqual({ kind: "idle" });
     }
+  });
+
+  it("opens the help card on `?` and comes back to the title", () => {
+    // `?` is the one key the screen's own block of controls advertises, and it
+    // used to cast off (docs/tasks/G86-tutorial-and-title.md, 10 and 13). The
+    // whole of the start screen's keys is `tests/title.test.ts`; this is the
+    // pair the overlay rules own.
+    const game = newRun();
+    const card = key(initialState(), press("?", "Slash"), game);
+    expect(card.overlay).toBe("help");
+    expect(key(card, press("Escape"), game).overlay).toBe("title");
   });
 
   it("does not spend the player's first move", () => {

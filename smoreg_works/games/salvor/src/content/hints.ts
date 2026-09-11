@@ -2,6 +2,7 @@ import type { Entity, RoomGame } from "@jamrog/engine";
 import { t } from "../i18n.js";
 import type { Key } from "./i18n/keys.js";
 import { HINT_KEYS } from "./modules.js";
+import { isTraining } from "./tutorial.js";
 
 /**
  * Everything the game ever says about itself, and the one rule for saying it
@@ -86,6 +87,13 @@ export const HINT_LINE_KEYS = {
    * is paid until it is back out through the airlock (docs/owner-queue.md, 5).
    */
   payout: "hint.payout",
+  /**
+   * Turn zero: the mouse works. Clicking a numbered line and clicking a box on
+   * the schematic have both worked since G84 and G31, and neither was written
+   * down anywhere in any of the three languages — while the owner plays with a
+   * mouse (docs/tasks/G87-playability.md, 3).
+   */
+  mouse: "hint.mouse",
   // The training run's own chain, said only aboard the training hull and only
   // in this order (`content/tutorial.ts`, `systems/tutorial.ts`). They live in
   // this table rather than in a second one of their own so that "once a run"
@@ -102,7 +110,7 @@ export const HINT_LINE_KEYS = {
   "tutorial.system": "hint.tutorial.system",
   /** The airlock: nothing is paid on the inside of it. */
   "tutorial.airlock": "hint.tutorial.airlock",
-  /** The hull sold, the next drone priced, and the end of the lesson. */
+  /** Home again: the next drone priced, and the end of the lesson. */
   "tutorial.sale": "hint.tutorial.sale",
 } as const satisfies Record<string, Key>;
 
@@ -183,20 +191,110 @@ export function soldLine(credits: number, hullPrice: number): string {
 }
 
 /**
- * One onboarding line, said once per run and never again.
+ * Ordinary lines the training chain teaches itself, and the chain line that
+ * teaches them: one table, read in one direction.
+ *
+ * `objective` is `tutorial.system` in other words and `payout` is
+ * `tutorial.airlock` in other words, and a training run said both of each: 94
+ * and 88 of 120 runs heard the same rule twice, often a turn apart, which is
+ * how a player learns that the log repeats itself rather than that the rule
+ * matters (docs/tasks/G86-tutorial-and-title.md, 5).
+ *
+ * Silent for the whole of a training run rather than only while the chain is
+ * behind, because the two lines are one topic and the chain is the one that
+ * says it in the compartment it is about. The flag is ticked with the silence,
+ * so the twin does not reappear on the second hull of the same voyage.
+ */
+const CHAIN_SAYS = {
+  objective: "tutorial.system",
+  payout: "tutorial.airlock",
+} as const satisfies Partial<Record<HintId, HintId>>;
+
+/**
+ * One onboarding line, said once per run and never again. True when the line
+ * went into the log, so a caller with two of them to offer can stop at the
+ * first (`systems/ship.ts`, `sayTheRules`).
  *
  * `text` is only ever passed for `sold`, which is the one line with a number in
  * it; everything else reads its own row out of the table above, so a caller
  * cannot put words in the game's mouth by accident.
  */
-export function hint(game: RoomGame, id: HintId, text?: string): void {
+export function hint(game: RoomGame, id: HintId, text?: string): boolean {
   const key: Key | undefined = id === "sold" ? undefined : HINT_LINE_KEYS[id];
   const line = text ?? (key === undefined ? undefined : t(key));
-  if (line === undefined) return;
+  if (line === undefined) return false;
   const said = hintsOf(game.player);
-  if (said[id] === true) return;
+  if (said[id] === true) return false;
+  // Ticked off rather than merely skipped: the chain owns this topic for the
+  // rest of the run, hulls after the training one included.
+  if (id in CHAIN_SAYS && isTraining(game.player)) {
+    said[id] = true;
+    return false;
+  }
   said[id] = true;
   game.log.add(line, game.schedule.time, "warn", `hint.${id}`);
+  return true;
+}
+
+/**
+ * How much room this turn has left for a lesson, and whether anything has
+ * already spoken in it.
+ *
+ * The log is seven rows (`ui/theme.ts`, `LAYOUT.logHeight`) and it does not
+ * stretch: 365 of 1639 turns that said anything at all said two things or
+ * three, and 415 hints shared their turn with a blow, a death or the alarm
+ * (docs/tasks/G86-tutorial-and-title.md, 6). So a lesson asks the turn what is
+ * left of it before taking a row:
+ *
+ *   `left`   rows a hint may still use — two a turn, and none at all over the
+ *            alarm, which is a red row that does not fade and owns its turn.
+ *   `taken`  something has already been said: another hint, or a blow the drone
+ *            took, its own `log.hit.*` wording included. A lesson that can be
+ *            said next turn waits; one whose moment is now does not
+ *            (`content/tutorial.ts`, `TutorialStep.urgent`).
+ *
+ * Two rather than one, and that number was measured rather than chosen. The
+ * boarding turn of the training hull hands the drone the numbered list, a
+ * machine in the compartment and — on most seeds — the locked bulkhead, all at
+ * once, and the machine is dead by the next turn: with one row a turn the
+ * lesson about fighting was said after the fight or not at all, in 0 of 120
+ * runs, and reversing the order only moved the loss onto the bulkhead
+ * (15 %). Two rows is the smallest budget that teaches both.
+ *
+ * A blow the drone *lands*, and a machine dying, are deliberately not counted
+ * as speech: the turn a machine is first in sight is usually the turn the fight
+ * starts and the turn it ends.
+ *
+ * Asked only where the question is re-asked every turn, so nothing is lost by
+ * waiting. A one-shot line fired by the event that owns it never comes through
+ * here: it would have nowhere to come back from.
+ */
+export interface TurnRoom {
+  readonly left: number;
+  readonly taken: boolean;
+}
+
+/** Hints one turn may carry, the teaching and the nudges together. */
+const HINTS_PER_TURN = 2;
+
+export function turnRoom(game: RoomGame): TurnRoom {
+  const lines = game.log.lines;
+  const now = game.schedule.time;
+  let hints = 0;
+  let taken = false;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (line.turn !== now) break;
+    if (line.tone === "alarm") return { left: 0, taken: true };
+    const key = line.key ?? "";
+    if (key.startsWith("hint.")) {
+      hints++;
+      taken = true;
+    } else if (key === "engine.hit.taken" || key.startsWith("log.hit.")) {
+      taken = true;
+    }
+  }
+  return { left: Math.max(0, HINTS_PER_TURN - hints), taken };
 }
 
 /** Has this line been said this run? What the tests and the systems both ask. */

@@ -70,6 +70,15 @@ export const SLOT_COUNT = 6;
  */
 const PANEL_LINE_WIDTH = 28;
 
+/**
+ * The relic's mark in the rack: the tile set's two-by-two block, as one glyph.
+ *
+ * All three relics carry the same mark in every view, which is the tile set's
+ * own rule for them — a relic is told apart by shape rather than by colour
+ * (`tools/tiles/sprites.mjs`) — and the rack had no mark for them at all.
+ */
+export const RELIC_MARK = "\u25aa";
+
 /** One installed module. Plain data: it lives in `player.data` and serialises. */
 export interface Slot {
   kind: ModuleId;
@@ -1404,7 +1413,16 @@ export const RIG: Twist<RoomGame> = {
       // a rack whose bar alone would run the panel over its width (a hull's
       // own PLATING beats the catalogue by enough that a full graft can), it
       // is the bar that gives, never the marks either side of it.
-      const prefix = `${i + 1} ${moduleName(kind.id).padEnd(10)}`;
+      // A relic wears its mark next to its name and not at the end of the row:
+      // it says what the module *is*, where `+` and `\u25c0` say what has
+      // happened to it. The same two-by-two block the tile set gives all three
+      // relics (`tools/tiles/sprites.mjs`), and it costs the bar nothing —
+      // every relic's name is short enough to take it inside the ten columns
+      // the name already has. Without it the bench's refusal to mend or graft
+      // one (`systems/voyage.ts`, `repair`) was the first the player heard of
+      // it (G85, 5).
+      const named = kind.relic ? `${moduleName(kind.id)}${RELIC_MARK}` : moduleName(kind.id);
+      const prefix = `${i + 1} ${named.padEnd(10)}`;
       const suffix = `${"+".repeat(slot.bonus ?? 0)}${exposed ? "  ◀" : ""}`;
       const room = Math.max(0, PANEL_LINE_WIDTH - prefix.length - suffix.length);
       const shownBars = bars.length > room ? bars.slice(0, room) : bars;

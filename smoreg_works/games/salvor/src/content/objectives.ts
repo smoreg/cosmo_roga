@@ -114,8 +114,11 @@ export const CORE: ObjectiveSpec = spec({
   id: "core",
   mark: "O",
   kind: "reactor",
-  name: "CORE",
-  short: "core",
+  // Named after its compartment, because `CORE` is also the drone's own last
+  // line of armour on the same panel and one word cannot be two things
+  // (docs/tasks/G87-playability.md, 3).
+  name: "REACTOR",
+  short: "reac",
   jobs: [{ tool: "cell", turns: 2, noise: 6 }],
 });
 

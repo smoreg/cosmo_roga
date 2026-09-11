@@ -258,7 +258,7 @@ describe("auto-explore", () => {
       ["crates", { id: 1, kind: "cargo" }, "a cargo crate"],
       ["items", { id: 1, kind: "charter-item" }, "a charter package"],
       ["items", { id: 1, kind: "console" }, "a console"],
-      ["systems", { id: 1, kind: "core", online: false }, "the core"],
+      ["systems", { id: 1, kind: "core", online: false }, "the reactor"],
     ];
     for (const [bucket, entry, noun] of cases) {
       const game = gameOn(HULL, "r2");

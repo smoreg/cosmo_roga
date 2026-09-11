@@ -183,11 +183,12 @@ const NOTHING: TutorialSituation = {
   aboard: false,
   turnsAboard: 0,
   contact: false,
+  fighting: false,
   lockedDoor: false,
   system: false,
   atAirlock: false,
   carrying: false,
-  sold: false,
+  home: false,
 };
 
 const said = (...ids: string[]) => (id: string) => ids.includes(id);
@@ -200,14 +201,17 @@ describe("the seven lines", () => {
         `hint.${step.id}`,
       );
     }
+    // The table is a priority, and the order is "the moment that passes first":
+    // the ship's own four lessons ahead of the scanner, whose moment never
+    // passes at all (`content/tutorial.ts`, G86).
     expect(TUTORIAL_STEPS.map((s) => s.id)).toEqual([
       "tutorial.enter",
-      "tutorial.scan",
       "tutorial.contact",
       "tutorial.door",
       "tutorial.system",
       "tutorial.airlock",
       "tutorial.sale",
+      "tutorial.scan",
     ]);
   });
 
@@ -216,13 +220,54 @@ describe("the seven lines", () => {
   });
 
   it("says one line a turn, the table's first when two are owed at once", () => {
-    // Aboard, with something in sight and a lock in the wall: three lines are
-    // owed and the earliest of them goes first, so the player reads the ship in
-    // the order the table lays it out rather than all at once.
+    // Aboard, with something in sight and a lock in the wall: four lines are
+    // owed, and what goes first is the one whose moment will be gone next turn.
+    // The machine beats the scanner and the bulkhead beats it too — the whole
+    // of G86's third and fourth findings, which is that the scanner used to
+    // stand in front of both.
     const busy = { ...NOTHING, aboard: true, turnsAboard: 3, contact: true, lockedDoor: true };
     expect(stepDue(busy, none)?.id).toBe("tutorial.enter");
-    expect(stepDue(busy, said("tutorial.enter"))?.id).toBe("tutorial.scan");
-    expect(stepDue(busy, said("tutorial.enter", "tutorial.scan"))?.id).toBe("tutorial.contact");
+    expect(stepDue(busy, said("tutorial.enter"))?.id).toBe("tutorial.contact");
+    expect(stepDue(busy, said("tutorial.enter", "tutorial.contact"))?.id).toBe("tutorial.door");
+    // And the scanner is not lost, it is last: a quiet turn is all it needs.
+    const quiet = { ...NOTHING, aboard: true, turnsAboard: 3 };
+    expect(stepDue(quiet, said("tutorial.enter"))?.id).toBe("tutorial.scan");
+  });
+
+  it("counts a fight on the screen as the machine standing in front of the drone", () => {
+    // The docking bay's scout is dead the turn after it is seen, and that turn
+    // is usually the only one the lesson could have been said on. A fight is
+    // the same subject, so the moment lasts as long as the blows do (G86, 3).
+    const fight = { ...NOTHING, aboard: true, turnsAboard: 1, fighting: true };
+    expect(stepDue(fight, said("tutorial.enter"))?.id).toBe("tutorial.contact");
+  });
+
+  it("offers only a passing moment on a turn that has already spoken", () => {
+    // The log is seven rows and a turn may teach two of them
+    // (`content/hints.ts`, `turnRoom`). With one row already spent, the lines
+    // that can be said next turn stand aside and the ones that cannot do not.
+    const everything = {
+      aboard: true,
+      turnsAboard: 6,
+      contact: true,
+      fighting: true,
+      lockedDoor: true,
+      system: true,
+      atAirlock: true,
+      carrying: true,
+      home: false,
+    };
+    const only = (...ids: string[]) => stepDue(everything, said(...ids), true)?.id;
+    expect(only()).toBe("tutorial.enter");
+    expect(only("tutorial.enter")).toBe("tutorial.contact");
+    expect(only("tutorial.enter", "tutorial.contact")).toBe("tutorial.door");
+    // Nothing else is worth a second row: the system, the airlock and the
+    // scanner are all still there next turn.
+    expect(only("tutorial.enter", "tutorial.contact", "tutorial.door")).toBeUndefined();
+    // On a quiet turn the same situation carries on through the table.
+    expect(stepDue(everything, said("tutorial.enter", "tutorial.contact", "tutorial.door"))?.id).toBe(
+      "tutorial.system",
+    );
   });
 
   it("lets a line whose moment has not come stand out of the way", () => {
@@ -242,10 +287,15 @@ describe("the seven lines", () => {
     expect(stepDue({ ...empty, carrying: true }, before)?.id).toBe("tutorial.airlock");
   });
 
-  it("says the last line off the ship, when the hull is under tow", () => {
+  it("says the last line on the tug, sale or no sale", () => {
+    // It used to wait for the hull to go under tow, which is the one moment of
+    // the chain a player has to earn: 70 % of careful runs earned it, 4 % of
+    // greedy ones and no random one at all, so the line that says the lesson is
+    // over was the line most runs never heard (G86, 8). Coming home is the same
+    // event a step earlier and it happens either way.
     const before = (id: string) => id !== "tutorial.sale";
-    expect(stepDue({ ...NOTHING, sold: false }, before)).toBeUndefined();
-    expect(stepDue({ ...NOTHING, sold: true }, before)?.id).toBe("tutorial.sale");
+    expect(stepDue({ ...NOTHING, home: false }, before)).toBeUndefined();
+    expect(stepDue({ ...NOTHING, home: true }, before)?.id).toBe("tutorial.sale");
   });
 
   it("has every line in all three languages", () => {
@@ -277,7 +327,7 @@ describe("a training run", () => {
     expect(isTraining(undefined)).toBe(false);
   });
 
-  it("opens on the training hull and keeps the rest of the itinerary", () => {
+  it("opens on the training hull and keeps the whole itinerary behind it", () => {
     for (const seed of seedRange(1, 20)) {
       const plain = voyageOf(newGame(seed)).derelicts.map((d) => d.id);
       const training = voyageOf(newGame(seed, true)).derelicts.map((d) => d.id);
@@ -285,9 +335,11 @@ describe("a training run", () => {
       // (`content/derelicts.ts`, `STARTER_HULLS`) — and never the training one.
       expect(STARTER_HULLS.map((h) => h.id), `seed ${seed}`).toContain(plain[0]);
       expect(training[0], `seed ${seed}`).toBe(TUTORIAL_ID);
-      // The draw above the swap is the same draw: one seed is one voyage from
-      // the second hull on, whichever way the run was started.
-      expect(training.slice(1), `seed ${seed}`).toEqual(plain.slice(1));
+      // Added, not swapped in: the lesson costs the player no hull. It used to
+      // displace the first wreck of the voyage, which sells for 150–220 against
+      // the training hull's 60 (G86, 7).
+      expect(training.slice(1), `seed ${seed}`).toEqual(plain);
+      expect(training.length, `seed ${seed}`).toBe(plain.length + 1);
     }
   });
 

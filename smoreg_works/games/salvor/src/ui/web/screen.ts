@@ -234,7 +234,7 @@ function titleCard(state: AppState): string[] {
     `<div class="title-name">${esc(screen.name)}</div>`,
     `<div class="title-tag">${esc(screen.tagline)}</div>`,
     `<div class="head">${esc(screen.menuHead)}</div>`,
-    `<div class="title-menu">${screen.items.map(titleItemHtml).join("")}</div>`,
+    `<div class="title-menu">${screen.items.map((item, i) => titleItemHtml(item, i, state.cursor)).join("")}</div>`,
     ...screen.hints.map((line) => `<div class="hint">${esc(line)}</div>`),
     `<div class="head">${esc(screen.keysHead)}</div>`,
     ...screen.keys.map((line) => `<div class="keys">${esc(line)}</div>`),
@@ -254,9 +254,13 @@ function titleCard(state: AppState): string[] {
  * already draws (`ui/input.ts`, `line` versus `pick`): three of these rows wear
  * a letter and no digit at all.
  */
-function titleItemHtml(item: TitleItem, index: number): string {
+function titleItemHtml(item: TitleItem, index: number, cursor: number): string {
+  // The highlight the arrows move and `Enter` does, drawn the way the action
+  // list draws its own (`ui/web/panel-html.ts`, `is-cursor`): the start screen
+  // was the one screen with no lit line at all (G86, 11).
+  const lit = index === cursor ? " is-cursor" : "";
   return [
-    `<div class="title-row" data-line="${index}">`,
+    `<div class="title-row${lit}" data-line="${index}">`,
     `<span class="title-key">${esc(item.key)}</span>`,
     `<span class="title-label">${esc(item.label)}</span>`,
     `<span class="title-value">${titleValueHtml(item)}</span>`,

@@ -26,7 +26,7 @@ import {
   type AppEffect,
   type AppState,
 } from "./appstate.js";
-import { isSoundKey, rememberSound, storedSound } from "./title.js";
+import { isSoundKey, rememberSound, seedFromUrl, storedSound } from "./title.js";
 import { debugBlock } from "./debug.js";
 import { ownFailure } from "./crashguard.js";
 import { isChord, isDebugKey, toIntent, type UiIntent } from "./input.js";
@@ -127,8 +127,12 @@ export class App {
     // is the whole of that: the training hull is drawn by the ordinary
     // generator, so what makes it repeatable is the run's own number
     // (`content/tutorial.ts`). A seed named in the URL still wins — a training
-    // run has to be as reportable as any other.
-    this.game = newGame(training && !params.has("seed") ? TUTORIAL_SEED : seed, training);
+    // run has to be as reportable as any other — but only a seed the game can
+    // actually fly: `?training=1&seed=abc` is a link to a tutorial, and it used
+    // to hand back a random ship, a different one on every reload
+    // (`ui/title.ts`, `seedFromUrl`).
+    const asked = seedFromUrl(window.location.search);
+    this.game = newGame(training && asked === undefined ? TUTORIAL_SEED : seed, training);
     // `?debug=1`: the owner's overlay, on from the first frame — linkable and
     // reloadable the same way `?seed=` and `?training=1` are.
     this.debug = params.get("debug") === "1";

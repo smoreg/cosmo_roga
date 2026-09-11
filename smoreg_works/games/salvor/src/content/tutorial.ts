@@ -150,6 +150,11 @@ export interface TutorialSituation {
   readonly turnsAboard: number;
   /** Something that is not the drone stands in a compartment the drone can see. */
   readonly contact: boolean;
+  /**
+   * Blows were traded this turn, whoever landed them: the fight the machine
+   * lesson is about, on the screen.
+   */
+  readonly fighting: boolean;
   /** A locked bulkhead leads out of the compartment the drone is standing in. */
   readonly lockedDoor: boolean;
   /** One of the ship's three systems is in this compartment. */
@@ -158,8 +163,18 @@ export interface TutorialSituation {
   readonly atAirlock: boolean;
   /** There is something to lose by dying: credits carried, or a system raised. */
   readonly carrying: boolean;
-  /** The tug has the hull under tow and the credits are in the account. */
-  readonly sold: boolean;
+  /**
+   * The drone is home: back on the tug after a sortie aboard the training hull.
+   *
+   * Not "the hull was sold", which is what this used to be. The sale is the one
+   * moment of the chain a player has to *earn*, and measured over a hundred and
+   * twenty runs it is earned by 70 % of careful bots, 4 % of greedy ones and no
+   * random one at all — so the single line that says the lesson is over was the
+   * line three runs in four never heard. Coming back through the airlock is the
+   * same event one step earlier and it happens whether the hull went under tow
+   * or not (docs/tasks/G86-tutorial-and-title.md, 8).
+   */
+  readonly home: boolean;
 }
 
 /** One line of the chain: what it is remembered under, and when it is owed. */
@@ -168,36 +183,66 @@ export interface TutorialStep {
   readonly id: HintId;
   /** True the first turn this line is worth reading. */
   due(at: TutorialSituation): boolean;
+  /**
+   * This line does not wait for a turn of its own: it may share one with
+   * another hint rather than hold until the log is quiet.
+   *
+   * Three of the seven, for two different reasons. `contact` and `door` are
+   * moments that pass — a machine is usually dead the turn after it is seen,
+   * and the one locked bulkhead is open a turn or two after the drone reaches
+   * it — and `enter` is the line that says which keys do anything at all, so a
+   * player reading the log for the first time needs it on the turn they board
+   * and not on the first quiet turn after it.
+   *
+   * The other four can always be said later — standing in a system
+   * compartment, standing in the airlock, standing on the tug, and the scanner
+   * — so they wait, which is what keeps the log from teaching three things at
+   * once (`content/hints.ts`, `quietTurn`).
+   *
+   * It is also what keeps the priority honest: a line that waits must not take
+   * the quiet turn a passing moment needed. `enter` used to, and the bulkhead
+   * lesson went from 100 % of greedy runs to 37 % because of it.
+   */
+  readonly urgent?: boolean;
 }
 
 /**
- * The chain, in the order a sortie usually meets it: aboard, look, fight,
- * unlock, raise, leave, sell.
+ * The chain, in the order a turn that owes two lines decides between them —
+ * which is a priority and not a script.
  *
- * The order is a priority and not a script, and that distinction was measured
- * rather than assumed. A hull whose bulkhead lies four doors in hands the drone
- * a system compartment long before it hands it a lock — on the tutorial seed it
- * does exactly that, twenty turns apart — and a chain that refused to say
- * anything until the lock had been met said nothing for the rest of the run.
- * So a step whose moment has not come is skipped rather than blocking, and what
- * the table decides is which line goes first when two are owed on the same
- * turn. Each is still said once, and still on a turn when its subject is
- * standing in front of the drone, which is the whole rule
+ * A step whose moment has not come is skipped rather than blocking: a hull
+ * whose bulkhead lies four doors in hands the drone a system compartment long
+ * before it hands it a lock, and a chain that refused to say anything until the
+ * lock had been met said nothing for the rest of the run. What the table
+ * decides is which line goes first when two are owed at once, and every line is
+ * still said once, still on a turn when its subject is in front of the drone
  * (design-doc.md, "Обучение конструкцией").
  *
- * The first two are due on sight rather than on an event, and deliberately: "you
- * are aboard, here is how you act" and "here is how you see" are not lessons the
- * ship can stage — they are the two things a player needs before the ship can
- * teach anything at all.
+ * The order is **the moment that passes first**, and that was measured. It used
+ * to read `enter → scan → contact → …`, with the scanner second because that is
+ * the order the lessons were written in — and the scanner's moment never passes
+ * while a machine's does. The docking bay hands the drone a scout on the turn it
+ * boards, the fight is the turn after, and the line explaining what a fight
+ * costs waited behind the scanner: in **none of 120 careful runs and none of 120
+ * greedy ones** did the machine lesson land before the first blow. The bulkhead
+ * paid worse — the drone stands in front of the one locked door for a turn or
+ * two and then opens it, and the lesson that door exists for was said in 32 %
+ * of the greedy runs that stood there (docs/tasks/G86-tutorial-and-title.md,
+ * 3 and 4).
+ *
+ * So `enter` first, because "you are aboard, here is how you act" is what a
+ * player needs before the ship can teach anything at all; then the four lessons
+ * the ship stages, in the order it stages them; then the sale; and `scan` last,
+ * because it is the one line that can always be said next turn.
  */
 export const TUTORIAL_STEPS: readonly TutorialStep[] = [
-  { id: "tutorial.enter", due: (at) => at.aboard },
-  { id: "tutorial.scan", due: (at) => at.aboard && at.turnsAboard >= 1 },
-  { id: "tutorial.contact", due: (at) => at.aboard && at.contact },
-  { id: "tutorial.door", due: (at) => at.aboard && at.lockedDoor },
+  { id: "tutorial.enter", due: (at) => at.aboard, urgent: true },
+  { id: "tutorial.contact", due: (at) => at.aboard && (at.contact || at.fighting), urgent: true },
+  { id: "tutorial.door", due: (at) => at.aboard && at.lockedDoor, urgent: true },
   { id: "tutorial.system", due: (at) => at.aboard && at.system },
   { id: "tutorial.airlock", due: (at) => at.aboard && at.atAirlock && at.carrying },
-  { id: "tutorial.sale", due: (at) => at.sold },
+  { id: "tutorial.sale", due: (at) => at.home },
+  { id: "tutorial.scan", due: (at) => at.aboard && at.turnsAboard >= 1 },
 ];
 
 /**
@@ -209,10 +254,19 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
  * turn, because two lessons in one log entry is one lesson read. `said` is
  * asked rather than passed as a set so the caller can hand it the flags that
  * live on the drone.
+ *
+ * `crowded` is the caller saying that something else has already spoken this
+ * turn (`content/hints.ts`, `quietTurn`): then only an `urgent` line is worth a
+ * second entry in the log, and the rest wait. It is a parameter rather than a
+ * rule of its own so that the whole decision stays one pure function a test can
+ * drive by hand.
  */
 export function stepDue(
   at: TutorialSituation,
   said: (id: HintId) => boolean,
+  crowded = false,
 ): TutorialStep | undefined {
-  return TUTORIAL_STEPS.find((step) => !said(step.id) && step.due(at));
+  return TUTORIAL_STEPS.find(
+    (step) => !said(step.id) && (!crowded || step.urgent === true) && step.due(at),
+  );
 }

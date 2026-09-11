@@ -25,6 +25,7 @@ import {
   DEFAULT_TITLE,
   seedOf,
   seedTyped,
+  TITLE_ROWS,
   titleRowAt,
   titleRowOfPick,
   type TitleRowKind,
@@ -256,6 +257,18 @@ export interface AppState {
    */
   readonly settings: TitleSettings;
   /**
+   * The help card was opened from the start screen, so closing it goes back
+   * there rather than into a run nobody has chosen to start.
+   *
+   * One boolean rather than a stack of screens, because there is one card and
+   * one way into it from the title: `3`, or `?`. Every way out of the card asks
+   * this — `Esc`, the last page of `?`, and any key at all — so a player who
+   * pressed `3`, read the rules and pressed `Esc` is back on the menu they came
+   * from. Before this they were in the voyage, having chosen nothing, with no
+   * way back (docs/tasks/G86-tutorial-and-title.md, 10).
+   */
+  readonly titleHelp: boolean;
+  /**
    * The digits typed into the seed row so far, or undefined when it is not
    * being typed into.
    *
@@ -302,6 +315,7 @@ function started(state: AppState, game: RoomGame): AppState {
   return {
     ...state,
     seedText: undefined,
+    titleHelp: false,
     overlay: "none",
     exploring: false,
     ask: undefined,
@@ -332,6 +346,7 @@ export function initialState(settings: TitleSettings = DEFAULT_TITLE): AppState 
   return {
     settings,
     seedText: undefined,
+    titleHelp: false,
     overlay: "title",
     exploring: false,
     ask: undefined,
@@ -379,7 +394,8 @@ function titleRow(state: AppState, game: RoomGame, row: TitleRowKind): AppState 
     case "training":
       return { ...started(state, game), effect: { kind: "training" } };
     case "help":
-      return { ...state, overlay: "help", helpPage: 0, effect: IDLE };
+      // Remembered, so `Esc` and the last page of `?` come back here.
+      return { ...state, overlay: "help", helpPage: 0, titleHelp: true, effect: IDLE };
     case "seed":
       return { ...state, seedText: "", effect: IDLE };
     case "lang":
@@ -560,6 +576,24 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
     // off: "any key starts" is a promise about the keyboard, and a mouse that
     // began a run by missing a menu line would be the opposite of one.
     if (intent.kind === "line") return withEffect(state, IDLE);
+    // The idiom every other screen of this game keeps: the arrows move the
+    // highlight, `Enter` does the line it is on. The title was the one screen
+    // where it was off — the arrows and `Enter` fell through into "any key
+    // casts off", so a player looking for the menu flew out of the dock instead
+    // and the menu had no highlight to look for (G86, 11).
+    if (intent.kind === "cursor") {
+      return { ...state, cursor: moved(state.cursor, intent.delta, TITLE_ROWS.length), effect: IDLE };
+    }
+    if (intent.kind === "confirm") {
+      const lit = titleRowAt(state.cursor);
+      return lit === undefined ? withEffect(state, IDLE) : titleRow(state, game, lit);
+    }
+    // `?` is the key the block of controls on this very screen advertises, and
+    // it used to cast off (G86, 13). The sideways arrows and `Esc` are the
+    // other three keys excluded from "any key starts": a player reaching for
+    // the highlight, or backing out of nothing, has not asked for a voyage.
+    if (intent.kind === "help") return titleRow(state, game, "help");
+    if (intent.kind === "page" || intent.kind === "dismiss") return withEffect(state, IDLE);
     // Whatever the run has already done, the first key is not the moment to
     // announce it: the title sits in front of a voyage that has not started.
     return started(state, game);
@@ -604,7 +638,7 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       // Escape closes what is in front of the board first, and then takes the
       // list back up a level: the two are never on the screen at once, so one
       // key is enough for both and neither of them is a turn.
-      if (state.overlay === "help") return synced({ ...state, overlay: "none", helpPage: 0, effect: IDLE }, game);
+      if (state.overlay === "help") return synced(helpClosed(state), game);
       if (state.overlay === "codex") return synced(codexClosed(state), game);
       if (state.overlay === "history") return synced(closedHistory(state), game);
       if (state.menu !== undefined || state.moves || state.doors) return upALevel(state, game);
@@ -750,7 +784,25 @@ function helpTurned(state: AppState, game: RoomGame): AppState {
   if (state.overlay !== "help") return { ...state, overlay: "help", helpPage: 0, effect: IDLE };
   const pages = helpPages(isTug(game), codexSeen(game)).length;
   if (state.helpPage + 1 < pages) return { ...state, helpPage: state.helpPage + 1, effect: IDLE };
-  return { ...state, overlay: "none", helpPage: 0, effect: IDLE };
+  return helpClosed(state);
+}
+
+/**
+ * The card, put away — onto whatever was behind it.
+ *
+ * Which is the board in a run and the start screen when that is where it was
+ * opened from. Written once and asked by all three ways out, because the bug
+ * was three separate `overlay: "none"`s and a comment promising otherwise
+ * (docs/tasks/G86-tutorial-and-title.md, 10).
+ */
+function helpClosed(state: AppState): AppState {
+  return {
+    ...state,
+    overlay: state.titleHelp ? "title" : "none",
+    helpPage: 0,
+    titleHelp: false,
+    effect: IDLE,
+  };
 }
 
 // -------------------------------------------------- what is going on here (G72)
@@ -879,7 +931,7 @@ function nowhereToWalk(state: AppState, game: RoomGame): AppState {
  * of them once the run is over.
  */
 function stopped(state: AppState, game: RoomGame): AppState | undefined {
-  if (state.overlay === "help") return synced({ ...state, overlay: "none", helpPage: 0, effect: IDLE }, game);
+  if (state.overlay === "help") return synced(helpClosed(state), game);
   // The `i` card behaves exactly as the help card does: it is in front of the
   // board, so the key that puts it away is any key at all, and that key does
   // nothing else. Which also makes `i` its own way out.
@@ -1257,6 +1309,7 @@ function newRunState(state: AppState): AppState {
   return {
     settings: state.settings,
     seedText: undefined,
+    titleHelp: false,
     overlay: "none",
     exploring: false,
     ask: undefined,

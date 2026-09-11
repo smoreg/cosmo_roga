@@ -291,6 +291,27 @@ export function seedTyped(typing: string, digit: string): string {
 }
 
 /**
+ * The seed the address bar asks for, or undefined when it asks for nothing the
+ * game can fly.
+ *
+ * One reading of `?seed=` for the whole shell, because there were two and they
+ * disagreed: `main.ts` drew a random number for anything that was not digits,
+ * and `ui/app.ts` gave a training run its own hull only when the parameter was
+ * *absent*. Between them, `?training=1&seed=abc` — and `seed=`, `seed=-1`,
+ * `seed=0x10` — quietly stopped being a tutorial and became a different random
+ * ship on every reload (docs/tasks/G86-tutorial-and-title.md, 9).
+ *
+ * Digits only, and the same rule the seed row types under
+ * (`SEED_DIGITS`): a number a player can read off the screen and type back in.
+ */
+export function seedFromUrl(search: string): number | undefined {
+  const raw = new URLSearchParams(search).get("seed");
+  if (raw === null || !/^\d+$/.test(raw)) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value >>> 0 : undefined;
+}
+
+/**
  * The number a typed seed means, or undefined for "draw one at random".
  *
  * An empty field is the random option and is the reason `Enter` on it is not a

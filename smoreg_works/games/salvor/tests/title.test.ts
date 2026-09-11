@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { newGame } from "../src/game.js";
+import { TUTORIAL_SEED } from "../src/content/tutorial.js";
 import { LANGS, currentLang, setLang, DEFAULT_LANG, LANG_STORAGE_KEY, initLang } from "../src/i18n.js";
 import { appReducer, initialState, withSettings, type AppState } from "../src/ui/appstate.js";
 import { toIntent, type KeyLike } from "../src/ui/input.js";
@@ -17,6 +18,7 @@ import {
   isSoundKey,
   itemText,
   rememberSound,
+  seedFromUrl,
   seedOf,
   seedTyped,
   storedSound,
@@ -225,6 +227,32 @@ describe("every row of the menu can be clicked", () => {
     expect(marked).toHaveLength(titleScreen(DEFAULT_TITLE).items.length);
   });
 
+  /**
+   * And the row the highlight is on is marked in both views.
+   *
+   * The reducer moves a cursor either way (see the keys below); what this holds
+   * is that the two screens draw it — the page with the class its action list
+   * already uses, the terminal with a row of its own colour and the `▸` the
+   * panel points with (docs/tasks/G86-tutorial-and-title.md, 11).
+   */
+  it("lights the row the highlight is on, in both views", () => {
+    const game = newGame(11);
+    const at = TITLE_ROWS.indexOf("view");
+    const html = screenHtml(game, { ...title({ seed: game.seed }), cursor: at }, new Set());
+    const rows = [...html.matchAll(/<div class="title-row([^"]*)" data-line="(\d+)"/g)];
+    expect(rows).toHaveLength(TITLE_ROWS.length);
+    for (const [, classes, index] of rows) {
+      expect(classes!.includes("is-cursor"), `row ${index}`).toBe(Number(index) === at);
+    }
+
+    const menu = titleRows(titleScreen(DEFAULT_TITLE), at).filter((row) => row.role === "menu");
+    expect(menu).toHaveLength(TITLE_ROWS.length);
+    expect(menu.map((row) => row.lit === true)).toEqual(TITLE_ROWS.map((_, i) => i === at));
+    // Nothing is lit for a caller that does not say where the cursor is: the
+    // width checks measure the screen, not a session.
+    expect(titleRows(titleScreen(DEFAULT_TITLE)).some((row) => row.lit === true)).toBe(false);
+  });
+
   it("does by click exactly what the row's key does", () => {
     const clicks = TITLE_ROWS.map((_, i) => appReducer(title(), { kind: "line", index: i }, newGame(7)));
     expect(clicks[TITLE_ROWS.indexOf("voyage")]!.overlay).toBe("none");
@@ -286,12 +314,93 @@ describe("every row of the menu can be clicked", () => {
 // -------------------------------------------------------------- what the keys do
 
 describe("every key of the menu does what its row promises", () => {
-  it("casts off on `1`, and on any key that is not a row", () => {
-    for (const e of [press("1", "Digit1"), press("q", "KeyQ"), press("Escape"), press("R", "KeyR")]) {
+  it("casts off on `1`, and on any key that is not a row or a way around one", () => {
+    for (const e of [press("1", "Digit1"), press("q", "KeyQ"), press("z", "KeyZ"), press("R", "KeyR")]) {
       const next = key(title(), e);
       expect(next.overlay, e.key).toBe("none");
       expect(next.effect, e.key).toEqual({ kind: "idle" });
     }
+  });
+
+  /**
+   * The four keys "any key casts off" does not include.
+   *
+   * The arrows and `Enter` are the idiom every other screen of this game keeps,
+   * and on the title they fell through into the voyage: a player reaching for
+   * the menu with the arrows flew out of the dock. `?` is worse than that — the
+   * block of controls on this very screen advertises it — and `Esc` is the key
+   * a player presses to back out of nothing at all
+   * (docs/tasks/G86-tutorial-and-title.md, 11 and 13).
+   */
+  it("keeps the arrows, `Enter`, `Esc` and `?` out of the voyage", () => {
+    for (const e of [press("ArrowDown"), press("ArrowUp"), press("ArrowLeft"), press("ArrowRight"), press("Escape")]) {
+      expect(key(title(), e).overlay, e.key).toBe("title");
+    }
+    // `Enter` does the lit row, which on a screen nobody has touched is the
+    // first one: cast off. That is the row's own promise, not "any key".
+    expect(key(title(), press("Enter")).overlay).toBe("none");
+    expect(key(title(), press("?")).overlay).toBe("help");
+  });
+
+  it("moves the highlight with the arrows and does the lit row on `Enter`", () => {
+    const menu = title();
+    expect(menu.cursor).toBe(0);
+    const down = key(menu, press("ArrowDown"));
+    expect(down.cursor).toBe(TITLE_PICKS.training);
+    expect(down.effect).toEqual({ kind: "idle" });
+    // The lit row is what `Enter` does: the second row is the training run.
+    expect(key(down, press("Enter")).effect).toEqual({ kind: "training" });
+    // Down to the help row and into the card, with no digit pressed at all.
+    expect(keys(menu, press("ArrowDown"), press("ArrowDown"), press("Enter")).overlay).toBe("help");
+    // And the ring rows are reachable the same way: the language row is fifth.
+    const lang = keys(menu, ...Array(TITLE_ROWS.indexOf("lang")).fill(press("ArrowDown")));
+    expect(lang.cursor).toBe(TITLE_ROWS.indexOf("lang"));
+    expect(key(lang, press("Enter")).effect).toEqual({ kind: "language" });
+    expect(key(lang, press("Enter")).overlay).toBe("title");
+  });
+
+  it("wraps the highlight at both ends of the menu", () => {
+    expect(key(title(), press("ArrowUp")).cursor).toBe(TITLE_ROWS.length - 1);
+    const last = keys(title(), ...Array(TITLE_ROWS.length).fill(press("ArrowDown")));
+    expect(last.cursor).toBe(0);
+  });
+
+  /**
+   * The card opened from the menu comes back to the menu.
+   *
+   * Every way out of it: `Esc`, the last page of `?`, and any key at all. A
+   * player who pressed `3`, read the rules and pressed `Esc` used to end up in
+   * the voyage having chosen nothing, with no way back — and the comment over
+   * the reducer's title branch promised the opposite
+   * (docs/tasks/G86-tutorial-and-title.md, 10).
+   */
+  it("comes back to the menu from the help card, whichever way it is closed", () => {
+    for (const opened of [key(title(), press("3", "Digit3")), key(title(), press("?"))]) {
+      expect(opened.overlay).toBe("help");
+      expect(opened.titleHelp).toBe(true);
+      const closed = key(opened, press("Escape"));
+      expect(closed.overlay, "Esc").toBe("title");
+      expect(closed.titleHelp).toBe(false);
+      // A key that does something puts the card away as well — the card eats
+      // the press, as it always has — and it must not cast off on the way.
+      expect(key(opened, press("Enter")).overlay, "Enter").toBe("title");
+      expect(key(opened, press("m", "KeyM")).overlay, "m").toBe("title");
+      // `?` turns the pages and closes on the last one, back onto the menu.
+      let paging = opened;
+      for (let turn = 0; turn < 12 && paging.overlay === "help"; turn++) paging = key(paging, press("?"));
+      expect(paging.overlay, "the last page of ?").toBe("title");
+      expect(paging.titleHelp).toBe(false);
+    }
+  });
+
+  it("keeps the card out of the way of a run that opened it", () => {
+    // The other half of the same rule: a card opened in a voyage closes onto
+    // the board, exactly as it always did.
+    const run = { ...title(), overlay: "none" as const };
+    const opened = key(run, press("?"));
+    expect(opened.overlay).toBe("help");
+    expect(opened.titleHelp).toBe(false);
+    expect(key(opened, press("Escape")).overlay).toBe("none");
   });
 
   it("casts off with the prompts on `2`, and opens the help card on `3`", () => {
@@ -398,6 +507,40 @@ describe("the seed is chosen on the screen, not in the address bar", () => {
       expect(next.overlay, e.key).toBe("title");
       expect(next.seedText, e.key).toBe("77");
     }
+  });
+
+  /**
+   * What the address bar is allowed to mean, in one reading for the whole shell.
+   *
+   * There were two of them and they disagreed: `main.ts` drew a random number
+   * for anything that was not digits, and `ui/app.ts` gave a training run its
+   * own hull only when the parameter was *absent*. So `?training=1&seed=abc` —
+   * and `seed=`, `seed=-1`, `seed=0x10` — quietly stopped being a tutorial and
+   * became a different random ship on every reload
+   * (docs/tasks/G86-tutorial-and-title.md, 9).
+   */
+  it("reads a seed out of the address bar, or says there is none", () => {
+    expect(seedFromUrl("?seed=77")).toBe(77);
+    expect(seedFromUrl("?seed=0")).toBe(0);
+    expect(seedFromUrl("?training=1&seed=4294967295")).toBe(4294967295);
+    for (const bad of ["?seed=abc", "?seed=", "?seed=-1", "?seed=0x10", "?seed=1.5", "?training=1", ""]) {
+      expect(seedFromUrl(bad), bad).toBeUndefined();
+    }
+  });
+
+  it("flies the training hull whenever the address bar names no seed it can use", () => {
+    // The shell's own decision, written out here because a browser is the one
+    // place this game is not tested in: a training run with a seed it cannot
+    // read is the training seed, and an ordinary one is whatever was drawn.
+    const drawn = 12345;
+    const seedFor = (search: string, training: boolean): number =>
+      training && seedFromUrl(search) === undefined ? TUTORIAL_SEED : seedFromUrl(search) ?? drawn;
+    for (const bad of ["?training=1", "?training=1&seed=abc", "?training=1&seed=", "?training=1&seed=-1", "?training=1&seed=0x10"]) {
+      expect(seedFor(bad, true), bad).toBe(TUTORIAL_SEED);
+    }
+    expect(seedFor("?training=1&seed=77", true)).toBe(77);
+    expect(seedFor("?seed=abc", false)).toBe(drawn);
+    expect(seedFor("?seed=77", false)).toBe(77);
   });
 
   it("stops at ten digits and refuses a leading zero", () => {

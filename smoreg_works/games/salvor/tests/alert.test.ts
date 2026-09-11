@@ -291,7 +291,7 @@ describe("the ladder: every rung once, on the way up", () => {
     }
 
     // Each rung's line exactly once, and the top of the gauge says what it is.
-    for (const word of ["NOTICED", "SEARCHING", "HUNTING", "HUNTER", "SCUTTLE"]) {
+    for (const word of ["NOTICED", "SEARCHING", "HUNTING", "ENFORCER", "SCUTTLE"]) {
       expect(logged(game, `Alert: ${word}.`), word).toBe(1);
     }
     expect(game.log.lines.some((l) => l.text.startsWith(`SCUTTLE: in ${SCUTTLE_WARN} turns`))).toBe(true);
@@ -923,15 +923,15 @@ describe("near the top of the gauge the ship sends an ENFORCER", () => {
 
     raiseAlert(game);
     expect(ALERT.panelLines?.(game)).toEqual([
-      { text: "ALERT ▮▮▮▮▯ HUNTER", fg: "#d9b56a" },
-      { text: "HUNTER aboard", fg: "#d96a6a" },
+      { text: "ALERT ▮▮▮▮▯ ENFORCER", fg: "#d9b56a" },
+      { text: "ENFORCER still aboard", fg: "#d96a6a" },
     ]);
 
     // The top is a countdown, and it ticks on the panel.
     raiseAlert(game);
     expect(ALERT.panelLines?.(game)).toEqual([
       { text: `ALERT ▮▮▮▮▮ SCUTTLE IN ${SCUTTLE_WARN}`, fg: "#d96a6a" },
-      { text: "HUNTER aboard", fg: "#d96a6a" },
+      { text: "ENFORCER still aboard", fg: "#d96a6a" },
     ]);
     loudWait(game, 5);
     expect(ALERT.panelLines?.(game)?.[0]).toEqual({

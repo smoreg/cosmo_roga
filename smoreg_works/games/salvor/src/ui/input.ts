@@ -376,7 +376,7 @@ const RULE_KEYS = [
  * before they do.
  */
 const LIST_KEYS = [
-  "help.list.head", "help.list.1", "help.list.2", "help.list.3",
+  "help.list.head", "help.list.1", "help.list.2", "help.list.3", "help.list.4",
 ] as const satisfies readonly Key[];
 
 /**
@@ -402,6 +402,12 @@ const CHARTER_KEYS = [
  */
 const URL_KEYS = [
   "help.url.head", "help.url.seed", "help.url.view", "help.url.sound", "help.url.training", "help.url.debug",
+  // The two the owner takes his itch.io screenshots with, and the two that were
+  // written down nowhere at all: the tiles (G80) and the drawn hull (G81) are
+  // switches on the drawing rather than views of their own, so `V` does not
+  // reach either and nothing on the start screen names them
+  // (docs/tasks/G86-tutorial-and-title.md, 12).
+  "help.url.tiles", "help.url.hull",
 ] as const satisfies readonly Key[];
 
 export function ruleHelp(): string[] {

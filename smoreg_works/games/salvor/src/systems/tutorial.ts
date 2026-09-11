@@ -1,6 +1,6 @@
-import type { RoomGame, System } from "@jamrog/engine";
+import { isAlive, type RoomGame, type System } from "@jamrog/engine";
 import { classOfShip } from "../content/derelicts.js";
-import { hint, saidHint } from "../content/hints.js";
+import { hint, saidHint, turnRoom } from "../content/hints.js";
 import {
   TUTORIAL_ID,
   isTraining,
@@ -55,8 +55,15 @@ export const TUTORIAL: System<RoomGame> = {
 
   afterPlayerTurn(game) {
     if (game.status !== "playing" || !isTraining(game.player)) return;
-    const step = stepDue(situation(game), (id) => saidHint(game.player, id));
-    if (step !== undefined) hint(game, step.id);
+    // Nothing at all over the alarm; otherwise as many lessons as the turn has
+    // rows left for, and a second only when its moment is passing too
+    // (`content/hints.ts`, `turnRoom`; `content/tutorial.ts`,
+    // `TutorialStep.urgent`).
+    for (let room = turnRoom(game); room.left > 0; room = turnRoom(game)) {
+      const step = stepDue(situation(game), (id) => saidHint(game.player, id), room.taken);
+      if (step === undefined) return;
+      hint(game, step.id);
+    }
   },
 };
 
@@ -83,22 +90,59 @@ function situation(game: RoomGame): TutorialSituation {
   return {
     aboard,
     turnsAboard: typeof boarded === "number" ? game.schedule.time - boarded : 0,
-    // Anything that is not the drone, standing where the drone can see it: the
-    // scout in the docking bay on the turn the sortie walks in on it, and a
-    // machine two doors away through an open door just as well.
+    // Anything alive that is not the drone, standing where the drone can see
+    // it: the scout in the docking bay on the turn the sortie walks in on it,
+    // and a machine two doors away through an open door just as well.
+    //
+    // `isAlive` and not just `e.room`: the engine leaves the dead in the entity
+    // list — that is what makes a corpse something to salvage — so without it
+    // the line about what a fight costs was said over a body the drone had
+    // already beaten, in 34 of 120 runs with nothing alive in sight
+    // (docs/tasks/G86-tutorial-and-title.md, 2).
     contact:
       aboard &&
       game.entities.some(
-        (e) => e.id !== game.player.id && e.room !== undefined && game.visible.has(e.room),
+        (e) =>
+          e.id !== game.player.id &&
+          isAlive(e) &&
+          e.room !== undefined &&
+          game.visible.has(e.room),
       ),
+    // Blows traded this turn, whoever landed them.
+    //
+    // The machine lesson's other moment, and on the training hull usually its
+    // only one: the docking bay hands the drone a scout on the turn it boards —
+    // the same turn the chain owes its "here is how you act" line — and the
+    // scout is dead by the next player turn, so "something alive in sight" was
+    // a window one hook wide that the first line always won. Measured: the
+    // lesson about what a fight costs landed before the first blow in 0 of 120
+    // careful runs. A fight on the screen is the same subject standing in front
+    // of the player, so it counts (docs/tasks/G86-tutorial-and-title.md, 3).
+    fighting: aboard && tradedBlows(game),
     lockedDoor: aboard && game.ship.doorsOf(room.id).some((d) => d.state === "locked"),
     system: aboard && roomList<ShipSystem>(room, "systems").length > 0,
     atAirlock: aboard && room.id === game.ship.entry,
     // Something to lose: credits in hand, or work done that only counts once
     // the drone is back out. Both are exactly what the airlock line is about.
     carrying: voyage.loot > 0 || state.online.length > 0,
-    // Said on the tug, after the crossing that paid for the hull — which is the
-    // one line of the chain whose moment is not aboard the ship at all.
-    sold: state.spec.id === TUTORIAL_ID && state.sold,
+    // Home: on the tug, with the training hull behind the drone. The chain's
+    // own first line is what says the drone has been aboard at all — the flags
+    // are the run's memory of the lesson, and a save file round-trips them —
+    // so this is true from the first return through the airlock and stays true.
+    home: isTug(game) && saidHint(game.player, "tutorial.enter"),
   };
 }
+
+/** Did anything hit anything this turn? Read off the log, which is where the engine says so. */
+function tradedBlows(game: RoomGame): boolean {
+  const lines = game.log.lines;
+  const now = game.schedule.time;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (line.turn !== now) return false;
+    const key = line.key ?? "";
+    if (key.startsWith("engine.hit.") || key.startsWith("log.hit.")) return true;
+  }
+  return false;
+}
+

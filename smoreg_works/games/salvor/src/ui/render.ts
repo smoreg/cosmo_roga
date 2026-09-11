@@ -126,6 +126,14 @@ export interface TitleRow {
    * can light it without knowing what a language or a view is.
    */
   readonly mark?: string;
+  /**
+   * This is the row the highlight is on, and `Enter` is what does it.
+   *
+   * The start screen was the one screen of the game with no highlight at all,
+   * which made it the one screen where "the arrows move the lit line and
+   * `Enter` does it" was not true (docs/tasks/G86-tutorial-and-title.md, 11).
+   */
+  readonly lit?: boolean;
 }
 
 const BLANK: TitleRow = { role: "blank", text: "" };
@@ -138,14 +146,19 @@ const BLANK: TitleRow = { role: "blank", text: "" };
  * are rows: the layout is then arithmetic a test can do, so "does the Spanish
  * menu fit ninety-five columns" is a number and not a screenshot.
  */
-export function titleRows(screen: TitleScreen): TitleRow[] {
+export function titleRows(screen: TitleScreen, cursor = -1): TitleRow[] {
   const body: TitleRow[] = [
     ...nameBanner(screen.name).map((text) => ({ role: "name" as const, text })),
     BLANK,
     { role: "tagline", text: screen.tagline },
     BLANK,
     { role: "head", text: screen.menuHead },
-    ...screen.items.map((item) => ({ role: "menu" as const, text: itemText(item), mark: itemMark(item) })),
+    ...screen.items.map((item, i) => ({
+      role: "menu" as const,
+      text: itemText(item),
+      mark: itemMark(item),
+      lit: i === cursor,
+    })),
     BLANK,
     ...screen.hints.map((text) => ({ role: "hint" as const, text })),
     BLANK,
@@ -169,6 +182,9 @@ function ruledOff(head: string, width: number): string {
 export function titleBox(screen: TitleScreen = titleScreen(DEFAULT_TITLE)): BoxSize {
   return boxFor(titleRows(screen).map((row) => row.text), 2);
 }
+
+/** What the highlight is drawn with, on both screens that have one. */
+const CURSOR_MARK = "\u25b8";
 
 /** Rows that sit in the middle of the frame rather than against its left pad. */
 const CENTRED: ReadonlySet<TitleRole> = new Set<TitleRole>(["name", "tagline", "foot"]);
@@ -484,7 +500,7 @@ export class Renderer {
    */
   private drawTitle(state: AppState): void {
     const screen = titleScreen(state.settings, state.seedText);
-    const rows = titleRows(screen);
+    const rows = titleRows(screen, state.cursor);
     const { width: w, height: h } = titleBox(screen);
     const x0 = (SCREEN_WIDTH - w) >> 1;
     const y0 = (SCREEN_HEIGHT - h) >> 1;
@@ -503,7 +519,11 @@ export class Renderer {
   private drawTitleRow(row: TitleRow, x: number, y: number, w: number): void {
     if (row.role === "blank") return;
     const at = CENTRED.has(row.role) ? x + ((w - row.text.length) >> 1) : x;
-    this.putLine(at, y, row.text, titleColour(row.role));
+    this.putLine(at, y, row.text, row.lit === true ? THEME.bright : titleColour(row.role));
+    // The same mark the action list wears, two columns to the left of the row
+    // and inside the frame's own padding (`ui/web/panel-html.ts` draws it as a
+    // `▸` too, so the two views point at the same line the same way).
+    if (row.lit === true) this.putLine(at - 2, y, CURSOR_MARK, THEME.accent);
     if (row.role === "menu") this.putLine(at, y, row.text.slice(0, 1), THEME.accent);
     if (row.mark === undefined) return;
     const found = row.text.indexOf(row.mark, KEY_W + LABEL_W);

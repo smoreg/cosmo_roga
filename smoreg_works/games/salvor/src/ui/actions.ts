@@ -13,14 +13,18 @@ import {
 import { moduleName } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
 import { isTug } from "../content/tug.js";
+import { SYSTEM_GLYPH } from "../content/objectives.js";
 import { verbWord, doorStateWord } from "../content/words.js";
 import { roomName } from "../content/zones.js";
 import type { Key } from "../content/i18n/keys.js";
 import { t, tId } from "../i18n.js";
+import { roomList, type RoomItem, type ShipSystem } from "../systems/populate.js";
+import { shipState } from "../systems/shipstate.js";
 import { gatedOffers } from "../systems/tug.js";
 import { pickLabel, stationTargets, voyageRecord } from "../systems/voyage.js";
 import { wreckAt } from "../twist/rig.js";
 import { dangerAhead, passableForPlayer, travelRoute } from "./auto.js";
+import { BUCKET_GLYPH } from "./schematic-input.js";
 
 /**
  * The numbered action list: "выбираем что делать текстом" (design-doc.md, "Ход
@@ -580,7 +584,7 @@ function travelActions(game: RoomGame): Action[] {
   const rows = known(game, here)
     .map((room) => ({ room, route: travelRoute(game.ship, here, room.id) }))
     .sort((a, b) => reach(a.route) - reach(b.route) || a.room.id - b.room.id)
-    .map(({ room, route }) => travelRow(room, route, forDoors));
+    .map(({ room, route }) => travelRow(game, room, route, forDoors));
   return [...rows, backToRoom()];
 }
 
@@ -608,6 +612,7 @@ function reach(route: readonly Door[] | undefined): number {
  * a compartment the drone cannot reach is information, not noise.
  */
 function travelRow(
+  game: RoomGame,
   room: Room,
   route: Door[] | undefined,
   offers: ReadonlyArray<ActionOffer<RoomCommand>>,
@@ -618,7 +623,7 @@ function travelRow(
     : shut
       ? `${shut.label} ${doorStateWord(shut.state)}`
       : t("dist.doors", { n: route.length });
-  const label = roomLabel(room, right);
+  const label = roomLabel(room, right, goalMark(game, room));
 
   // Every row of this list points at a compartment, whatever it does when it is
   // pressed — including the one that cannot be walked to at all. Where the
@@ -653,10 +658,36 @@ function travelRow(
  * makes the screen look broken rather than tight. `clipName` is the rule the
  * contacts block has used since G47, and there is one of it.
  */
-export function roomLabel(room: Room, right: string): string {
+export function roomLabel(room: Room, right: string, mark = ""): string {
   const label = pad(room.label, LABEL_W);
   const width = Math.min(ROOM_W, Math.max(2, ACTION_WIDTH - label.length - right.length));
-  return pad(clipName(roomName(room), width - 1), width) + label + right;
+  const name = clipName(roomName(room), Math.max(1, width - 1 - mark.length));
+  return pad(mark + name, width) + label + right;
+}
+
+/**
+ * The mark of what the run is for, when the destination holds any of it:
+ * `+ENGINE   r7  2 doors`.
+ *
+ * The map averaged 8.2 pressable rows and reached 25, more than five on 71.4 %
+ * of screens, and not one of them said which compartment was worth walking to
+ * (docs/tasks/G87-playability.md, 2). One column answers it, and the two glyphs
+ * are the ones the schematic already draws in the box and the compartment block
+ * already lists — a mark a player has been taught costs nothing to read.
+ *
+ * Only for a compartment the drone may name at all: `known` already filters the
+ * map to those, and a mark on an unseen box would hand over the ship.
+ */
+function goalMark(game: RoomGame, room: Room): string {
+  const online = shipState(game).online;
+  for (const system of roomList<ShipSystem>(room, "systems")) {
+    if (!online.includes(system.kind)) return SYSTEM_GLYPH;
+  }
+  for (const item of roomList<RoomItem>(room, "items")) {
+    if (item.kind === "charter-item" && item.taken !== true) return BUCKET_GLYPH.items;
+    if (item.kind === "console" && item.uploaded !== true) return BUCKET_GLYPH.items;
+  }
+  return "";
 }
 
 /** The compartment's own actions, in the doc's order and without their keys. */

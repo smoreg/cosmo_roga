@@ -198,7 +198,7 @@ describe("the rival races for the systems", () => {
 
     wait(game, 20);
     expect(st.progress).toBe(1);
-    expect(logText(game)).toContain("The rival brings the CORE online.");
+    expect(logText(game)).toContain("The rival brings the REACTOR online.");
     // One down, and it is already walking to the other one.
     expect(theRival(game).data?.targetRoom).toBe(roomId(game, "r3"));
   });

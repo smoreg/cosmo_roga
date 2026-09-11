@@ -435,6 +435,10 @@ export const WEB_CSS = `
 .title-row > span{cursor:pointer; padding:1px 4px; margin:-1px -4px;}
 .title-row:hover > span{background:var(--line);}
 .title-row:hover .title-label{color:var(--bright);}
+/* And the same ground under the row the arrows have walked to, which is the row
+   Enter does (ui/appstate.ts, the title branch). */
+.title-row.is-cursor > span{background:var(--line);}
+.title-row.is-cursor .title-label{color:var(--bright); font-weight:700;}
 .title-key{color:var(--accent); font-weight:600;}
 .title-label{color:var(--fg);}
 .title-value{color:var(--soft);}

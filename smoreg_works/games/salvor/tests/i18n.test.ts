@@ -567,6 +567,33 @@ describe("the widths hold in all three languages", () => {
     }
   });
 
+  /**
+   * Every line the game says about itself, inside the row it is drawn in.
+   *
+   * The log clips rather than wraps — `ui/render.ts` cuts a line to
+   * `SCREEN_WIDTH - 2` and writes an ellipsis — and the teaching is the one
+   * thing on the screen where the tail of the sentence is the half that says
+   * what to press. Eighteen of the twenty-four lines of the training chain were
+   * over the budget: the English `hint.tutorial.enter` ran to 120 columns and
+   * lost "can do is the numbered list", the Spanish to 135 and lost "dron puede
+   * hacer está en la lista numerada" (docs/tasks/G86-tutorial-and-title.md, 1).
+   *
+   * Measured on the raw row, so the two lines that carry numbers are measured
+   * without them: both are short, and a seed or a price adds a handful of
+   * columns to a line with twenty to spare.
+   */
+  it("keeps every hint line inside the log's own width", () => {
+    // `ui/render.ts`, `drawLog`: one column of pad each side of the screen.
+    const LOG_WIDTH = SCREEN_WIDTH - 2;
+    for (const lang of LANGS) {
+      for (const key of Object.keys(EN) as Key[]) {
+        if (!key.startsWith("hint.")) continue;
+        const line = tIn(lang, key);
+        expect(line.length, `${lang}: ${key} is ${line.length} columns`).toBeLessThanOrEqual(LOG_WIDTH);
+      }
+    }
+  });
+
   it("keeps the help card and the title card on the screen", () => {
     for (const lang of LANGS) {
       setLang(lang);
@@ -777,6 +804,54 @@ function sources(dir: string): string[] {
     return path.endsWith(".ts") ? [path] : [];
   });
 }
+
+/**
+ * Four words that were doing two jobs each, on one screen, in every language
+ * (docs/tasks/G87-playability.md, 3).
+ *
+ * Not a width and not a translation: a collision. A player reading `ЯДРО` on
+ * the panel could not tell the drone's last line of armour from the reactor the
+ * run is for, and one reading `ТРЕВОГА 4` could not find the codex card for the
+ * machine that had just killed them, because the panel called it a hunter and
+ * the card called it an enforcer. So the check is that the pairs differ, and it
+ * is made in all three languages rather than in the one the defect was found in.
+ */
+describe("one word, one thing", () => {
+  it("calls the ship's reactor and the drone's own core two different things", () => {
+    for (const lang of LANGS) {
+      setLang(lang);
+      const reactor = objectiveName(OBJECTIVES.find((o) => o.id === "core")!);
+      // The drone's armour line, `CORE ●●●`, with the dots taken off.
+      const core = t("panel.core", { dots: "" }).trim();
+      expect(reactor, lang).not.toBe(core);
+      // And the reactor is named after the compartment it stands in, which is
+      // the whole reason the word was free to take.
+      expect(reactor, lang).toBe(t("room.reactor"));
+      expect(objectiveShort(OBJECTIVES.find((o) => o.id === "core")!), lang).not.toBe(core.toLowerCase());
+    }
+  });
+
+  it("calls what the drone is carrying something other than the tug's hold", () => {
+    for (const lang of LANGS) {
+      setLang(lang);
+      // `panel.hold` is the loot on the drone's back, aboard a derelict; the
+      // tug's hold is a group of its own list and a compartment of its own.
+      expect(t("panel.hold", { n: 8 }), lang).not.toContain(t("room.hold"));
+    }
+  });
+
+  it("gives the fourth rung of the alert the machine's own name", () => {
+    for (const lang of LANGS) {
+      setLang(lang);
+      const machine = machineName(ENFORCER.id).toUpperCase();
+      expect(t("alert.hunter"), lang).toBe(machine);
+      // The panel's presence line and the codex card the player goes looking
+      // for both carry it, which is what makes the card findable at all.
+      expect(t("panel.hunter"), lang).toContain(machine);
+      expect(t("codex.alert-4.title"), lang).toContain(machine);
+    }
+  });
+});
 
 describe("the table carries nothing nobody asks for", () => {
   it("uses every row it holds", () => {
