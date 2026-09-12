@@ -164,6 +164,10 @@ const fileOf = t => t.path.split("/").pop();
    `fuel` scored nothing at all and took whatever it was offered — which is why
    bridges stopped appearing at the bow. */
 const ROLES = {
+  /* The step down from a hundred foot beam to fifty. The archive draws six of
+     these and every one is a nose, so a hull that narrows does it at the bow
+     with a piece meant for the job rather than a square end. */
+  transition: ["transition corridor", "transition"],
   drive:    ["engineering","drive","thruster","power plant","reactor","plasma conduit","battery"],
   fuel:     ["fuel","intake","scoop","tank","refinery"],
   command:  ["bridge","station","avionics","sensor","control room","cic",
@@ -782,24 +786,78 @@ function layoutShip(opts, deal, place){
    profile asks for. */
 function parseProfile(text){
   const parts = String(text || "").split(/[^0-9]+/).filter(Boolean)
-    .map(Number).filter(n=>n >= 1 && n <= 6);
-  return parts.length ? parts.slice(0, 12) : [1];
+    .map(Number).filter(n=>n >= 1 && n <= 12);
+  return parts.length ? parts.slice(0, 16) : [1];
+}
+
+/* A profile digit counts fifty foot sections, and rows are centred, so a row
+   sits on the section grid only when its width matches the beam's parity. Mix
+   the two and every bay in that row lands twenty five feet out — which is why
+   doors never lined up across a change of beam.
+
+   Parity is therefore enforced, with one exception. The archive draws a
+   hundred-to-fifty transition corridor whose funnel opening is centred in its
+   own hundred feet, so a row hanging under that funnel is *meant* to sit half
+   a section across: it connects through the tile, not through a section edge.
+   A step between two sections and one is legal when a transition row carries
+   it. Every other parity change is squared off, because the archive holds no
+   piece that could carry it — a transition is a hundred feet wide and cannot
+   span a wider step.
+
+   A row's phase falls out of its own width against the beam rather than being
+   accumulated, so it cannot drift: (beam - width) even means on the grid.
+
+   Returns one entry per row: width, phase, and whether it is a transition. */
+function expandProfile(prof){
+  const p = prof.slice();
+  const beam = () => Math.max(...p);
+  /* Square off any parity change the archive cannot carry, widest first so a
+     later pass sees a settled beam. */
+  for (let i = 1; i < p.length; i++){
+    const pair = [p[i-1], p[i]].sort((a, b) => a - b);
+    const step = pair[1] - pair[0];
+    if (step % 2 === 0) continue;
+    if (step === 1 && pair[0] === 1 && pair[1] === 2) continue;   // the corridor
+    p[i] += p[i] > p[i-1] ? -1 : 1;
+    if (p[i] < 1) p[i] = 1;
+  }
+  const phaseOf = w => (beam() - w) % 2;
+  const rows = [];
+  for (let i = 0; i < p.length; i++){
+    if (i > 0 && phaseOf(p[i]) !== phaseOf(p[i-1]))
+      rows.push({w: Math.max(p[i], p[i-1]), phase: phaseOf(p[i-1]), transition: true});
+    rows.push({w: p[i], phase: phaseOf(p[i]), transition: false});
+  }
+  return rows;
 }
 
 function layoutProfile(opts, deal, place){
   const prof = parseProfile(opts.profile);
-  const maxW = Math.max(...prof);
-  const G = 50;                                   // the grid everything sits on
+  const rows = expandProfile(prof);
+  const maxW = Math.max(...rows.map(r=>r.w));
+  const G = 50;                                   // a section: fifty feet
+  /* Occupancy is tracked at half a section, because a row hanging under a
+     transition funnel deliberately sits twenty five feet across the grid. */
+  const U = G / 2;
 
-  const bays = [];
-  prof.forEach((w, row)=>{
-    const x0 = (maxW - w) * 50;                   // centred; half a bay is fine
-    for (let i = 0; i < w; i++) bays.push({x:x0 + i*100, y:row*100, row});
+  const bays = [], trans = [];
+  rows.forEach((r, row)=>{
+    const x0 = (maxW - r.w) * U;                  // centred
+    const y = row * G;
+    if (r.transition){
+      /* One hundred foot corridor, centred on the beam it steps down from. */
+      trans.push({x: x0 + (r.w - 2) * U, y, w: 2*G, h: G, row});
+    } else {
+      for (let i = 0; i < r.w; i++) bays.push({x: x0 + i*G, y, w: G, h: G, row});
+    }
   });
   const core = new Set();
-  for (const b of bays)
-    for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++)
-      core.add((b.x/G + dx) + "," + (b.y/G + dy));
+  const claim = b => {
+    for (let dx = 0; dx < b.w/U; dx++) for (let dy = 0; dy < b.h/U; dy++)
+      core.add((b.x/U + dx) + "," + (b.y/U + dy));
+  };
+  for (const b of bays) claim(b);
+  for (const t of trans) claim(t);
   const isCore = (gx, gy) => core.has(gx + "," + gy);
 
   /* A hull needs a front and a back. Rimming the whole outline the same way
@@ -817,14 +875,16 @@ function layoutProfile(opts, deal, place){
      look like. */
   const caps = [];
   if (opts.caps !== false){
-    const mid = (maxW - 1) * 50;
+    /* A cap is two sections wide; on an odd beam it cannot sit exactly on the
+       keel, so floor it onto the grid rather than straddle a quarter cell. */
+    const mid = Math.floor((maxW * G - 100) / (2 * G)) * G;
     caps.push({x:mid, y:-100, w:100, h:100, want:"cap", role:"command"});
-    caps.push({x:mid, y:prof.length*100, w:100, h:100, want:"cap", role:"drive"});
+    caps.push({x:mid, y:rows.length*G, w:100, h:100, want:"cap", role:"drive"});
   }
   const capped = new Set();
   for (const c of caps)
-    for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++)
-      capped.add((c.x/G + dx) + "," + (c.y/G + dy));
+    for (let dx = 0; dx < c.w/U; dx++) for (let dy = 0; dy < c.h/U; dy++)
+      capped.add((c.x/U + dx) + "," + (c.y/U + dy));
 
   /* What goes round the outside.
 
@@ -867,17 +927,22 @@ function layoutProfile(opts, deal, place){
      corner is left alone for a corner tile. */
   const used = new Set();
   const slots = [...caps];
-  const rows = prof.length;
+  const lastRowIndex = rows.length - 1;
   for (const b of bays)
-    slots.push({x:b.x, y:b.y, w:100, h:100, want:"core",
-      role: b.row === 0 ? "command" : b.row === rows-1 ? "drive"
+    slots.push({x:b.x, y:b.y, w:G, h:G, want:"core",
+      role: b.row === 0 ? "command" : b.row === lastRowIndex ? "drive"
           : rnd() < 0.5 ? "bay" : "quarters"});
+  /* The step down. Only the archive's nose corridors fit here, and they are
+     drawn narrowing toward the bow, so the slot asks for one by name. */
+  for (const t of trans)
+    slots.push({x:t.x, y:t.y, w:t.w, h:t.h, want:"transition", role:"transition",
+      aft: t.row > lastRowIndex / 2});
 
   const faceOf = (gx, gy) => ({
     n: isCore(gx, gy-1), s: isCore(gx, gy+1),
     w: isCore(gx-1, gy), e: isCore(gx+1, gy),
   });
-  const lastRow = prof.length * 2;              // in half-bay cells
+  const lastRow = rows.length * 2;              // in half-section cells
   /* A shoulder: the cell in the notch where a narrow section meets a wide one,
      touching hull on two sides at right angles. Fill that with a tile whose
      hull line cuts the corner and the step reads as a taper. */
@@ -904,7 +969,7 @@ function layoutProfile(opts, deal, place){
       if (rim.has(nk) && !used.has(nk) &&
           ["n","s","w","e"].filter(k=>nf[k]).length === 1 && nf[side]){
         used.add(key); used.add(nk);
-        slots.push({x:gx*G, y:gy*G, w:along[0] ? 100 : 50, h:along[0] ? 50 : 100,
+        slots.push({x:gx*U, y:gy*U, w:along[0] ? 2*U : U, h:along[0] ? U : 2*U,
           want:"edge", aft: side === "n",
           role: side === "s" ? "command" : side === "n" ? "drive" : "weapon"});
         continue;
@@ -917,7 +982,7 @@ function layoutProfile(opts, deal, place){
     /* No role on a shoulder. Asking for "fuel" as well as a diagonal handed all
        four corners of a hull to the same Fuel Deck tile; the shape is what
        matters here and the archive has seven pieces that can do it. */
-    slots.push({x:gx*G, y:gy*G, w:50, h:50, want:"corner",
+    slots.push({x:gx*U, y:gy*U, w:U, h:U, want:"corner",
       role: wantRim === "steps" ? null : "fuel",
       chamfer:step, aft: gy >= lastRow});
   }
@@ -925,32 +990,35 @@ function layoutProfile(opts, deal, place){
      Starboard pair hung on the flanks of the longest section of constant beam,
      centred on it, the same way ship mode does it. */
   const famSel = opts.family || "";
-  let fam = null, station = {from:0, to:prof.length - 1};
+  let fam = null, station = {from:0, to:rows.length - 1};
   if (famSel && famSel !== "none" && !famSel.startsWith("ac:"))
     fam = FAMILIES.find(f=>f.key === famSel) || null;
   else if (!famSel){
+    /* Rows, not the raw profile: a transition sits between two of them and
+       shifts every index after it. */
     let best = {from:0, to:0, w:0};
-    for (let i = 0; i < prof.length; i++){
+    for (let i = 0; i < rows.length; i++){
+      if (rows[i].transition) continue;
       let j = i;
-      while (j + 1 < prof.length && prof[j+1] === prof[i]) j++;
-      if (j - i >= best.to - best.from){ best = {from:i, to:j, w:prof[i]}; }
+      while (j + 1 < rows.length && !rows[j+1].transition && rows[j+1].w === rows[i].w) j++;
+      if (j - i >= best.to - best.from){ best = {from:i, to:j, w:rows[i].w}; }
       i = j;
     }
-    const span = (best.to - best.from + 1) * 100;
+    const span = (best.to - best.from + 1) * G;
     const fits = FAMILIES.filter(f=>f.h <= span && f.pairOK);
     if (fits.length && rnd() < 0.66) fam = pick(fits);
     station = best;
   }
   if (fam){
-    const w = prof[station.from];
-    const x0 = (maxW - w) * 50;
-    const y = station.from*100 +
-      Math.round(((station.to - station.from + 1)*100 - fam.h) / 100) * 50;
+    const w = rows[station.from].w;
+    const x0 = (maxW - w) * U;
+    const y = station.from*G +
+      Math.round(((station.to - station.from + 1)*G - fam.h) / G) * U;
     const i = Math.floor(rnd() * fam.port.length);
     const port = fam.port[i];
     const star = fam.star.find(t=>t.label === port.label) || fam.star[i % fam.star.length];
     place(port, x0 - fam.w, y, fam.w, fam.h, 0);
-    place(star, x0 + w*100, y, fam.w, fam.h, 0);
+    place(star, x0 + w*G, y, fam.w, fam.h, 0);
   }
 
   neighbours(slots);
@@ -1017,8 +1085,8 @@ function layoutProfile(opts, deal, place){
        test — the hull stays symmetric, the pair of rooms does not. */
     if (m && !overBudget(m.tile)) mirrorFill(other, m);
   }
-  return {W:(maxW*100) + 100, H:(rows*100) + 100 + (caps.length ? 200 : 0),
-          beam:maxW, rows, relaxed, family: fam ? fam.key : null,
+  return {W:(maxW*G) + 100, H:(rows.length*G) + 100 + (caps.length ? 200 : 0),
+          beam:maxW, rows: rows.length, relaxed, family: fam ? fam.key : null,
           profile: prof.join("-"),
           familyLabel: prof.join("-") + " hull" + (fam ? " · " + fam.code + " wings" : "")};
 }

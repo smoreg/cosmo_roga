@@ -9,4 +9,4 @@
 npm run sync:core
 ```
 
-Last synced from a file of 1192 lines.
+Last synced from a file of 1260 lines.
