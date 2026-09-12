@@ -15,6 +15,7 @@ summaries of things nobody opened, and no design decisions smuggled in as facts.
 | [substrate.md](substrate.md) | What `geomorphs.html` and `hexmap.html` already commit a tactical layer to |
 | [derelict-extraction.md](derelict-extraction.md) | First idea: turn-based hex extraction with three drones |
 | [rscore.md](rscore.md) | The budget that decides what a generated derelict is carrying |
+| [alert-and-age.md](alert-and-age.md) | The two clocks: the ship noticing you, and the ship dying |
 | [../prototype/](../prototype/) | The playable prototype of the tactical floor, on a real exported deck |
 | [references/wesnoth.md](references/wesnoth.md) | Battle for Wesnoth — terrain, ZOC, the village economy, the RNG debate |
 | [references/invisible-inc.md](references/invisible-inc.md) | Invisible, Inc. — the alarm and the two economies braided through it |

@@ -55,7 +55,8 @@ plus the door graph and the reachable set. Capacity is a sum over that.
 boarding. Two honest options, and this is a real choice:
 
 - **Show a band.** "Hazard rating: moderate (6–9)." The exact number appears on
-  boarding. Cheap, and the imprecision is thematically free — you are reading a
+  boarding. (Settled in [`alert-and-age.md`](alert-and-age.md) §1: three axes,
+  no number.) Cheap, and the imprecision is thematically free — you are reading a
   derelict from a tug.
 - **Generate at briefing time.** Exact, and it also lets the briefing show the
   hull. Costs a rasterise per reroll, which is the expensive stage.
@@ -355,7 +356,8 @@ of the same type. Untested, and the first thing to measure.
 ## 5. Two ledgers. The alarm does not spend RScore
 
 **Decision: RScore is spent at generation and never again. The alarm is a
-separate, in-mission ledger and the two do not exchange.**
+separate, in-mission ledger and the two do not exchange.** How that second
+ledger works is [`alert-and-age.md`](alert-and-age.md).
 
 **Cogmind has already shipped this decision, and states it flatly:** *"Alert
 level does not increase the number of patrols or guards on the map in any
