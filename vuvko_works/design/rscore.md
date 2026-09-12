@@ -155,7 +155,8 @@ The test is clean and it settles arguments:
 - A locked door is **scenery** — it has 1 hp and costs you a turn once.
 - A camera that raises the alarm on its own turn is a **participant**.
 
-Four categories, one currency:
+Four categories, one currency; the catalogue is
+[`interactables.md`](interactables.md):
 
 | Category | Examples | Notes |
 |---|---|---|
