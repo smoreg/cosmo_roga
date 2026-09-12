@@ -78,7 +78,13 @@ function hullFor(profile: string, seed: string) {
     q: "",
     spin: false,
     mega: true,
-    vehic: false,
+    /* Furnish the rooms. A base tile is a blank shell — E510 "Cargo Bay" is
+       15% ink — and its crates, bunks and consoles are separate images keyed by
+       the same code. Leaving these off is why generated decks read as big empty
+       compartments: they were, because the furniture was never drawn. One
+       overlay per tile that has any, chosen uniformly, every time. */
+    vehic: true,
+    overlayChance: 1,
   });
 }
 

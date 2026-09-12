@@ -34,6 +34,8 @@ export interface LayoutOptions {
   readonly spin?: boolean;
   readonly mega?: boolean;
   readonly vehic?: boolean;
+  /** How often a tile that has furniture gets some. Defaults to 0.75. */
+  readonly overlayChance?: number;
 }
 
 /** Hands the generator its tile index. Returns how much of it was classified. */

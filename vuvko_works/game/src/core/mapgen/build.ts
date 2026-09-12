@@ -8,7 +8,7 @@ import { pickDoors } from "./doors";
 import { dressUp, zoneKind } from "./dress";
 import { findRegions } from "./regions";
 import { findStubs } from "./stubs";
-import { MIN_OPEN, PX_FT, isArchitecture, isFloorCell } from "./types";
+import { MIN_OPEN, PX_FT, isFloorCell } from "./types";
 import type { HullPlan, InkMask, MapCell, MapWall, MapZone, PlanTile } from "./types";
 
 const NEIGHBOURS: readonly Axial[] = [
@@ -227,7 +227,11 @@ function serialise(
         to: door.wall.b === null ? null : ([door.wall.b.q, door.wall.b.r] as [number, number]),
       };
     }),
-    plan: plan.put.filter(isArchitecture).map(function toPlacement(placement) {
+    /* Overlays ride along here, unlike everywhere else. The ink mask must not
+       see them — a crate is not a bulkhead and would cut the room it sits in —
+       but the blueprint under the lattice should draw them, because furniture
+       is most of what makes a compartment look like somewhere. */
+    plan: plan.put.map(function toPlacement(placement) {
       return { path: placement.tile.path, x: placement.x, y: placement.y, rot: placement.rot };
     }),
   };

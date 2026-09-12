@@ -51,9 +51,51 @@ async function main() {
   const taxonomy = JSON.parse(await readFile(join(shared, "tiles.taxonomy.json"), "utf8"));
   const classified = taxonomy.tiles;
 
-  const tiles = manifest.tiles.filter(function known(tile) {
-    return Object.prototype.hasOwnProperty.call(classified, tile.path);
+  /* Fuel intakes and scoops are hull plumbing, not rooms. The archive draws
+     them as corner pieces, so the fit test happily puts an intake scoop in the
+     middle of a deck; excluding them by name is cruder than a taxonomy rule and
+     considerably more reliable. */
+  const isFuelPlumbing = function plumbing(tile) {
+    return /intake|scoop/i.test(tile.path);
+  };
+
+  const bases = manifest.tiles.filter(function known(tile) {
+    return (
+      !tile.overlay &&
+      !isFuelPlumbing(tile) &&
+      Object.prototype.hasOwnProperty.call(classified, tile.path)
+    );
   });
+
+  /* Overlays are what a room is furnished with.
+
+     The base tile is very nearly empty — E510 "Cargo Bay" is a blank shell at
+     15% ink — and its crates, its bunks and its bay doors are separate images
+     drawn over it, keyed by the same code. Shipping only the bases, which is
+     what this script used to do, is why generated decks read as large empty
+     compartments. They are: the furniture was never downloaded.
+
+     An overlay carries no geometry of its own, so it is never classified and
+     never placed on its own. It ships when the base it belongs to ships. */
+  /* Same folder and same index, not merely the same index. Codes repeat across
+     directories — 66 of 977 do — so keying on the code alone would ship an
+     E700 "Pointed Nose" overlay against the "Rounded Nose" base filed under the
+     same number, and the generator would happily draw it there. */
+  const overlayKey = function key(tile) {
+    return `${tile.path.slice(0, tile.path.lastIndexOf("/"))}|${tile.code}${tile.mirror ? "|m" : ""}`;
+  };
+  const shipped = new Set(bases.map(overlayKey));
+  const overlays = manifest.tiles.filter(function furniture(tile) {
+    return (
+      tile.overlay === true &&
+      typeof tile.code === "string" &&
+      tile.code !== "" &&
+      !isFuelPlumbing(tile) &&
+      shipped.has(overlayKey(tile))
+    );
+  });
+
+  const tiles = [...bases, ...overlays];
 
   await mkdir(out, { recursive: true });
   await writeFile(
@@ -72,7 +114,8 @@ async function main() {
   const a = await size("manifest.json");
   const b = await size("taxonomy.json");
   process.stdout.write(
-    `${String(tiles.length)} of ${String(manifest.tiles.length)} tiles kept  ` +
+    `${String(bases.length)} base tiles + ${String(overlays.length)} overlays ` +
+      `of ${String(manifest.tiles.length)}  ` +
       `manifest ${(a / 1e6).toFixed(2)} MB, taxonomy ${(b / 1e6).toFixed(2)} MB\n`,
   );
 }

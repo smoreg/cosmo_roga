@@ -124,6 +124,11 @@ function parseTile(relPath, pxw, pxh){
 }
 
 /* ---------- library ---------- */
+/* Which base an overlay may be drawn on: same folder, same index, same hand. */
+function overlayKey(t){
+  const dir = t.path.slice(0, t.path.lastIndexOf("/"));
+  return dir + "|" + t.code + (t.mirror ? "|m" : "");
+}
 function canonical(t, w, h){
   return t.w === w && t.h === h && t.bleed[0] === 2 && t.bleed[1] === 2;
 }
@@ -212,10 +217,15 @@ function buildPools(setSel){
   }
   if (!POOL.end.length)  POOL.end  = POOL.core;
   if (!POOL.edge.length) POOL.edge = POOL.core;
+  /* An overlay belongs to one tile, and "one tile" means the same index in the
+     same folder — not merely the same index. Codes repeat: 66 of 977 span more
+     than one directory, and keying on the code alone let an E700 [Overlay]
+     Pointed Nose land on the Rounded Nose base sitting under the same number.
+     Sixteen overlays could cross like that. */
   OVERLAYS = new Map();
   for (const t of LIB){
     if (!t.overlay || !t.code) continue;
-    const key = t.code + (t.mirror ? "|m" : "");
+    const key = overlayKey(t);
     if (!OVERLAYS.has(key)) OVERLAYS.set(key, []);
     OVERLAYS.get(key).push(t);
   }
@@ -556,12 +566,17 @@ function layout(input){
     const p = {tile, cx:x + w/2, cy:y + h/2, rot:rot||0, x, y, w, h};
     put.push(p);
     if (opts.vehic && tile.code){
-      const ov = OVERLAYS.get(tile.code + (tile.mirror ? "|m" : ""));
-      if (ov && ov.length && rnd() < 0.75){
-        const o = pick(ov);
-        if (o.px[0] === tile.px[0] && o.px[1] === tile.px[1])
-          put.push({tile:o, cx:p.cx, cy:p.cy, rot:p.rot, x, y, w, h});
-      }
+      const ov = OVERLAYS.get(overlayKey(tile));
+      /* How often a tile that has furniture gets some. The page draws vehicles
+         as an occasional flourish; a game wants the rooms furnished every time,
+         because the base tile on its own is a blank shell. */
+      const chance = typeof opts.overlayChance === "number" ? opts.overlayChance : 0.75;
+      /* Narrow to the overlays that actually fit before choosing one. Picking
+         first and discarding afterwards meant a code with three overlays and
+         one of the right size furnished the room a third of the time. */
+      const fits = ov ? ov.filter(o=>o.px[0] === tile.px[0] && o.px[1] === tile.px[1]) : [];
+      if (fits.length && rnd() < chance)
+        put.push({tile:pick(fits), cx:p.cx, cy:p.cy, rot:p.rot, x, y, w, h});
     }
     return p;
   };

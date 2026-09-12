@@ -103,10 +103,24 @@ redistributing this folder, take the legal code with it.
 """
 
 
-def load_classified(taxonomy: Path) -> list[str]:
+def load_wanted(index: Path, taxonomy: Path) -> list[str]:
+    """Every tile the game can actually put on a deck.
+
+    Read the built index rather than the taxonomy. The taxonomy is every tile
+    that was *classified*, which is neither what ships nor what can be placed:
+    it still contains the fuel intakes the generator is told to avoid, and it
+    contains no overlays at all, because an overlay has no geometry to classify
+    and is only ever drawn over a base. Baking the taxonomy therefore shipped
+    195 tiles nothing would ever ask for and left out the 453 that hold the
+    furniture.
+    """
+    if index.exists():
+        doc = json.loads(index.read_text())
+        return sorted(tile["path"] for tile in doc["tiles"])
+
     doc = json.loads(taxonomy.read_text())
     tiles = doc["tiles"] if isinstance(doc, dict) and "tiles" in doc else doc
-    return sorted(tiles) if isinstance(tiles, dict) else sorted(tiles)
+    return sorted(tiles)
 
 
 def human(size: int) -> str:
@@ -123,6 +137,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tiles", type=Path, default=shared / "geomorphs")
     parser.add_argument("--taxonomy", type=Path, default=shared / "tiles.taxonomy.json")
+    parser.add_argument(
+        "--index", type=Path, default=root / "src" / "assets" / "tiles" / "manifest.json"
+    )
     parser.add_argument("--out", type=Path, default=root / "public" / "geomorphs")
     parser.add_argument("--px-per-foot", type=float, default=4.0)
     parser.add_argument("--quality", type=int, default=60)
@@ -135,7 +152,7 @@ def main() -> None:
             "It is fetched, not committed: cd .. && python3 fetch_geomorphs.py"
         )
 
-    wanted = load_classified(args.taxonomy)
+    wanted = load_wanted(args.index, args.taxonomy)
     if args.limit:
         wanted = wanted[: args.limit]
 

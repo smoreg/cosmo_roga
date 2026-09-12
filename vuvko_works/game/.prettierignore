@@ -7,5 +7,9 @@ package-lock.json
 src/core/test/*.json
 src/assets/decks/*.json
 
+# Written by scripts/build-tile-index.mjs; formatting a generated index only
+# makes it bigger and the diff unreadable.
+src/assets/tiles/*.json
+
 # Vendored verbatim; reformatting it would make every sync a diff.
 src/vendor/geomorph-core.js
