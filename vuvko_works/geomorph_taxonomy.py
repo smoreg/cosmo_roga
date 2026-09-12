@@ -76,10 +76,64 @@ def cell_ink(path):
     h, w = a.shape
     gh, gw = h // CELL, w // CELL
     if gh < 3 or gw < 3:
-        return None, (gw, gh)
+        return None, (gw, gh), im
     a = a[:gh * CELL, :gw * CELL]
     g = a.reshape(gh, CELL, gw, CELL).transpose(0, 2, 1, 3).reshape(gh, gw, -1)
-    return (g > ALPHA).mean(axis=2), (gw, gh)
+    return (g > ALPHA).mean(axis=2), (gw, gh), im
+
+
+PX_FT = CELL // 5           # 12 px to the foot at native scale
+WALL_LUM = 160              # a wall line is drawn white
+DOOR_LUM = 96               # a door is a black break in it
+WALL_COVER = 0.55           # below this the side has no wall line at all
+WALL_DEPTH_FT = 5           # a perimeter catwalk sets its wall a little inboard
+
+
+def wall_doors(im, gw, gh):
+    """Which sides carry a wall, and where the doors in it are.
+
+    The archive draws a wall as a *white* line and a door as a black break in
+    that line. Both are fully opaque, so the alpha channel cannot tell them
+    apart and only luminance can — which is why nothing above this function
+    sees either. The wall is not always on the boundary: a perimeter catwalk
+    sets it a few feet inboard, so take the line with the most white in the
+    first few feet rather than assuming the edge.
+
+    Doors sit at the middle of each 50 ft module of an edge: one at 25 ft on a
+    50 ft side, two at 25 and 75 ft on a 100 ft side. Measured over the whole
+    archive, off-convention positions are under 2%.
+    """
+    a = np.asarray(im)
+    alpha, lum = a[:, :, 3], a[:, :, :3].mean(axis=2)
+    white = (alpha > 128) & (lum > WALL_LUM)
+    dark = (alpha > 128) & (lum < DOOR_LUM)
+    b = 2 * CELL
+    y0, y1, x0, x1 = b, gh * CELL - b, b, gw * CELL - b
+    d = WALL_DEPTH_FT * PX_FT
+    out = {}
+    for side in "nesw":
+        if side == "n":
+            ws, ds = white[y0:y0 + d, x0:x1], dark[y0:y0 + d, x0:x1]
+        elif side == "s":
+            ws, ds = white[y1 - d:y1, x0:x1], dark[y1 - d:y1, x0:x1]
+        elif side == "w":
+            ws, ds = white[y0:y1, x0:x0 + d].T, dark[y0:y1, x0:x0 + d].T
+        else:
+            ws, ds = white[y0:y1, x1 - d:x1].T, dark[y0:y1, x1 - d:x1].T
+        if ws.size == 0:
+            out[side] = (0.0, [])
+            continue
+        k = int(ws.mean(axis=1).argmax())
+        doors, start = [], None
+        for i, on in enumerate(list(ds[k] & ~ws[k]) + [False]):
+            if on and start is None:
+                start = i
+            elif not on and start is not None:
+                if 2 <= (i - start) / PX_FT <= 25:
+                    doors.append(round((start + i) / 2 / PX_FT, 1))
+                start = None
+        out[side] = (round(float(ws[k].mean()), 2), doors)
+    return out
 
 
 def side_profile(v):
@@ -155,7 +209,7 @@ def analyse(root, tiles):
     for t in tiles:
         full = os.path.join(root, t["path"])
         try:
-            ink, (gw, gh) = cell_ink(full)
+            ink, (gw, gh), im = cell_ink(full)
         except Exception as exc:
             skipped[type(exc).__name__] += 1
             continue
@@ -184,13 +238,20 @@ def analyse(root, tiles):
         roles, needs_skin = roles_of(t)
         filled = float((c > INK).mean())
         slope, cut = chamfer(c, {k for k, v in sides.items() if v != "closed"})
+        walls = wall_doors(im, gw, gh)
         skin = {k for k, v in sides.items() if v != "closed"}
         source = "art" if skin else "none"
         if not skin and t["kind"] in FOLDER_SKIN:
             declared = FOLDER_SKIN[t["kind"]]
             if t["mirror"]:
                 declared = "".join(MIRROR_FLIP[c] for c in declared)
-            skin = set(declared)
+            # A side with a door in it cannot be facing space. The folder
+            # fallback exists because a hull wall and an interior wall look
+            # identical in the alpha channel; the door is what tells them
+            # apart, and without that test 135 of the 143 fully walled 50 ft
+            # rooms were stamped as hull corners on the strength of their
+            # folder name alone.
+            skin = {c for c in declared if not walls[c][1]}
             source = "folder" if skin else "art"
         attach = [k for k in "nswe" if k not in skin]
         klass = shape_class(attach, filled)
@@ -204,6 +265,8 @@ def analyse(root, tiles):
             "sides": sides,
             "edge": prof,
             "proud": [k for k, v in proud.items() if v],
+            "walled": sorted(k for k, v in walls.items() if v[0] >= WALL_COVER),
+            "doors": {k: v[1] for k, v in walls.items() if v[1]},
             "skin": sorted(skin),
             "attach": attach,
             "class": klass,
