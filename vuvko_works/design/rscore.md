@@ -104,10 +104,32 @@ crew values the bays; something grown out of the reactor values the drive.
 **Decision: RScore pays for anything that acts. Scenery is free and unbudgeted.**
 
 This is the cross-cutting finding from the tabletop survey, and it explains why
-terrain is almost universally unpriced while the two systems that *do* price it
-price exactly the terrain that acts: Pathfinder 2e charges for a **complex**
-hazard as much as a same-level monster and a **simple** one about a fifth as
-much, and Draw Steel prices dynamic terrain in the same currency as creatures.
+terrain is almost universally unpriced while the systems that *do* price it
+price exactly the terrain that acts.
+
+**ICON encodes it literally in its data.** A base foe costs 1; `Elite` is
+`{"Description": "Takes 2 turns.", "EncounterBudget": 2}`; `Legend` is "takes 1
+turn for each player character" and costs the entire budget. An additive trait
+that grants an extra turn a round adds exactly 1.
+
+**Pathfinder 2e prices the gap, and gives us the only published ratio for it.**
+A *complex* hazard — one with its own initiative, acting every round — costs the
+same as a same-level monster. A *simple* hazard, which triggers once, costs
+**one fifth** of that. Against a 40 XP same-level creature: 40 for complex, 8
+for simple.
+
+> The XP for a complex hazard is equal to the XP for a monster of the same
+> level, and the XP for a simple hazard is one-fifth of that.
+
+That 5:1 is the distinction between "rolls initiative" and "doesn't," and it is
+the number to start from. (A warning, because it circulates widely in the wrong
+form: the inverted version — "simple = same-level creature, complex = four
+levels higher" — is not the rule. Discard it on sight.)
+
+Note also what PF2e charges for and what it does not. The XP is for the
+hazard's *presence in the scene*: characters earn it "whether they disable it,
+avoid it, or simply endure its attacks." A budget pays for a thing being there,
+not for how it gets resolved.
 
 The test is clean and it settles arguments:
 
@@ -125,6 +147,23 @@ Four categories, one currency:
 | **Security** | cameras, re-arming doors, lockdown | acts on the ship's turn; see §5 |
 | **Relief** | caches, hackable turrets, shortcut hatches, security nodes | bought from the same pool — see §3 |
 
+### Three shapes a price can take
+
+Draw Steel is the only system found that prices environment seriously rather
+than tokenistically, and it does so three different ways. All three are useful
+to us, and the scale is worth keeping in mind: one first-level hero is worth 6
+encounter value, so lava at 4 is two thirds of a party member.
+
+| Shape | Draw Steel example | Ours would be |
+|---|---|---|
+| **Per area** | Lava, 4 per 10×10 patch; brambles, 1 | a vented or flooded run of compartments, priced by floor area |
+| **Fixed** | Bear trap 2, arrow launcher 8, Throne of A'An 24 | one camera, one turret, one re-arming door |
+| **Upgrade** | Angry Beehive 2, +1 concealed, +2 killer bees | a camera that also locks the door it watches |
+
+The upgrade shape is the one we are least likely to think of and most likely to
+want: it prices a *variation on a thing already placed*, which is how a budget
+buys nastiness without buying clutter.
+
 The existing hazard vocabulary in `dress.ts` — vented, fire, flooded, live
 wiring, radiation — splits across the line rather than sitting on one side of
 it. *Vented* and *flooded* are scenery as currently written. *Fire* and *live
@@ -138,8 +177,29 @@ wiring* want to be participants, and should cost.
 out of the same capacity.**
 
 The obvious design is a negative cost — a boon that refunds budget so the
-generator can afford more threat. The tabletop survey reports that **no verified
-system implements one**, which is worth taking as evidence rather than as a gap.
+generator can afford more threat. Across the whole tabletop survey **no system
+implements one.** Treasure is scaled to threat in several systems, but always
+from a *parallel* pool, never netted against the encounter budget.
+
+The nearest anything comes is PF2e's "Budgeting for Terrain," and it is
+pointedly one-directional:
+
+> If you include terrain that's tricky to navigate or takes extra work to deal
+> with, consider whether it should count toward the encounter's XP budget.
+
+Hostile terrain costs XP. Favourable terrain, NPC allies and party advantages
+refund nothing and are not addressed at all. The one mainstream system that
+reaches toward pricing environment in the threat currency still declines to
+price the other side.
+
+There is also an argument against the whole shape, and it is worth writing down
+because it applies to any single pool. The Angry GM, asked to price a party
+benefit in XP, refused on four grounds, of which the fourth generalises: *"any
+sufficiently costly punishment is basically coercion."* **In a shared pool,
+every price is also a punishment somewhere** — buying the player a cache
+necessarily buys the ship one fewer hunter, and the more universal the currency,
+the harder that lands. His counter-proposal is instructive: not a charge for
+relief, but a *bonus for going without it*.
 
 Two shipped patterns to imitate instead:
 
@@ -170,6 +230,25 @@ capacity → split by mission-type proportions → integer counts per category
 A mission type is then a set of proportions over one pool, which is exactly what
 "Secure the ship" versus a future "Recover the cargo" should differ by.
 
+### Ship canned shapes, not just a total
+
+PF2e's most usable feature is that it publishes named compositions at fixed
+totals rather than leaving a GM to partition 120 XP themselves — *Boss and
+Lackeys* (one PL+2 and four PL−4), *Mook Squad* (six PL−4), *Mated Pair*, *Troop*.
+A budget with no shapes is a blank cheque, and a generator with no shapes
+produces an average of everything.
+
+**Decision: each mission type carries a small set of named shapes, and a roll
+picks one.** A derelict that is *Infested* spends its production allowance on
+many cheap nodes feeding one deep spawn zone; one that is *Garrisoned* buys few
+nodes and a lot of security. Same capacity, recognisably different ships.
+
+And a second trick from Draw Steel worth taking: **objectives shift a difficulty
+band rather than costing budget.** If the thing that must be destroyed is worth
+a third or less of the opposing side's value, the encounter is one category
+easier; if it is hidden or held, one category harder. That is how a mission's
+*shape* can matter without competing with its contents for the same pool.
+
 ---
 
 ## 4. Production is the dangerous purchase
@@ -198,6 +277,14 @@ fixed: "the offensive score for a group of 10 marines is ten times the score for
 encounter multiplier existed for this reason, and the 2024 revision's removal of
 it reportedly reopened cheap many-low-CR builds.
 
+D&D 5e's 2014 encounter multiplier existed exactly for this — its stated reason
+is action economy, "the more monsters there are, the more attack rolls you're
+making against the characters in a given round" — and the 2024 revision deleted
+it. The consequence is measurable in the system's own units: **five dire wolves
+against four fourth-level characters rated Deadly at 2,400 XP under the old
+multiplier; ten of them rate only Hard at 2,000 XP under the new flat sum.**
+Twice the bodies, priced lower.
+
 **Decision: price a purchase superlinearly in the count of bodies it will
 produce**, not linearly. The cheap fix in the literature is as blunt as
 replacing HP with √HP in the evaluation; ours is a multiplier on the *n*th unit
@@ -223,6 +310,20 @@ Three independent sources point the same way:
   [`derelict-extraction.md` §6](derelict-extraction.md): wealth feeds raid
   points, players respond by refusing to accumulate wealth, and the wiki has an
   entire page teaching them to burn corpses and let weapons deteriorate.
+
+**But this is a decision with a known cost, and it should be made with eyes
+open.** The tabletop survey names it as the gap nobody closes: Daggerheart ships
+a **Fear** pool (cap 12, +1d4 per short rest, +1d4 + party size per long rest)
+and Draw Steel ships **Malice** ("Heroes + Rounds" accruing per round), and both
+make an identical stat block substantially more dangerous while appearing
+*nowhere* in the encounter budget. The survey's own advice is to decide about
+that early rather than bolt it on.
+
+Our alarm is exactly that resource. So: RScore is deliberately blind to the
+alarm, which means a mission generated at a given capacity is *not* equally
+dangerous at alarm band 1 and band 5. That is the price of two ledgers, and it
+is the right price — but it means the alarm's bands must be balanced against
+what the ship holds, not against an abstract difficulty.
 
 Worth noting *why* RimWorld does it, because we lose that too: wealth-scaling
 exists to **rubber-band** — "Storytellers now focus on wealth and let you
@@ -336,7 +437,20 @@ through it. *Leaning: show a band and a hazard vocabulary, never the integer.*
 
 **C. Does the same pool pay for the extraction leg?** Extraction is a declared
 second objective and the trip back is where a budget most naturally buys
-pressure. Untouched here.
+pressure. Untouched here — but there is a precedent that fits this game better
+than anything else surveyed. **Original D&D awarded 1 XP per gold piece
+recovered and 100 XP per hit die defeated**, so a 7 HD troll guarding 7,000 gp
+paid 7,700 XP and *the monster was 9% of it*. One pool spanning threats and
+rewards, placed across a whole dungeon level, with the **players** deciding how
+much of it to claim and at what risk. That is an extraction loop with the
+numbers already pointing the right way: the ship is worth more than the things
+on it, and fighting is a means, not the point.
+
+**F. Does the budget stay spent?** It only does if the ship changes while you
+are elsewhere. A cleared compartment that stays cleared makes retreat free and
+the budget silently refills — the mechanical root of the fifteen-minute
+adventuring day. Our spawners already restock, which is the right instinct; what
+is not yet decided is whether anything else does.
 
 **D. What is a good mission, operationally?** The best answer found is Shyne &
 Cooper's: a fight's quality is **how much the outcome changes when one party
