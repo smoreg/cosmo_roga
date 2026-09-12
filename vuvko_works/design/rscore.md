@@ -60,8 +60,24 @@ boarding. Two honest options, and this is a real choice:
 - **Generate at briefing time.** Exact, and it also lets the briefing show the
   hull. Costs a rasterise per reroll, which is the expensive stage.
 
-*Leaning: show a band.* Rerolling should stay cheap, and a scan that reports
-"somewhere between" is better fiction than a scan that reports 7.
+*Leaning: show a band*, and Duskers has already built the version of this we
+want. Its pre-mission readout is **three axes, none of them a difficulty
+number**:
+
+- **Class and grade** — the hull type and its size tier, which set dimensions
+  *and* scrap capacity together. Size and reward scale as one.
+- **Age**, in days derelict, banded Stable / Volatile / Hazardous / Fatal. This
+  is a separate purse from size, and it does not multiply anything: **it unlocks
+  hazard categories at thresholds.** Past 200 days doors start failing
+  permanently; later, airlock seals fail, pipes burst, and very rarely the ship
+  stops accepting the `close` command at all for the rest of the mission.
+- **Infestation types** — *which* things are aboard, and explicitly **not how
+  many**.
+
+That is the whole shape we need: one axis for how big and how rich, one for how
+broken, one for what kind of trouble — and a deliberate refusal to quote counts.
+A scan that reports "Volatile, two infestation types" is better fiction *and*
+better design than a scan that reports 7.
 
 ### What a room is worth
 
@@ -169,6 +185,34 @@ wiring, radiation — splits across the line rather than sitting on one side of
 it. *Vented* and *flooded* are scenery as currently written. *Fire* and *live
 wiring* want to be participants, and should cost.
 
+### What stops a hazard being a damage tax
+
+Being priced does not make a hazard worth buying. The tactics survey gives a
+checklist, and the entries that matter most here:
+
+1. **Telegraphed a turn ahead, on the tile.** Into the Breach announces
+   environmental effects the turn before they fire on specific highlighted
+   squares — which is precisely what lets you *shove an enemy onto one*. A
+   hazard you can aim is a decision; a hazard you can only avoid is a tax.
+2. **Pay in actions, not hit points.** XCOM's burning does 1–3 damage a turn,
+   which is nothing — but it **blocks melee attacks and most abilities with a
+   cooldown**. It is a soft panic wearing a damage-over-time costume.
+3. **Differentiate on non-damage axes.** XCOM's three damage-over-time effects
+   do *nearly identical damage* and differ entirely in what else they do: acid
+   shreds up to 4 armour, poison gives −30 aim and −4 mobility with the widest
+   radius, fire disables abilities. The damage being equal is the tell that
+   damage was never the point.
+4. **Persist and spread**, so the hazard has a future state to plan against.
+   XCOM fire spreads to adjacent flammable tiles and burns longer there, which
+   makes the map itself a timer on that region.
+5. **Water removes burning.** One cheap interaction between two hazards is
+   worth more than either alone, and it is what turns a hazard into part of the
+   toolkit rather than part of the weather.
+
+Point 2 is the one our roster is least prepared for: everything the drones face
+is currently priced in hit points, and a hazard that costs a *turn* is a
+different and better purchase at 12 hp.
+
 ---
 
 ## 3. Relief is bought from the same pool, and it is not a refund
@@ -224,11 +268,27 @@ during a mission. So:
 
 ```
 capacity → split by mission-type proportions → integer counts per category
-        → placed by the rules in §6
+        → placed by the rules in §6 and §7
 ```
 
 A mission type is then a set of proportions over one pool, which is exactly what
 "Secure the ship" versus a future "Recover the cargo" should differ by.
+
+### Let the player own one lever
+
+Risk of Rain 2 keeps its two purses strictly separate and then provides exactly
+one bridge: the Shrine of the Mountain, a beneficial interactable whose only
+function is to multiply the boss budget in exchange for multiplied loot. **The
+player owns that lever, and only that one.**
+
+Invisible Inc. does something better still: any daemon spawned by the security
+system has a flat **10% chance of being reversed into a beneficial "Algorithm"**
+— and carrying the Brimstone program raises it to **20%**. The player's loadout
+adjusts the generator's good-to-bad ratio directly. That is the most elegant
+answer found to "who decides the ratio", and it costs one number.
+
+*Leaning: one bridge, player-operated, and it should be a piece of equipment
+rather than a menu setting.*
 
 ### Ship canned shapes, not just a total
 
@@ -297,7 +357,17 @@ of the same type. Untested, and the first thing to measure.
 **Decision: RScore is spent at generation and never again. The alarm is a
 separate, in-mission ledger and the two do not exchange.**
 
-Three independent sources point the same way:
+**Cogmind has already shipped this decision, and states it flatly:** *"Alert
+level does not increase the number of patrols or guards on the map in any
+way."* Standing garrisons are paid for at **map generation**; alert is a second,
+live budget that buys only assault squads, search patrols and a high-security
+state. Two budgets, two purposes, no exchange — and, tellingly, the response
+budget keys off *how* you played: if most of your alert came from non-combat
+sources, you get **search patrols instead of assaults**, and dispatching one
+*subtracts* 100 influence. Same meter, different threat, chosen by your own
+conduct.
+
+Three further sources point the same way:
 
 - **Invisible Inc. decouples its two economies deliberately.** Breaking
   firewalls costs PWR, not alarm; the tracker is the time-and-noise currency and
@@ -330,7 +400,7 @@ exists to **rubber-band** — "Storytellers now focus on wealth and let you
 recover from serious damage" — and Tynan's own opt-out tooltip admits a fixed
 curve "may be nearly impossible to recover from serious losses." An RScore
 fixed by the ship has no rubber band. Whether it needs one is an open question
-(§9).
+(§11).
 
 ---
 
@@ -368,7 +438,54 @@ Two structural safeguards, both taken from shipped code:
 
 ---
 
-## 7. The anti-degeneracy list
+## 7. Where things go is a separate decision from what they are
+
+Buying a node and deciding which room it goes in are different problems, and the
+second has published tools.
+
+**Cogmind validates generated maps against metrics rather than trusting them** —
+bounds on open space (15–30% for one cave type, 40–60% for another), minimum
+room counts, minimum entrance-to-exit distance, and connectedness. The one worth
+stealing outright is **seclusion**: a room's distance from the fastest route
+between the entrance and the exit. It is the formal tool for deciding where
+high-risk, high-reward content goes, and we have no equivalent. A node on the
+boarding route is a different object from the same node four rooms off it.
+
+Two placement rules from elsewhere, both cheap:
+
+- **Never block the way past.** Darkest Dungeon's curios sit in corridors and
+  rooms but never obstruct, *"thus it is possible to leave them be to minimize
+  risk."* The opt-out is what makes engaging a decision. Our node placement
+  already refuses chokepoints for a connectivity reason; this is the same rule
+  for a design reason.
+- **Exclusions, stated as pairs.** Duskers simply forbids some combinations:
+  power inlets never spawn in a turret room, terminals never in a turret room,
+  and there is **exactly one fuel access point per derelict, always.** Cheap to
+  write, and it is what stops the generator putting everything that matters in
+  one compartment.
+
+## 8. Difficulty is a change to the shopping list, not a multiplier
+
+**Decision: difficulty settings alter what the budget may buy, not what the
+numbers are.**
+
+Cogmind's difficulty modes are written as substitutions and decrements in the
+generation budget: *"Each map containing Heavies converts 1 of them to a
+Sentry"*, *"−1 to all patrol squad sizes"*, *"−1 to number of garrisons per
+floor (cannot reduce to 0)"*, *"Cargo convoys have 1 less ARC escort."* No stat
+multipliers anywhere.
+
+That keeps every mission legible — a hunter is always a hunter — and it keeps
+the anti-degeneracy floors visible in the same sentence as the reduction
+(*"cannot reduce to 0"*).
+
+Against a single scalar, there is also a measured argument. Tarkov gives each
+map four independent dials — population cap, **spread** (max bots per zone),
+replenishment rate, and duration. Interchange runs 30 bots at 2 per zone;
+Lighthouse runs 29 at 8 per zone. **Near-identical headcount, completely
+opposite texture, and one difficulty scalar could not have produced both.**
+
+## 9. The anti-degeneracy list
 
 **Decision: the budget arithmetic is wrapped in a list of narrow vetoes, and
 that list is expected to grow.**
@@ -399,7 +516,7 @@ Rules 1–4 are bugs today. They should be constraints tomorrow, not tuning.
 
 ---
 
-## 8. The measurement bug this uncovered
+## 10. The measurement bug this uncovered
 
 `NODE_MIN_HEXES = 4` is the threshold for a room to be worth a node or a spawn
 zone. It is measured in **hexes**, and counting hexes over-estimates small rooms
@@ -420,7 +537,7 @@ Hexes are a rendering of the deck, not a unit of design.**
 
 ---
 
-## 9. Open questions
+## 11. Open questions
 
 **A. Does RScore need a rubber band?** Fixed by the ship, it cannot respond to a
 squad that has just lost a drone. RimWorld's adaptation is the only surveyed
@@ -467,7 +584,7 @@ and it is a hull-layout question rather than a budgeting one.
 
 ---
 
-## 10. How this gets validated
+## 12. How this gets validated
 
 **Not by measuring RScore.** Expressive-range analysis is explicit that
 evaluation metrics must be chosen far from the generator's input parameters —
@@ -481,7 +598,7 @@ four datasets with identical mean and variance and visibly different generating
 distributions.
 
 The pass condition is not a mean. It is that the degenerate tail is gone: no
-mission won on turn one, none unwinnable, and the anti-degeneracy list in §7
+mission won on turn one, none unwinnable, and the anti-degeneracy list in §9
 never firing in a shipped build.
 
 ---
