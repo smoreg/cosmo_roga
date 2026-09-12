@@ -1,3 +1,4 @@
+import { REFERENCE_HEX_FEET } from "./roster";
 import { describe, expect, it } from "vitest";
 import { applyCommand } from "./apply";
 import { attackWith, moveUnit } from "./commands";
@@ -20,7 +21,7 @@ describe("a locked door", () => {
   it("cannot be walked through, the way a shut one can be shouldered", () => {
     const mission = testMission();
     const door = firstLockedDoor(mission);
-    const drone = makeUnit("drone", 0, door.from);
+    const drone = makeUnit("drone", 0, door.from, REFERENCE_HEX_FEET);
     const state: GameState = { ...mission.state, units: [drone] };
 
     const edge = edgeBetween(mission.deck, state, door.from, door.to);
@@ -36,7 +37,7 @@ describe("a locked door", () => {
   it("is offered as something to attack instead", () => {
     const mission = testMission();
     const door = firstLockedDoor(mission);
-    const drone = makeUnit("drone", 0, door.from);
+    const drone = makeUnit("drone", 0, door.from, REFERENCE_HEX_FEET);
     const state: GameState = { ...mission.state, units: [drone] };
 
     const intent = intentFor(mission.deck, state, drone, door.to);
@@ -54,7 +55,7 @@ describe("a locked door", () => {
     let opened = false;
     for (let attempt = 0; attempt < 20 && !opened; attempt++) {
       const fresh = testMission({ seed: `cut-${String(attempt)}` });
-      const drone = makeUnit("drone", 0, door.from);
+      const drone = makeUnit("drone", 0, door.from, REFERENCE_HEX_FEET);
       const state: GameState = { ...fresh.state, units: [drone] };
       const result = applyCommand(fresh.deck, state, attackWith(drone.id, 0, door.to));
 
@@ -79,7 +80,7 @@ describe("a locked door", () => {
   it("stays locked against the ship's own units", () => {
     const mission = testMission();
     const door = firstLockedDoor(mission);
-    const hostile = makeUnit("hunter", 90, door.from);
+    const hostile = makeUnit("hunter", 90, door.from, REFERENCE_HEX_FEET);
     const state: GameState = { ...mission.state, units: [hostile] };
     expect(intentFor(mission.deck, state, hostile, door.to)).toEqual({
       kind: "refused",

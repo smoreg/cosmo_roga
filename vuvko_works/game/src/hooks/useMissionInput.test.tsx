@@ -1,3 +1,4 @@
+import { REFERENCE_HEX_FEET } from "../core/roster";
 import { describe, expect, it } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -144,7 +145,10 @@ describe("approaching a hostile", () => {
       if (base.objects.some((object) => hexKey(object.at) === hexKey(cell.at))) continue;
       if (base.units.some((unit) => hexKey(unit.at) === hexKey(cell.at))) continue;
 
-      const staged: GameState = { ...base, units: [drone, makeUnit("scout", 90, cell.at)] };
+      const staged: GameState = {
+        ...base,
+        units: [drone, makeUnit("scout", 90, cell.at, REFERENCE_HEX_FEET)],
+      };
       const reach = reachableHexes(deck, staged, drone);
       const usable = hexNeighbours(cell.at).filter(function approachable(side) {
         if (hexKey(side) === hexKey(drone.at)) return false;
@@ -162,7 +166,10 @@ describe("approaching a hostile", () => {
     expect(sides.length).toBeGreaterThan(1);
 
     const harness = mount(function place(state) {
-      return { ...state, units: [state.units[0]!, makeUnit("scout", 90, target!)] };
+      return {
+        ...state,
+        units: [state.units[0]!, makeUnit("scout", 90, target!, REFERENCE_HEX_FEET)],
+      };
     });
     select(harness, harness.state.units[0]!.at);
 
@@ -214,7 +221,10 @@ describe("approaching a hostile", () => {
     expect(beside).toBeDefined();
 
     const harness = mount(function place(state) {
-      return { ...state, units: [state.units[0]!, makeUnit("scout", 91, beside!)] };
+      return {
+        ...state,
+        units: [state.units[0]!, makeUnit("scout", 91, beside!, REFERENCE_HEX_FEET)],
+      };
     });
     select(harness, harness.state.units[0]!.at);
 

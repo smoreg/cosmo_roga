@@ -1,3 +1,4 @@
+import { REFERENCE_HEX_FEET } from "./roster";
 import { describe, expect, it } from "vitest";
 import { setDoorState } from "./actions";
 import {
@@ -74,7 +75,7 @@ describe("occupancy", () => {
 
   it("sorts the sides", () => {
     const { state } = testMission();
-    const scout = makeUnit("scout", 90, { q: 500, r: 500 });
+    const scout = makeUnit("scout", 90, { q: 500, r: 500 }, REFERENCE_HEX_FEET);
     const staged: GameState = { ...state, units: [...state.units, scout] };
     expect(drones(staged)).toHaveLength(2);
     expect(hostiles(staged)).toHaveLength(1);
@@ -91,7 +92,7 @@ describe("zone of control", () => {
   it("is exerted through an open door but not through a shut one or a wall", () => {
     const { deck, state } = testMission();
     const door = deck.doors[0]!;
-    const hostile = makeUnit("sentinel", 90, door.to);
+    const hostile = makeUnit("sentinel", 90, door.to, REFERENCE_HEX_FEET);
     const staged: GameState = { ...state, units: [hostile] };
 
     expect(enemyExertingControl(deck, staged, "drone", door.from)?.id).toBe(hostile.id);

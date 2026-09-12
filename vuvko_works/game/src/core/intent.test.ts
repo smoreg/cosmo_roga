@@ -1,3 +1,4 @@
+import { REFERENCE_HEX_FEET } from "./roster";
 import { describe, expect, it } from "vitest";
 import { setDoorState } from "./actions";
 import { hexKey } from "./hex";
@@ -18,7 +19,7 @@ describe("what a unit may do about a neighbour", () => {
     );
     expect(door).toBeDefined();
 
-    const drone = makeUnit("drone", 0, door!.from);
+    const drone = makeUnit("drone", 0, door!.from, REFERENCE_HEX_FEET);
     const next = withUnits(state, [drone]);
     expect(intentFor(deck, next, drone, door!.to).kind).toBe("move");
 
@@ -36,7 +37,7 @@ describe("what a unit may do about a neighbour", () => {
           )
         )
           continue;
-        const walker = makeUnit("drone", 1, cell.at);
+        const walker = makeUnit("drone", 1, cell.at, REFERENCE_HEX_FEET);
         const verdict = intentFor(deck, withUnits(state, [walker]), walker, other.at);
         expect(verdict).toEqual({ kind: "refused", reason: "bulkhead" });
         foundBulkhead = true;
@@ -53,8 +54,8 @@ describe("what a unit may do about a neighbour", () => {
     expect(door).toBeDefined();
     const shut = setDoorState(state, door!.id, "closed");
 
-    const drone = makeUnit("drone", 0, door!.from);
-    const hostile = makeUnit("scout", 1, door!.to);
+    const drone = makeUnit("drone", 0, door!.from, REFERENCE_HEX_FEET);
+    const hostile = makeUnit("scout", 1, door!.to, REFERENCE_HEX_FEET);
 
     const moving = intentFor(deck, withUnits(shut, [drone]), drone, door!.to);
     expect(moving.kind).toBe("move");
@@ -68,11 +69,11 @@ describe("what a unit may do about a neighbour", () => {
     /* Spending the last point walking up to something must not be what stops
        you hitting it. The prototype got this wrong. */
     const { deck, state } = testMission();
-    const drone = makeUnit("drone", 0, { q: 0, r: 0 });
+    const drone = makeUnit("drone", 0, { q: 0, r: 0 }, REFERENCE_HEX_FEET);
     const seat = [...deck.cells.values()][0];
     expect(seat).toBeDefined();
 
-    const standing = { ...makeUnit("drone", 0, seat!.at), movement: 0 };
+    const standing = { ...makeUnit("drone", 0, seat!.at, REFERENCE_HEX_FEET), movement: 0 };
     const neighbours = [
       { q: seat!.at.q + 1, r: seat!.at.r },
       { q: seat!.at.q, r: seat!.at.r + 1 },
@@ -81,7 +82,7 @@ describe("what a unit may do about a neighbour", () => {
     ];
     const spot = neighbours.find((n) => deck.cells.get(hexKey(n))?.zoneId === seat!.zoneId);
     expect(spot).toBeDefined();
-    const hostile = makeUnit("scout", 1, spot!);
+    const hostile = makeUnit("scout", 1, spot!, REFERENCE_HEX_FEET);
 
     const ready = withUnits(state, [standing, hostile]);
     expect(intentFor(deck, ready, standing, spot!).kind).toBe("attack");
@@ -109,7 +110,7 @@ describe("the reachable set", () => {
     const neighbour = [...alone.keys()][0];
     expect(neighbour).toBeDefined();
     const [q, r] = neighbour!.split(",").map(Number);
-    const blocker = makeUnit("sentinel", 77, { q: q!, r: r! });
+    const blocker = makeUnit("sentinel", 77, { q: q!, r: r! }, REFERENCE_HEX_FEET);
     const watched = reachableHexes(deck, { ...state, units: [...state.units, blocker] }, drone!);
     expect(watched.has(neighbour!)).toBe(false);
   });

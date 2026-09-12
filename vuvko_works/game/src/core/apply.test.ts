@@ -1,3 +1,4 @@
+import { REFERENCE_HEX_FEET } from "./roster";
 import { describe, expect, it } from "vitest";
 import { test, fc } from "@fast-check/vitest";
 import { applyAll, applyCommand } from "./apply";
@@ -36,7 +37,7 @@ describe("moving", () => {
     const { deck, state } = testMission();
     const door = deck.doors[0]!;
     const shut = setDoorState(
-      { ...state, units: [makeUnit("drone", 0, door.from)] },
+      { ...state, units: [makeUnit("drone", 0, door.from, REFERENCE_HEX_FEET)] },
       door.id,
       "closed",
     );
@@ -60,7 +61,7 @@ describe("attacking", () => {
     const drone = state.units[0]!;
     const spot = [...reachableHexes(deck, state, drone).keys()][0]!;
     const [q, r] = spot.split(",").map(Number);
-    const scout = makeUnit("scout", 90, { q: q!, r: r! });
+    const scout = makeUnit("scout", 90, { q: q!, r: r! }, REFERENCE_HEX_FEET);
     const staged: GameState = { ...state, units: [drone, scout] };
 
     // weapon 1 is the emitter, which a scout cannot answer

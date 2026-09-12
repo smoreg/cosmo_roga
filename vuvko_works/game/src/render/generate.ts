@@ -82,6 +82,20 @@ function hullFor(profile: string, seed: string) {
   });
 }
 
+/**
+ * How wide a hex is, in feet of ship.
+ *
+ * This is the single most consequential number in the game. Attacks are
+ * adjacent-only, Wesnoth's way, so the hex *is* weapon reach: at 35 ft a
+ * drone threatens most of a compartment from where it stands, and at 20 ft a
+ * room becomes somewhere you manoeuvre inside rather than a place you simply
+ * occupy. Everything measured in hexes — movement, the room size worth a
+ * node, how long it takes to cross the ship — changes meaning with it, and
+ * roughly with its square, because a hull of fixed size holds about three
+ * times as many 20 ft hexes as 35 ft ones.
+ */
+export const HEX_FEET = 20;
+
 export interface GenerateOptions {
   /** One of the four hull profiles: "1-2-1", "1-2-3", "2-1-2", "3-2-1". */
   readonly profile: string;
@@ -101,5 +115,5 @@ export async function generateDeck(options: GenerateOptions): Promise<RawDeckExp
     signal: options.signal,
   });
 
-  return buildDeck(plan, mask, options.hexFeet ?? 35, options.seed).deck;
+  return buildDeck(plan, mask, options.hexFeet ?? HEX_FEET, options.seed).deck;
 }

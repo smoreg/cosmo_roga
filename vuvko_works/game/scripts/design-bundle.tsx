@@ -4,6 +4,7 @@
  * The previews come from the components themselves rather than being written
  * by hand, so a card cannot quietly drift from the code it documents.
  */
+import { REFERENCE_HEX_FEET } from "../src/core/roster";
 import { renderToStaticMarkup } from "react-dom/server";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -293,12 +294,21 @@ const CARDS: readonly Card[] = [
       "Name, health, movement and what it is carrying. The accent colour is the side: drones read cold, the ship reads red.",
     width: 480,
     variants: [
-      { label: "Drone", node: <UnitCard unit={makeUnit("drone", 0, { q: 0, r: 0 }, "Drone 1")} /> },
+      {
+        label: "Drone",
+        node: (
+          <UnitCard unit={makeUnit("drone", 0, { q: 0, r: 0 }, REFERENCE_HEX_FEET, "Drone 1")} />
+        ),
+      },
       {
         label: "Drone, hurt and nearly spent",
         node: (
           <UnitCard
-            unit={{ ...makeUnit("drone", 0, { q: 0, r: 0 }, "Drone 1"), hp: 5, movement: 1 }}
+            unit={{
+              ...makeUnit("drone", 0, { q: 0, r: 0 }, REFERENCE_HEX_FEET, "Drone 1"),
+              hp: 5,
+              movement: 1,
+            }}
           />
         ),
       },
@@ -307,7 +317,7 @@ const CARDS: readonly Card[] = [
         node: (
           <UnitCard
             unit={{
-              ...makeUnit("drone", 1, { q: 0, r: 0 }, "Drone 2"),
+              ...makeUnit("drone", 1, { q: 0, r: 0 }, REFERENCE_HEX_FEET, "Drone 2"),
               movement: 0,
               hasAttacked: true,
             }}
@@ -315,9 +325,18 @@ const CARDS: readonly Card[] = [
           />
         ),
       },
-      { label: "Scout", node: <UnitCard unit={makeUnit("scout", 9, { q: 0, r: 0 })} /> },
-      { label: "Sentinel", node: <UnitCard unit={makeUnit("sentinel", 9, { q: 0, r: 0 })} /> },
-      { label: "Hunter", node: <UnitCard unit={makeUnit("hunter", 9, { q: 0, r: 0 })} /> },
+      {
+        label: "Scout",
+        node: <UnitCard unit={makeUnit("scout", 9, { q: 0, r: 0 }, REFERENCE_HEX_FEET)} />,
+      },
+      {
+        label: "Sentinel",
+        node: <UnitCard unit={makeUnit("sentinel", 9, { q: 0, r: 0 }, REFERENCE_HEX_FEET)} />,
+      },
+      {
+        label: "Hunter",
+        node: <UnitCard unit={makeUnit("hunter", 9, { q: 0, r: 0 }, REFERENCE_HEX_FEET)} />,
+      },
     ],
   },
   {

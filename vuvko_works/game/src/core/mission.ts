@@ -9,10 +9,10 @@
  */
 
 import { cellAt, cellsOfZone, doorBetween } from "./deck";
-import { hexDistance, hexKey, hexNeighbours } from "./hex";
+import { hexArea, hexDistance, hexKey, hexNeighbours } from "./hex";
 import type { Axial } from "./hex";
 import { createRng } from "./rng";
-import { profileOf } from "./roster";
+import { REFERENCE_HEX_FEET, movementHexes, profileOf } from "./roster";
 import type {
   Cell,
   DeckMap,
@@ -33,8 +33,20 @@ export const DEFAULT_SETTINGS: MissionSettings = {
   nodeHitPoints: 6,
 };
 
-/** A room needs more than three hexes to be worth a node. */
-const NODE_MIN_HEXES = 4;
+/**
+ * How big a room has to be to be worth a node, in square feet.
+ *
+ * Four hexes, when a hex was thirty-five feet across. What decides it is the
+ * size of the compartment — a broom cupboard does not feed the ship whatever
+ * the lattice over it happens to be — so it is held in feet and converted,
+ * or halving the hex size would triple the ship's income by itself.
+ */
+const NODE_MIN_AREA = 4 * hexArea(REFERENCE_HEX_FEET);
+
+/** Rooms are measured in hexes, so the threshold has to be too. */
+function nodeMinHexes(feetAcross: number): number {
+  return Math.max(1, Math.round(NODE_MIN_AREA / hexArea(feetAcross)));
+}
 
 export interface MissionReport {
   readonly unreachableRooms: readonly string[];
@@ -47,8 +59,15 @@ export interface BuiltMission extends Mission {
   readonly report: MissionReport;
 }
 
-export function makeUnit(type: UnitType, id: number, at: Axial, name?: string): Unit {
+export function makeUnit(
+  type: UnitType,
+  id: number,
+  at: Axial,
+  feetAcross: number,
+  name?: string,
+): Unit {
   const profile = profileOf(type);
+  const steps = movementHexes(profile, feetAcross);
   return {
     id,
     type,
@@ -57,8 +76,8 @@ export function makeUnit(type: UnitType, id: number, at: Axial, name?: string): 
     at,
     hp: profile.hitPoints,
     maxHp: profile.hitPoints,
-    movement: profile.movement,
-    maxMovement: profile.movement,
+    movement: steps,
+    maxMovement: steps,
     hasAttacked: false,
   };
 }
@@ -147,6 +166,7 @@ function isSystemsRoom(zone: Zone): boolean {
 
 export function buildMission(deck: DeckMap, overrides?: Partial<MissionSettings>): BuiltMission {
   const settings: MissionSettings = { ...DEFAULT_SETTINGS, ...overrides };
+  const minHexes = nodeMinHexes(deck.feetAcross);
 
   const playable: Cell[] = [];
   for (const cell of deck.cells.values()) {
@@ -175,7 +195,7 @@ export function buildMission(deck: DeckMap, overrides?: Partial<MissionSettings>
   for (const zone of deck.zones.values()) {
     if (!deck.reachableZones.has(zone.id)) continue;
     if (zone.id === deck.entryZoneId) continue;
-    if (cellsOfZone(deck, zone.id).length < NODE_MIN_HEXES) continue;
+    if (cellsOfZone(deck, zone.id).length < minHexes) continue;
     if (!isSystemsRoom(zone)) continue;
     const cell = placeIn(zone.id);
     if (cell === null) continue;
@@ -192,11 +212,12 @@ export function buildMission(deck: DeckMap, overrides?: Partial<MissionSettings>
     });
   }
 
-  /* Resource nodes: one per room of more than three hexes, skipping rooms no
-     drone can reach — a node behind a wall would fund the ship forever. */
+  /* Resource nodes: one per room with a compartment's worth of floor in it,
+     skipping rooms no drone can reach — a node behind a wall would fund the
+     ship forever. */
   for (const zone of deck.zones.values()) {
     if (!deck.reachableZones.has(zone.id)) continue;
-    if (cellsOfZone(deck, zone.id).length < NODE_MIN_HEXES) continue;
+    if (cellsOfZone(deck, zone.id).length < minHexes) continue;
     const cell = placeIn(zone.id);
     if (cell === null) continue;
     taken.add(hexKey(cell.at));
@@ -219,7 +240,7 @@ export function buildMission(deck: DeckMap, overrides?: Partial<MissionSettings>
   for (let i = 0; i < 2 && i < seats.length; i++) {
     const seat = seats[i];
     if (seat === undefined) break;
-    units.push(makeUnit("drone", i, seat.at, `Drone ${i + 1}`));
+    units.push(makeUnit("drone", i, seat.at, deck.feetAcross, `Drone ${i + 1}`));
     taken.add(hexKey(seat.at));
   }
 

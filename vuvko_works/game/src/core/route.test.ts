@@ -1,3 +1,4 @@
+import { REFERENCE_HEX_FEET } from "./roster";
 import { describe, expect, it } from "vitest";
 import { hexDistance, hexKey } from "./hex";
 import { intentFor, reachFrom, reachableHexes, routeTo } from "./intent";
@@ -67,7 +68,7 @@ describe("routes", () => {
     const drone = state.units[0]!;
     const reach = [...reachableHexes(deck, state, drone).keys()];
     const [q, r] = reach[0]!.split(",").map(Number);
-    const blocker = makeUnit("sentinel", 90, { q: q!, r: r! });
+    const blocker = makeUnit("sentinel", 90, { q: q!, r: r! }, REFERENCE_HEX_FEET);
     const watched: GameState = { ...state, units: [...state.units, blocker] };
 
     const after = reachFrom(deck, watched, drone);

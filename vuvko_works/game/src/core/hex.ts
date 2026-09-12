@@ -73,6 +73,17 @@ export interface HexGeometry {
   readonly originY: number;
 }
 
+/**
+ * The floor a hex covers, in square feet.
+ *
+ * A regular hexagon measured across the flats: `(sqrt(3) / 2) * width^2`.
+ * Anything the rules state as an area — how big a compartment must be to be
+ * worth something — has to come back through this to be counted in hexes.
+ */
+export function hexArea(feetAcross: number): number {
+  return (Math.sqrt(3) / 2) * feetAcross * feetAcross;
+}
+
 export function hexGeometry(feetAcross: number, originX = 0, originY = 0): HexGeometry {
   return { feetAcross, circumradius: feetAcross / Math.sqrt(3), originX, originY };
 }

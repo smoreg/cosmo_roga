@@ -26,7 +26,8 @@ export interface UnitProfile {
   readonly label: string;
   readonly side: Side;
   readonly hitPoints: number;
-  readonly movement: number;
+  /** How far it goes in a turn, in feet — the hex size turns it into steps. */
+  readonly movementFeet: number;
   readonly cost: number;
   readonly weapons: readonly Weapon[];
 }

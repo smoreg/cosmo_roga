@@ -32,7 +32,7 @@ function openingsBeside(deck: DeckMap, state: GameState, spawner: MapObject): Op
   for (const neighbour of hexNeighbours(spawner.at)) {
     if (cellAt(deck, neighbour) === null) continue;
     if (isOccupied(state, neighbour)) continue;
-    const probe: Unit = { ...makeUnit("scout", -1, spawner.at), movement: 1 };
+    const probe: Unit = { ...makeUnit("scout", -1, spawner.at, deck.feetAcross), movement: 1 };
     const intent = intentFor(deck, state, probe, neighbour);
     if (intent.kind !== "move" || intent.forcesDoor !== null) continue;
     out.push({ spawner, at: neighbour });
@@ -85,6 +85,7 @@ export function buildWave(deck: DeckMap, state: GameState): Applied {
         type,
         current.nextUnitId,
         spot.at,
+        deck.feetAcross,
         `${profileOf(type).label} ${current.nextUnitId}`,
       ),
       movement: 0,
