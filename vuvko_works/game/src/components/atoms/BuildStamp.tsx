@@ -10,10 +10,13 @@ export function BuildStamp() {
     <p
       style={{
         position: "fixed",
-        left: 10,
-        bottom: 8,
+        /* Clear of the rail and above the log strip, and under the log rather
+           than over it: the stamp is for bug reports, not for reading across
+           whatever is on screen. */
+        left: 52,
+        bottom: 36,
         margin: 0,
-        zIndex: 60,
+        zIndex: 3,
         pointerEvents: "none",
         font: "400 var(--font-xs)/1 var(--font-mono)",
         letterSpacing: "var(--tracking-tight)",

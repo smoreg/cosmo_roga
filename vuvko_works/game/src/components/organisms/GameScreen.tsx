@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PRESETS, scrambleReveal } from "../../vendor/derelict-fx";
 import { useReveal } from "../../hooks/useReveal";
 import { hexKey } from "../../core/hex";
 import type { Axial, Point } from "../../core/hex";
@@ -90,6 +91,24 @@ export function GameScreen(props: GameScreenProps) {
   );
   const turnRef = useReveal(String(state.turn), "value");
 
+  /* Opening the drawer descrambles what is in it.
+
+     Every line is already true and already on screen the instant the panel
+     mounts; the stagger is how the kit says a block of text arrives, and the
+     360ms before the first tick is what keeps it from competing with whatever
+     on the board caused the line. */
+  const [drawer, setDrawer] = useState<HTMLDivElement | null>(null);
+  useEffect(
+    function descramble() {
+      if (drawer === null) return;
+      const running = scrambleReveal(drawer.querySelectorAll("[data-sc-line]"), PRESETS.log);
+      return function drop() {
+        running.cancel();
+      };
+    },
+    [drawer],
+  );
+
   /* The two keys the buttons advertise. Space ends the turn, z takes back —
      both ignored while a text field has focus, which there is not one of today
      and will be the moment anything is nameable. */
@@ -107,6 +126,13 @@ export function GameScreen(props: GameScreenProps) {
           event.preventDefault();
           onUndo();
         }
+        if (event.key === "l" || event.key === "L") {
+          event.preventDefault();
+          setLogOpen(function flip(open) {
+            return !open;
+          });
+        }
+        if (event.key === "Escape") setLogOpen(false);
       }
       window.addEventListener("keydown", onKey);
       return function unbind() {
@@ -275,11 +301,12 @@ export function GameScreen(props: GameScreenProps) {
             }}
             aria-expanded={logOpen}
           >
-            {logOpen ? "collapse ▼" : "expand ▲"} · {lines.length} events
+            {logOpen ? "collapse ▼" : "expand ▲"} · {lines.length} events{" "}
+            <span className="screen__key">[l]</span>
           </button>
         </div>
         {logOpen ? (
-          <div className="screen__logFull">
+          <div className="screen__logFull" ref={setDrawer}>
             <MissionLog lines={lines} />
           </div>
         ) : null}
