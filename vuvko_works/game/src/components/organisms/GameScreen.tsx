@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { PRESETS, scrambleReveal } from "../../vendor/derelict-fx";
+import { quicken } from "../../lib/tempo";
 import { useReveal } from "../../hooks/useReveal";
 import { hexKey } from "../../core/hex";
 import type { Axial, Point } from "../../core/hex";
@@ -101,7 +102,10 @@ export function GameScreen(props: GameScreenProps) {
   useEffect(
     function descramble() {
       if (drawer === null) return;
-      const running = scrambleReveal(drawer.querySelectorAll("[data-sc-line]"), PRESETS.log);
+      const running = scrambleReveal(
+        drawer.querySelectorAll("[data-sc-line]"),
+        quicken(PRESETS.log),
+      );
       return function drop() {
         running.cancel();
       };

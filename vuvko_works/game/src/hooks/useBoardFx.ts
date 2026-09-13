@@ -16,7 +16,8 @@
  */
 
 import { useEffect, useRef } from "react";
-import { clearGhosts, edgeBurst, impact, wake } from "../vendor/derelict-fx";
+import { clearGhosts, edgeBurst, impact, scrambleReveal, wake } from "../vendor/derelict-fx";
+import { BEAT, RECOVER, TEMPO } from "../lib/tempo";
 import type { WakePos } from "../vendor/derelict-fx";
 import type { GameEvent } from "../core/events";
 import type { Axial, Point } from "../core/hex";
@@ -141,10 +142,14 @@ export function useBoardFx({ root, batch, centreOf, unit, faceOf }: BoardFxProps
         const walker = flyer;
         const token = find(`[data-unit="${String(route.unitId)}"]`);
         const start = centreOf(route.from);
+        /* Each hex held for `TEMPO` frames rather than one. The token still
+           steps tile to tile — it simply scrambles its face three times on
+           each tile before moving on, which is where the extra frames go. */
         const path: WakePos[] = [];
         for (const hex of route.hexes) {
           const centre = centreOf(hex);
-          if (centre !== null) path.push({ x: centre.x, y: centre.y });
+          if (centre === null) continue;
+          for (let held = 0; held < TEMPO; held++) path.push({ x: centre.x, y: centre.y });
         }
         if (start !== null) put(flyer, start);
         flyer.setAttribute("fill", faceOf(route.unitId).colour);
@@ -161,6 +166,10 @@ export function useBoardFx({ root, batch, centreOf, unit, faceOf }: BoardFxProps
         const running = wake(flyer, path, {
           label: faceOf(route.unitId).label,
           place: placeHex,
+          frame: BEAT,
+          /* Three frames a tile means three ghosts a tile, stacked. Thinned
+             by the same factor so the trail weighs what it did before. */
+          ghostOpacity: 0.5 / TEMPO,
           onDone: done,
         });
         return function drop() {
@@ -197,6 +206,16 @@ export function useBoardFx({ root, batch, centreOf, unit, faceOf }: BoardFxProps
         if (edge !== null) edge.style.opacity = "0";
         if (damageEl !== null) damageEl.style.opacity = "0";
       }
+      const label = faceOf(blow.targetId).label;
+      /* The blow lands at the quick frame, and the target's feed re-acquires
+         it over the time that gives back. See `lib/tempo.ts`. */
+      let settling: { cancel: () => void } | null = null;
+      function recover(): void {
+        clean();
+        if (targetGlyph === null) return;
+        targetGlyph.dataset.text = label;
+        settling = scrambleReveal([targetGlyph], RECOVER);
+      }
       const running = blow.melee
         ? impact({
             attacker,
@@ -204,14 +223,16 @@ export function useBoardFx({ root, batch, centreOf, unit, faceOf }: BoardFxProps
             edge,
             damageEl,
             damage,
-            targetLabel: faceOf(blow.targetId).label,
-            onDone: clean,
+            targetLabel: label,
+            frame: BEAT,
+            onDone: recover,
           })
-        : edgeBurst({ target, edge, damageEl, damage, onDone: clean });
+        : edgeBurst({ target, edge, damageEl, damage, frame: BEAT, onDone: recover });
       return function drop() {
         running.cancel();
+        settling?.cancel();
         clean();
-        if (targetGlyph !== null) targetGlyph.textContent = faceOf(blow.targetId).label;
+        if (targetGlyph !== null) targetGlyph.textContent = label;
       };
     },
     /* The beat and the board it plays on. Nothing else: see `board` above. */

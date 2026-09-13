@@ -19,6 +19,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PRESETS, prefersReducedMotion, setAndReveal } from "../vendor/derelict-fx.js";
+import { quicken } from "../lib/tempo";
 
 export type RevealPreset = keyof typeof PRESETS;
 
@@ -59,7 +60,7 @@ export function useReveal(text: string, preset: RevealPreset = "panel") {
          means the reveal scrambles *over* something, and an interrupted one
          leaves a readable line rather than a gap. */
       element.textContent = text;
-      const running = setAndReveal([element], [text], PRESETS[preset]);
+      const running = setAndReveal([element], [text], quicken(PRESETS[preset]));
       return function drop() {
         running.cancel();
         /* Whatever frame it was on, the truth is the text. */
