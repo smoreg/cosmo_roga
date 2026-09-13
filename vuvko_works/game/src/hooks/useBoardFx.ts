@@ -15,7 +15,7 @@
  * elements it actually has and leave the rest null.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { clearGhosts, edgeBurst, impact, wake } from "../vendor/derelict-fx";
 import type { WakePos } from "../vendor/derelict-fx";
 import type { GameEvent } from "../core/events";
@@ -109,12 +109,28 @@ function placeHex(el: Element, pos: WakePos): void {
 }
 
 export function useBoardFx({ root, batch, centreOf, unit, faceOf }: BoardFxProps): void {
+  /**
+   * Everything the effect reads but must not restart for.
+   *
+   * A beat is a moment, not a state: once the store has published one, the
+   * effect should run exactly once for it and then be finished. Taking the
+   * board's geometry as dependencies made it run again whenever the board
+   * changed — and the board changes on every command, while the batch is only
+   * published on the microtask after. So there was a render where the units
+   * had already moved and `lastBatch` still held the previous action, and the
+   * effect replayed it: walking a drone up to an enemy re-ran the last attack,
+   * which is how an attack animation played before a weapon had been chosen.
+   */
+  const board = useRef({ centreOf, unit, faceOf });
+  board.current = { centreOf, unit, faceOf };
+
   useEffect(
     function play() {
+      const { centreOf, unit, faceOf } = board.current;
       if (root === null || batch.length === 0) return;
-      const board = root;
+      const svg = root;
       function find(selector: string): SVGElement | null {
-        return board.querySelector<SVGElement>(selector);
+        return svg.querySelector<SVGElement>(selector);
       }
       const flyer = find("[data-fx-flyer]");
       const edge = find("[data-fx-edge]");
@@ -198,7 +214,8 @@ export function useBoardFx({ root, batch, centreOf, unit, faceOf }: BoardFxProps
         if (targetGlyph !== null) targetGlyph.textContent = faceOf(blow.targetId).label;
       };
     },
-    [root, batch, centreOf, unit, faceOf],
+    /* The beat and the board it plays on. Nothing else: see `board` above. */
+    [root, batch],
   );
 }
 
