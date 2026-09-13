@@ -20,6 +20,9 @@ export default tseslint.config(
          else's code in someone else's style; linting it would only invite
          edits that the next sync would throw away. */
       "src/vendor/geomorph-core.js",
+      /* And the same for the exported FX library: vendored verbatim from
+         vuvko_works/extra_design, refreshed by copying, never edited here. */
+      "src/vendor/derelict-fx.js",
     ],
   },
 

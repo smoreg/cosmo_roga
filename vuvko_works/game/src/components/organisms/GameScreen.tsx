@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useReveal } from "../../hooks/useReveal";
 import type { Axial, Point } from "../../core/hex";
 import { hostiles, liveNodes, liveSpawners } from "../../core/topology";
 import type { DeckMap, GameState } from "../../core/types";
@@ -51,6 +52,15 @@ export function GameScreen(props: GameScreenProps) {
 
   const [logOpen, setLogOpen] = useState(false);
   const last = lines.at(-1);
+  /* The two things that reveal rather than appear.
+
+     The log line is the machine reporting, and it lands after the thing it
+     reports — the `log` preset is 360ms of stagger before four ticks. The turn
+     number is the only number that scrambles, because its change *is* the
+     event; hit points and pool cut, per `design/ui-kit/motion.md` §2, since a
+     840ms reveal is longer than the strike it describes. */
+  const logRef = useReveal(last?.text ?? "Boarded.", "log");
+  const turnRef = useReveal(String(state.turn), "value");
   const chosen =
     selected == null
       ? undefined
@@ -120,7 +130,7 @@ export function GameScreen(props: GameScreenProps) {
       <header className="screen__card screen__title">
         <span className="screen__ship">{deck.name}</span>
         <span className="screen__stats">
-          turn <b>{state.turn}</b> · pool <b>{round(state.pool)}</b> · spawn zones{" "}
+          turn <b ref={turnRef} /> · pool <b>{round(state.pool)}</b> · spawn zones{" "}
           <b>{liveSpawners(state).length}</b> · nodes <b>{liveNodes(state).length}</b> · hostiles{" "}
           <b>{hostiles(state).length}</b>
         </span>
@@ -182,7 +192,7 @@ export function GameScreen(props: GameScreenProps) {
         {plan?.why == null ? null : <p className="screen__hint">{plan.why}</p>}
         <div className="screen__logStrip">
           <span className="screen__logTag">Log</span>
-          <span className="screen__logLast">{last?.text ?? "Boarded."}</span>
+          <span className="screen__logLast" ref={logRef} />
           <button
             type="button"
             className="screen__logToggle"

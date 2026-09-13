@@ -105,3 +105,47 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* Chrome eases, the board steps.
+
+   Both halves of the kit are in `extra_design/`: the FX library's rule is that
+   nothing interpolates, and the accompanying essay prescribes eased panels and
+   a counting meter. They cannot both govern the same element, so the split is
+   by what the thing *is* — a hex move is discrete and a token stepping hex to
+   hex is honest where a tween is a lie about what the rules did, while a panel
+   sliding in is not reporting a rule at all. See `design/ui-kit/motion.md` §2.
+
+   Everything here is chrome. Nothing on the deck is animated by CSS. */
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.screen__card,
+.screen__acts {
+  animation: riseIn 260ms ease-out both;
+}
+
+/* A press is 90ms and three per cent, which is felt and not seen. */
+button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform 90ms ease-out;
+}
+
+/* And none of it for anyone who asked for none of it. The library makes the
+   same check itself; this covers the CSS half. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
