@@ -46,6 +46,14 @@ export function useReveal(text: string, preset: RevealPreset = "panel") {
         element.textContent = text;
         return;
       }
+      /* Write the text before revealing it, so the element is never empty.
+
+         `setAndReveal` holds the element blank through the preset's stagger —
+         360ms for the log — and a line of text vanishing and coming back is a
+         worse report than one that simply changes. Putting the text in first
+         means the reveal scrambles *over* something, and an interrupted one
+         leaves a readable line rather than a gap. */
+      element.textContent = text;
       const running = setAndReveal([element], [text], PRESETS[preset]);
       return function drop() {
         running.cancel();
