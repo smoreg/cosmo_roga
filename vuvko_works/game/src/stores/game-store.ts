@@ -8,7 +8,7 @@
  */
 
 import { create } from "zustand";
-import { applyCommand } from "../core/apply";
+import { applyAll, applyCommand } from "../core/apply";
 import { attackWith, endTurn, moveUnit } from "../core/commands";
 import type { Command } from "../core/commands";
 import { parseDeck } from "../core/deck";
@@ -35,8 +35,18 @@ export interface GameStore {
   deck: DeckMap | null;
   state: GameState | null;
   settings: MissionSettings | null;
-  /** Every command applied, in order — the save format. */
+  /** Every command applied, in order — the save format, and what undo replays. */
   history: Command[];
+  /**
+   * How many commands can no longer be taken back.
+   *
+   * See `design/ui-kit/undo.md`. A command seals when applying it told the
+   * player something they did not already know — a die was rolled, or
+   * something was revealed. Everything before this index stands.
+   */
+  sealed: number;
+  /** What `start` was given, so undo can rebuild the opening position. */
+  opening: { raw: RawDeckExport; overrides?: Partial<MissionSettings> } | null;
   events: GameEvent[];
   unreachableRooms: readonly string[];
   nudgedPlacements: number;
@@ -56,6 +66,30 @@ export interface GameStore {
   move: (unitId: number, to: Axial) => void;
   attack: (attackerId: number, weaponIndex: number, target: Axial) => void;
   finishTurn: () => void;
+  /** Take back the last command, where it revealed nothing. */
+  undo: () => void;
+  canUndo: () => boolean;
+}
+
+/**
+ * The events that end an action's reversibility.
+ *
+ * A roll is the obvious one: replaying a command that consumed the generator
+ * would consume a different number, which is re-rolling, which is the cheat the
+ * whole rule exists to prevent. Revealing is the other, and the deck has no fog
+ * today — so the list is short and is expected to grow, and lives here in one
+ * place rather than as a condition spread through the reducer.
+ */
+const SEALING: ReadonlySet<GameEvent["kind"]> = new Set([
+  "attackDeclared",
+  "strikeLanded",
+  "turnBegan",
+]);
+
+function sealsTheTurn(events: readonly GameEvent[]): boolean {
+  return events.some(function tells(event) {
+    return SEALING.has(event.kind);
+  });
 }
 
 /** Laying the tiles out is cheap; it is drawing them that is not. */
@@ -74,9 +108,12 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
     const { deck, state } = get();
     if (deck === null || state === null) return;
     const result = applyCommand(deck, state, command);
+    const history = [...get().history, command];
     set({
       state: result.state,
-      history: [...get().history, command],
+      history,
+      /* Everything up to and including a revealing command is final. */
+      sealed: sealsTheTurn(result.events) ? history.length : get().sealed,
       events: [...get().events, ...result.events],
     });
   }
@@ -91,6 +128,8 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
     state: null,
     settings: null,
     history: [],
+    sealed: 0,
+    opening: null,
     events: [],
     unreachableRooms: [],
     nudgedPlacements: 0,
@@ -102,7 +141,9 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
         deck: mission.deck,
         state: mission.state,
         settings: mission.settings,
+        opening: overrides === undefined ? { raw } : { raw, overrides },
         history: [],
+        sealed: 0,
         events: [],
         unreachableRooms: mission.report.unreachableRooms,
         nudgedPlacements: mission.report.nudgedPlacements,
@@ -110,6 +151,34 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
     },
 
     dispatch,
+
+    canUndo() {
+      return get().history.length > get().sealed;
+    },
+
+    /**
+     * Take the last command back by not having applied it.
+     *
+     * There is no inverse operation to write and no snapshot to keep: the
+     * reducer is pure and a match is reproducible from its opening plus its
+     * command list, so undo truncates the list and replays. That also means
+     * there is no second implementation of the rules that can drift from the
+     * first, which is the reason this is worth having at all.
+     */
+    undo() {
+      const { history, sealed, opening } = get();
+      if (history.length <= sealed || opening === null) return;
+      const kept = history.slice(0, -1);
+      const deck = parseDeck(opening.raw);
+      const mission = buildMission(deck, opening.overrides);
+      const replayed = applyAll(mission.deck, mission.state, kept);
+      set({
+        deck: mission.deck,
+        state: replayed.state,
+        history: kept,
+        events: [...replayed.events],
+      });
+    },
 
     roll() {
       const [brief, next] = rollMission(get().roller);

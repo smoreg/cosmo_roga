@@ -565,11 +565,14 @@ export function DeckView(props: DeckViewProps) {
         </g>
       </svg>
 
+      {/* Bottom left, where the kit puts them and where nothing else wants to
+          be: the two things you press to commit are bottom right, and putting
+          the view controls beside them makes a misclick a lost turn. */}
       <div
         style={{
           position: "absolute",
-          right: 10,
-          bottom: 10,
+          left: 12,
+          bottom: 38,
           display: "flex",
           gap: 6,
           font: "700 var(--font-sm)/1 var(--font-mono)",

@@ -28,6 +28,7 @@ export function GamePage() {
     return ui.go;
   });
   const { deck, state, dispatch, finishTurn, events, unreachableRooms } = store;
+  const { undo, canUndo } = store;
   const { brief, hull, roll, launch, toBriefing, generating, generatorError } = store;
   const input = useMissionInput(deck, state, dispatch);
 
@@ -117,6 +118,8 @@ export function GamePage() {
         onChoose={input.choose}
         onClear={input.clear}
         onEndTurn={finishTurn}
+        onUndo={undo}
+        canUndo={canUndo()}
       />
       {state.outcome === null ? null : (
         <OutcomeDialog
