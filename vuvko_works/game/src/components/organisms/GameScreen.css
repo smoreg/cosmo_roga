@@ -37,7 +37,8 @@
 }
 
 .screen__title {
-  left: 12px;
+  /* Clear of the rail, which owns the left edge. */
+  left: 58px;
   top: 12px;
   display: flex;
   gap: 18px;
@@ -229,4 +230,46 @@
     flex-direction: column;
     gap: 2px;
   }
+}
+
+/* The rail, far left, where the kit puts it: the one column of the screen that
+   never has map worth seeing in it, because the deck is centred. */
+.screen__rail {
+  position: absolute;
+  left: 0;
+  top: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.screen__railButton {
+  width: 46px;
+  height: 40px;
+  background: color-mix(in oklab, var(--panel) 88%, transparent);
+  border: 1px solid var(--rule);
+  border-left: 0;
+  color: var(--dim);
+  font: 400 var(--font-md) / 1 var(--font-mono);
+  cursor: pointer;
+}
+
+.screen__railButton:hover,
+.screen__railButton[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--drone);
+}
+
+.screen__brief {
+  left: 58px;
+  top: 70px;
+  width: 300px;
+  padding: 10px 12px;
+}
+
+.screen__briefText {
+  margin: 6px 0 0;
+  font: 400 var(--font-sm)/var(--line-sm) var(--font-mono);
+  color: var(--ink-text);
 }

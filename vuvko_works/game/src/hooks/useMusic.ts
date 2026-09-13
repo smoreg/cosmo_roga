@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { MENU_MUSIC, missionTrackFor, music } from "../lib/audio";
-import { useSettingsStore } from "../stores/settings-store";
+import { pickMuted, useSettingsStore } from "../stores/settings-store";
 import type { Screen } from "../stores/ui-store";
 
 /**
@@ -14,9 +14,7 @@ export function useMusic(screen: Screen, missionSeed: string | null): void {
   const volume = useSettingsStore(function pick(store) {
     return store.volume;
   });
-  const muted = useSettingsStore(function pickMuted(store) {
-    return store.muted;
-  });
+  const muted = useSettingsStore(pickMuted);
 
   useEffect(
     function follow() {

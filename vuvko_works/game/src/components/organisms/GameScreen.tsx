@@ -30,6 +30,10 @@ export interface GameScreenProps {
   /** Whether the last action can still be taken back — see design/ui-kit/undo.md. */
   readonly canUndo?: boolean | undefined;
   readonly onUndo?: (() => void) | undefined;
+  /** What the squad was sent to do, shown behind the `i`. */
+  readonly objective?: string | undefined;
+  readonly muted?: boolean | undefined;
+  readonly onMute?: ((muted: boolean) => void) | undefined;
 }
 
 function round(value: number): string {
@@ -48,9 +52,10 @@ export function GameScreen(props: GameScreenProps) {
   const { deck, state, lines, unreachableRooms = [], selected, reachable, forceable } = props;
   const { backdropUrl } = props;
   const { plan, pending, onPick, onHover, onChoose, onClear, onEndTurn } = props;
-  const { canUndo = false, onUndo } = props;
+  const { canUndo = false, onUndo, objective, muted = false, onMute } = props;
 
   const [logOpen, setLogOpen] = useState(false);
+  const [briefOpen, setBriefOpen] = useState(false);
   const last = lines.at(-1);
   /* The two things that reveal rather than appear.
 
@@ -126,6 +131,47 @@ export function GameScreen(props: GameScreenProps) {
           onHover={onHover}
         />
       </div>
+
+      {/* Two buttons, and only two.
+
+          The kit's rail has three — menu, information, sound — and there is no
+          menu behind the first that is not either a dead end or a way to lose a
+          mission by misclick. An option that is never the interesting one is
+          the chaff `design/tactical-diversity.md` is about, and a button is an
+          option. */}
+      <nav className="screen__rail" aria-label="View">
+        <button
+          type="button"
+          className="screen__railButton"
+          aria-pressed={briefOpen}
+          title="What you were sent for"
+          onClick={function showBrief() {
+            setBriefOpen(!briefOpen);
+          }}
+        >
+          i
+        </button>
+        {onMute === undefined ? null : (
+          <button
+            type="button"
+            className="screen__railButton"
+            aria-pressed={muted}
+            title={muted ? "Sound off" : "Sound on"}
+            onClick={function toggleMute() {
+              onMute(!muted);
+            }}
+          >
+            {muted ? "◁" : "◁))"}
+          </button>
+        )}
+      </nav>
+
+      {briefOpen && objective !== undefined ? (
+        <aside className="screen__card screen__brief">
+          <h2 className="screen__sideHeading">Contract</h2>
+          <p className="screen__briefText">{objective}</p>
+        </aside>
+      ) : null}
 
       <header className="screen__card screen__title">
         <span className="screen__ship">{deck.name}</span>
