@@ -9,7 +9,16 @@ export default defineConfig({
         test: {
           name: "core",
           environment: "node",
-          include: ["src/core/**/*.test.ts", "src/vendor/**/*.test.ts", "src/render/**/*.test.ts"],
+          /* `src/lib` was in neither project, so nothing under it could be
+             tested at all — which is how the palette went a whole redesign
+             without anyone measuring its contrast. It is plain logic, so it
+             belongs with the node project rather than the jsdom one. */
+          include: [
+            "src/core/**/*.test.ts",
+            "src/lib/**/*.test.ts",
+            "src/vendor/**/*.test.ts",
+            "src/render/**/*.test.ts",
+          ],
         },
       },
       {

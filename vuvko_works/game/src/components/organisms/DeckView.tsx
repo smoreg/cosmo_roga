@@ -1,6 +1,8 @@
-import { useId, useMemo } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { usePanZoom } from "../../hooks/usePanZoom";
-import { hexKey } from "../../core/hex";
+import { useBoardFx } from "../../hooks/useBoardFx";
+import { useGameStore } from "../../stores/game-store";
+import { hexKey, hexNeighbours } from "../../core/hex";
 import type { Axial, Point } from "../../core/hex";
 import { ROSTER } from "../../core/roster";
 import type { DeckMap, GameState } from "../../core/types";
@@ -30,93 +32,6 @@ export interface DeckViewProps {
   readonly showLabels?: boolean | undefined;
   /** How far out of focus the ship sits, in feet of ship. */
   readonly backdropBlur?: number | undefined;
-}
-
-interface ArrowMarkProps {
-  readonly arrow: ArrowStep;
-  readonly layout: ReturnType<typeof layoutDeck>;
-  readonly unit: number;
-  /** Steps before the last are drawn back, so the destination reads. */
-  readonly faded?: boolean;
-}
-
-/**
- * A wide arrow from the selected drone to the hex under the pointer: white for
- * a step, red for an attack, and struck through when it is refused. The point
- * is that the answer arrives before the click, not after it.
- */
-function ArrowMark({ arrow, layout, unit, faded = false }: ArrowMarkProps) {
-  const from = layout.hexes.find(function isFrom(shape) {
-    return hexKey(shape.at) === hexKey(arrow.from);
-  });
-  const to = layout.hexes.find(function isTo(shape) {
-    return hexKey(shape.at) === hexKey(arrow.to);
-  });
-  if (from === undefined || to === undefined) return null;
-
-  const dx = to.centre.x - from.centre.x;
-  const dy = to.centre.y - from.centre.y;
-  const length = Math.hypot(dx, dy);
-  if (length === 0) return null;
-
-  const ux = dx / length;
-  const uy = dy / length;
-  const px = -uy;
-  const py = ux;
-  const start = length * 0.3;
-  const end = length * 0.8;
-  const head = unit * 0.3;
-  const half = unit * 0.115;
-
-  const origin = from.centre;
-  function along(distance: number, offset: number): [number, number] {
-    return [origin.x + ux * distance + px * offset, origin.y + uy * distance + py * offset];
-  }
-  const shape: [number, number][] = [
-    along(start, half),
-    along(end - head, half),
-    along(end - head, half * 2.1),
-    along(end, 0),
-    along(end - head, -half * 2.1),
-    along(end - head, -half),
-    along(start, -half),
-  ];
-  const fill =
-    arrow.kind === "attack" ? "var(--stamp)" : arrow.kind === "move" ? "#ffffff" : "#5b6a74";
-  const middle = along(length * 0.55, 0);
-  const bar = unit * 0.17;
-
-  return (
-    <g pointerEvents="none">
-      <polygon
-        points={shape
-          .map(function pair(point) {
-            return point.join(",");
-          })
-          .join(" ")}
-        fill={fill}
-        opacity={arrow.kind === "blocked" ? 0.5 : faded ? 0.5 : 0.92}
-        stroke="#0b0e10"
-        strokeWidth={unit * 0.014}
-      />
-      {arrow.kind !== "blocked"
-        ? null
-        : [1, -1].map(function cross(sign) {
-            return (
-              <line
-                key={sign}
-                x1={middle[0] - bar}
-                y1={middle[1] - bar * sign}
-                x2={middle[0] + bar}
-                y2={middle[1] + bar * sign}
-                stroke="var(--stamp)"
-                strokeWidth={unit * 0.055}
-                strokeLinecap="round"
-              />
-            );
-          })}
-    </g>
-  );
 }
 
 /** A tile's declared footprint in feet, from the `[WxH]` in its own name. */
@@ -175,6 +90,11 @@ const HEX_EDGE_WIDTH = 0.019;
  */
 export function DeckView(props: DeckViewProps) {
   const { deck, state, backdropUrl, selected, reachable, forceable, arrows } = props;
+  /* Every hex the plan passes through, and the one it ends on. */
+  const onPath = new Set((arrows ?? []).map((step) => hexKey(step.to)));
+  const endOfPath = ((last) => (last === undefined ? null : hexKey(last)))(
+    (arrows ?? []).at(-1)?.to,
+  );
   const { onPick, onHover, showLabels = false, backdropBlur = BACKDROP_BLUR_FEET } = props;
 
   const layout = useMemo(
@@ -210,6 +130,47 @@ export function DeckView(props: DeckViewProps) {
   const blurId = `deck-blur-${useId().replace(/:/g, "")}`;
   const selectedKey = selected == null ? null : hexKey(selected);
 
+  /* The pan-zoom hook wants the node and so do the board effects, and a node
+     only one of them can see is a node the other cannot animate. */
+  const [svg, setSvg] = useState<SVGSVGElement | null>(null);
+  const takeSvg = useCallback(
+    function both(node: SVGSVGElement | null): void {
+      attachSvg(node);
+      setSvg(node);
+    },
+    [attachSvg],
+  );
+  const batch = useGameStore(function beat(store) {
+    return store.lastBatch;
+  });
+  const centreOf = useCallback(
+    function findCentre(at: Axial): Point | null {
+      const key = hexKey(at);
+      const found = layout.hexes.find(function atSameHex(candidate) {
+        return hexKey(candidate.at) === key;
+      });
+      return found === undefined ? null : found.centre;
+    },
+    [layout],
+  );
+  const faceOf = useCallback(
+    function describe(unitId: number): { label: string; colour: string } {
+      const found = state.units.find(function byId(candidate) {
+        return candidate.id === unitId;
+      });
+      if (found === undefined) return { label: "··", colour: "var(--drone)" };
+      return {
+        label:
+          found.side === "drone"
+            ? `D${String(found.id + 1)}`
+            : ROSTER[found.type].label.slice(0, 1).toUpperCase(),
+        colour: found.side === "drone" ? "var(--drone)" : "var(--ship)",
+      };
+    },
+    [state.units],
+  );
+  useBoardFx({ root: svg, batch, centreOf, unit, faceOf });
+
   function handlePointerMove(event: React.PointerEvent<SVGSVGElement>): void {
     onPointerMove(event);
     if (onHover === undefined) return;
@@ -231,7 +192,7 @@ export function DeckView(props: DeckViewProps) {
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <svg
-        ref={attachSvg}
+        ref={takeSvg}
         viewBox={`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`}
         width="100%"
         height="100%"
@@ -370,6 +331,45 @@ export function DeckView(props: DeckViewProps) {
             })}
           </g>
 
+          {/* The hollow corridor.
+
+              The kit's own note on it: "The corridor is the hex edge already in
+              the design, thickened and lit. No new colour, no new shape, no
+              overlay." So this is not a ring drawn round every hex on the route
+              — that leaves a seam between each pair and reads as a row of
+              cells. It is the *outline of the whole route*: an edge is drawn
+              only where the hex on the other side of it is not also on the
+              path, so the interior is hollow and what you see is one corridor
+              with the floor showing through it. */}
+          {onPath.size === 0 ? null : (
+            <g pointerEvents="none" fill="none" strokeLinecap="round">
+              {layout.hexes.map(function outlineCorridor(shape) {
+                const key = hexKey(shape.at);
+                if (!onPath.has(key)) return null;
+                const around = hexNeighbours(shape.at);
+                const last = key === endOfPath;
+                return around.map(function drawSide(step: Axial, side: number) {
+                  if (onPath.has(hexKey(step))) return null;
+                  const a = shape.points[side];
+                  const b = shape.points[(side + 1) % shape.points.length];
+                  if (a === undefined || b === undefined) return null;
+                  return (
+                    <line
+                      key={`corridor-${key}-${String(side)}`}
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke={last ? "#d7f0fc" : "var(--drone)"}
+                      strokeOpacity={last ? 0.98 : 0.8}
+                      strokeWidth={unit * 0.06}
+                    />
+                  );
+                });
+              })}
+            </g>
+          )}
+
           {/* Hull and bulkheads: the edges that make this a graph of chokepoints. */}
           <g strokeLinecap="round" pointerEvents="none">
             {layout.walls.map(function drawWall(wall, index) {
@@ -471,7 +471,10 @@ export function DeckView(props: DeckViewProps) {
                   ? `D${unitOnMap.id + 1}`
                   : ROSTER[unitOnMap.type].label.slice(0, 1).toUpperCase();
               return (
-                <g key={`unit-${unitOnMap.id}`}>
+                /* `data-unit` is how an effect finds this token without a ref
+                   through thirteen layers of SVG, and without React owning the
+                   attribute an effect writes. See design/ui-kit/motion.md. */
+                <g key={`unit-${unitOnMap.id}`} data-unit={unitOnMap.id}>
                   <circle
                     cx={x}
                     cy={y}
@@ -482,6 +485,7 @@ export function DeckView(props: DeckViewProps) {
                     strokeWidth={unit * 0.025}
                   />
                   <text
+                    data-glyph={unitOnMap.id}
                     x={x}
                     y={y + unit * 0.08}
                     textAnchor="middle"
@@ -507,6 +511,44 @@ export function DeckView(props: DeckViewProps) {
             })}
           </g>
 
+          {/* What the kit's effects are played on.
+
+              A wake leaves ghosts by cloning its element into the element's
+              own parent, and an impact writes block glyphs into whatever it is
+              given — neither is something React should own. So the board keeps
+              three spare elements out of the render's way and lends them out:
+              the flyer a move is walked on while the real token waits, the
+              edge a hit lights up, and the number that floats off it. */}
+          <g pointerEvents="none" fontFamily="var(--font-mono)" textAnchor="middle">
+            <text
+              data-fx-flyer
+              style={{ opacity: 0 }}
+              fontSize={unit * 0.26}
+              fontWeight={700}
+              fill="var(--drone)"
+              stroke="#0b0e10"
+              strokeWidth={unit * 0.06}
+              paintOrder="stroke"
+            />
+            {/* `fill="currentColor"` on purpose: the library whites this out
+                by writing `style.color`, which paints nothing in SVG unless
+                the fill is following it. */}
+            <text
+              data-fx-edge
+              style={{ opacity: 0, color: "var(--door)" }}
+              fontSize={unit * 0.42}
+              fontWeight={700}
+              fill="currentColor"
+            />
+            <text
+              data-fx-damage
+              style={{ opacity: 0, color: "var(--ship)" }}
+              fontSize={unit * 0.3}
+              fontWeight={700}
+              fill="currentColor"
+            />
+          </g>
+
           {/* Selection. */}
           {selectedKey === null ? null : (
             <g pointerEvents="none">
@@ -528,17 +570,9 @@ export function DeckView(props: DeckViewProps) {
             </g>
           )}
 
-          {(arrows ?? []).map(function drawStep(step, index) {
-            return (
-              <ArrowMark
-                key={`${hexKey(step.from)}->${hexKey(step.to)}-${String(index)}`}
-                arrow={step}
-                layout={layout}
-                unit={unit}
-                faded={index < (arrows ?? []).length - 1}
-              />
-            );
-          })}
+          {/* The arrows the route used to be drawn with are gone; the outlined
+              hexes above say the same thing without a second symbol language
+              over a board that is already hexagons and glyphs. */}
 
           {showLabels ? (
             <g pointerEvents="none">
@@ -565,11 +599,14 @@ export function DeckView(props: DeckViewProps) {
         </g>
       </svg>
 
+      {/* Bottom left, where the kit puts them and where nothing else wants to
+          be: the two things you press to commit are bottom right, and putting
+          the view controls beside them makes a misclick a lost turn. */}
       <div
         style={{
           position: "absolute",
-          right: 10,
-          bottom: 10,
+          left: 58,
+          bottom: 12,
           display: "flex",
           gap: 6,
           font: "700 var(--font-sm)/1 var(--font-mono)",

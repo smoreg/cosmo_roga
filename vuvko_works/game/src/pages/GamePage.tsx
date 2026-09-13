@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { GameScreen } from "../components/organisms/GameScreen";
+import { pickMuted, useSettingsStore } from "../stores/settings-store";
 import { MissionBriefing } from "../components/organisms/MissionBriefing";
 import { OutcomeDialog } from "../components/organisms/OutcomeDialog";
 import { liveSpawners } from "../core/topology";
@@ -28,6 +29,13 @@ export function GamePage() {
     return ui.go;
   });
   const { deck, state, dispatch, finishTurn, events, unreachableRooms } = store;
+  const { undo, canUndo } = store;
+  const muted = useSettingsStore(pickMuted);
+  const setMuted = useSettingsStore(function pickSetter(settings) {
+    return settings.setMuted;
+  });
+  /* A strike lands and the token it landed on says so. Reads the last beat of
+     events; writes nothing anybody else reads. */
   const { brief, hull, roll, launch, toBriefing, generating, generatorError } = store;
   const input = useMissionInput(deck, state, dispatch);
 
@@ -117,6 +125,11 @@ export function GamePage() {
         onChoose={input.choose}
         onClear={input.clear}
         onEndTurn={finishTurn}
+        objective={brief?.type.objective}
+        muted={muted}
+        onMute={setMuted}
+        onUndo={undo}
+        canUndo={canUndo()}
       />
       {state.outcome === null ? null : (
         <OutcomeDialog

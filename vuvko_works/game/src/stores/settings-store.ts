@@ -82,3 +82,8 @@ export const useSettingsStore = create<SettingsStore>(function createSettings(se
     },
   };
 });
+
+/** Whether sound is off, as a named selector so two callers share one lambda. */
+export function pickMuted(store: SettingsStore): boolean {
+  return store.muted;
+}

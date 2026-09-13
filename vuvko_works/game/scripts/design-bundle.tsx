@@ -32,7 +32,7 @@ const tokens = [
 ].join("\n");
 
 const FONT_LINK =
-  '<link href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&family=B612+Mono:wght@400;700&display=swap" rel="stylesheet">';
+  '<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600&display=swap" rel="stylesheet">';
 
 interface Variant {
   readonly label: string;
@@ -143,7 +143,7 @@ const CARDS: readonly Card[] = [
     group: "Foundations",
     subtitle: "Palette and type, carried from the deck plans",
     blurb:
-      "The palette comes from hexmap.html, so a mission and the deck plan drawn under it read as one drawing. B612 is the typeface — it was designed for cockpit displays, which is the right register for a page you read while deciding something.",
+      "The palette comes from hexmap.html by way of the exported kit: navy rather than near-black, because blueprint ink on warm black reads as a photograph of a drawing and the same ink on navy reads as the drawing. IBM Plex Mono sets the numbers and Barlow Condensed names the panels, so a label never competes with a readout.",
     width: 720,
     variants: [
       {

@@ -1,19 +1,32 @@
 /* Tokens carried over from the prototype, which took them from hexmap.html so
-   a mission and the deck plan under it read as one drawing. */
+   a mission and the deck plan under it read as one drawing.
+
+   Re-grounded on the exported kit in `extra_design/`. The ground goes from a
+   neutral near-black to navy, because the deck art is blueprint line work and
+   blueprint ink on warm black reads as a photograph of a drawing while the same
+   ink on navy reads as the drawing. The role colours move with it: everything
+   hostile collapses to one red, where there were three that no rule ever told
+   apart. */
 :root {
-  --void: #0e1114;
-  --deck: #12161a;
-  --ink: #dfe6e6;
-  --dim: #8e9a9b;
-  --rule: #39434a;
-  --panel: #181d22;
-  --stamp: #c8503f;
-  --door: #e8c15a;
-  --grid: #1d242a;
-  --drone: #6fc3d6;
-  --ship: #c8503f;
+  /* The ground, and two steps up from it. `--void` is behind everything,
+     `--deck` is a panel on it, `--panel` a card on that. */
+  --void: #0e1a2e;
+  --deck: #0a0e16;
+  --panel: #0c1526;
+
+  --ink: #d7e3f6;
+  --dim: #8296b4;
+  --rule: #2b3f5e;
+
+  /* Yours, theirs, the ship's machinery, and a door. Three reds became one:
+     `--stamp`, `--ship` and `--spawn` were separate tokens for the same idea
+     and no rule ever distinguished them. */
+  --drone: #5fb8d9;
+  --ship: #cf6a5a;
+  --stamp: #cf6a5a;
+  --spawn: #cf6a5a;
   --node: #5fbf9b;
-  --spawn: #d4574a;
+  --door: #e8c15a;
 
   /* Body copy sits a little under --ink. On a near-black ground, text this
      light blooms for the roughly half of readers with some astigmatism, and
@@ -22,13 +35,18 @@
      map, which shares its palette with hexmap.html. */
   --ink-text: #c7d0d0;
 
-  /* Courier leads, as asked. The rest of the stack is there because Courier
-     New was digitised from a typeball without the ink spread that gave it
-     weight on paper, so its stems stay hairline at UI sizes — on anything that
-     has a better-hinted monospace, use it. */
+  /* IBM Plex Mono leads. Courier led before, and Courier New was digitised
+     from a typeball without the ink spread that gave it weight on paper, so its
+     stems stay hairline at the sizes a readout is set in. Plex is a screen face
+     with the same character and actual stems.
+
+     Barlow Condensed is the label face: small caps, wide tracking, for the
+     things that name a panel rather than say anything. Kept separate so a label
+     never competes with a number. */
   --font-mono:
-    Courier, "Courier New", ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono",
-    "Roboto Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+  --font-label: "Barlow Condensed", "Arial Narrow", sans-serif;
   --font-body: var(--font-mono);
 
   /* Five sizes, and no sixth. Four of them cluster tightly — a dense readout
@@ -86,4 +104,70 @@ body {
 /* Every number that changes at runtime holds its column. */
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Chrome eases, the board steps.
+
+   Both halves of the kit are in `extra_design/`: the FX library's rule is that
+   nothing interpolates, and the accompanying essay prescribes eased panels and
+   a counting meter. They cannot both govern the same element, so the split is
+   by what the thing *is* — a hex move is discrete and a token stepping hex to
+   hex is honest where a tween is a lie about what the rules did, while a panel
+   sliding in is not reporting a rule at all. See `design/ui-kit/motion.md` §2.
+
+   Everything here is chrome. Nothing on the deck is animated by CSS. */
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.screen__card,
+.screen__acts {
+  animation: riseIn 260ms ease-out both;
+}
+
+/* A press is 90ms and three per cent, which is felt and not seen. */
+button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform 90ms ease-out;
+}
+
+/* And none of it for anyone who asked for none of it. The library makes the
+   same check itself; this covers the CSS half. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes dimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* riseIn for something already centred by a transform: the translate has to
+   carry the offset too, or the panel snaps to the corner as it rises. */
+@keyframes riseInCentred {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 6px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
 }
