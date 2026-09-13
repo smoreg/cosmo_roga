@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PRESETS, scrambleReveal } from "../../vendor/derelict-fx";
 import { quicken } from "../../lib/tempo";
+import { cancelOn } from "../../lib/running";
+import { bindKeys, isTyping } from "../../lib/keys";
 import { useReveal } from "../../hooks/useReveal";
 import { hexKey } from "../../core/hex";
 import type { Axial, Point } from "../../core/hex";
@@ -10,6 +12,7 @@ import type { PendingAttack, Plan } from "../../hooks/useMissionInput";
 import type { LogLine } from "../../lib/log";
 import { UnitCard } from "../molecules/UnitCard";
 import { AttackChooser } from "./AttackChooser";
+import { ConfirmEndTurn } from "./ConfirmEndTurn";
 import { DeckView } from "./DeckView";
 import { MissionLog } from "./MissionLog";
 import "./GameScreen.css";
@@ -106,9 +109,7 @@ export function GameScreen(props: GameScreenProps) {
         drawer.querySelectorAll("[data-sc-line]"),
         quicken(PRESETS.log),
       );
-      return function drop() {
-        running.cancel();
-      };
+      return cancelOn(running);
     },
     [drawer],
   );
@@ -117,14 +118,34 @@ export function GameScreen(props: GameScreenProps) {
      both ignored while a text field has focus, which there is not one of today
      and will be the moment anything is nameable. */
   const live = state.outcome === null;
+
+  /* Ending the turn is the one action undo will not reach — the ship rolls,
+     and a roll cannot be replayed — so the kit asks before spending a turn
+     that still had moves in it. Only then: a confirmation on every end turn
+     is a confirmation nobody reads. */
+  const [asking, setAsking] = useState(false);
+  const idle = state.units.filter(function stillGoing(candidate) {
+    return candidate.side === "drone" && candidate.hp > 0 && candidate.movement > 0;
+  });
+  const stillMoving = idle.length > 0;
+  const askEndTurn = useCallback(
+    function ask(): void {
+      if (!live || onEndTurn === undefined) return;
+      if (!stillMoving) {
+        onEndTurn();
+        return;
+      }
+      setAsking(true);
+    },
+    [live, onEndTurn, stillMoving],
+  );
   useEffect(
-    function bindKeys() {
+    function listen() {
       function onKey(event: KeyboardEvent): void {
-        const target = event.target;
-        if (target instanceof HTMLElement && target.tagName === "INPUT") return;
-        if (event.key === " " && live && onEndTurn !== undefined) {
+        if (isTyping(event)) return;
+        if (event.key === " " && live) {
           event.preventDefault();
-          onEndTurn();
+          askEndTurn();
         }
         if ((event.key === "z" || event.key === "Z") && canUndo && onUndo !== undefined) {
           event.preventDefault();
@@ -138,12 +159,9 @@ export function GameScreen(props: GameScreenProps) {
         }
         if (event.key === "Escape") setLogOpen(false);
       }
-      window.addEventListener("keydown", onKey);
-      return function unbind() {
-        window.removeEventListener("keydown", onKey);
-      };
+      return bindKeys(onKey);
     },
-    [live, canUndo, onEndTurn, onUndo],
+    [live, canUndo, askEndTurn, onUndo],
   );
 
   return (
@@ -284,7 +302,7 @@ export function GameScreen(props: GameScreenProps) {
         <button
           type="button"
           className="screen__button screen__button--go"
-          onClick={onEndTurn}
+          onClick={askEndTurn}
           disabled={state.outcome !== null}
         >
           End turn
@@ -318,6 +336,21 @@ export function GameScreen(props: GameScreenProps) {
 
       {pending == null || onChoose === undefined || onClear === undefined ? null : (
         <AttackChooser pending={pending} onChoose={onChoose} onCancel={onClear} />
+      )}
+
+      {!asking || onEndTurn === undefined ? null : (
+        <ConfirmEndTurn
+          idle={idle.map(function name(drone) {
+            return { name: drone.name, movement: drone.movement };
+          })}
+          onCancel={function keepPlaying() {
+            setAsking(false);
+          }}
+          onConfirm={function goAhead() {
+            setAsking(false);
+            onEndTurn();
+          }}
+        />
       )}
     </div>
   );

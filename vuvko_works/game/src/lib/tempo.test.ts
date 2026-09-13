@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BEAT, RECOVER, TEMPO, quicken } from "./tempo";
-import { FRAME, PRESETS } from "../vendor/derelict-fx";
+import { BEAT, TEMPO, quicken } from "./tempo";
+import { PRESETS } from "../vendor/derelict-fx";
 
 describe("tempo", function suite() {
   it("resolves every reveal three times as finely over the same span", function same() {
@@ -20,11 +20,5 @@ describe("tempo", function suite() {
       expect(quicken(preset).tickMs).toBeGreaterThan(1000 / 60);
     }
     expect(BEAT).toBeGreaterThan(1000 / 60);
-  });
-
-  it("gives a struck token back exactly the time the quick blow saved", function fills() {
-    const blow = 7 * BEAT;
-    const wasBlow = 7 * FRAME;
-    expect(blow + RECOVER.ticks * RECOVER.tickMs).toBeCloseTo(wasBlow, 6);
   });
 });

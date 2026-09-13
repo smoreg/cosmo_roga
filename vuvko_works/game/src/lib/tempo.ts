@@ -14,14 +14,14 @@
  * hex can simply be held for three frames instead of one; the token still
  * steps tile to tile and nothing lands between them.
  *
- * It is not exact for the two combat effects. Those are fixed sequences of
- * authored states — seven for a hit, five for a shot — and there is no fourth
- * state to put between the third and the fourth that the kit did not draw.
- * Inventing one would be interpolation by another name. So the blow itself
- * runs at the quick frame and lands in a third of the time, and the target's
- * face is then descrambled back over what is left, which is a thing the
- * library does count frames for. Same total window, and the punch arrives
- * sooner inside it.
+ * It is not available at all for the two combat effects, and that is the
+ * honest limit. Those are fixed sequences of authored states — seven for a
+ * hit, five for a shot — and there is no fourth state to put between the third
+ * and the fourth that the kit did not draw. Inventing one is interpolation
+ * under another name. Running them at the quick frame without more states was
+ * tried and is worse: the blow lands in a third of the time and reads as
+ * nothing having happened. So combat keeps the kit's frame, and this file
+ * applies to everything that counts frames.
  */
 
 import { FRAME } from "../vendor/derelict-fx";
@@ -44,15 +44,3 @@ export function quicken(preset: Preset): Preset {
     tickMs: preset.tickMs / TEMPO,
   };
 }
-
-/**
- * What a struck token does while the rest of its beat plays out.
- *
- * Sized to fill the time the quickened blow gives back: a hit is seven frames,
- * so it now ends 7 × (FRAME − BEAT) early, and this covers exactly that.
- */
-export const RECOVER: Preset = {
-  stagger: 0,
-  ticks: Math.round((7 * (FRAME - BEAT)) / BEAT),
-  tickMs: BEAT,
-};

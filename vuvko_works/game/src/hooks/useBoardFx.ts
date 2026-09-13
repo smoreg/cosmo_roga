@@ -16,8 +16,8 @@
  */
 
 import { useEffect, useRef } from "react";
-import { clearGhosts, edgeBurst, impact, scrambleReveal, wake } from "../vendor/derelict-fx";
-import { BEAT, RECOVER, TEMPO } from "../lib/tempo";
+import { FRAME, clearGhosts, edgeBurst, frames, impact, wake } from "../vendor/derelict-fx";
+import { BEAT, TEMPO } from "../lib/tempo";
 import type { WakePos } from "../vendor/derelict-fx";
 import type { GameEvent } from "../core/events";
 import type { Axial, Point } from "../core/hex";
@@ -207,15 +207,29 @@ export function useBoardFx({ root, batch, centreOf, unit, faceOf }: BoardFxProps
         if (damageEl !== null) damageEl.style.opacity = "0";
       }
       const label = faceOf(blow.targetId).label;
-      /* The blow lands at the quick frame, and the target's feed re-acquires
-         it over the time that gives back. See `lib/tempo.ts`. */
-      let settling: { cancel: () => void } | null = null;
-      function recover(): void {
-        clean();
-        if (targetGlyph === null) return;
-        targetGlyph.dataset.text = label;
-        settling = scrambleReveal([targetGlyph], RECOVER);
-      }
+
+      /* The flash the library cannot land here.
+         `impact` whites a target out by writing `style.background`, and
+         `edgeBurst` whites the edge by writing `style.color`. Neither paints
+         anything in SVG, where the fill is the colour and there is no box to
+         fill behind the glyph — so the hit ran and looked like nothing had
+         happened. The elements the effects write `color` to are given
+         `fill="currentColor"` in the board so that half lands, and the
+         target's own white frame is played here, on the beat the kit puts it
+         on: third of seven for a hit, third of five for a shot. */
+      const flashOn = blow.melee ? 2 : 2;
+      const flash = frames(
+        [
+          function white(): void {
+            if (target !== null) target.style.filter = "brightness(3) saturate(0)";
+          },
+          function back(): void {
+            if (target !== null) target.style.removeProperty("filter");
+          },
+        ],
+        { frame: FRAME, delay: flashOn * FRAME },
+      );
+
       const running = blow.melee
         ? impact({
             attacker,
@@ -224,13 +238,12 @@ export function useBoardFx({ root, batch, centreOf, unit, faceOf }: BoardFxProps
             damageEl,
             damage,
             targetLabel: label,
-            frame: BEAT,
-            onDone: recover,
+            onDone: clean,
           })
-        : edgeBurst({ target, edge, damageEl, damage, frame: BEAT, onDone: recover });
+        : edgeBurst({ target, edge, damageEl, damage, onDone: clean });
       return function drop() {
         running.cancel();
-        settling?.cancel();
+        flash.cancel();
         clean();
         if (targetGlyph !== null) targetGlyph.textContent = label;
       };

@@ -1,0 +1,65 @@
+.confirm__dim {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  background: rgba(4, 8, 14, 0.62);
+  animation: dimIn 180ms ease-out both;
+}
+
+.confirm {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 380px;
+  z-index: 12;
+  padding: 18px 20px;
+  background: #0c1728;
+  border: 1px solid var(--drone);
+  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.6);
+  animation: riseInCentred 220ms ease-out both;
+}
+
+.confirm__title {
+  font: 600 19px/1.2 var(--font-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  /* Held open so the panel does not resize as the line descrambles in. */
+  min-height: 1.2em;
+}
+
+.confirm__body {
+  margin-top: 8px;
+  font: 400 var(--font-sm)/1.6 var(--font-mono);
+  color: var(--ink-text);
+  min-height: 3.2em;
+}
+
+.confirm__acts {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.confirm__button {
+  flex: 1;
+  padding: 10px 0;
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  font: 400 var(--font-sm)/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.confirm__button:hover {
+  border-color: var(--ink);
+}
+
+.confirm__button--go {
+  border-color: var(--drone);
+  background: color-mix(in oklab, var(--drone) 22%, transparent);
+  color: var(--drone);
+}
+
+.confirm__button--go:hover {
+  background: color-mix(in oklab, var(--drone) 34%, transparent);
+}

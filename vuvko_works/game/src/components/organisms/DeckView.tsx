@@ -530,13 +530,22 @@ export function DeckView(props: DeckViewProps) {
               strokeWidth={unit * 0.06}
               paintOrder="stroke"
             />
-            <text data-fx-edge style={{ opacity: 0 }} fontSize={unit * 0.3} fill="var(--ink)" />
+            {/* `fill="currentColor"` on purpose: the library whites this out
+                by writing `style.color`, which paints nothing in SVG unless
+                the fill is following it. */}
+            <text
+              data-fx-edge
+              style={{ opacity: 0, color: "var(--door)" }}
+              fontSize={unit * 0.42}
+              fontWeight={700}
+              fill="currentColor"
+            />
             <text
               data-fx-damage
-              style={{ opacity: 0 }}
-              fontSize={unit * 0.24}
+              style={{ opacity: 0, color: "var(--ship)" }}
+              fontSize={unit * 0.3}
               fontWeight={700}
-              fill="var(--ship)"
+              fill="currentColor"
             />
           </g>
 
