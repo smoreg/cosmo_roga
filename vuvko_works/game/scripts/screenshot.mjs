@@ -30,7 +30,12 @@ const executablePath = process.env.CHROMIUM;
 const FLOW = [/click to proceed/i, /^continue$/i, /new game/i, /board|launch|begin|deploy/i];
 
 const browser = await chromium.launch(executablePath === undefined ? {} : { executablePath });
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+/* The kit's artboards are 1280x720 and 844x390, so the shot has to be takeable
+   at those sizes to be comparable with them. */
+const size = (process.env.VIEWPORT ?? "1280x900").split("x").map(Number);
+const page = await browser.newPage({
+  viewport: { width: size[0] ?? 1280, height: size[1] ?? 900 },
+});
 page.on("pageerror", function crashed(problem) {
   console.log("[pageerror]", String(problem).slice(0, 400));
 });
