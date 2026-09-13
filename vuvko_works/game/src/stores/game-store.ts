@@ -49,11 +49,15 @@ export interface GameStore {
   opening: { raw: RawDeckExport; overrides?: Partial<MissionSettings> } | null;
   events: GameEvent[];
   /**
-   * Just what the last dispatch produced.
+   * What one *action* produced, not what one dispatch produced.
    *
    * `events` is the whole mission and feeds the log; this is the beat the
-   * presentation layer animates. One field, replaced not appended, so nothing
-   * has to diff a growing array to find out what just happened.
+   * presentation layer animates. It has to be the action rather than the
+   * dispatch because walking a route is a loop of single-step commands — the
+   * reducer only ever takes one step, which is what keeps a move undoable — so
+   * a per-dispatch batch would hand the animation four separate one-hex moves
+   * and never the path. Dispatches made in the same tick are collected and
+   * published together on the microtask after them.
    */
   lastBatch: GameEvent[];
   unreachableRooms: readonly string[];
@@ -112,6 +116,23 @@ function previewOf(brief: MissionBrief): HullPreview | null {
 }
 
 export const useGameStore = create<GameStore>(function createStore(set, get) {
+  /* Collected across a tick, published once. Module-scope rather than store
+     state: it is never read by anything and exists only to be flushed. */
+  let beat: GameEvent[] = [];
+  let flushing = false;
+
+  function publish(events: readonly GameEvent[]): void {
+    beat = [...beat, ...events];
+    if (flushing) return;
+    flushing = true;
+    queueMicrotask(function flush() {
+      flushing = false;
+      const batch = beat;
+      beat = [];
+      if (batch.length > 0) set({ lastBatch: batch });
+    });
+  }
+
   function dispatch(command: Command): void {
     const { deck, state } = get();
     if (deck === null || state === null) return;
@@ -123,8 +144,8 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
       /* Everything up to and including a revealing command is final. */
       sealed: sealsTheTurn(result.events) ? history.length : get().sealed,
       events: [...get().events, ...result.events],
-      lastBatch: [...result.events],
     });
+    publish(result.events);
   }
 
   return {

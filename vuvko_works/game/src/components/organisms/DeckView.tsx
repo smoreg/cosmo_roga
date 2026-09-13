@@ -1,6 +1,8 @@
-import { useId, useMemo } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { usePanZoom } from "../../hooks/usePanZoom";
-import { hexKey } from "../../core/hex";
+import { useBoardFx } from "../../hooks/useBoardFx";
+import { useGameStore } from "../../stores/game-store";
+import { hexKey, hexNeighbours } from "../../core/hex";
 import type { Axial, Point } from "../../core/hex";
 import { ROSTER } from "../../core/roster";
 import type { DeckMap, GameState } from "../../core/types";
@@ -128,6 +130,47 @@ export function DeckView(props: DeckViewProps) {
   const blurId = `deck-blur-${useId().replace(/:/g, "")}`;
   const selectedKey = selected == null ? null : hexKey(selected);
 
+  /* The pan-zoom hook wants the node and so do the board effects, and a node
+     only one of them can see is a node the other cannot animate. */
+  const [svg, setSvg] = useState<SVGSVGElement | null>(null);
+  const takeSvg = useCallback(
+    function both(node: SVGSVGElement | null): void {
+      attachSvg(node);
+      setSvg(node);
+    },
+    [attachSvg],
+  );
+  const batch = useGameStore(function beat(store) {
+    return store.lastBatch;
+  });
+  const centreOf = useCallback(
+    function findCentre(at: Axial): Point | null {
+      const key = hexKey(at);
+      const found = layout.hexes.find(function atSameHex(candidate) {
+        return hexKey(candidate.at) === key;
+      });
+      return found === undefined ? null : found.centre;
+    },
+    [layout],
+  );
+  const faceOf = useCallback(
+    function describe(unitId: number): { label: string; colour: string } {
+      const found = state.units.find(function byId(candidate) {
+        return candidate.id === unitId;
+      });
+      if (found === undefined) return { label: "··", colour: "var(--drone)" };
+      return {
+        label:
+          found.side === "drone"
+            ? `D${String(found.id + 1)}`
+            : ROSTER[found.type].label.slice(0, 1).toUpperCase(),
+        colour: found.side === "drone" ? "var(--drone)" : "var(--ship)",
+      };
+    },
+    [state.units],
+  );
+  useBoardFx({ root: svg, batch, centreOf, unit, faceOf });
+
   function handlePointerMove(event: React.PointerEvent<SVGSVGElement>): void {
     onPointerMove(event);
     if (onHover === undefined) return;
@@ -149,7 +192,7 @@ export function DeckView(props: DeckViewProps) {
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <svg
-        ref={attachSvg}
+        ref={takeSvg}
         viewBox={`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`}
         width="100%"
         height="100%"
@@ -288,29 +331,41 @@ export function DeckView(props: DeckViewProps) {
             })}
           </g>
 
-          {/* The route the plan would actually take, outlined rather than
-              arrowed.
+          {/* The hollow corridor.
 
-              The kit draws a path by thickening the border of every hex on it
-              in the drone's own colour and the hovered one in near-white — no
-              arrowheads, no second symbol language over a board that is already
-              hexagons and glyphs. It also reads at a glance as *ground you are
-              committing to* rather than as an instruction. */}
+              The kit's own note on it: "The corridor is the hex edge already in
+              the design, thickened and lit. No new colour, no new shape, no
+              overlay." So this is not a ring drawn round every hex on the route
+              — that leaves a seam between each pair and reads as a row of
+              cells. It is the *outline of the whole route*: an edge is drawn
+              only where the hex on the other side of it is not also on the
+              path, so the interior is hollow and what you see is one corridor
+              with the floor showing through it. */}
           {onPath.size === 0 ? null : (
-            <g pointerEvents="none" fill="none" strokeLinejoin="round">
-              {layout.hexes.map(function outlineStep(shape) {
+            <g pointerEvents="none" fill="none" strokeLinecap="round">
+              {layout.hexes.map(function outlineCorridor(shape) {
                 const key = hexKey(shape.at);
                 if (!onPath.has(key)) return null;
+                const around = hexNeighbours(shape.at);
                 const last = key === endOfPath;
-                return (
-                  <polygon
-                    key={`path-${key}`}
-                    points={pointsToPath(shape.points)}
-                    stroke={last ? "#d7f0fc" : "var(--drone)"}
-                    strokeOpacity={last ? 0.98 : 0.8}
-                    strokeWidth={unit * (last ? 0.07 : 0.055)}
-                  />
-                );
+                return around.map(function drawSide(step: Axial, side: number) {
+                  if (onPath.has(hexKey(step))) return null;
+                  const a = shape.points[side];
+                  const b = shape.points[(side + 1) % shape.points.length];
+                  if (a === undefined || b === undefined) return null;
+                  return (
+                    <line
+                      key={`corridor-${key}-${String(side)}`}
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke={last ? "#d7f0fc" : "var(--drone)"}
+                      strokeOpacity={last ? 0.98 : 0.8}
+                      strokeWidth={unit * 0.06}
+                    />
+                  );
+                });
               })}
             </g>
           )}
@@ -430,6 +485,7 @@ export function DeckView(props: DeckViewProps) {
                     strokeWidth={unit * 0.025}
                   />
                   <text
+                    data-glyph={unitOnMap.id}
                     x={x}
                     y={y + unit * 0.08}
                     textAnchor="middle"
@@ -453,6 +509,35 @@ export function DeckView(props: DeckViewProps) {
                 </g>
               );
             })}
+          </g>
+
+          {/* What the kit's effects are played on.
+
+              A wake leaves ghosts by cloning its element into the element's
+              own parent, and an impact writes block glyphs into whatever it is
+              given — neither is something React should own. So the board keeps
+              three spare elements out of the render's way and lends them out:
+              the flyer a move is walked on while the real token waits, the
+              edge a hit lights up, and the number that floats off it. */}
+          <g pointerEvents="none" fontFamily="var(--font-mono)" textAnchor="middle">
+            <text
+              data-fx-flyer
+              style={{ opacity: 0 }}
+              fontSize={unit * 0.26}
+              fontWeight={700}
+              fill="var(--drone)"
+              stroke="#0b0e10"
+              strokeWidth={unit * 0.06}
+              paintOrder="stroke"
+            />
+            <text data-fx-edge style={{ opacity: 0 }} fontSize={unit * 0.3} fill="var(--ink)" />
+            <text
+              data-fx-damage
+              style={{ opacity: 0 }}
+              fontSize={unit * 0.24}
+              fontWeight={700}
+              fill="var(--ship)"
+            />
           </g>
 
           {/* Selection. */}

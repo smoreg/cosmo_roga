@@ -52,3 +52,56 @@ export function frames(
 
 /** Remove any ghosts a cancelled token effect left behind. */
 export function clearGhosts(root?: ParentNode): void;
+
+/** Where a token sits after a step. Interpreted only by `place`. */
+export type WakePos = Readonly<Record<string, number | string | undefined>>;
+
+export interface WakeOptions {
+  /** Writes a position onto the element. Override it to leave the DOM's own
+   *  coordinate system — ours is SVG user units, not CSS pixels. */
+  place?: (el: Element, pos: WakePos) => void;
+  frame?: number;
+  ghostMs?: number;
+  /** The face the token wears once it stops scrambling. */
+  label?: string;
+  ghostOpacity?: number;
+  scrambleFace?: boolean;
+  onDone?: () => void;
+  skip?: boolean;
+}
+
+export function wake(
+  el: Element | null,
+  path: readonly WakePos[],
+  options?: WakeOptions,
+): { cancel: () => void };
+
+export interface ImpactOptions {
+  attacker?: Element | null;
+  target?: Element | null;
+  edge?: Element | null;
+  damageEl?: Element | null;
+  damage?: string;
+  frame?: number;
+  hurtOpacity?: number;
+  /** The face the target is put back into. Read off the element when absent,
+   *  which is wrong once the element is mid-scramble — so pass it. */
+  targetLabel?: string;
+  onDone?: () => void;
+  skip?: boolean;
+}
+
+export function impact(options?: ImpactOptions): { cancel: () => void };
+
+export interface EdgeBurstOptions {
+  target?: Element | null;
+  edge?: Element | null;
+  damageEl?: Element | null;
+  damage?: string;
+  frame?: number;
+  hurtOpacity?: number;
+  onDone?: () => void;
+  skip?: boolean;
+}
+
+export function edgeBurst(options?: EdgeBurstOptions): { cancel: () => void };
