@@ -5,6 +5,7 @@
     "storybook-static/**",
     "coverage/**",
     "public/**",
-    "src/vendor/geomorph-core.js"
+    "src/vendor/geomorph-core.js",
+    "src/vendor/derelict-fx.js"
   ]
 }
