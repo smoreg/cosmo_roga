@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #06090e; }
+  a { color: #6fc2dd; }
+  a:hover { color: #9bd8ec; }
+</style>
+</helmet>
+
+<article ref="{{ rootRef }}" style="--ink:#dbe6f5; --dim:#93a6c2; --faint:#6d819f; --navy:#0e1a2e; --panel:#0b1526; --line:#27384f; --accent:#5fb8d9; --hot:#cf6a5a; --gold:#d8a94e; --node:#5fbf9f; max-width:1240px; margin:0 auto; padding:52px 40px 90px; background:#06090e; color:var(--ink); font-family:'IBM Plex Mono',monospace">
+
+  <header style="border-bottom:2px solid var(--line); padding-bottom:22px">
+    <div style="font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--dim)">Reusable module · no dependencies, no build step</div>
+    <h1 style="font-family:'Barlow Condensed',sans-serif; font-size:62px; line-height:.95; font-weight:700; text-transform:uppercase; margin:14px 0 0">derelict-fx</h1>
+    <p style="font-size:15px; line-height:1.7; color:var(--dim); max-width:800px; margin:14px 0 0">Every animation we settled on, extracted into one file you can drop into another project. One rule holds it together: <span style="color:var(--ink)">nothing interpolates</span>. Every visual state is a discrete frame held for a multiple of <span style="color:var(--accent)">FRAME = 225ms</span>. No easing, no tweens — that is what makes text, movement and combat read as one machine.</p>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:16px">
+      <div style="font-size:11px; padding:5px 10px; border:1px solid var(--line); color:var(--dim)">15 functions</div>
+      <div style="font-size:11px; padding:5px 10px; border:1px solid var(--line); color:var(--dim)">~15kb, unminified</div>
+      <div style="font-size:11px; padding:5px 10px; border:1px solid var(--line); color:var(--dim)">ESM + window global</div>
+      <div style="font-size:11px; padding:5px 10px; border:1px solid var(--line); color:var(--dim)">honours prefers-reduced-motion</div>
+      <div style="font-size:11px; padding:5px 10px; border:1px solid var(--node); color:var(--node)">every call returns .cancel()</div>
+      <div style="font-size:11px; padding:5px 10px; border:1px solid var(--gold); color:var(--gold)">reveals never reflow</div>
+    </div>
+  </header>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; margin-top:26px">
+    <div style="background:var(--panel); border:1px solid var(--line); padding:16px 18px">
+      <div style="font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--faint)">Install</div>
+      <pre style="margin:10px 0 0; font-size:12px; line-height:1.7; color:var(--ink); white-space:pre-wrap">import * as FX from './derelict-fx.js';
+
+FX.scrambleReveal(lines, FX.PRESETS.panel);
+FX.edgeBurst({ target, edge, damage: '-3' });</pre>
+    </div>
+    <div style="background:var(--panel); border:1px solid var(--line); padding:16px 18px">
+      <div style="font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--faint)">Or without modules</div>
+      <pre style="margin:10px 0 0; font-size:12px; line-height:1.7; color:var(--ink); white-space:pre-wrap">&lt;script src="derelict-fx.js"&gt;&lt;/script&gt;
+
+DerelictFX.wake(token, path, { label: 'D1' });</pre>
+    </div>
+  </div>
+
+  <h2 style="font-family:'Barlow Condensed',sans-serif; font-size:14px; letter-spacing:.28em; text-transform:uppercase; color:var(--accent); margin:52px 0 0; padding-bottom:9px; border-bottom:1px solid var(--line)">Text</h2>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:22px">
+    <sc-for list="{{ textDemos }}" as="d" hint-placeholder-count="4">
+      <div style="background:#06090e; padding:18px 20px 20px">
+        <div style="display:flex; align-items:baseline; gap:10px">
+          <div style="font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:600; letter-spacing:.05em; text-transform:uppercase">{{ d.name }}</div>
+          <div style="margin-left:auto; font-size:10px; color:var(--faint)">{{ d.timing }}</div>
+        </div>
+        <div style="font-size:13px; line-height:1.6; color:var(--dim); margin-top:6px">{{ d.body }}</div>
+        <div data-text-demo="{{ d.id }}" style="background:var(--navy); border:1px solid rgba(39,56,79,.7); padding:11px 13px; margin-top:11px; min-height:62px; display:flex; flex-direction:column; justify-content:center; gap:3px">
+          <sc-for list="{{ d.lines }}" as="l" hint-placeholder-count="3">
+            <div data-sc-line="1" data-text="{{ l.t }}" style="font-size:{{ l.size }}px; color:{{ l.color }}; font-weight:{{ l.weight }}; letter-spacing:{{ l.track }}">{{ l.t }}</div>
+          </sc-for>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:10px">
+          <div onClick="{{ d.run }}" style="font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:8px 16px; border:1px solid var(--line); color:var(--dim); cursor:pointer" style-hover="border-color:var(--accent); color:var(--accent)">Run</div>
+          <code style="font-size:11px; color:var(--faint)">{{ d.call }}</code>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h2 style="font-family:'Barlow Condensed',sans-serif; font-size:14px; letter-spacing:.28em; text-transform:uppercase; color:var(--accent); margin:52px 0 0; padding-bottom:9px; border-bottom:1px solid var(--line)">How the noise behaves</h2>
+  <p style="font-size:14px; line-height:1.6; color:var(--dim); max-width:860px; margin:14px 0 0">Unresolved characters render at <code style="color:var(--accent)">dim: 0.42</code> and lock to full brightness left to right, so a reveal reads as a signal resolving. Width cannot change: each character becomes one of its own class and spaces and punctuation are left alone. Block glyphs are mixed in at <code style="color:var(--accent)">blockChance: 0.3</code> — but only inside monospace runs, detected per element, because most UI faces lack them and the fallback font is wider.</p>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:22px">
+    <div style="background:#06090e; padding:18px 20px 20px">
+      <div style="display:flex; align-items:baseline; gap:10px">
+        <div style="font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:600; letter-spacing:.05em; text-transform:uppercase">Monospace run</div>
+        <div style="margin-left:auto; font-size:10px; color:var(--faint)">blocks mixed in</div>
+      </div>
+      <div style="font-size:13px; line-height:1.6; color:var(--dim); margin-top:6px">Every glyph shares one advance, so ░▒▓█ can appear without moving anything. This is where the block language belongs.</div>
+      <div data-text-demo="mono" style="background:var(--navy); border:1px solid rgba(39,56,79,.7); padding:12px 14px; margin-top:11px; min-height:64px; display:flex; flex-direction:column; justify-content:center; gap:4px; font-family:'IBM Plex Mono',monospace">
+        <div data-sc-line="1" data-text="hull 11/12 · move 3/4" style="font-size:14px; color:var(--ink)">hull 11/12 · move 3/4</div>
+        <div data-sc-line="1" data-text="zoc: halted at door d7" style="font-size:12px; color:var(--dim)">zoc: halted at door d7</div>
+      </div>
+      <div onClick="{{ runMono }}" style="display:inline-block; font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:8px 16px; border:1px solid var(--line); color:var(--dim); cursor:pointer; margin-top:10px" style-hover="border-color:var(--accent); color:var(--accent)">Run</div>
+    </div>
+    <div style="background:#06090e; padding:18px 20px 20px">
+      <div style="display:flex; align-items:baseline; gap:10px">
+        <div style="font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:600; letter-spacing:.05em; text-transform:uppercase">Proportional run</div>
+        <div style="margin-left:auto; font-size:10px; color:var(--faint)">letters only</div>
+      </div>
+      <div style="font-size:13px; line-height:1.6; color:var(--dim); margin-top:6px">Barlow Condensed has no block glyphs, so noise stays inside the alphabet and the headline holds its width through every tick.</div>
+      <div data-text-demo="prop" style="background:var(--navy); border:1px solid rgba(39,56,79,.7); padding:12px 14px; margin-top:11px; min-height:64px; display:flex; flex-direction:column; justify-content:center; gap:4px">
+        <div data-sc-line="1" data-text="COMBAT INFORMATION CENTER" style="font-family:'Barlow Condensed',sans-serif; font-size:22px; font-weight:600; letter-spacing:.05em; color:var(--ink)">COMBAT INFORMATION CENTER</div>
+        <div data-sc-line="1" data-text="command · ship holds it" style="font-family:'Barlow Condensed',sans-serif; font-size:15px; color:var(--dim)">command · ship holds it</div>
+      </div>
+      <div onClick="{{ runProp }}" style="display:inline-block; font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:8px 16px; border:1px solid var(--line); color:var(--dim); cursor:pointer; margin-top:10px" style-hover="border-color:var(--accent); color:var(--accent)">Run</div>
+    </div>
+  </div>
+
+  <h2 style="font-family:'Barlow Condensed',sans-serif; font-size:14px; letter-spacing:.28em; text-transform:uppercase; color:var(--accent); margin:52px 0 0; padding-bottom:9px; border-bottom:1px solid var(--line)">Tokens</h2>
+  <p style="font-size:14px; line-height:1.6; color:var(--dim); max-width:860px; margin:14px 0 0">Each takes a <code style="color:var(--accent)">place(el, pos)</code> callback, so the library never needs to know your coordinate system — grids, transforms, absolute pixels or canvas all work.</p>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:22px">
+    <sc-for list="{{ tokenDemos }}" as="d" hint-placeholder-count="4">
+      <div style="background:#06090e; padding:18px 20px 20px">
+        <div style="display:flex; align-items:baseline; gap:10px">
+          <div style="font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:600; letter-spacing:.05em; text-transform:uppercase">{{ d.name }}</div>
+          <div style="margin-left:auto; font-size:10px; color:var(--faint)">{{ d.timing }}</div>
+        </div>
+        <div style="font-size:13px; line-height:1.6; color:var(--dim); margin-top:6px">{{ d.body }}</div>
+        <div style="position:relative; height:64px; margin-top:11px; background:var(--navy); border:1px solid rgba(39,56,79,.7); overflow:hidden">
+          <div style="position:absolute; left:8px; top:50%; transform:translateY(-50%); display:flex; gap:4px">
+            <sc-for list="{{ strip }}" as="s" hint-placeholder-count="7">
+              <div style="width:34px; height:34px; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); background:{{ s }}"></div>
+            </sc-for>
+          </div>
+          <div data-token="{{ d.id }}" style="position:absolute; top:50%; left:12px; margin-top:-13px; width:26px; height:26px; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); background:var(--accent); color:#06121a; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600">D1</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:10px">
+          <div onClick="{{ d.run }}" style="font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:8px 16px; border:1px solid var(--line); color:var(--dim); cursor:pointer" style-hover="border-color:var(--accent); color:var(--accent)">Run</div>
+          <code style="font-size:11px; color:var(--faint)">{{ d.call }}</code>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h2 style="font-family:'Barlow Condensed',sans-serif; font-size:14px; letter-spacing:.28em; text-transform:uppercase; color:var(--accent); margin:52px 0 0; padding-bottom:9px; border-bottom:1px solid var(--line)">Combat</h2>
+  <p style="font-size:14px; line-height:1.6; color:var(--dim); max-width:860px; margin:14px 0 0">Both survived the review, and they are kept as separate functions because they answer different questions: <span style="color:var(--ink)">impact</span> for a blow that should land once and be felt, <span style="color:var(--ink)">edgeBurst</span> for four of them resolving in a row without the turn dragging.</p>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:22px">
+    <sc-for list="{{ combatDemos }}" as="d" hint-placeholder-count="3">
+      <div style="background:#06090e; padding:18px 20px 20px">
+        <div style="display:flex; align-items:baseline; gap:10px">
+          <div style="font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:600; letter-spacing:.05em; text-transform:uppercase">{{ d.name }}</div>
+          <div style="margin-left:auto; font-size:10px; color:var(--faint)">{{ d.timing }}</div>
+        </div>
+        <div style="font-size:13px; line-height:1.6; color:var(--dim); margin-top:6px">{{ d.body }}</div>
+        <div data-fight="{{ d.id }}" style="position:relative; height:72px; margin-top:11px; background:var(--navy); border:1px solid rgba(39,56,79,.7); overflow:hidden">
+          <div style="position:absolute; left:88px; top:50%; margin-top:-19px; display:flex; gap:4px">
+            <div style="width:36px; height:38px; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); background:#16283f"></div>
+            <div style="width:36px; height:38px; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); background:#132239"></div>
+          </div>
+          <div data-role="attacker" style="position:absolute; top:50%; left:92px; margin-top:-14px; width:28px; height:28px; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); background:var(--accent); color:#06121a; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600">D1</div>
+          <div data-role="edge" style="position:absolute; top:50%; left:120px; width:16px; margin-top:-9px; text-align:center; font-size:15px; line-height:1; letter-spacing:-2px; color:#ffffff; opacity:0"></div>
+          <div data-role="target" style="position:absolute; top:50%; left:132px; margin-top:-14px; width:28px; height:28px; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); background:var(--hot); color:#1a0806; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600">S4</div>
+          <div data-role="dmg" style="position:absolute; left:136px; top:6px; font-size:15px; font-weight:600; color:var(--hot); opacity:0"></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:10px">
+          <div onClick="{{ d.run }}" style="font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:8px 16px; border:1px solid var(--line); color:var(--dim); cursor:pointer" style-hover="border-color:var(--hot); color:var(--hot)">Run</div>
+          <code style="font-size:11px; color:var(--faint)">{{ d.call }}</code>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h2 style="font-family:'Barlow Condensed',sans-serif; font-size:14px; letter-spacing:.28em; text-transform:uppercase; color:var(--accent); margin:52px 0 0; padding-bottom:9px; border-bottom:1px solid var(--line)">The presets, and why they differ</h2>
+  <div style="border:1px solid var(--line); margin-top:20px">
+    <div style="display:grid; grid-template-columns:120px 90px 70px 80px minmax(0,1fr); gap:14px; padding:11px 16px; border-bottom:1px solid var(--line); background:var(--panel); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--faint)">
+      <div>Preset</div><div>Stagger</div><div>Ticks</div><div>Tick ms</div><div>When</div>
+    </div>
+    <sc-for list="{{ presetRows }}" as="r" hint-placeholder-count="7">
+      <div style="display:grid; grid-template-columns:120px 90px 70px 80px minmax(0,1fr); gap:14px; padding:10px 16px; border-bottom:1px solid rgba(39,56,79,.55); font-size:12px; align-items:baseline">
+        <div style="color:var(--accent)">{{ r.name }}</div>
+        <div style="color:var(--ink)">{{ r.stagger }}</div>
+        <div style="color:var(--ink)">{{ r.ticks }}</div>
+        <div style="color:var(--ink)">{{ r.tickMs }}</div>
+        <div style="color:var(--dim)">{{ r.when }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h2 style="font-family:'Barlow Condensed',sans-serif; font-size:14px; letter-spacing:.28em; text-transform:uppercase; color:var(--accent); margin:52px 0 0; padding-bottom:9px; border-bottom:1px solid var(--line)">Notes for the next project</h2>
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; margin-top:20px">
+    <sc-for list="{{ notes }}" as="n" hint-placeholder-count="4">
+      <div style="border-left:2px solid var(--line); padding-left:14px">
+        <div style="font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase">{{ n.t }}</div>
+        <div style="font-size:13px; line-height:1.6; color:var(--dim); margin-top:5px">{{ n.b }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="margin-top:36px; padding-top:18px; border-top:1px solid var(--line); font-size:12px; color:var(--faint); line-height:1.7">
+    The scramble reveal is ported from <a href="https://github.com/vuvko-lab/coherence-7drl">vuvko-lab/coherence-7drl</a> (<code>src/main.ts</code>), read at <code>d15a7ce</code>. Everything else was built for this project.
+  </div>
+
+</article>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 1240 }
+}">
+class Component extends DCLogic {
+  rootRef = (el) => { this._root = el; };
+
+  componentDidMount() {
+    import('./derelict-fx.js').then(m => {
+      this.FX = m;
+      this.runAll();
+      this._loop = setInterval(() => this.runAll(), 3400);
+    });
+  }
+
+  componentWillUnmount() { clearInterval(this._loop); }
+
+  q(sel) { return this._root ? Array.from(this._root.querySelectorAll(sel)) : []; }
+  one(sel) { return this._root ? this._root.querySelector(sel) : null; }
+
+  runAll() {
+    if (!this.FX) return;
+    ['hover', 'panel', 'value', 'log', 'mono', 'prop'].forEach(id => this.runText(id));
+    ['wake', 'blink', 'teleport', 'stepped'].forEach(id => this.runToken(id));
+    ['impact', 'burst', 'exchange'].forEach(id => this.runFight(id));
+  }
+
+  runText(id) {
+    if (!this.FX) return;
+    const host = this.one('[data-text-demo="' + id + '"]');
+    if (!host) return;
+    const preset = { hover: 'hover', panel: 'panel', value: 'value', log: 'log', mono: 'panel', prop: 'panel' }[id];
+    this.FX.scrambleReveal(host.querySelectorAll('[data-sc-line]'), this.FX.PRESETS[preset]);
+  }
+
+  runToken(id) {
+    if (!this.FX) return;
+    const el = this.one('[data-token="' + id + '"]');
+    if (!el) return;
+    this.FX.clearGhosts(el.parentNode);
+    el.style.opacity = '1';
+    el.style.left = '12px';
+    el.textContent = 'D1';
+    const path = [1, 2, 3, 4].map(i => ({ left: 12 + i * 38 }));
+    const last = { left: 12 + 4 * 38 };
+    setTimeout(() => {
+      if (id === 'wake') this.FX.wake(el, path, { label: 'D1' });
+      else if (id === 'blink') this.FX.blink(el, last);
+      else if (id === 'teleport') this.FX.teleport(el, last, { label: 'D1' });
+      else this.FX.steppedTransit(el, path);
+    }, 420);
+  }
+
+  runFight(id) {
+    if (!this.FX) return;
+    const stage = this.one('[data-fight="' + id + '"]');
+    if (!stage) return;
+    const attacker = stage.querySelector('[data-role="attacker"]');
+    const target = stage.querySelector('[data-role="target"]');
+    const edge = stage.querySelector('[data-role="edge"]');
+    const damageEl = stage.querySelector('[data-role="dmg"]');
+
+    attacker.textContent = 'D1'; attacker.style.opacity = '1'; attacker.style.background = 'var(--accent)';
+    target.textContent = 'S4'; target.style.opacity = '1'; target.style.filter = ''; target.style.background = 'var(--hot)';
+    edge.style.opacity = '0'; edge.style.color = '#ffffff'; edge.textContent = '';
+    damageEl.style.opacity = '0';
+
+    setTimeout(() => {
+      if (id === 'impact') this.FX.impact({ attacker, target, edge, damageEl, damage: '-3' });
+      else if (id === 'burst') this.FX.edgeBurst({ target, edge, damageEl, damage: '-3' });
+      else this.FX.exchange({ attacker, target, edge, damageEl, damage: '-3', counterDamage: '-2' });
+    }, 420);
+  }
+
+  renderVals() {
+    const line = (t, size, color, opts) => Object.assign({ t, size, color, weight: '400', track: '0' }, opts || {});
+
+    return {
+      rootRef: this.rootRef,
+      runMono: () => this.runText('mono'),
+      runProp: () => this.runText('prop'),
+      strip: ['#16283f', '#132239', '#16283f', '#132239', '#16283f', '#132239', '#16283f'],
+
+      textDemos: [
+        { id: 'hover', name: 'Hover readout', timing: 'PRESETS.hover · 336ms',
+          body: 'No stagger at all — every line resolves together, so it reads as the feed focusing rather than a panel building. Any stagger here and the cursor has already moved on.',
+          call: 'scrambleReveal(els, PRESETS.hover)',
+          lines: [line('Scout 4', 13, 'var(--ink)', { weight: '600' }), line('hostile · claw 1-2', 11, 'var(--dim)'), line('4/4 hull', 11, 'var(--faint)')] },
+        { id: 'panel', name: 'Panel opening', timing: 'PRESETS.panel · 861ms',
+          body: 'Staggered 45ms a line so it assembles top to bottom and you watch it arrive. The difference between answering a question and opening a file.',
+          call: 'scrambleReveal(els, PRESETS.panel)',
+          lines: [line('COMBAT INFORMATION CENTER', 13, 'var(--ink)', { weight: '600', track: '.05em' }), line('command · ship holds it', 11, 'var(--dim)'), line('3 spawners · 8 nodes', 11, 'var(--dim)')] },
+        { id: 'value', name: 'Value changing', timing: 'PRESETS.value · 840ms',
+          body: 'No stagger, many ticks. One number working itself out — long enough to notice a stat moved without pulling your eye off the board.',
+          call: 'scrambleReveal(el, PRESETS.value)',
+          lines: [line('11 / 12', 17, 'var(--node)', { weight: '600' })] },
+        { id: 'log', name: 'Log lines arriving', timing: 'PRESETS.log · 960ms',
+          body: 'Wide stagger so events land in sequence and can be read as they arrive, rather than appearing as a wall of finished text.',
+          call: 'scrambleReveal(els, PRESETS.log)',
+          lines: [line('fight  Drone 1 attacks Scout 4.', 12, 'var(--hot)'), line('kill   Scout 4 destroyed.', 12, 'var(--dim)')] }
+      ],
+
+      tokenDemos: [
+        { id: 'wake', name: 'wake()', timing: '5 frames + 1350ms decay',
+          body: 'The default move. Steps tile to tile with the face broken into glyphs, leaving a decaying scrambled ghost on every tile it crosses — the route is revealed by the movement, so no arrow is needed.',
+          call: 'wake(el, path, { label })' },
+        { id: 'blink', name: 'blink()', timing: '6 frames · 810ms',
+          body: 'Cuts out, reappears, flickers once as the feed re-acquires. No path shown — right for deploys and anything that did not physically travel.',
+          call: 'blink(el, to)' },
+        { id: 'teleport', name: 'teleport()', timing: '8 frames · 1080ms',
+          body: 'Dissolve into noise here, reassemble there. Kept separate from blink because it is expensive: use it for a jump between ships, not a step inside one.',
+          call: 'teleport(el, to, { label })' },
+        { id: 'stepped', name: 'steppedTransit()', timing: '4 frames · 900ms',
+          body: 'Drawn on each tile, never between, and no ghosts. The plain version for when the board is already busy — hostile turns with four movers at once.',
+          call: 'steppedTransit(el, path)' }
+      ],
+
+      combatDemos: [
+        { id: 'impact', name: 'impact()', timing: '7 frames · 1575ms',
+          body: 'The heavy hit. Attacker flips to a strike mark, the edge fills, the target goes solid white for exactly one frame and comes back scrambled and dimmed.',
+          call: "impact({ attacker, target, edge, damage: '-3' })" },
+        { id: 'burst', name: 'edgeBurst()', timing: '5 frames · 1125ms',
+          body: 'Only the shared edge changes, ░ → █ → ▓, while the target inverts. Nothing moves, so any number can resolve in a row without the turn dragging.',
+          call: "edgeBurst({ target, edge, damage: '-3' })" },
+        { id: 'exchange', name: 'exchange()', timing: '2 × impact + dead beat',
+          body: 'A strike and the answering blow with a deliberate empty frame between them. The pause is what makes the counter legible as its own event.',
+          call: "exchange({ attacker, target, edge, damage, counterDamage })" }
+      ],
+
+      presetRows: [
+        { name: 'hover', stagger: '0ms', ticks: '4', tickMs: '84', when: 'a glance — cursor readouts, tooltips' },
+        { name: 'panel', stagger: '135ms', ticks: '4', tickMs: '114', when: 'a commitment — panels opened by a click' },
+        { name: 'panelEdge', stagger: '120ms', ticks: '3', tickMs: '120', when: 'chrome and frames, not content' },
+        { name: 'value', stagger: '0ms', ticks: '7', tickMs: '120', when: 'a single number changing in place' },
+        { name: 'log', stagger: '360ms', ticks: '4', tickMs: '150', when: 'events arriving in sequence' },
+        { name: 'name', stagger: '165ms', ticks: '5', tickMs: '105', when: 'labels resolving on hover' },
+        { name: 'menu', stagger: '900ms', ticks: '5', tickMs: '180', when: 'menus and boot screens — theatrical' }
+      ],
+
+      notes: [
+        { t: 'Keep FRAME global', b: 'Everything derives from one 225ms constant. Change it in one place to retune the whole game feel; per-effect timings drift apart and stop reading as one system.' },
+        { t: 'place() is the whole portability story', b: 'The token functions never touch your coordinates. Pass a place(el, pos) callback and the same library drives a hex grid, a square grid, a transform-based camera or a canvas.' },
+        { t: 'Cancel on turn change', b: 'Every call returns a handle with .cancel(). Keep the handles for the current turn and cancel them all if the player undoes — otherwise ghosts from an undone move outlive the move.' },
+        { t: 'Noise arrives dim, then locks', b: 'Unresolved characters render at 42% opacity and lock to full brightness left to right as the ticks run, so a reveal reads as a signal resolving rather than a flicker. Width never changes: each character is replaced by one of its own class, spaces and punctuation are untouched, and block glyphs are mixed in only inside monospace runs, where every glyph shares one advance.' },
+        { t: 'Ghosts carry no identity', b: 'wake() clones your token, so every clone is stripped of its id, name and all data-* and aria-* attributes before it enters the DOM. Your own queries keep returning one unit while a move plays. Pass stripAttrs if identity lives somewhere unusual in your project.' },
+        { t: 'Reduced motion is not optional', b: 'Each function checks prefers-reduced-motion and jumps straight to the final state. The damage still registers, the panel still shows its text — only the frames are skipped.' }
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

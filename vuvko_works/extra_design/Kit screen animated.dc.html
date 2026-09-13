@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #07090e; }
+  a { color: #6fc2dd; }
+  a:hover { color: #9bd8ec; }
+  .lbl { opacity: 0; transition: opacity 140ms linear; }
+  .reveal:hover .lbl { opacity: 1; }
+  @keyframes drawerIn { from { clip-path: inset(0 100% 0 0); opacity: .5 } to { clip-path: inset(0 0 0 0); opacity: 1 } }
+  @keyframes dimIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes riseIn { from { transform: translateY(10px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+  /* Centred overlays need their own keyframe: an animated transform replaces the
+     element's inline translate(-50%,-50%) for the life of the animation. */
+  @keyframes riseInCentered { from { transform: translate(-50%, calc(-50% + 10px)); opacity: 0 } to { transform: translate(-50%, -50%); opacity: 1 } }
+</style>
+</helmet>
+
+<article style="--ink:#d7e3f6; --dim:#8b9dba; --faint:#7e91ad; --navy:#0e1a2e; --panel:#0b1526; --line:#2b3f5e; --accent:#5fb8d9; --hot:#cf6a5a; --gold:#d8a94e; --node:#5fbf9f; max-width:1340px; margin:0 auto; padding:44px 30px 80px; background:#07090e; color:var(--ink); font-family:'IBM Plex Mono',monospace">
+
+  <header style="border-bottom:2px solid var(--line); padding-bottom:18px; margin-bottom:24px">
+    <div style="font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--dim)">The kit's own chrome · now moving</div>
+    <h1 style="font-family:'Barlow Condensed',sans-serif; font-size:54px; line-height:.95; font-weight:700; text-transform:uppercase; margin:12px 0 0">3A, animated</h1>
+    <p style="font-size:14px; line-height:1.7; color:var(--dim); max-width:900px; margin:12px 0 0">No glass, no new palette — the bracket-corner panels and hairline rules from the kit, with the motion work wired in. Hover a hex for the hollow-corridor preview · click to move · click Scout 4 from an adjacent hex · right-click clears · the rail opens the drawer · the log expands · End turn asks first. Keys: <span style="color:var(--ink)">space</span>, <span style="color:var(--ink)">z</span>, <span style="color:var(--ink)">l</span>, <span style="color:var(--ink)">esc</span>.</p>
+  </header>
+
+  <div data-frame="1" style="position:relative; width:1280px; height:720px; background:#05070b; overflow:hidden; font-family:'IBM Plex Mono',monospace; color:var(--ink); user-select:none">
+    <div style="position:absolute; inset:0; background:radial-gradient(ellipse 62% 52% at 42% 44%, rgba(20,36,58,.85) 0%, rgba(5,7,11,0) 76%); pointer-events:none"></div>
+
+    <div onMouseLeave="{{ clearHover }}" onContextMenu="{{ onContext }}" style="position:absolute; left:46px; right:356px; top:0; bottom:30px; overflow:hidden">
+      <div ref="{{ boardRef }}" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) scale(1); transform-origin:center center; width:556px; height:352px">
+        <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="48">
+          <div onMouseEnter="{{ t.onEnter }}" onClick="{{ t.onClick }}" style="position:absolute; left:{{ t.x }}px; top:{{ t.y }}px; width:62px; height:70px; cursor:{{ t.cursor }}">
+            <div style="position:absolute; inset:0; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); background:{{ t.edge }}"></div>
+            <div style="position:absolute; inset:{{ t.inset }}px; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); background:{{ t.fill }}; display:flex; align-items:center; justify-content:center">
+              <div style="font-size:12px; font-weight:600; color:{{ t.color }}">{{ t.glyph }}</div>
+            </div>
+          </div>
+        </sc-for>
+
+        <div data-unit="D1" style="position:absolute; left:0; top:0; width:34px; height:34px; border-radius:50%; background:var(--accent); color:#06121a; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; z-index:3; pointer-events:none">D1</div>
+        <div data-unit="D2" style="position:absolute; left:0; top:0; width:34px; height:34px; border-radius:50%; background:var(--accent); color:#06121a; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; z-index:3; pointer-events:none">D2</div>
+        <div data-unit="S4" style="position:absolute; left:0; top:0; width:34px; height:34px; border-radius:50%; background:var(--hot); color:#1a0806; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; z-index:3; pointer-events:none">S4</div>
+        <div data-fx="edge" style="position:absolute; left:0; top:0; width:16px; text-align:center; font-size:16px; line-height:1; letter-spacing:-2px; color:#ffffff; opacity:0; z-index:4; pointer-events:none"></div>
+        <div data-fx="dmg" style="position:absolute; left:0; top:0; font-size:15px; font-weight:600; color:var(--hot); opacity:0; z-index:4; pointer-events:none"></div>
+      </div>
+    </div>
+
+    <div style="position:absolute; left:0; top:0; bottom:30px; width:46px; background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:6px; z-index:8">
+      <div onClick="{{ toggleSystem }}" style="width:32px; height:32px; border:1px solid var(--line); background:{{ sysBg }}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer">
+        <div style="width:14px; height:1.5px; background:var(--ink)"></div>
+        <div style="width:14px; height:1.5px; background:var(--ink)"></div>
+        <div style="width:14px; height:1.5px; background:var(--ink)"></div>
+      </div>
+      <div onClick="{{ toggleHelp }}" style="width:32px; height:32px; border:1px solid var(--line); background:{{ helpBg }}; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; cursor:pointer">i</div>
+      <div onClick="{{ toggleSound }}" style="width:32px; height:32px; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; font-size:13px; color:{{ soundColor }}; cursor:pointer">{{ soundGlyph }}</div>
+    </div>
+
+    <div style="position:absolute; left:60px; top:12px; width:300px; background:rgba(11,21,38,.96); border:1px solid var(--line); padding:8px 12px; z-index:5">
+      <div style="display:flex; align-items:baseline; gap:14px">
+        <div style="font-family:'Barlow Condensed',sans-serif; font-size:17px; font-weight:600; letter-spacing:.16em; text-transform:uppercase">Hollow Tide</div>
+        <div style="margin-left:auto; font-size:11px; color:var(--dim)">turn <span data-live="turn" style="color:var(--ink); font-weight:600">5</span></div>
+      </div>
+    </div>
+
+    <div style="position:absolute; right:12px; top:12px; width:104px; background:rgba(11,21,38,.96); border:1px solid var(--line); padding:7px 8px; display:flex; flex-direction:column; align-items:center; gap:4px; z-index:5">
+      <div style="font-family:'Barlow Condensed',sans-serif; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim)">Alert level</div>
+      <div style="position:relative; width:54px; height:54px">
+        <div data-live="dialRing" style="position:absolute; inset:0; border-radius:50%; background:conic-gradient(var(--hot) 0deg 144deg, color-mix(in oklab, var(--hot) 22%, #101c30) 144deg 360deg)"></div>
+        <div style="position:absolute; inset:0; border-radius:50%; background:repeating-conic-gradient(from -2deg, transparent 0 68deg, var(--panel) 68deg 72deg)"></div>
+        <div style="position:absolute; inset:9px; border-radius:50%; background:#0a1220; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:600; color:var(--hot)"><span data-live="alert">2</span></div>
+      </div>
+    </div>
+
+    <div data-panel="tile" class="reveal" style="position:absolute; right:12px; top:140px; width:330px; background:rgba(11,21,38,.97); border:1px solid var(--line); padding:12px 14px; z-index:5; visibility:hidden">
+      <div style="position:absolute; left:-1px; top:-1px; width:14px; height:14px; border-left:2px solid var(--accent); border-top:2px solid var(--accent)"></div>
+      <div data-sc-line="1" style="font-size:17px; font-weight:600"></div>
+      <div style="display:flex; gap:6px; margin-top:8px">
+        <div data-sc-line="1" style="font-size:10px; text-transform:uppercase; letter-spacing:.1em; border:1px solid var(--line); padding:2px 6px; color:var(--dim)"></div>
+        <div data-sc-line="1" data-live="holdTag" style="font-size:10px; text-transform:uppercase; letter-spacing:.1em; border:1px solid var(--node); padding:2px 6px; color:var(--node)"></div>
+      </div>
+      <div data-sc-line="1" style="font-size:11px; color:var(--gold); margin-top:9px"></div>
+    </div>
+
+    <div data-panel="unit" class="reveal" style="position:absolute; right:12px; bottom:116px; width:330px; background:rgba(11,21,38,.97); border:1px solid var(--line); padding:12px 14px; z-index:5; visibility:hidden">
+      <div style="position:absolute; right:-1px; bottom:-1px; width:14px; height:14px; border-right:2px solid var(--accent); border-bottom:2px solid var(--accent)"></div>
+      <div style="display:flex; align-items:baseline; gap:8px">
+        <div data-sc-line="1" style="font-size:15px; font-weight:700; color:var(--accent)"></div>
+        <div data-sc-line="1" style="font-size:11px; color:var(--dim)"></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; margin-top:9px">
+        <div style="flex:1; height:6px; background:#0a1220; border:1px solid var(--line)"><div data-live="hullBar" style="height:100%; width:92%; background:var(--node)"></div></div>
+        <div data-sc-line="1" style="font-size:12px; color:var(--dim); min-width:44px; text-align:right"></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; margin-top:7px">
+        <div style="flex:1; height:6px; background:#0a1220; border:1px solid var(--line)"><div data-live="moveBar" style="height:100%; width:100%; background:var(--accent)"></div></div>
+        <div data-sc-line="1" style="font-size:12px; color:var(--dim); min-width:44px; text-align:right"></div>
+      </div>
+      <div style="display:flex; gap:4px; margin-top:10px">
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:3px 5px; border:1px solid var(--line); color:var(--dim)">welder 3-1</div>
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:3px 5px; border:1px solid var(--line); color:var(--dim)">emitter 2-2</div>
+        <div data-sc-line="1" style="margin-left:auto; align-self:center; font-size:10px; color:var(--gold)"></div>
+      </div>
+    </div>
+
+    <div onClick="{{ onUndo }}" style="position:absolute; right:172px; bottom:42px; width:76px; height:54px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(11,21,38,.97); border:1px solid var(--line); cursor:pointer; z-index:6">
+      <div style="font-family:'Barlow Condensed',sans-serif; font-size:17px; font-weight:600; letter-spacing:.16em; text-transform:uppercase">Undo</div>
+      <div style="font-size:9px; color:var(--dim)">[z]</div>
+    </div>
+
+    <div onClick="{{ askEndTurn }}" style="position:absolute; right:12px; bottom:42px; width:152px; height:54px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:color-mix(in oklab, var(--accent) 20%, rgba(11,21,38,.95)); border:1px solid var(--accent); cursor:pointer; z-index:6">
+      <div style="font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--accent)">End turn</div>
+      <div style="font-size:9px; color:var(--dim)">[space]</div>
+    </div>
+
+    <div style="position:absolute; left:58px; bottom:42px; display:flex; gap:4px; z-index:6">
+      <div onClick="{{ zoomOut }}" style="width:28px; height:28px; display:flex; align-items:center; justify-content:center; background:var(--panel); border:1px solid var(--line); font-size:14px; cursor:pointer">−</div>
+      <div onClick="{{ zoomIn }}" style="width:28px; height:28px; display:flex; align-items:center; justify-content:center; background:var(--panel); border:1px solid var(--line); font-size:14px; cursor:pointer">+</div>
+      <div onClick="{{ zoomFit }}" style="width:28px; height:28px; display:flex; align-items:center; justify-content:center; background:var(--panel); border:1px solid var(--line); font-size:9px; color:var(--dim); cursor:pointer">fit</div>
+    </div>
+
+    <sc-if value="{{ logOpen }}" hint-placeholder-val="{{ false }}">
+      <div data-panel="log" style="position:absolute; left:0; right:0; bottom:30px; height:206px; background:rgba(8,14,24,.98); border-top:1px solid var(--line); padding:12px 16px; overflow:hidden; z-index:7; animation:riseIn 260ms ease-out both">
+        <div style="display:flex; flex-direction:column-reverse; gap:4px">
+          <sc-for list="{{ logRows }}" as="l" hint-placeholder-count="7">
+            <div style="display:flex; gap:10px; font-size:12px; line-height:1.55">
+              <div style="flex:none; width:54px; color:{{ l.color }}">{{ l.kind }}</div>
+              <div data-sc-line="1" data-text="{{ l.text }}" style="color:#b3c3db">{{ l.text }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <div onClick="{{ toggleLog }}" style="position:absolute; left:0; right:0; bottom:0; height:30px; display:flex; align-items:center; gap:12px; padding:0 14px; background:var(--panel); border-top:1px solid var(--line); cursor:pointer; z-index:7">
+      <div style="font-family:'Barlow Condensed',sans-serif; font-size:12px; letter-spacing:.2em; color:var(--dim)">LOG</div>
+      <div data-live="logKind" style="font-size:11px; color:var(--hot)">turn</div>
+      <div data-sc-line="1" data-live="logText" style="font-size:11px; color:#b3c3db; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Turn 5 — drones. Drone 1 has 4 move points.</div>
+      <div style="margin-left:auto; font-size:10px; color:var(--dim); white-space:nowrap">{{ logHint }}</div>
+    </div>
+
+    <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeMenu }}" style="position:absolute; inset:0; background:rgba(4,8,14,.68); z-index:9; animation:dimIn 220ms ease-out both"></div>
+    </sc-if>
+    <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+      <div data-panel="menu" style="position:absolute; left:46px; top:0; bottom:0; width:380px; background:#0c1728; border-right:1px solid var(--accent); padding:18px 20px; z-index:10; box-shadow:22px 0 50px rgba(0,0,0,.6); animation:drawerIn 320ms cubic-bezier(.22,.61,.36,1) both">
+        <div style="display:flex; align-items:baseline; justify-content:space-between">
+          <div data-sc-line="1" style="font-family:'Barlow Condensed',sans-serif; font-size:17px; font-weight:600; letter-spacing:.16em; text-transform:uppercase"></div>
+          <div onClick="{{ closeMenu }}" style="font-size:12px; color:var(--dim); cursor:pointer; padding:4px">esc ×</div>
+        </div>
+        <div style="height:1px; background:var(--line); margin:12px 0 14px"></div>
+        <div style="display:flex; flex-direction:column; gap:10px">
+          <sc-for list="{{ menuRows }}" as="m" hint-placeholder-count="6">
+            <div style="display:flex; align-items:center; gap:10px; font-size:11px">
+              <div style="width:116px; color:var(--dim); letter-spacing:.08em; text-transform:uppercase">{{ m.k }}</div>
+              <div data-sc-line="1" style="flex:1; border:1px solid var(--line); padding:4px 8px; background:#0a1220; color:{{ m.color }}"></div>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ isSystem }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; gap:8px; margin-top:16px">
+            <div style="flex:1; text-align:center; font-size:11px; padding:8px 0; border:1px solid var(--accent); color:var(--accent); cursor:pointer">new mission</div>
+            <div style="flex:1; text-align:center; font-size:11px; padding:8px 0; border:1px solid var(--line); cursor:pointer">load map…</div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ confirmOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ cancelEnd }}" style="position:absolute; inset:0; background:rgba(4,8,14,.62); z-index:11; animation:dimIn 180ms ease-out both"></div>
+    </sc-if>
+    <sc-if value="{{ confirmOpen }}" hint-placeholder-val="{{ false }}">
+      <div data-panel="confirm" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:380px; background:#0c1728; border:1px solid var(--accent); padding:18px 20px; z-index:12; box-shadow:0 24px 54px rgba(0,0,0,.6); animation:riseInCentered 220ms ease-out both">
+        <div data-sc-line="1" style="font-family:'Barlow Condensed',sans-serif; font-size:19px; font-weight:600; letter-spacing:.16em; text-transform:uppercase"></div>
+        <div data-sc-line="1" style="font-size:12px; line-height:1.6; color:#b3c3db; margin-top:8px"></div>
+        <div style="display:flex; gap:10px; margin-top:16px">
+          <div onClick="{{ cancelEnd }}" style="flex:1; text-align:center; font-size:12px; padding:10px 0; border:1px solid var(--line); cursor:pointer">Keep playing</div>
+          <div onClick="{{ confirmEnd }}" style="flex:1; text-align:center; font-size:12px; padding:10px 0; border:1px solid var(--accent); background:color-mix(in oklab, var(--accent) 22%, transparent); color:var(--accent); cursor:pointer">End turn</div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr)); gap:20px; margin-top:24px">
+    <sc-for list="{{ notes }}" as="n" hint-placeholder-count="4">
+      <div style="border-left:2px solid {{ n.dot }}; padding-left:14px">
+        <div style="font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase">{{ n.t }}</div>
+        <div style="font-size:13px; line-height:1.6; color:var(--dim); margin-top:5px">{{ n.b }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+</article>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 1340 }
+}">
+const ROWS = [
+  '..N..#..',
+  '.#......',
+  '..2...S.',
+  '.N....#.',
+  '..#.1..N',
+  '....v.X.'
+];
+const SX = 64, SY = 53, HW = 62, HH = 70;
+const ROOMS = ['Dropship Bay', 'Staterooms', 'Plasma Conduit', 'Combat Information Center', 'Drive Trunk', 'Vented Hold'];
+
+class Component extends DCLogic {
+  state = { hov: null, sel: null, menu: null, logOpen: false, confirm: false, sound: true, tick: 0 };
+
+  componentDidMount() {
+    import('./derelict-fx.js').then(m => {
+      this.FX = m;
+      this.units = {
+        D1: { key: '4,4', hp: 12, max: 12, move: 4, cls: 'sapper' },
+        D2: { key: '2,2', hp: 9, max: 12, move: 4, cls: 'breacher' },
+        S4: { key: '6,2', hp: 4, max: 4 }
+      };
+      this.alert = 2; this.turn = 5; this.logCount = 12; this.zoom = 1; this.busy = false;
+      this.history = [
+        { kind: 'turn', color: 'var(--accent)', text: 'Turn 5 — drones. Drone 1 has 4 move points.' },
+        { kind: 'econ', color: 'var(--node)', text: 'Nodes pay 6. Pool 6.' },
+        { kind: 'spawn', color: 'var(--gold)', text: 'Weapons Bay builds a Scout for 6. Pool 0.' },
+        { kind: 'move', color: 'var(--dim)', text: 'Scout 4 crosses into Plasma Conduit.' },
+        { kind: 'door', color: 'var(--gold)', text: 'Drone 2 forces door d8 into Staterooms — that is the whole move.' }
+      ];
+      this.placeAll();
+      this.setState({ tick: 1 });
+    });
+    this._keys = (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'escape') { this.setState({ menu: null, confirm: false, logOpen: false }); return; }
+      if (k === ' ') { e.preventDefault(); this.askEndTurn(); return; }
+      if (k === 'z') this.onUndo();
+      if (k === 'l') this.toggleLog();
+    };
+    window.addEventListener('keydown', this._keys);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._keys); }
+
+  boardRef = (el) => { this._board = el; };
+  q(s) { return this._board ? this._board.querySelector(s) : null; }
+  root() { return this._board ? this._board.closest('[data-frame]') : null; }
+  live(n) { const r = this.root(); return r ? r.querySelector('[data-live="' + n + '"]') : null; }
+  panel(k) { const r = this.root(); return r ? r.querySelector('[data-panel="' + k + '"]') : null; }
+  after(fn) { requestAnimationFrame(() => requestAnimationFrame(fn)); }
+
+  cell(key) { const [c, r] = key.split(',').map(Number); return { c, r, x: c * SX + (r % 2 ? SX / 2 : 0), y: r * SY }; }
+  tokenPos(key) {
+    const p = this.cell(key);
+    return { left: Math.round(p.x + (HW - 34) / 2), top: Math.round(p.y + (HH - 34) / 2) };
+  }
+  placeAll() {
+    if (!this.units) return;
+    Object.keys(this.units).forEach(id => {
+      const el = this.q('[data-unit="' + id + '"]');
+      if (!el) return;
+      const p = this.tokenPos(this.units[id].key);
+      el.style.left = p.left + 'px'; el.style.top = p.top + 'px';
+    });
+  }
+
+  map() {
+    if (this._map) return this._map;
+    const m = {};
+    ROWS.forEach((row, r) => row.split('').forEach((ch, c) => {
+      m[c + ',' + r] = { ch, c, r, wall: ch === '#' || ch === 'X', cost: ch === 'v' ? 2 : 1 };
+    }));
+    this._map = m;
+    return m;
+  }
+  neighbors(c, r) {
+    const odd = r % 2 === 1;
+    const d = odd ? [[1,0],[-1,0],[0,-1],[1,-1],[0,1],[1,1]] : [[1,0],[-1,0],[-1,-1],[0,-1],[-1,1],[0,1]];
+    return d.map(([dc, dr]) => (c + dc) + ',' + (r + dr)).filter(k => this.map()[k]);
+  }
+  occupied() {
+    const o = {};
+    if (this.units) Object.keys(this.units).forEach(id => { o[this.units[id].key] = id; });
+    return o;
+  }
+  solve(from, budget) {
+    const m = this.map(), occ = this.occupied(), zoc = {};
+    Object.keys(occ).forEach(k => {
+      if (occ[k] === 'S4') this.neighbors(m[k].c, m[k].r).forEach(n => { zoc[n] = true; });
+    });
+    const dist = { [from]: 0 }, prev = {}, open = [from];
+    while (open.length) {
+      open.sort((a, b) => dist[a] - dist[b]);
+      const cur = open.shift();
+      if (dist[cur] >= budget) continue;
+      if (zoc[cur] && cur !== from) continue;
+      this.neighbors(m[cur].c, m[cur].r).forEach(nk => {
+        const n = m[nk];
+        if (n.wall || occ[nk]) return;
+        const nd = dist[cur] + n.cost;
+        if (nd > budget) return;
+        if (dist[nk] == null || nd < dist[nk]) { dist[nk] = nd; prev[nk] = cur; if (open.indexOf(nk) < 0) open.push(nk); }
+      });
+    }
+    return { dist, prev };
+  }
+  pathTo(from, key, prev) {
+    const out = []; let cur = key;
+    while (cur && cur !== from) { out.unshift(cur); cur = prev[cur]; }
+    return cur === from ? out : null;
+  }
+  room(r) { return ROOMS[r % ROOMS.length]; }
+
+  showTile(key) {
+    if (!this.FX) return;
+    const m = this.map()[key], occ = this.occupied(), p = this.panel('tile');
+    if (!p) return;
+    p.style.visibility = 'visible';
+    const who = occ[key];
+    let lines, hold = 'var(--node)';
+    if (who === 'S4') { lines = ['Scout 4', 'hostile', 'holds this hex', 'zone of control halts movement']; hold = 'var(--hot)'; }
+    else if (who) lines = [who === 'D1' ? 'Drone 1' : 'Drone 2', 'yours', 'you hold it', ''];
+    else if (m.ch === '#') { lines = ['Bulkhead', 'structure', 'sealed', '']; hold = 'var(--dim)'; }
+    else if (m.ch === 'X') { lines = ['Spawner', 'hostile', 'ship holds it', 'builds a Scout for 6']; hold = 'var(--hot)'; }
+    else if (m.ch === 'N') lines = ['Resource node', 'node', 'you hold it', 'pays 1 a turn'];
+    else if (m.ch === 'v') { lines = ['Vented Hold', 'vented', 'no atmosphere', 'crossing costs 2']; hold = 'var(--gold)'; }
+    else lines = [this.room(m.r), 'compartment', 'you hold it', ''];
+    const tag = this.live('holdTag');
+    if (tag) { tag.style.borderColor = hold; tag.style.color = hold; }
+    this.FX.setAndReveal(p.querySelectorAll('[data-sc-line]'), lines, this.FX.PRESETS.hover);
+  }
+
+  showUnit(id) {
+    if (!this.FX || !this.units[id]) return;
+    const p = this.panel('unit');
+    if (!p) return;
+    const u = this.units[id];
+    p.style.visibility = 'visible';
+    const hb = this.live('hullBar'), mb = this.live('moveBar');
+    if (hb) hb.style.width = Math.round((u.hp / u.max) * 100) + '%';
+    if (mb) mb.style.width = Math.round((u.move / 4) * 100) + '%';
+    this.FX.setAndReveal(p.querySelectorAll('[data-sc-line]'), [
+      id === 'D1' ? 'Drone 1' : 'Drone 2', u.cls,
+      u.hp + ' / ' + u.max, u.move + ' / 4',
+      u.move === 0 ? 'spent' : u.move + ' move left'
+    ], this.FX.PRESETS.panel);
+  }
+
+  hidePanels() { ['tile', 'unit'].forEach(k => { const p = this.panel(k); if (p) p.style.visibility = 'hidden'; }); }
+
+  log(kind, text, color) {
+    if (!this.FX) return;
+    this.history.push({ kind, text, color: color || 'var(--hot)' });
+    const k = this.live('logKind'), t = this.live('logText');
+    if (k) { k.textContent = kind; k.style.color = color || 'var(--hot)'; }
+    this.logCount++;
+    if (t) { t.dataset.text = text; this.FX.scrambleReveal([t], this.FX.PRESETS.log); }
+    if (this.state.logOpen) this.setState({ tick: this.state.tick + 1 });
+  }
+
+  moveTo(key) {
+    if (!this.FX || this.busy) return;
+    const u = this.units.D1;
+    const { dist, prev } = this.solve(u.key, u.move);
+    if (dist[key] == null) return;
+    const path = this.pathTo(u.key, key, prev);
+    if (!path || !path.length) return;
+    const cost = dist[key];
+    this.busy = true;
+    this._undo = { key: u.key, move: u.move };
+    this.FX.wake(this.q('[data-unit="D1"]'), path.map(k => this.tokenPos(k)), {
+      label: 'D1',
+      onDone: () => {
+        u.key = key; u.move -= cost; this.busy = false;
+        this.setState({ hov: null, sel: key });
+        this.showUnit('D1'); this.showTile(key);
+        this.log('move', 'Drone 1 crosses into ' + this.room(this.map()[key].r) + '. ' + u.move + ' move left.', 'var(--accent)');
+      }
+    });
+    this.setState({ hov: null });
+  }
+
+  attack() {
+    if (!this.FX || this.busy || !this.units.S4) return;
+    const s = this.units.S4;
+    const edge = this.q('[data-fx="edge"]'), dmg = this.q('[data-fx="dmg"]'), tgt = this.q('[data-unit="S4"]');
+    const a = this.tokenPos(this.units.D1.key), b = this.tokenPos(s.key);
+    edge.style.left = Math.round((a.left + b.left) / 2 + 9) + 'px';
+    edge.style.top = Math.round((a.top + b.top) / 2 + 8) + 'px';
+    dmg.style.left = (b.left + 30) + 'px';
+    dmg.style.top = (b.top - 12) + 'px';
+    this.busy = true;
+    s.hp = Math.max(0, s.hp - 3);
+    this.FX.edgeBurst({
+      target: tgt, edge, damageEl: dmg, damage: '-3',
+      onDone: () => {
+        this.busy = false;
+        if (s.hp <= 0) {
+          this.FX.frames([
+            () => { tgt.textContent = '▓▒'; },
+            () => { tgt.textContent = '░░'; },
+            () => { tgt.style.opacity = '0'; }
+          ], { onDone: () => { delete this.units.S4; this.setState({ tick: this.state.tick + 1 }); } });
+          this.log('kill', 'Scout 4 destroyed.', 'var(--hot)');
+        } else {
+          this.log('fight', 'Drone 1 attacks Scout 4 with emitter (2-2). It cannot answer — no ranged weapon.', 'var(--hot)');
+        }
+      }
+    });
+  }
+
+  openMenu(kind) {
+    this.setState({ menu: kind, confirm: false });
+    this.after(() => {
+      const p = this.panel('menu');
+      if (!p || !this.FX) return;
+      const vals = kind === 'system'
+        ? ['Hollow Tide — Barque', 'boarding-1', '1', '12', '6', this.state.sound ? 'on' : 'off']
+        : ['pan · wheel zooms', 'select a room or drone', 'open the forecast', 'end turn', 'undo', 'clear the selection'];
+      this.FX.setAndReveal(p.querySelectorAll('[data-sc-line]'),
+        [kind === 'system' ? 'System' : 'Help · controls'].concat(vals), this.FX.PRESETS.panel);
+    });
+  }
+  toggleSystem = () => { this.state.menu === 'system' ? this.closeMenu() : this.openMenu('system'); };
+  toggleHelp = () => { this.state.menu === 'help' ? this.closeMenu() : this.openMenu('help'); };
+  closeMenu = () => this.setState({ menu: null });
+  toggleSound = () => this.setState({ sound: !this.state.sound });
+
+  toggleLog = () => {
+    const open = !this.state.logOpen;
+    this.setState({ logOpen: open });
+    if (open) this.after(() => {
+      const p = this.panel('log');
+      if (!p || !this.FX) return;
+      this.FX.scrambleReveal(p.querySelectorAll('[data-sc-line]'), this.FX.PRESETS.log);
+    });
+  };
+
+  askEndTurn = () => {
+    if (!this.FX || this.busy) return;
+    const left = (this.units.D1.move || 0) + (this.units.D2.move || 0);
+    if (left > 0) {
+      this.setState({ confirm: true });
+      this.after(() => {
+        const p = this.panel('confirm');
+        if (!p) return;
+        this.FX.setAndReveal(p.querySelectorAll('[data-sc-line]'), [
+          'End the turn?',
+          'Drone 1 has ' + this.units.D1.move + ' move points and Drone 2 has ' + this.units.D2.move + '. They hold position and the ship acts next.'
+        ], this.FX.PRESETS.panel);
+      });
+      return;
+    }
+    this.runEndTurn();
+  };
+  cancelEnd = () => this.setState({ confirm: false });
+  confirmEnd = () => { this.setState({ confirm: false }); this.runEndTurn(); };
+
+  runEndTurn() {
+    if (!this.FX) return;
+    const s = this.units.S4;
+    this.turn++;
+    const tEl = this.live('turn');
+    if (tEl) { tEl.dataset.text = String(this.turn); this.FX.scrambleReveal([tEl], this.FX.PRESETS.value); }
+    this.units.D1.move = 4; this.units.D2.move = 4;
+    this._undo = null;
+
+    if (s) {
+      const target = this.units.D1.key, { dist, prev } = this.solve(s.key, 3);
+      let best = null, bd = 1e9;
+      Object.keys(dist).forEach(k => {
+        const c = this.map()[k], t = this.map()[target];
+        const d = Math.abs(c.c - t.c) + Math.abs(c.r - t.r);
+        if (d < bd && dist[k] <= 2) { bd = d; best = k; }
+      });
+      if (best && best !== s.key) {
+        const path = this.pathTo(s.key, best, prev) || [];
+        this.busy = true;
+        this.FX.wake(this.q('[data-unit="S4"]'), path.map(k => this.tokenPos(k)), {
+          label: 'S4',
+          onDone: () => { s.key = best; this.busy = false; this.setState({ tick: this.state.tick + 1 }); }
+        });
+      }
+      this.alert = Math.min(5, this.alert + 1);
+      const ring = this.live('dialRing'), num = this.live('alert');
+      if (ring) ring.style.background = 'conic-gradient(var(--hot) 0deg ' + (this.alert * 72) + 'deg, color-mix(in oklab, var(--hot) 22%, #101c30) ' + (this.alert * 72) + 'deg 360deg)';
+      if (num) { num.dataset.text = String(this.alert); this.FX.scrambleReveal([num], this.FX.PRESETS.value); }
+      this.log('turn', 'Turn ' + this.turn + ' — the ship moves. Alert rises to ' + this.alert + '.', 'var(--gold)');
+    } else {
+      this.log('turn', 'Turn ' + this.turn + ' — nothing left aboard to answer.', 'var(--accent)');
+    }
+    this.setState({ hov: null });
+    this.showUnit('D1');
+  }
+
+  onUndo = () => {
+    if (!this.FX || this.busy || !this._undo) return;
+    const u = this.units.D1, snap = this._undo;
+    this._undo = null;
+    this.FX.clearGhosts(this._board);
+    this.FX.blink(this.q('[data-unit="D1"]'), this.tokenPos(snap.key), {
+      onDone: () => {
+        u.key = snap.key; u.move = snap.move;
+        this.setState({ hov: null, sel: snap.key });
+        this.showUnit('D1');
+        this.log('undo', 'Drone 1 returns. ' + u.move + ' move points restored.', 'var(--accent)');
+      }
+    });
+  };
+
+  setZoom(z) {
+    this.zoom = Math.min(1.8, Math.max(0.6, z));
+    if (this._board) this._board.style.transform = 'translate(-50%,-50%) scale(' + this.zoom + ')';
+  }
+
+  renderVals() {
+    const m = this.map();
+    const ready = !!this.FX && !!this.units;
+    const occ = ready ? this.occupied() : {};
+    const d1 = ready ? this.units.D1 : null;
+    const solved = ready ? this.solve(d1.key, d1.move) : { dist: {}, prev: {} };
+    const hov = this.state.hov;
+    const path = ready && hov && solved.dist[hov] != null ? this.pathTo(d1.key, hov, solved.prev) : null;
+    const onPath = {};
+    (path || []).forEach(k => { onPath[k] = true; });
+    const foeKey = Object.keys(occ).find(k => occ[k] === 'S4');
+    const foeAdjacent = ready && foeKey && this.neighbors(m[d1.key].c, m[d1.key].r).indexOf(foeKey) >= 0;
+
+    const tiles = Object.keys(m).map(key => {
+      const t = m[key];
+      const who = occ[key];
+      const reach = ready && solved.dist[key] != null && !who;
+      // the kit's own flat fills — alternating rows, tinted for hostile ground
+      let fill = t.r % 2 ? '#132238' : '#172a44';
+      let edge = '#233masked', glyph = '', color = '#9fb0c8', inset = 1.5, cursor = 'default';
+      edge = '#233a5a';
+
+      if (t.wall) { fill = '#070a10'; edge = '#121a28'; }
+      if (t.ch === 'v') { fill = '#070a10'; edge = '#16223a'; }
+      if (t.ch === 'X' || who === 'S4') fill = 'color-mix(in oklab, var(--hot) 20%, var(--navy))';
+      if (t.ch === 'N') { glyph = '◼'; color = 'var(--node)'; }
+      if (t.ch === 'X') { glyph = '◆'; color = 'var(--hot)'; }
+      if (reach) cursor = 'pointer';
+      if (onPath[key]) { edge = 'rgba(95,184,217,.8)'; inset = 3.5; }
+      if (hov === key && reach) { edge = 'rgba(215,240,252,.98)'; inset = 3.5; }
+      if (who === 'S4') { cursor = foeAdjacent ? 'crosshair' : 'default'; if (foeAdjacent) { edge = 'rgba(224,140,124,.9)'; inset = 3.5; } }
+      if (who && who !== 'S4') cursor = 'pointer';
+
+      return {
+        x: Math.round(t.c * SX + (t.r % 2 ? SX / 2 : 0)), y: t.r * SY,
+        fill, edge, glyph, color, inset, cursor,
+        onEnter: () => {
+          if (this.busy || this.state.menu || this.state.confirm) return;
+          if (this.state.hov !== key) this.setState({ hov: key });
+          this.showTile(key);
+        },
+        onClick: () => {
+          if (this.busy || this.state.menu || this.state.confirm) return;
+          if (occ[key] === 'S4') { if (foeAdjacent) this.attack(); return; }
+          if (occ[key]) { this.showUnit(occ[key]); return; }
+          this.moveTo(key);
+        }
+      };
+    });
+
+    const menuRows = this.state.menu === 'help'
+      ? [{ k: 'drag map' }, { k: 'click hex' }, { k: 'click hostile' }, { k: 'space' }, { k: 'z' }, { k: 'right-click' }].map(r => Object.assign(r, { color: 'var(--accent)' }))
+      : [{ k: 'map' }, { k: 'seed' }, { k: 'income / node' }, { k: 'spawner hp' }, { k: 'node hp' }, { k: 'sound' }].map(r => Object.assign(r, { color: 'var(--ink)' }));
+
+    return {
+      boardRef: this.boardRef,
+      tiles,
+      clearHover: () => { if (this.state.hov) this.setState({ hov: null }); },
+      onContext: (e) => { e.preventDefault(); this.hidePanels(); this.setState({ hov: null, sel: null }); },
+
+      menuOpen: !!this.state.menu,
+      isSystem: this.state.menu === 'system',
+      menuRows,
+      toggleSystem: this.toggleSystem,
+      toggleHelp: this.toggleHelp,
+      closeMenu: this.closeMenu,
+      sysBg: this.state.menu === 'system' ? 'color-mix(in oklab, var(--accent) 20%, transparent)' : 'transparent',
+      helpBg: this.state.menu === 'help' ? 'color-mix(in oklab, var(--accent) 20%, transparent)' : 'transparent',
+      toggleSound: this.toggleSound,
+      soundGlyph: this.state.sound ? '◁))' : '◁✕',
+      soundColor: this.state.sound ? 'var(--ink)' : 'var(--dim)',
+
+      logOpen: this.state.logOpen,
+      toggleLog: this.toggleLog,
+      logHint: this.state.logOpen ? 'collapse ▼' : 'expand ▲ · ' + (this.logCount || 12),
+      logRows: (this.history || []).slice(-7),
+
+      confirmOpen: this.state.confirm,
+      askEndTurn: this.askEndTurn,
+      cancelEnd: this.cancelEnd,
+      confirmEnd: this.confirmEnd,
+      onUndo: this.onUndo,
+
+      zoomIn: () => this.setZoom(this.zoom * 1.15),
+      zoomOut: () => this.setZoom(this.zoom / 1.15),
+      zoomFit: () => this.setZoom(1),
+
+      notes: [
+        { dot: 'var(--accent)', t: 'Black ground, no grid', b: 'The 40px grid was the clearest dashboard tell left — a drafting overlay nothing in the fiction would draw. It is gone, and the ground went to near-black with a single soft pool of light under the ship, so the hexes are now the brightest thing on screen instead of competing with a lattice.' },
+        { dot: 'var(--node)', t: 'The preview costs nothing visually', b: 'The corridor is the hex edge already in the design, thickened and lit. No new colour, no new shape, no overlay — which is why it sits in this chrome as comfortably as it did in glass.' },
+        { dot: 'var(--gold)', t: 'Text carries most of the life', b: 'Panels, the turn number, the alert dial and every log line resolve out of block glyphs. On flat navy that reads as a signal arriving rather than as an effect, and it is doing more work here than any of the material experiments did.' },
+        { dot: 'var(--hot)', t: 'Worth comparing directly', b: 'Open this next to the glass build. My read is that the kit with motion answers the dashboard complaint further than glass without it did — the thing that felt inert was the stillness, not the flatness.' }
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

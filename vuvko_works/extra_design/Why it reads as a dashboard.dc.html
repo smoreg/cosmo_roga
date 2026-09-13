@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #070a10; }
+  a { color: #6fc2dd; text-decoration: none; border-bottom: 1px solid rgba(111,194,221,0.35); }
+  a:hover { color: #9bd8ec; border-bottom-color: #9bd8ec; }
+  sup a { border: none; }
+  @keyframes readyPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(95,184,217,0.0), inset 0 1px 0 rgba(255,255,255,0.14); }
+    50% { box-shadow: 0 0 18px 0 rgba(95,184,217,0.28), inset 0 1px 0 rgba(255,255,255,0.14); }
+  }
+  @keyframes sweep {
+    0% { transform: translateY(-100%); opacity: 0; }
+    12% { opacity: 1; }
+    60% { opacity: 0.5; }
+    100% { transform: translateY(320%); opacity: 0; }
+  }
+  @keyframes alarmBreathe {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.06); }
+  }
+</style>
+</helmet>
+
+<article style="--ink: #e2ebf8; --dim: #93a6c2; --faint: #6d819f; --navy: #0e1a2e; --panel: #0b1526; --line: #27384f; --accent: #5fb8d9; --hot: #cf6a5a; --gold: #d8a94e; --node: #5fbf9f; max-width: 1180px; margin: 0 auto; padding: 64px 40px 96px; background: #070a10; color: var(--ink); font-family: 'Newsreader', Georgia, serif">
+
+  <header style="border-bottom: 2px solid var(--line); padding-bottom: 26px">
+    <div style="display: flex; align-items: baseline; gap: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim)">
+      <div>Design research</div>
+      <div style="color: var(--faint)">·</div>
+      <div>13 September 2026</div>
+      <div style="color: var(--faint)">·</div>
+      <div>Derelict tactical UI</div>
+    </div>
+    <h1 style="font-family: 'Barlow Condensed', sans-serif; font-size: 72px; line-height: 0.94; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase; margin: 18px 0 0">Why it reads as a dashboard</h1>
+    <p style="font-size: 21px; line-height: 1.5; color: var(--dim); max-width: 760px; margin: 16px 0 0; font-weight: 300; text-wrap: pretty">Our screens are legible, dense and correct. That is exactly the problem: every choice we made is the choice a data tool would make. Here is what the literature says separates a game interface from an admin panel, which of those levers we have not pulled, and what to do about it in order of payoff.</p>
+  </header>
+
+  <section style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1px; background: var(--line); margin: 40px 0 0; border: 1px solid var(--line)">
+    <div style="background: #070a10; padding: 22px 24px">
+      <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 58px; font-weight: 700; line-height: 1; color: var(--accent)">0</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); margin-top: 8px">Diegetic elements</div>
+      <div style="font-size: 15px; line-height: 1.55; color: var(--dim); margin-top: 8px; font-weight: 300">Nothing on screen belongs to the fiction. Every panel is addressed to the player, none to the salvage crew.</div>
+    </div>
+    <div style="background: #070a10; padding: 22px 24px">
+      <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 58px; font-weight: 700; line-height: 1; color: var(--accent)">1px</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); margin-top: 8px">Every border we own</div>
+      <div style="font-size: 15px; line-height: 1.55; color: var(--dim); margin-top: 8px; font-weight: 300">One hairline weight, one radius (zero), one fill. No material, no depth, no light direction.</div>
+    </div>
+    <div style="background: #070a10; padding: 22px 24px">
+      <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 58px; font-weight: 700; line-height: 1; color: var(--accent)">2</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); margin-top: 8px">Animations in the build</div>
+      <div style="font-size: 15px; line-height: 1.55; color: var(--dim); margin-top: 8px; font-weight: 300">A panel slide and a dim-in. Nothing answers a click; nothing has weight; no easing anywhere else.</div>
+    </div>
+    <div style="background: #070a10; padding: 22px 24px">
+      <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 58px; font-weight: 700; line-height: 1; color: var(--gold)">11px</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); margin-top: 8px">Our most common type size</div>
+      <div style="font-size: 15px; line-height: 1.55; color: var(--dim); margin-top: 8px; font-weight: 300">Below the practical floor for a 720p game screen, and the same size for eleven different jobs.</div>
+    </div>
+  </section>
+
+  <p style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin: 14px 0 0">Counts are from our own build, not from sources. Everything below that carries a number is attributed.</p>
+
+  <h2 style="font-family: 'Barlow Condensed', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent); margin: 64px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--line)">I · What the field says the difference is</h2>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 48px; margin-top: 28px; align-items: start">
+    <div>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0 0 18px; font-weight: 300">The load-bearing distinction is not decoration, it is <em style="font-style: normal; color: var(--accent)">where the interface lives relative to the fiction</em>. The vocabulary everyone uses — diegetic, non-diegetic, spatial, meta — comes from a 2009 master's thesis by Erik Fagerholt and Magnus Lorentzon at Chalmers, and it has been the standard taxonomy since.<sup><a href="#s1">1</a></sup> Diegetic means the characters can see it: it is an object in the world. Non-diegetic is the 2D layer only the player sees.<sup><a href="#s2">2</a></sup></p>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0 0 18px; font-weight: 300">Most games are non-diegetic and that is fine — the category is not a quality ranking. What matters is the framing underneath it: in an app the UI <em style="font-style: normal; color: var(--accent)">is</em> the product, whereas in a game the UI is competing with the product for the player's attention, so the job is conveying state without breaking immersion.<sup><a href="#s3">3</a></sup> Our panels are written as if they were the product. They are the thing being looked at, not the thing being looked through.</p>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0; font-weight: 300">One honest counterweight, and it is why I am not proposing a texture pass: practitioners argue a well-executed flat UI beats a badly-executed "it matches my art direction" UI.<sup><a href="#s4">4</a></sup> The risk of staying flat is separately named, though — a generic vector language makes a game read like existing mobile or explainer-video content.<sup><a href="#s5">5</a></sup> That sentence is our diagnosis, written by someone who has never seen our file.</p>
+    </div>
+    <aside style="border-left: 2px solid var(--gold); padding: 4px 0 4px 22px">
+      <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 26px; line-height: 1.25; font-weight: 500; color: var(--ink)">“The UI should feel like it belongs in the game world, not like an afterthought.”</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-top: 14px">Justinmind, game UI principles<sup><a href="#s6">6</a></sup></div>
+      <div style="font-size: 15px; line-height: 1.6; color: var(--dim); margin-top: 18px; font-weight: 300">Their prescription is concrete: pull textures, patterns and palettes out of the game's own environments into the interface. Ours came out of a token file.</div>
+    </aside>
+  </div>
+
+  <h2 style="font-family: 'Barlow Condensed', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent); margin: 64px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--line)">II · Seven tells, in our file</h2>
+  <p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.1em; color: var(--faint); margin: 12px 0 0">My reading of our screens against the sources above — inference, not findings.</p>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 26px">
+    <sc-for list="{{ tells }}" as="t" hint-placeholder-count="7">
+      <div style="background: #070a10; padding: 20px 22px">
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--gold)">{{ t.n }}</div>
+          <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase">{{ t.title }}</div>
+        </div>
+        <div style="font-size: 16px; line-height: 1.6; color: var(--dim); margin-top: 8px; font-weight: 300">{{ t.body }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <h2 style="font-family: 'Barlow Condensed', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent); margin: 64px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--line)">III · The same four parts, twice</h2>
+  <p style="font-size: 19px; line-height: 1.7; color: var(--dim); max-width: 820px; margin: 18px 0 0; font-weight: 300">Left is what is in the build today. Right is the same component with the levers pulled — no new colours, no illustration, no asset pipeline. Only geometry, depth, type scale and motion. Both columns are live.</p>
+
+  <div style="display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 28px">
+
+    <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--line)">
+      <div style="background: #070a10; padding: 14px 18px; min-width: 0; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--faint)">Component</div>
+      <div style="background: #070a10; padding: 14px 18px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--faint)">In the build — reads as tool</div>
+      <div style="background: #070a10; padding: 14px 18px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent)">Levers pulled</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--line)">
+      <div style="background: #070a10; padding: 22px 18px">
+        <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 21px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em">End turn</div>
+        <div style="font-size: 14px; line-height: 1.55; color: var(--dim); margin-top: 6px; font-weight: 300">Cut corner, struck edges, a plate the type is stamped into, and a readiness pulse. The commit action should look like a lever, not a link.</div>
+      </div>
+      <div style="background: var(--navy); padding: 30px; min-width: 0; display: flex; align-items: center; justify-content: center">
+        <div style="width: 100%; max-width: 152px; height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; background: color-mix(in oklab, var(--accent) 20%, rgba(11,21,38,0.95)); border: 1px solid var(--accent); cursor: pointer">
+          <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 19px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent)">End turn</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--dim)">[space]</div>
+        </div>
+      </div>
+      <div style="background: var(--navy); padding: 30px; min-width: 0; display: flex; align-items: center; justify-content: center">
+        <div style="position: relative; width: 100%; max-width: 186px; height: 62px; clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px)); background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 34%, #0b1526) 0%, color-mix(in oklab, var(--accent) 16%, #08101d) 100%); cursor: pointer; animation: readyPulse 2.6s ease-in-out infinite">
+          <div style="position: absolute; inset: 1.5px; clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 15px, 100% 100%, 15px 100%, 0 calc(100% - 15px)); background: linear-gradient(180deg, #16324c 0%, #0c1c31 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">
+            <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 27px; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; color: #cfeaf6; text-shadow: 0 1px 0 rgba(0,0,0,0.6)">End turn</div>
+            <div style="display: flex; align-items: center; gap: 7px">
+              <div style="width: 16px; height: 1px; background: rgba(159,200,224,0.5)"></div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; color: #9fc8e0">space</div>
+              <div style="width: 16px; height: 1px; background: rgba(159,200,224,0.5)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--line)">
+      <div style="background: #070a10; padding: 22px 18px">
+        <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 21px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em">Unit panel</div>
+        <div style="font-size: 14px; line-height: 1.55; color: var(--dim); margin-top: 6px; font-weight: 300">A readout the crew could plausibly be looking at: hatched ground, a stencilled index, a notched header, meters built as segments rather than a progress bar.</div>
+      </div>
+      <div style="background: var(--navy); padding: 24px; min-width: 0; display: flex; align-items: center; justify-content: center">
+        <div style="width: 100%; max-width: 280px; background: var(--panel); border: 1px solid var(--line); padding: 12px 14px; font-family: 'IBM Plex Mono', monospace">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <div style="font-size: 15px; font-weight: 600; color: var(--accent)">Drone 1</div>
+            <div style="font-size: 11px; color: var(--dim)">sapper</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 9px">
+            <div style="flex: 1; height: 6px; background: #0a1220; border: 1px solid var(--line)"><div style="height: 100%; width: 92%; background: var(--node)"></div></div>
+            <div style="font-size: 12px; color: var(--dim)">11/12</div>
+          </div>
+          <div style="font-size: 11px; color: var(--dim); margin-top: 7px">move 4/4</div>
+          <div style="display: flex; gap: 4px; margin-top: 9px">
+            <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 3px 5px; border: 1px solid var(--line); color: var(--dim)">welder 3-1</div>
+            <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 3px 5px; border: 1px solid var(--line); color: var(--dim)">emitter 2-2</div>
+          </div>
+        </div>
+      </div>
+      <div style="background: var(--navy); padding: 24px; min-width: 0; display: flex; align-items: center; justify-content: center">
+        <div style="position: relative; width: 100%; max-width: 300px; clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%); background: linear-gradient(180deg, #2b3f5e 0%, #1a2942 100%); font-family: 'IBM Plex Mono', monospace; overflow: hidden">
+          <div style="position: absolute; inset: 1.5px; clip-path: polygon(0 0, calc(100% - 17px) 0, 100% 17px, 100% 100%, 0 100%); background: repeating-linear-gradient(135deg, #0c1a2c 0px, #0c1a2c 6px, #0e1e32 6px, #0e1e32 12px)"></div>
+          <div style="position: relative; padding: 0">
+            <div style="display: flex; align-items: center; gap: 9px; padding: 9px 14px; background: linear-gradient(180deg, rgba(95,184,217,0.22) 0%, rgba(95,184,217,0.06) 100%); border-bottom: 1px solid rgba(95,184,217,0.45)">
+              <div style="width: 26px; height: 26px; flex: none; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: var(--accent); color: #06121a; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">D1</div>
+              <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #dceefa; text-shadow: 0 1px 0 rgba(0,0,0,0.5)">Drone 1</div>
+              <div style="margin-left: auto; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: #9fc8e0">sapper</div>
+            </div>
+            <div style="padding: 13px 14px 15px">
+              <div style="display: flex; align-items: center; gap: 9px">
+                <div style="font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; color: #8fa6c4; width: 30px">hull</div>
+                <div style="flex: 1; display: flex; gap: 2px">
+                  <sc-for list="{{ hullCells }}" as="c" hint-placeholder-count="12">
+                    <div style="flex: 1; height: 11px; background: {{ c.fill }}; box-shadow: inset 0 1px 0 {{ c.top }}"></div>
+                  </sc-for>
+                </div>
+                <div style="font-size: 12px; color: #dceefa">11<span style="color: #8fa6c4">/12</span></div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 9px; margin-top: 9px">
+                <div style="font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; color: #8fa6c4; width: 30px">move</div>
+                <div style="flex: 1; display: flex; gap: 3px">
+                  <sc-for list="{{ moveCells }}" as="c" hint-placeholder-count="4">
+                    <div style="flex: 1; height: 11px; background: {{ c.fill }}; clip-path: polygon(14% 0, 100% 0, 86% 100%, 0 100%)"></div>
+                  </sc-for>
+                </div>
+                <div style="font-size: 12px; color: #dceefa">4<span style="color: #8fa6c4">/4</span></div>
+              </div>
+              <div style="display: flex; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(95,184,217,0.18)">
+                <div style="flex: 1; padding: 6px 8px; background: rgba(95,184,217,0.09); border-left: 2px solid var(--accent)">
+                  <div style="font-size: 11px; font-weight: 600; color: #dceefa">welder</div>
+                  <div style="font-size: 15px; font-weight: 600; color: var(--accent); letter-spacing: 0.04em">3-1</div>
+                </div>
+                <div style="flex: 1; padding: 6px 8px; background: rgba(95,184,217,0.09); border-left: 2px solid var(--accent)">
+                  <div style="font-size: 11px; font-weight: 600; color: #dceefa">emitter</div>
+                  <div style="font-size: 15px; font-weight: 600; color: var(--accent); letter-spacing: 0.04em">2-2</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--line)">
+      <div style="background: #070a10; padding: 22px 18px">
+        <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 21px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em">Ship node</div>
+        <div style="font-size: 14px; line-height: 1.55; color: var(--dim); margin-top: 6px; font-weight: 300">Flat fills cannot express distance, so depth has to come from value grouping and overlap.<sup><a href="#s7">7</a></sup> A rim light, a cast shadow and a drift shadow do it without a single new asset.</div>
+      </div>
+      <div style="background: var(--navy); padding: 30px; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 26px">
+        <div style="position: relative; width: 54px; height: 23px; clip-path: polygon(0 50%, 16% 0, 84% 0, 100% 50%, 84% 100%, 16% 100%); background: #5d7ea6">
+          <div style="position: absolute; inset: 1.5px; clip-path: polygon(0 50%, 16% 0, 84% 0, 100% 50%, 84% 100%, 16% 100%); background: color-mix(in oklab, var(--navy) 78%, #a8caf2)"></div>
+        </div>
+        <div style="position: relative; width: 42px; height: 19px; clip-path: polygon(0 50%, 16% 0, 84% 0, 100% 50%, 84% 100%, 16% 100%); background: #1e2d45; opacity: 0.42">
+          <div style="position: absolute; inset: 1.5px; clip-path: polygon(0 50%, 16% 0, 84% 0, 100% 50%, 84% 100%, 16% 100%); background: var(--navy)"></div>
+        </div>
+      </div>
+      <div style="background: var(--navy); padding: 30px; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 26px">
+        <div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 9px">
+          <div style="position: relative; width: 64px; height: 27px; filter: drop-shadow(0 7px 7px rgba(0,0,0,0.6))">
+            <div style="position: absolute; inset: 0; clip-path: polygon(0 50%, 16% 0, 84% 0, 100% 50%, 84% 100%, 16% 100%); background: linear-gradient(170deg, #a9cfe8 0%, #4f7396 38%, #23384f 100%)"></div>
+            <div style="position: absolute; inset: 2px; clip-path: polygon(0 50%, 16% 0, 84% 0, 100% 50%, 84% 100%, 16% 100%); background: linear-gradient(170deg, #2e4a68 0%, #16293f 62%, #0d1a2b 100%)"></div>
+            <div style="position: absolute; left: 18%; right: 18%; top: 3px; height: 1px; background: rgba(190,222,240,0.5)"></div>
+          </div>
+          <div style="width: 52px; height: 5px; border-radius: 50%; background: rgba(0,0,0,0.55); filter: blur(3px)"></div>
+        </div>
+        <div style="position: relative; width: 46px; height: 20px; opacity: 0.5">
+          <div style="position: absolute; inset: 0; clip-path: polygon(0 50%, 16% 0, 84% 0, 100% 50%, 84% 100%, 16% 100%); background: linear-gradient(170deg, #3d5878 0%, #223349 100%)"></div>
+          <div style="position: absolute; inset: 1.5px; clip-path: polygon(0 50%, 16% 0, 84% 0, 100% 50%, 84% 100%, 16% 100%); background: #0b1725"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--line)">
+      <div style="background: #070a10; padding: 22px 18px">
+        <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 21px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em">Alert dial</div>
+        <div style="font-size: 14px; line-height: 1.55; color: var(--dim); margin-top: 6px; font-weight: 300">The one element whose whole job is dread. Give it a breath, a housing and a scan line and it stops being a donut chart.</div>
+      </div>
+      <div style="background: var(--navy); padding: 30px; min-width: 0; display: flex; align-items: center; justify-content: center">
+        <div style="position: relative; width: 54px; height: 54px">
+          <div style="position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(var(--hot) 0deg 144deg, color-mix(in oklab, var(--hot) 22%, #101c30) 144deg 360deg)"></div>
+          <div style="position: absolute; inset: 0; border-radius: 50%; background: repeating-conic-gradient(from -2deg, transparent 0 68deg, var(--panel) 68deg 72deg)"></div>
+          <div style="position: absolute; inset: 9px; border-radius: 50%; background: #0a1220; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: var(--hot)">2</div>
+        </div>
+      </div>
+      <div style="background: var(--navy); padding: 30px; min-width: 0; display: flex; align-items: center; justify-content: center">
+        <div style="position: relative; width: 76px; height: 76px; border-radius: 50%; background: linear-gradient(160deg, #33445c 0%, #131f31 55%, #0a121d 100%); box-shadow: 0 6px 16px rgba(0,0,0,0.55)">
+          <div style="position: absolute; inset: 5px; border-radius: 50%; background: #060c15; overflow: hidden">
+            <div style="position: absolute; inset: 2px; border-radius: 50%; background: conic-gradient(var(--hot) 0deg 144deg, rgba(207,106,90,0.13) 144deg 360deg)"></div>
+            <div style="position: absolute; inset: 2px; border-radius: 50%; background: repeating-conic-gradient(from -2deg, transparent 0 67deg, #060c15 67deg 72deg)"></div>
+            <div style="position: absolute; inset: 11px; border-radius: 50%; background: radial-gradient(circle at 38% 30%, #16202e 0%, #080e18 100%); display: flex; align-items: center; justify-content: center">
+              <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 700; color: #e8927f; text-shadow: 0 0 14px rgba(207,106,90,0.75); animation: alarmBreathe 2.2s ease-in-out infinite">2</div>
+            </div>
+            <div style="position: absolute; left: 0; right: 0; height: 22px; background: linear-gradient(180deg, transparent, rgba(207,106,90,0.16), transparent); animation: sweep 3.4s linear infinite"></div>
+          </div>
+          <div style="position: absolute; left: 50%; top: -3px; width: 2px; height: 7px; background: var(--hot); transform: translateX(-50%)"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <h2 style="font-family: 'Barlow Condensed', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent); margin: 64px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--line)">IV · Motion is the cheapest thing we are not doing</h2>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 40px; margin-top: 26px; align-items: start">
+    <div>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0 0 16px; font-weight: 300">Steve Swink's model splits feel into three parts that must land in order — real-time control, then a simulated space that behaves predictably, then polish — and the ordering is the point: polish cannot rescue an interface that does not answer.<sup><a href="#s8">8</a></sup> Ours answers instantly. We are simply skipping layer three entirely.</p>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0 0 16px; font-weight: 300">The named techniques are small and procedural. Hit-stop — freezing for 40–80ms on a heavy impact — sells weight better than any animation.<sup><a href="#s8">8</a></sup> Easing rather than linear motion is described as the difference between movement that feels alive and movement that looks like a slideshow.<sup><a href="#s8">8</a></sup> Sound is called the most underused channel precisely because it is easy to skip.<sup><a href="#s8">8</a></sup> Practitioner write-ups add the UI-specific version: buttons that squish on press, health bars that animate damage instead of snapping.<sup><a href="#s9">9</a></sup></p>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0; font-weight: 300">The same sources warn against the failure mode, and it applies double to a turn-based game read at 720p: shake and flash on everything stops meaning anything, and constant vibration makes people ill.<sup><a href="#s8">8</a></sup> The budget below is deliberately small.</p>
+    </div>
+    <div style="border: 1px solid var(--line); background: var(--panel)">
+      <div style="padding: 12px 16px; border-bottom: 1px solid var(--line); font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim)">Motion budget · proposed</div>
+      <div style="display: flex; flex-direction: column">
+        <sc-for list="{{ motion }}" as="m" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 11px 16px; border-bottom: 1px solid rgba(39,56,79,0.6); align-items: baseline">
+            <div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink)">{{ m.what }}</div>
+              <div style="font-size: 14px; color: var(--dim); margin-top: 2px; font-weight: 300">{{ m.why }}</div>
+            </div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--accent); white-space: nowrap">{{ m.ms }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <h2 style="font-family: 'Barlow Condensed', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent); margin: 64px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--line)">V · Our type is a system problem, not a font problem</h2>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 44px; margin-top: 26px; align-items: start">
+    <div>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0 0 16px; font-weight: 300">The instinct is to swap in a sci-fi typeface. The stronger argument says most game UI type failures are architectural rather than aesthetic — designers pick a face that feels right for the genre, set sizes by eye, and the hierarchy collapses on the smallest target screen.<sup><a href="#s10">10</a></sup> The recommendation is to define roles, constraints and scale ratios <em style="font-style: normal; color: var(--accent)">before</em> choosing the typeface, with role-locked tokens per UI layer so hierarchy cannot cross-contaminate.<sup><a href="#s10">10</a></sup></p>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0 0 16px; font-weight: 300">There is a hard floor, too. The metric that matters is angular size, with a practical floor around 0.3° of visual angle — roughly 20–22px at 1080p console distance, 14–16px at handheld distance.<sup><a href="#s10">10</a></sup> Our 10px and 11px labels sit under that even before anyone sits back from the monitor.</p>
+      <p style="font-size: 19px; line-height: 1.7; margin: 0; font-weight: 300">And the technique that keeps a world-flavoured interface legible: hold one underlying type scale, then apply distress, grading and perspective as a layer <em style="font-style: normal; color: var(--accent)">above</em> the type rather than baking character into the font choice — the system governs legibility, the treatment governs immersion.<sup><a href="#s10">10</a></sup> That is the permission slip for everything in section III.</p>
+    </div>
+    <div style="border: 1px solid var(--line)">
+      <div style="padding: 12px 16px; border-bottom: 1px solid var(--line); font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); background: var(--panel)">Proposed roles · five, not eleven</div>
+      <sc-for list="{{ roles }}" as="r" hint-placeholder-count="5">
+        <div style="padding: 13px 16px; border-bottom: 1px solid rgba(39,56,79,0.6); background: var(--navy)">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent)">{{ r.role }}</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--faint)">{{ r.spec }}</div>
+          </div>
+          <div style="margin-top: 7px; color: var(--ink); font-family: {{ r.family }}; font-size: {{ r.px }}px; font-weight: {{ r.weight }}; letter-spacing: {{ r.tracking }}; text-transform: {{ r.transform }}">{{ r.sample }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <h2 style="font-family: 'Barlow Condensed', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent); margin: 64px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--line)">VI · What I would do, in order</h2>
+  <p style="font-size: 19px; line-height: 1.7; color: var(--dim); max-width: 820px; margin: 18px 0 0; font-weight: 300">Ordered by identity gained per hour spent. The first three change the feel more than the rest combined, and none of them touches the layout we have already settled.</p>
+
+  <div style="margin-top: 26px; border: 1px solid var(--line)">
+    <sc-for list="{{ plan }}" as="p" hint-placeholder-count="7">
+      <div style="display: grid; grid-template-columns: 46px minmax(0, 1fr) 132px 96px; gap: 18px; padding: 18px 20px; border-bottom: 1px solid rgba(39,56,79,0.6); align-items: start; background: {{ p.bg }}">
+        <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 30px; font-weight: 700; color: {{ p.rankColor }}; line-height: 1">{{ p.rank }}</div>
+        <div>
+          <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 23px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase">{{ p.title }}</div>
+          <div style="font-size: 16px; line-height: 1.6; color: var(--dim); margin-top: 5px; font-weight: 300">{{ p.body }}</div>
+        </div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--faint); line-height: 1.7">
+          <div style="color: var(--dim)">{{ p.effort }}</div>
+          <div>{{ p.touches }}</div>
+        </div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: {{ p.impactColor }}; text-align: right">{{ p.impact }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="margin-top: 44px; border-left: 2px solid var(--hot); padding: 6px 0 6px 22px; max-width: 840px">
+    <div style="font-family: 'Barlow Condensed', sans-serif; font-size: 27px; line-height: 1.3; font-weight: 500">“We would sacrifice cool ideas for the sake of clarity every time.”</div>
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-top: 12px">Justin Ma, Subset Games — <span style="text-transform: none; letter-spacing: 0.02em">Into the Breach</span><sup><a href="#s11">11</a></sup></div>
+    <div style="font-size: 17px; line-height: 1.7; color: var(--dim); margin-top: 16px; font-weight: 300">Worth holding onto, because it is the guardrail on everything above. The same interview offers the other half: the team's most important decision was replacing written weapon descriptions with a little animation showing the effect, which they judged a thousand times more effective than the text.<sup><a href="#s11">11</a></sup> Character and clarity were not in tension there. They are not in tension here either — none of the seven moves adds a thing to read.</div>
+  </div>
+
+  <h2 id="sources" style="font-family: 'Barlow Condensed', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent); margin: 64px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--line)">Sources</h2>
+  <ol style="margin: 22px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px 40px">
+    <sc-for list="{{ sources }}" as="s" hint-placeholder-count="11">
+      <li id="{{ s.id }}" style="display: grid; grid-template-columns: 28px 1fr; gap: 10px; font-size: 15px; line-height: 1.55; color: var(--dim); font-weight: 300">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--gold); padding-top: 4px">{{ s.n }}</div>
+        <div>
+          <a href="{{ s.url }}">{{ s.title }}</a>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--faint); margin-top: 3px">{{ s.meta }}</div>
+        </div>
+      </li>
+    </sc-for>
+  </ol>
+
+  <p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.7; color: var(--faint); margin: 30px 0 0; max-width: 840px">Caveat on the evidence: the four-type taxonomy and the Swink model are well-established and cross-checked across several independent write-ups. The juice timings (40–80ms hit-stop) and the 0.3° angular floor each rest on a single practitioner source and should be treated as starting points to test, not settled numbers. One frequently-cited game-UX reference on this topic — gameuxmasterguide.com — now resolves to an unrelated gambling site and has been excluded. All pages accessed 13 September 2026.</p>
+
+</article>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 1180 }
+}">
+class Component extends DCLogic {
+  renderVals() {
+    const hull = [];
+    for (let i = 0; i < 12; i++) {
+      const on = i < 11;
+      hull.push({
+        fill: on ? (i > 9 ? "#7fd0b2" : "#5fbf9f") : "#16243a",
+        top: on ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.04)"
+      });
+    }
+    const move = [0, 1, 2, 3].map(() => ({ fill: "#5fb8d9" }));
+
+    return {
+      hullCells: hull,
+      moveCells: move,
+
+      tells: [
+        { n: "01", title: "Nothing is diegetic", body: "Every label speaks to the player in plain English — “spawners”, “nodes”, “income / node”. Nobody aboard the ship would say any of it. The fiction is in the copy of the log and nowhere in the chrome." },
+        { n: "02", title: "One border weight", body: "A single 1px hairline does every job: panel edge, chip outline, button, divider, input. That is a design-system virtue and a game-art flaw — it flattens hierarchy into one material." },
+        { n: "03", title: "No light direction", body: "No element has a top or a bottom. Nothing is lit, raised, recessed or casting. On a screen that is meant to be a physical console, everything is a decal." },
+        { n: "04", title: "Type does no acting", body: "Eleven-pixel mono for values, labels, captions, states and hints alike. No size in the design is large enough to be a voice — the biggest thing on screen is a button." },
+        { n: "05", title: "Rectangles only", body: "Every container is a plain rect. The hexes and hulls have angular geometry; the interface around them refuses to acknowledge it, so the two layers look like different products." },
+        { n: "06", title: "Nothing answers back", body: "Clicks change state instantly with no acknowledgement. No press, no settle, no damage tick, no delay before the consequence — the screen is never performing, only reporting." },
+        { n: "07", title: "Panels float unattached", body: "Our overlays sit on the map at 92% opacity like modals on a web page. They are not mounted to anything, not bracketed to an edge, not part of a housing." }
+      ],
+
+      motion: [
+        { what: "Button press", why: "scale to 0.97, settle — the commit reads as a throw", ms: "90ms" },
+        { what: "Panel open", why: "already have it; add the same easing everywhere else", ms: "240ms" },
+        { what: "Damage tick", why: "hp meter counts down rather than snapping", ms: "320ms" },
+        { what: "Hit-stop", why: "freeze before the log line lands on a kill", ms: "60ms" },
+        { what: "Alert escalation", why: "the dial advances one segment, slowly, with a tone", ms: "600ms" },
+        { what: "Jump transit", why: "map eases to the new ship instead of cutting", ms: "480ms" },
+        { what: "Everything else", why: "no shake, no flash, no idle motion on data", ms: "0ms" }
+      ],
+
+      roles: [
+        { role: "Display", spec: "Barlow Cond 700 · 34px", family: "'Barlow Condensed', sans-serif", px: 34, weight: 700, tracking: "0.07em", transform: "uppercase", sample: "End turn" },
+        { role: "Panel title", spec: "Barlow Cond 600 · 24px", family: "'Barlow Condensed', sans-serif", px: 24, weight: 600, tracking: "0.06em", transform: "uppercase", sample: "Combat Information Center" },
+        { role: "Value", spec: "Plex Mono 600 · 18px", family: "'IBM Plex Mono', monospace", px: 18, weight: 600, tracking: "0.02em", transform: "none", sample: "11 / 12" },
+        { role: "Body", spec: "Plex Mono 400 · 14px", family: "'IBM Plex Mono', monospace", px: 14, weight: 400, tracking: "0", transform: "none", sample: "Scout 4 cannot answer a ranged attack." },
+        { role: "Stencil", spec: "Plex Mono 600 · 11px · 0.22em", family: "'IBM Plex Mono', monospace", px: 11, weight: 600, tracking: "0.22em", transform: "uppercase", sample: "hull · move · alert" }
+      ],
+
+      plan: [
+        { rank: "1", title: "Give panels a housing", body: "Cut corners, a struck top edge, a hatched ground, and mount each panel to a screen edge instead of floating it. One shared treatment, applied to six panels.", effort: "half a day", touches: "6 components", impact: "Highest", impactColor: "#5fbf9f", rankColor: "#5fb8d9", bg: "rgba(95,184,217,0.05)" },
+        { rank: "2", title: "Rebuild the type scale", body: "Five roles, floor at 14px, one display size big enough to have a voice. Replaces eleven ad-hoc sizes. Do this before considering a new typeface.", effort: "half a day", touches: "every screen", impact: "Highest", impactColor: "#5fbf9f", rankColor: "#5fb8d9", bg: "rgba(95,184,217,0.05)" },
+        { rank: "3", title: "Spend the motion budget", body: "The seven timings in section IV and nothing more. Press, settle, tick, hit-stop, escalate, transit.", effort: "half a day", touches: "4 components", impact: "Highest", impactColor: "#5fbf9f", rankColor: "#5fb8d9", bg: "rgba(95,184,217,0.05)" },
+        { rank: "4", title: "Light the map", body: "Rim light, cast shadow and value grouping on hulls and hexes so the board has a floor and the pieces sit on it.", effort: "a day", touches: "2 components", impact: "High", impactColor: "#d8a94e", rankColor: "#93a6c2", bg: "transparent" },
+        { rank: "5", title: "Rewrite the chrome in-world", body: "“Spawners” becomes what the crew would call it. Labels become stencils. The system panel becomes a salvage manifest. Copy only — no layout change.", effort: "half a day", touches: "all labels", impact: "High", impactColor: "#d8a94e", rankColor: "#93a6c2", bg: "transparent" },
+        { rank: "6", title: "Add a sound layer", body: "Named as the most underused channel in every source I read. Hover, commit, jump, alert, kill. Five cues.", effort: "a day", touches: "global", impact: "Medium", impactColor: "#93a6c2", rankColor: "#93a6c2", bg: "transparent" },
+        { rank: "7", title: "Consider a display face", body: "Last, not first — and only for the display role. Barlow Condensed may well survive the audit once it has a size worth looking at.", effort: "an hour", touches: "1 role", impact: "Low", impactColor: "#6d819f", rankColor: "#93a6c2", bg: "transparent" }
+      ],
+
+      sources: [
+        { id: "s1", n: "1", title: "Diegetic vs Non-Diegetic UI: The 4-Type Framework Every Game Designer Needs", url: "https://nastyrodent.com/diegetic-and-non-diegetic-ui/", meta: "Nasty Rodent · traces the taxonomy to Fagerholt & Lorentzon, Chalmers, 2009" },
+        { id: "s2", n: "2", title: "Four game interface types", url: "https://www.oreilly.com/library/view/mastering-ui-development/9781787125520/78296d1f-f5be-4af9-8ed6-b47ece9c8bda.xhtml", meta: "Mastering UI Development with Unity, O'Reilly · independent confirmation of the 2009 origin" },
+        { id: "s3", n: "3", title: "Game UI Design Guide: Diegetic, Spatial, & Meta Interfaces", url: "https://superfiles.in/game-ui-design-guide-diegetic-spatial.php", meta: "“In an app, the UI is the product.” Practitioner guide, undated" },
+        { id: "s4", n: "4", title: "The only advice you will need to make a great game UI/UX", url: "https://medium.com/ironequal/the-only-advice-you-will-need-to-make-a-great-game-ui-ux-74a0db8de642", meta: "IronEqual, 2017 · the case for well-executed flat over botched art direction" },
+        { id: "s5", n: "5", title: "21 Game Art Styles in Video Games: Types & Examples", url: "https://pixune.com/blog/game-art-styles/", meta: "Pixune · on vector styles reading as explainer-video content" },
+        { id: "s6", n: "6", title: "Game UI: design principles, best practices, and examples", url: "https://www.justinmind.com/ui-design/game", meta: "Justinmind, Feb 2025" },
+        { id: "s7", n: "7", title: "Game Art Styles: 7 Options and How to Choose", url: "https://sunstrikestudios.com/en/blog/game-art-styles/", meta: "Sunstrike Studios · on flat vector's depth limit and value grouping" },
+        { id: "s8", n: "8", title: "How to Make Your Game Feel Good: Game Feel and Juice", url: "https://egmatic.com/blog/how-to-make-your-game-feel-good", meta: "Egmatic, Jul 2026 · summarises Swink's Game Feel, Juice It or Lose It (2012), The Art of Screenshake (2013)" },
+        { id: "s9", n: "9", title: "Making a Game Feel “Juicy” with Simple Effects", url: "https://itch.io/blog/1059831/making-a-game-feel-juicy-with-simple-effects", meta: "itch.io, Sep 2025 · the UI-specific juice list" },
+        { id: "s10", n: "10", title: "Building Scalable Type Systems for Game Interfaces: HUD to Handheld", url: "https://www.sidebearings.com/game-ui-type-system/", meta: "Side Bearings, Jun 2026 · angular size floor, role-locked tokens, treatment-above-type" },
+        { id: "s11", n: "11", title: "Into the Breach dev on UI design: 'Sacrifice cool ideas for the sake of clarity every time'", url: "https://www.gamedeveloper.com/design/-i-into-the-breach-i-dev-on-ui-design-sacrifice-cool-ideas-for-the-sake-of-clarity-every-time-", meta: "Game Developer, Mar 2018 · quoting Subset Games' Justin Ma to Rock Paper Shotgun" }
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>
