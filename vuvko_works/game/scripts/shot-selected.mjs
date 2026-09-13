@@ -36,7 +36,14 @@ await page.waitForSelector("[data-unit]", { timeout: 20000 });
 const token = page.locator("[data-unit]").first();
 const box = await token.boundingBox();
 if (box !== null) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-await page.waitForTimeout(1200);
+await page.waitForTimeout(900);
+
+/* And hover a hex a few steps off, so the shot shows the planned route rather
+   than only the selection. */
+if (box !== null) {
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 150, { steps: 12 });
+}
+await page.waitForTimeout(900);
 await page.screenshot({ path: out });
 console.log(`saved ${out}`);
 await browser.close();

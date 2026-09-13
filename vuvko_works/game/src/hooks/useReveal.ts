@@ -17,7 +17,7 @@
  * droppable by construction rather than by discipline.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PRESETS, prefersReducedMotion, setAndReveal } from "../vendor/derelict-fx.js";
 
 export type RevealPreset = keyof typeof PRESETS;
@@ -30,12 +30,17 @@ export type RevealPreset = keyof typeof PRESETS;
  * happened, and the essay's rule is no idle motion on data.
  */
 export function useReveal(text: string, preset: RevealPreset = "panel") {
-  const ref = useRef<HTMLElement | null>(null);
+  /* A callback ref rather than `useRef`, because the element is the other half
+     of this effect's input and a plain ref is invisible to the dependency
+     array. A panel that mounts *after* its text was computed — which is every
+     panel that appears on selection — would otherwise never be written to at
+     all: the effect ran once with no element, and nothing it depended on
+     changed when one arrived. That was a blank row on screen. */
+  const [element, setElement] = useState<HTMLElement | null>(null);
   const shown = useRef<string | null>(null);
 
   useEffect(
     function reveal() {
-      const element = ref.current;
       if (element === null) return;
       if (shown.current === text) return;
 
@@ -61,8 +66,10 @@ export function useReveal(text: string, preset: RevealPreset = "panel") {
         element.textContent = text;
       };
     },
-    [text, preset],
+    [element, text, preset],
   );
 
-  return ref;
+  /* `setElement` is the ref: React calls it with the node and with null on
+     unmount, which is exactly a callback ref's contract. */
+  return setElement;
 }

@@ -57,7 +57,7 @@ export function GameScreen(props: GameScreenProps) {
 
   const [logOpen, setLogOpen] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
-  const [tab, setTab] = useState<"tile" | "unit">("unit");
+
   const last = lines.at(-1);
   /* The two things that reveal rather than appear.
 
@@ -66,8 +66,6 @@ export function GameScreen(props: GameScreenProps) {
      number is the only number that scrambles, because its change *is* the
      event; hit points and pool cut, per `design/ui-kit/motion.md` §2, since a
      840ms reveal is longer than the strike it describes. */
-  const logRef = useReveal(last?.text ?? "Boarded.", "log");
-  const turnRef = useReveal(String(state.turn), "value");
   const room =
     selected == null ? undefined : deck.zones.get(deck.cells.get(hexKey(selected))?.zoneId ?? -1);
   const chosen =
@@ -76,6 +74,21 @@ export function GameScreen(props: GameScreenProps) {
       : state.units.find(function standingThere(unit) {
           return unit.at.q === selected.q && unit.at.r === selected.r && unit.hp > 0;
         });
+  const logRef = useReveal(last?.text ?? "Boarded.", "log");
+  /* The panels re-reveal when what they say changes, on the kit's own `panel`
+     preset — 135ms of stagger and four ticks, so the three lines resolve one
+     after another rather than together. */
+  const roomNameRef = useReveal(room?.name ?? "—", "panel");
+  const roomKindRef = useReveal(room?.kind ?? "—", "panel");
+  /* The deck writes an empty string for "no hazard", not null, so `??` never
+     fires — a blank row where the answer is the reassuring one. */
+  const roomHazardRef = useReveal(
+    room?.hazard === null || room?.hazard === undefined || room.hazard === ""
+      ? "sound"
+      : room.hazard,
+    "panel",
+  );
+  const turnRef = useReveal(String(state.turn), "value");
 
   /* The two keys the buttons advertise. Space ends the turn, z takes back —
      both ignored while a text field has focus, which there is not one of today
@@ -195,62 +208,33 @@ export function GameScreen(props: GameScreenProps) {
         </strong>
       )}
 
-      {/* What you picked up, as the kit's two tabs.
-
-          The squad was a permanent column listing every drone, and each drone's
-          hit points are already drawn on its own token — it repeated the map at
-          the cost of a quarter of the screen. This appears when you select
-          something and goes when you clear, which is what both artboards do:
-          4a shows nothing because nothing is selected, 4b shows the pair of
-          tabs because something is. */}
+      {/* Two panels, as 4a stacks them, each re-revealing when what it says
+          changes. The tabbed single panel was 4b's answer to a 390px-tall
+          phone and it came in here by mistake — on a desktop board reading one
+          was costing a click on the other. */}
       {room === undefined ? null : (
-        <aside className="screen__card screen__side">
-          <div className="screen__tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "tile"}
-              className="screen__tab"
-              onClick={function pickTile() {
-                setTab("tile");
-              }}
-            >
-              Tile
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "unit"}
-              className="screen__tab"
-              disabled={chosen === undefined}
-              onClick={function pickUnit() {
-                setTab("unit");
-              }}
-            >
-              Unit
-            </button>
-          </div>
-          {tab === "unit" && chosen !== undefined ? (
-            <UnitCard unit={chosen} />
-          ) : (
-            <dl className="screen__facts">
-              <dt>Room</dt>
-              <dd>{room.name}</dd>
-              <dt>Kind</dt>
-              <dd>{room.kind}</dd>
-              {room.hazard === null ? null : (
-                <>
-                  <dt>Hazard</dt>
-                  <dd style={{ color: "var(--stamp)" }}>{room.hazard}</dd>
-                </>
-              )}
-            </dl>
-          )}
+        <aside className="screen__card screen__tile">
+          <h2 className="screen__sideHeading">Tile</h2>
+          <dl className="screen__facts">
+            <dt>Room</dt>
+            <dd ref={roomNameRef} />
+            <dt>Kind</dt>
+            <dd ref={roomKindRef} />
+            <dt>Ground</dt>
+            <dd ref={roomHazardRef} />
+          </dl>
           {unreachableRooms.length === 0 ? null : (
             <p className="screen__note">
               Sealed, left without a node: {unreachableRooms.join(", ")}.
             </p>
           )}
+        </aside>
+      )}
+
+      {chosen === undefined ? null : (
+        <aside className="screen__card screen__unit">
+          <h2 className="screen__sideHeading">Unit</h2>
+          <UnitCard unit={chosen} />
         </aside>
       )}
 

@@ -36,14 +36,16 @@
   backdrop-filter: blur(2px);
 }
 
+/* 4a's measurements, which are not arbitrary: a 46px rail, then everything
+   else on a 12px margin in 300px columns. */
 .screen__title {
-  /* Clear of the rail, which owns the left edge. */
-  left: 58px;
+  left: 60px;
   top: 12px;
+  width: 300px;
   display: flex;
-  gap: 18px;
-  align-items: baseline;
-  padding: 9px 14px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
 }
 
 .screen__ship {
@@ -64,17 +66,48 @@
 }
 
 /* The squad, top right, and only as wide as a card needs to be. */
-.screen__side {
+/* Two panels, not one with tabs.
+
+   The tabs were 4b's answer to a 390px-tall phone; on the desktop board 4a
+   stacks a tile panel and a unit panel down the right edge, each 300px wide,
+   with a bracket in the corner nearest the middle of the screen. Reading one
+   was costing a click on the other. */
+.screen__tile {
   right: 12px;
-  top: 12px;
-  /* Clear of the buttons, which sit in the same corner. */
-  bottom: 104px;
-  width: 264px;
-  padding: 10px 12px;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  top: 140px;
+  width: 300px;
+  padding: 12px 14px;
+}
+
+.screen__unit {
+  right: 12px;
+  bottom: 116px;
+  width: 300px;
+  padding: 12px 14px;
+}
+
+/* The bracket: two sides of a corner in the friendly colour, which is how the
+   kit marks a panel as live rather than giving it a heavier border. */
+.screen__tile::before,
+.screen__unit::before {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--drone);
+  border-style: solid;
+}
+
+.screen__tile::before {
+  left: -1px;
+  top: -1px;
+  border-width: 2px 0 0 2px;
+}
+
+.screen__unit::before {
+  right: -1px;
+  bottom: -1px;
+  border-width: 0 2px 2px 0;
 }
 
 .screen__sideHeading {
@@ -96,15 +129,18 @@
 .screen__acts {
   position: absolute;
   right: 12px;
-  bottom: 38px;
-  z-index: 3;
+  bottom: 42px;
+  z-index: 6;
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .screen__button {
-  min-width: 96px;
-  padding: 12px 18px;
+  /* 76 and 152 wide, 54 tall: the committing one is twice the reversible one,
+     which is the size difference doing the telling. */
+  width: 76px;
+  height: 54px;
+  padding: 0;
   background: color-mix(in oklab, var(--panel) 92%, transparent);
   border: 1px solid var(--rule);
   color: var(--ink);
@@ -129,8 +165,9 @@
 
 /* The committing one is the only lit control on the screen. */
 .screen__button--go {
+  width: 152px;
   border-color: var(--drone);
-  background: color-mix(in oklab, var(--drone) 16%, var(--panel));
+  background: color-mix(in oklab, var(--drone) 20%, var(--panel));
 }
 
 .screen__key {
@@ -234,22 +271,30 @@
 
 /* The rail, far left, where the kit puts it: the one column of the screen that
    never has map worth seeing in it, because the deck is centred. */
+/* A column, not a row of floating buttons: full height, its own ground, a rule
+   down its right edge. It is the one strip of the screen that never has map
+   worth seeing in it. */
 .screen__rail {
   position: absolute;
   left: 0;
-  top: 12px;
-  z-index: 3;
+  top: 0;
+  bottom: 26px;
+  width: 46px;
+  z-index: 6;
+  background: var(--panel);
+  border-right: 1px solid var(--rule);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  padding-top: 12px;
+  gap: 6px;
 }
 
 .screen__railButton {
-  width: 46px;
-  height: 40px;
-  background: color-mix(in oklab, var(--panel) 88%, transparent);
-  border: 1px solid var(--rule);
-  border-left: 0;
+  width: 34px;
+  height: 34px;
+  background: none;
+  border: 1px solid transparent;
   color: var(--dim);
   font: 400 var(--font-md) / 1 var(--font-mono);
   cursor: pointer;
@@ -262,7 +307,7 @@
 }
 
 .screen__brief {
-  left: 58px;
+  left: 60px;
   top: 70px;
   width: 300px;
   padding: 10px 12px;

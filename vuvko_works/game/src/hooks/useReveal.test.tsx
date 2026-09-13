@@ -69,6 +69,31 @@ describe("revealing text a frame at a time", () => {
     view.drop();
   });
 
+  it("writes into an element that arrives after the text did", () => {
+    /* The case that was broken: a panel appears on selection, so its text is
+       computed on a render where there is no element to put it in. A plain ref
+       is invisible to the effect's dependencies, so nothing ever wrote to it
+       and the row sat blank. */
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    function Late(props: { readonly open: boolean }) {
+      const ref = useReveal("sound", "panel");
+      return props.open ? <span id="late" ref={ref} /> : null;
+    }
+    act(() => {
+      root.render(<Late open={false} />);
+    });
+    act(() => {
+      root.render(<Late open />);
+    });
+    expect(host.querySelector("#late")?.textContent).toBe("sound");
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
   it("survives text arriving faster than a reveal takes", () => {
     const view = mount();
     for (const text of ["a", "b", "c", "d", "e"]) view.show(text);
