@@ -471,7 +471,10 @@ export function DeckView(props: DeckViewProps) {
                   ? `D${unitOnMap.id + 1}`
                   : ROSTER[unitOnMap.type].label.slice(0, 1).toUpperCase();
               return (
-                <g key={`unit-${unitOnMap.id}`}>
+                /* `data-unit` is how an effect finds this token without a ref
+                   through thirteen layers of SVG, and without React owning the
+                   attribute an effect writes. See design/ui-kit/motion.md. */
+                <g key={`unit-${unitOnMap.id}`} data-unit={unitOnMap.id}>
                   <circle
                     cx={x}
                     cy={y}

@@ -48,6 +48,14 @@ export interface GameStore {
   /** What `start` was given, so undo can rebuild the opening position. */
   opening: { raw: RawDeckExport; overrides?: Partial<MissionSettings> } | null;
   events: GameEvent[];
+  /**
+   * Just what the last dispatch produced.
+   *
+   * `events` is the whole mission and feeds the log; this is the beat the
+   * presentation layer animates. One field, replaced not appended, so nothing
+   * has to diff a growing array to find out what just happened.
+   */
+  lastBatch: GameEvent[];
   unreachableRooms: readonly string[];
   nudgedPlacements: number;
 
@@ -115,6 +123,7 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
       /* Everything up to and including a revealing command is final. */
       sealed: sealsTheTurn(result.events) ? history.length : get().sealed,
       events: [...get().events, ...result.events],
+      lastBatch: [...result.events],
     });
   }
 
@@ -130,6 +139,7 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
     history: [],
     sealed: 0,
     opening: null,
+    lastBatch: [],
     events: [],
     unreachableRooms: [],
     nudgedPlacements: 0,
@@ -145,6 +155,7 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
         history: [],
         sealed: 0,
         events: [],
+        lastBatch: [],
         unreachableRooms: mission.report.unreachableRooms,
         nudgedPlacements: mission.report.nudgedPlacements,
       });
@@ -177,6 +188,8 @@ export const useGameStore = create<GameStore>(function createStore(set, get) {
         state: replayed.state,
         history: kept,
         events: [...replayed.events],
+        /* An undo is not a beat: nothing happened, something un-happened. */
+        lastBatch: [],
       });
     },
 
