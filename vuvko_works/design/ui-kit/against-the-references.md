@@ -60,5 +60,17 @@ assumed DOM is how a kit ends up owning a game.
   the 73-hex deck the kit was drawn from and wrong on a 200-hex one.
 - **Token movement with ghosts** (`wake`), which depends on the split and on a
   path being available — `unitMoved` carries `from` and `to`, not the route.
-- **Contrast ratios**, unmeasured. The navy ground moved every foreground
-  colour's contrast and nothing has checked the result against AA.
+Contrast is no longer among them. Measured against the navy ground:
+
+```
+  ink       13.44:1      drone      7.75:1
+  ink-text  11.08:1      node       7.81:1
+  dim        5.78:1      door      10.12:1
+  ship       4.86:1      rule       1.64:1
+```
+
+Every foreground clears AA — `--dim` at 5.78 is the one worth naming, because
+the quiet colour on a dark ground is where a palette usually fails and it owes
+the full 4.5 rather than the large-text 3, being small text. `--rule` is below
+3 deliberately and the test records that as a decision: it is a one-pixel
+border and nothing is ever written in it.
