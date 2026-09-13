@@ -273,3 +273,52 @@
   font: 400 var(--font-sm)/var(--line-sm) var(--font-mono);
   color: var(--ink-text);
 }
+
+/* The two tabs, which is how 4b shows a tile and a unit in one 300px column
+   rather than stacking them and running out of height on a phone. */
+.screen__tabs {
+  display: flex;
+  gap: 0;
+  margin: -10px -12px 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.screen__tab {
+  flex: 1;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--dim);
+  font: 600 var(--font-sm) / 1 var(--font-label);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.screen__tab[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--drone);
+}
+
+.screen__tab:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.screen__facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font: 400 var(--font-sm)/var(--line-sm) var(--font-mono);
+}
+
+.screen__facts dt {
+  color: var(--dim);
+}
+
+.screen__facts dd {
+  margin: 0;
+  color: var(--ink-text);
+}

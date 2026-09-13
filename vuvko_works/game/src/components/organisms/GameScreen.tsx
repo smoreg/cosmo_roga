@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useReveal } from "../../hooks/useReveal";
+import { hexKey } from "../../core/hex";
 import type { Axial, Point } from "../../core/hex";
 import { hostiles, liveNodes, liveSpawners } from "../../core/topology";
 import type { DeckMap, GameState } from "../../core/types";
@@ -56,6 +57,7 @@ export function GameScreen(props: GameScreenProps) {
 
   const [logOpen, setLogOpen] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
+  const [tab, setTab] = useState<"tile" | "unit">("unit");
   const last = lines.at(-1);
   /* The two things that reveal rather than appear.
 
@@ -66,6 +68,8 @@ export function GameScreen(props: GameScreenProps) {
      840ms reveal is longer than the strike it describes. */
   const logRef = useReveal(last?.text ?? "Boarded.", "log");
   const turnRef = useReveal(String(state.turn), "value");
+  const room =
+    selected == null ? undefined : deck.zones.get(deck.cells.get(hexKey(selected))?.zoneId ?? -1);
   const chosen =
     selected == null
       ? undefined
@@ -191,17 +195,57 @@ export function GameScreen(props: GameScreenProps) {
         </strong>
       )}
 
-      {/* Only what is selected, and nothing when nothing is.
+      {/* What you picked up, as the kit's two tabs.
 
-          The squad was a permanent column listing every drone. Each drone's hit
-          points are already drawn on its own token, so the column repeated the
-          map at the cost of a quarter of the screen — and the kit's 4a has no
-          such column. It appears when you pick somebody up and goes when you
-          put them down. */}
-      {chosen === undefined ? null : (
+          The squad was a permanent column listing every drone, and each drone's
+          hit points are already drawn on its own token — it repeated the map at
+          the cost of a quarter of the screen. This appears when you select
+          something and goes when you clear, which is what both artboards do:
+          4a shows nothing because nothing is selected, 4b shows the pair of
+          tabs because something is. */}
+      {room === undefined ? null : (
         <aside className="screen__card screen__side">
-          <h2 className="screen__sideHeading">{chosen.side === "drone" ? "Drone" : "Contact"}</h2>
-          <UnitCard unit={chosen} />
+          <div className="screen__tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "tile"}
+              className="screen__tab"
+              onClick={function pickTile() {
+                setTab("tile");
+              }}
+            >
+              Tile
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "unit"}
+              className="screen__tab"
+              disabled={chosen === undefined}
+              onClick={function pickUnit() {
+                setTab("unit");
+              }}
+            >
+              Unit
+            </button>
+          </div>
+          {tab === "unit" && chosen !== undefined ? (
+            <UnitCard unit={chosen} />
+          ) : (
+            <dl className="screen__facts">
+              <dt>Room</dt>
+              <dd>{room.name}</dd>
+              <dt>Kind</dt>
+              <dd>{room.kind}</dd>
+              {room.hazard === null ? null : (
+                <>
+                  <dt>Hazard</dt>
+                  <dd style={{ color: "var(--stamp)" }}>{room.hazard}</dd>
+                </>
+              )}
+            </dl>
+          )}
           {unreachableRooms.length === 0 ? null : (
             <p className="screen__note">
               Sealed, left without a node: {unreachableRooms.join(", ")}.
