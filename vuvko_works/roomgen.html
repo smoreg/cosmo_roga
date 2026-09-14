@@ -65,9 +65,10 @@ button.go:hover{background:color-mix(in oklab, var(--drone) 20%, transparent)}
   <div>
     <h2>Hull</h2>
     <div class="row"><label for="seed">seed</label><input id="seed" value="OSPREY-1"></div>
-    <div class="row"><label for="prof">profile</label><input id="prof" value="2-4-5-5-4-4-3-2"></div>
+    <div class="row"><label for="prof">profile</label><input id="prof" value="1-3-5-5-5-5-3-1"></div>
     <div class="row"><label for="dock">dock at</label>
       <select id="dock" style="flex:1">
+        <option value="mid">amidships — both ends lie deep</option>
         <option value="bow">the bow — walk aft to the reactor</option>
         <option value="stern">the stern — walk forward to the bridge</option>
       </select>
@@ -197,23 +198,30 @@ function parseProfile(text){
  * profile, counted from the bow, becomes column `n - 1 - i`.
  */
 function sectionsOf(profile){
-  /* Parity first. A row sits on the section grid only when its width matches
-     the beam's parity — mix the two and every compartment in that row lands
-     half a section across, which is the same reason `geomorph-core.js` squares
-     off a parity change it has no transition piece for. Here it would simply
-     put a row off-centre and make the hull look bent. */
-  const beam = Math.max(...profile);
-  const squared = profile.map(w => ((beam - w) & 1) ? Math.max(1, w - 1) : w);
+  /* The profile is taken as written.
 
+     It used to be squared off so every column matched the beam's parity, which
+     sounds tidy and is not: against a beam of five it turned 2-4-5-5-4-4-3-2
+     into 1-3-5-5-3-3-3-1, threw away half the shape and left a hull that
+     stepped in threes. A column whose parity differs simply sits half a
+     section off centre, and half a section is a thing the archive draws — so
+     the step is chamfered with a fifty-foot corner rather than legislated
+     away. */
+  const beam = Math.max(...profile);
   const cells = [];
-  squared.forEach(function acrossTheBeam(width, i){
-    const col = squared.length - 1 - i;         // the rotation, in one line
-    const offset = (beam - width) / 2;          // exact, now parity is settled
+  profile.forEach(function acrossTheBeam(width, i){
+    const col = profile.length - 1 - i;         // the rotation, in one line
+    /* Centred on the keel. A column whose width does not share the beam's
+       parity cannot be centred on a hundred-foot grid at all — it lands half a
+       section off, and the hull leans. Keep a profile's widths all one parity
+       and it is exactly symmetric; mix them and the chamfers soften what is
+       left. */
+    const offset = (beam - width) >> 1;
     for (let j = 0; j < width; j++){
       cells.push({col, row: offset + j});
     }
   });
-  return {cells, beam, length: squared.length, squared};
+  return {cells, beam, length: profile.length};
 }
 
 /* --------------------------------------------------------------- the kinds */
@@ -222,10 +230,12 @@ function sectionsOf(profile){
    must appear exactly once, what must sit deep, and what may fill the rest. */
 const ENTRY_KIND = "docking";
 const DEEP_DEPTH = 3;
+/* `pull` says which end of the ship the compartment belongs at: -1 aft, +1
+   forward. Columns run west to east, so aft is a low column and the bow high. */
 const REQUIRED = [
-  {kind: "engineering", name: "ENGINEERING", deep: false},
-  {kind: "reactor",     name: "REACTOR",     deep: true},
-  {kind: "control",     name: "CONTROL",     deep: true},
+  {kind: "engineering", name: "ENGINEERING", deep: false, pull: -1},
+  {kind: "reactor",     name: "REACTOR",     deep: true,  pull: -1},
+  {kind: "control",     name: "CONTROL",     deep: true,  pull:  1},
 ];
 const FILLER = [
   {kind: "corridor",    name: "CORRIDOR RING", weight: 3, cover: false},
@@ -292,23 +302,46 @@ async function loadTiles(){
     const drawable = new Set(man.tiles.filter(t => !t.overlay).map(t => t.path));
     const byRole = new Map();
     const skin = new Map();
+    const doors = new Map();
+    const proud = new Map();
     const all = [];
+    const corner = new Map();
     for (const path in tax.tiles){
       const tile = tax.tiles[path];
       const ft = tile.ft || [];
       /* One compartment is one section is one hundred feet square. Anything
          else would have to be cut or stretched to sit under a hexagon. */
-      if (ft[0] !== 100 || ft[1] !== 100 || !drawable.has(path)) continue;
+      if (!drawable.has(path)) continue;
+      /* Fifty-foot pieces are kept aside for the chamfers, and only the ones
+         that are edge art: a corner of open deck laid into a hull step reads
+         as a hole rather than as plating. */
+      if (ft[0] === 50 && ft[1] === 50){
+        /* Corner plating, and only that. Most of the fifty-foot pieces are
+           external fittings — masts, scoops, shuttles — and a notch filled
+           with one of those reads as debris beside the ship rather than as
+           the hull carrying on. A real corner has plating on two adjoining
+           sides and no art spilling off it. */
+        const sk = tile.skin || [];
+        if (sk.length !== 2 || (tile.proud || []).length) continue;
+        const key = sk.slice().sort().join("");
+        if (!corner.has(key)) corner.set(key, []);
+        corner.get(key).push(path);
+        continue;
+      }
+      if (ft[0] !== 100 || ft[1] !== 100) continue;
       all.push(path);
       skin.set(path, tile.skin || []);
+      doors.set(path, tile.doors || {});
+      proud.set(path, tile.proud || []);
       for (const role of tile.roles || []){
         if (!byRole.has(role)) byRole.set(role, []);
         byRole.get(role).push(path);
       }
     }
-    TILES = all.length ? {byRole, skin, all} : null;
+    TILES = all.length ? {byRole, skin, doors, proud, all, corner} : null;
     note.textContent = TILES
-      ? all.length + " hundred-foot tiles indexed."
+      ? all.length + " hundred-foot tiles, "
+        + [...corner.values()].reduce((n, l) => n + l.length, 0) + " fifty-foot corners."
       : "No hundred-foot tiles in the index.";
   } catch {
     TILES = null;
@@ -329,6 +362,24 @@ async function loadTiles(){
 const TILE_SIDE = {e: "n", s: "e", w: "s", n: "w"};
 
 /**
+ * Where a doorway has to sit for two tiles to meet at it.
+ *
+ * The archive puts them a quarter and three quarters along an edge, and
+ * 1625 of the 1768 openings on a hundred-foot tile are at one of those two
+ * places. Those are the ones that line up: neighbour to neighbour on a whole
+ * section, and across a half-section step as well, where the one at 25 meets
+ * the one at 75. A door anywhere else opens onto its neighbour's wall.
+ */
+const DOOR_STATIONS = [25, 75];
+const DOOR_SLOP = 2;
+
+function opensAt(positions){
+  return (positions || []).some(function standard(x){
+    return DOOR_STATIONS.some(st => Math.abs(x - st) <= DOOR_SLOP);
+  });
+}
+
+/**
  * Which tile a compartment wears.
  *
  * Role decides what kind of deck it is; `skin` decides whether it can sit
@@ -339,9 +390,26 @@ const TILE_SIDE = {e: "n", s: "e", w: "s", n: "w"};
  *
  * Seeded, so a seed reproduces the picture.
  */
-function artFor(rooms, seed, sections, occupied){
+function artFor(rooms, seed, sections, occupied, ship){
   if (!TILES) return null;
   const rand = rng(seed + ":art");
+
+  /* Which sections a door actually joins, so a tile can be asked for an
+     opening exactly where the ship has one. A wall in the archive is a white
+     line and a door is a black break in it, which is how the taxonomy knows
+     where the openings are; every hundred-foot tile that has them puts them
+     near 25 and 75 feet along the edge, so two neighbours that both carry one
+     meet — on a whole section, and across a half-section step alike, where 25
+     lands on 75. */
+  const joined = new Set();
+  for (const door of ship.doors){
+    if (door.a === door.b || door.state === "airlock") continue;
+    joined.add(door.a + ">" + door.b);
+    joined.add(door.b + ">" + door.a);
+  }
+  const roomAt = new Map();
+  for (const [id, cell] of sections) roomAt.set(cell.col + "," + cell.row, id);
+
   const out = new Map();
   for (const room of rooms){
     const roles = KIND_ROLES[room.kind] || [];
@@ -352,12 +420,15 @@ function artFor(rooms, seed, sections, occupied){
     }
     if (!pool.length) pool = TILES.all;
 
-    /* Where this section meets space rather than another compartment. */
-    const open = new Set();
+    /* What each of the four walls has to be: space, a doorway, or a bulkhead. */
+    const here = sections.get(room.id);
+    const want = {};
     for (const dir in SHIP_STEP){
       const step = SHIP_STEP[dir];
-      const here = sections.get(room.id);
-      if (!occupied.has((here.col + step[0]) + "," + (here.row + step[1]))) open.add(dir);
+      const key = (here.col + step[0]) + "," + (here.row + step[1]);
+      if (!occupied.has(key)) { want[dir] = "space"; continue; }
+      const far = roomAt.get(key);
+      want[dir] = joined.has(room.id + ">" + far) ? "door" : "wall";
     }
 
     let best = null, bestScore = -Infinity;
@@ -368,14 +439,40 @@ function artFor(rooms, seed, sections, occupied){
     for (let n = 0; n < pool.length; n++){
       const path = pool[(start + n) % pool.length];
       const skin = new Set(TILES.skin.get(path) || []);
+      const doors = TILES.doors.get(path) || {};
+      const proud = new Set(TILES.proud.get(path) || []);
       let score = 0;
       for (const dir of ["n", "s", "e", "w"]){
-        const has = skin.has(TILE_SIDE[dir]);
-        if (open.has(dir)) score += has ? 3 : -1;
-        else score += has ? -4 : 1;     // plating inside the ship is the worst fault
+        const side = TILE_SIDE[dir];
+        const plated = skin.has(side);
+        const lined = opensAt(doors[side]);
+        const opening = doors[side] !== undefined;
+        /* Art that runs off the edge of its own tile has to have somewhere to
+           run to. A proud side laid against a neighbour paints over it, so the
+           spill is what says this tile faces out — and the two sides of that
+           are worth more than any other single fault here. */
+        if (proud.has(side)) score += want[dir] === "space" ? 4 : -8;
+        if (want[dir] === "space"){
+          /* Facing space: plating is what should be there, and a doorway
+             opening onto vacuum is the one thing that cannot be right. */
+          score += plated ? 3 : -1;
+          score += opening ? -3 : 1;
+        } else if (want[dir] === "door"){
+          /* The ship says there is a way through here, so the art has to
+             agree — and agree at the right place, or the opening meets its
+             neighbour's wall and the two decks do not join. */
+          score += lined ? 5 : opening ? 1 : -5;
+          score += plated ? -4 : 0;
+        } else {
+          /* A neighbour, but no door: a bulkhead. Preferred, not demanded —
+             most interior tiles open on every side and refusing them all
+             would leave nothing to build a ship out of. */
+          score += plated ? -4 : 1;
+          score += opening ? -1 : 1;
+        }
       }
       if (score > bestScore) { bestScore = score; best = path; }
-      if (score === 4) break;            // a perfect fit; nothing to beat it
+      if (score >= 16) break;            // nothing can beat a wall-perfect fit
     }
     out.set(room.id, best);
   }
@@ -393,8 +490,14 @@ function buildShip(opts){
   /* Where the drone comes aboard. At the bow the run walks aft into the
      engines, which is the reading the hull's own art gives; at the stern it
      walks forward to the bridge. Both are legal and the deep rooms follow. */
+  /* Where the drone comes aboard.
+     Amidships by default, and not for realism: the reactor and the bridge are
+     both marked deep, and they sit at opposite ends of a ship. Board at either
+     end and the far one is deep while the near one is two doors in. Board in
+     the middle and the ship runs away from you in both directions, which is
+     the only place all three systems can lie past the deep line at once. */
   const atBow = opts.dock === "bow";
-  const entryCol = atBow ? length - 1 : 0;
+  const entryCol = opts.dock === "mid" ? (length - 1) >> 1 : atBow ? length - 1 : 0;
   const onEntryEdge = cells.filter(c => c.col === entryCol);
   const entryCell = onEntryEdge[Math.floor(rand() * onEntryEdge.length) % onEntryEdge.length];
 
@@ -439,6 +542,9 @@ function buildShip(opts){
      compartment nothing will adopt at the cap is adopted anyway on a second
      pass: a ship in two pieces is a worse fault than a crowded wall. */
   const KIDS = 2;
+  /* The schematic draws a column per depth and holds six boxes in one, so a
+     depth band wider than that cannot be drawn at all (`MAX_COLUMN`). */
+  const BAND = 6;
   const seen = new Set([entry.id]);
   const kids = new Map([[entry.id, 0]]);
   const tree = [];
@@ -453,7 +559,12 @@ function buildShip(opts){
         const edge = pending[i];
         const far = edge.a === here ? edge.b : edge.b === here ? edge.a : null;
         if (far === null || seen.has(far)) continue;
-        if ((kids.get(here) ?? 0) >= cap) continue;
+        /* The entry never relaxes. It carries the airlock on its shallow wall
+           and everything else leaves by the deep one, so a third child there
+           is a third door out of one side of the box whatever the rest of the
+           ship needs. */
+        const limit = here === entry.id ? KIDS : cap;
+        if ((kids.get(here) ?? 0) >= limit) continue;
         pending.splice(i, 1);
         kids.set(here, (kids.get(here) ?? 0) + 1);
         kids.set(far, 0);
@@ -461,8 +572,12 @@ function buildShip(opts){
       }
     }
   }
-  grow(KIDS);
-  if (seen.size !== rooms.length) grow(Infinity);
+  /* Relaxed a step at a time rather than all at once: the first compartment
+     that cannot be adopted at two should not hand every other one a licence. */
+  for (const cap of [KIDS, 3, 4, Infinity]){
+    if (seen.size === rooms.length) break;
+    grow(cap);
+  }
   if (seen.size !== rooms.length){
     return {error: "The profile makes a hull in more than one piece. Check the digits."};
   }
@@ -499,6 +614,34 @@ function buildShip(opts){
   }
   for (const room of rooms) room.depth = near.get(room.id) ?? 0;
 
+  /* A depth band the schematic cannot draw is a ship that cannot be shown,
+     whatever the honeycomb makes of it. Caught here, where the profile can be
+     blamed, rather than by the importing game. */
+  const band = new Map();
+  for (const room of rooms) band.set(room.depth, (band.get(room.depth) ?? 0) + 1);
+  for (const [depth, n] of band){
+    if (n > BAND){
+      return {error: "Depth " + depth + " holds " + n + " compartments and the "
+        + "schematic draws " + BAND + " to a column. Narrow the beam, or board "
+        + "at an end so the ship runs away from you one way instead of two."};
+    }
+  }
+
+  const deeperOut = new Map(rooms.map(r => [r.id, 0]));
+  for (const door of doors){
+    if (door.a === door.b) continue;
+    const da = near.get(door.a), db = near.get(door.b);
+    if (db > da) deeperOut.set(door.a, deeperOut.get(door.a) + 1);
+    else if (da > db) deeperOut.set(door.b, deeperOut.get(door.b) + 1);
+  }
+  for (const [id, n] of deeperOut){
+    if (n > 2){
+      return {error: "A compartment has " + n + " ways deeper into the ship and "
+        + "the schematic draws two to a wall. Try another seed, or a profile "
+        + "that does not fan out so fast."};
+    }
+  }
+
   const stacked = new Map();
   for (const room of rooms){
     const n = stacked.get(room.depth) ?? 0;
@@ -529,13 +672,25 @@ function buildShip(opts){
 
   /* The three systems a derelict is neutralised by need three compartments to
      stand in, each exactly once, and two of them below the deep line. Placed
-     before the filler so the filler can never crowd them out. */
-  const deepest = rooms.slice().sort((a, b) => b.depth - a.depth);
+     before the filler so the filler can never crowd them out.
+
+     Placed by *where they belong* first and by depth second. A reactor amidships
+     and a bridge in the engine room satisfy every rule the validator has and
+     still look like nobody drew the ship — the drives are aft because that is
+     where the thrust goes, and the bridge is forward because that is where the
+     windows are. Each spec names the end it wants; among the compartments at
+     that end, the deepest wins. */
   const taken = new Set([entry.id]);
   const missing = [];
   for (const spec of REQUIRED){
-    const fits = deepest.find(r => !taken.has(r.id) && (!spec.deep || r.depth >= DEEP_DEPTH));
-    if (!fits) { missing.push(spec.kind); continue; }
+    const wanted = rooms.filter(r => !taken.has(r.id) && (!spec.deep || r.depth >= DEEP_DEPTH));
+    if (!wanted.length){ missing.push(spec.kind); continue; }
+    /* `pull` is -1 for the stern and +1 for the bow; ties break on depth. */
+    wanted.sort(function byEnd(a, b){
+      const ea = spec.pull * a._cell.col, eb = spec.pull * b._cell.col;
+      return eb - ea || b.depth - a.depth;
+    });
+    const fits = wanted[0];
     taken.add(fits.id);
     fits.kind = spec.kind; fits.name = spec.name;
   }
@@ -561,7 +716,8 @@ function buildShip(opts){
   return {
     ship: {rooms, doors, entry: entry.id},
     missing, sections, occupied,
-    stats: {beam, length, loops: loops.length, sections: cells.length, atBow},
+    stats: {beam, length, loops: loops.length, sections: cells.length,
+            boards: opts.dock === "mid" ? "amidships" : atBow ? "the bow" : "the stern"},
   };
 }
 
@@ -626,6 +782,8 @@ function validate(ship, missing){
 
 /* ------------------------------------------------------------------ drawing */
 
+const seedOf = () => document.getElementById("seed").value;
+
 const SVG = "http://www.w3.org/2000/svg";
 function el(name, attrs){
   const node = document.createElementNS(SVG, name);
@@ -650,26 +808,94 @@ function draw(ship, art, sections){
   svg.replaceChildren();
   const size = 30;
 
-  /* The plan is drawn on the section grid, not on the lattice.
+  /* The lattice is the geometry, and the tiles sit on it.
 
-     A deck plan has to be continuous or it is not a ship, and the lattice
-     cannot carry one: SALVOR spaces its hexagons apart on purpose, because the
-     gap between them is where a corridor goes. Sections have no such gap — a
-     hundred feet of deck meets the next hundred feet — so the plan is laid out
-     square and the honeycomb is placed over it, one hexagon to a section.
+     A honeycomb puts alternate rows half a column across, and half a column is
+     fifty feet — which is exactly the offset a hundred-foot tile is allowed to
+     take. So the plan is laid brick fashion on the lattice's own coordinates
+     and comes out continuous: neighbours meet along a full edge east and west,
+     and along a half edge on each of the four diagonals. Nothing had to become
+     a square grid for the deck to join up.
 
-     Each tile is also turned ninety degrees clockwise with the rest of the
-     ship. The archive draws upright, engines at the bottom and bridge at the
-     top, and this hull is on its side. */
-  const pitch = size * 1.9;
+     Each tile is turned ninety degrees clockwise with the rest of the ship:
+     the archive draws upright, engines at the bottom and bridge at the top,
+     and this hull is on its side. */
+  const pitch = size * 2;
   const at = (id) => {
     const cell = sections.get(id);
-    return {x: cell.col * pitch, y: cell.row * pitch};
+    return {x: (cell.col + (cell.row & 1) * 0.5) * pitch, y: cell.row * pitch};
   };
   const seats = ship.rooms.map(r => at(r.id));
+  /* Inset inside its own cell, which is what leaves the gap a corridor runs
+     through — the same reason SALVOR spaces its hexagons by a third. */
+  const hex = pitch * 0.5;
 
   if (art){
     const plan = el("g", {opacity: .62});
+
+    /* Fifty-foot corners at every step in the hull.
+
+       A hundred-foot grid can only change beam a hundred feet at a time, so
+       the outline comes out as a flight of stairs. The archive has nearly a
+       thousand fifty-foot pieces and almost all of them are edge or corner
+       art, which is exactly what a step wants: half a section laid into the
+       notch turns a stair into a chamfer. They are decoration and carry no
+       compartment — the ship is the same ship without them. */
+    if (TILES && TILES.corner.size){
+      const trimRand = rng(seedOf() + ":trim");
+      const rowsIn = new Map();
+      for (const [, cell] of sections){
+        const list = rowsIn.get(cell.col) || [];
+        list.push(cell.row);
+        rowsIn.set(cell.col, list);
+      }
+      const edgeOf = (col) => {
+        const list = rowsIn.get(col);
+        return list ? {top: Math.min(...list), bottom: Math.max(...list)} : null;
+      };
+      const half = pitch / 2;
+      for (const [col] of rowsIn){
+        const here = edgeOf(col);
+        for (const side of [1, -1]){                 // east neighbour, then west
+          const near = edgeOf(col + side);
+          if (!near) continue;
+          for (const end of ["top", "bottom"]){
+            const mine = here[end], theirs = near[end];
+            const outward = end === "top" ? -1 : 1;
+            /* Only where my column reaches further out than its neighbour:
+               that is the corner with nothing in front of it. */
+            if (mine * outward <= theirs * outward) continue;
+            /* The corner has to face the way the notch is open: outward along
+               the beam, and on along the ship. Both are ship directions and
+               the art is in tile space, so both go through the same rotation
+               the tiles themselves do. */
+            const wantSkin = [
+              TILE_SIDE[outward === -1 ? "n" : "s"],
+              TILE_SIDE[side === 1 ? "e" : "w"],
+            ].sort().join("");
+            const pool = TILES.corner.get(wantSkin);
+            if (!pool || !pool.length) continue;
+            const tile = pick(trimRand, pool);
+            /* Into the notch: half way to the shorter neighbour, level with
+               the cell that overhangs it. The corner it fills is the one with
+               nothing in front of it. */
+            /* The notch cell itself, filled. Drawn at the size of the hole it
+               is filling rather than at fifty feet: a half-size fleck in the
+               middle of an empty cell reads as debris in space, and the point
+               of the piece is to carry the hull line across the step. */
+            const cx = (col + side + (mine & 1) * 0.5) * pitch;
+            const cy = mine * pitch;
+            plan.appendChild(el("image", {
+              href: "geomorphs/" + tile,
+              x: cx - pitch / 2, y: cy - pitch / 2, width: pitch, height: pitch,
+              preserveAspectRatio: "none",
+              transform: "rotate(90 " + cx + " " + cy + ")",
+              opacity: .9,
+            }));
+          }
+        }
+      }
+    }
     ship.rooms.forEach(function plate(room, i){
       const tile = art.get(room.id);
       if (!tile) return;
@@ -707,7 +933,7 @@ function draw(ship, art, sections){
     const g = el("g", {});
     const tile = art ? art.get(room.id) : null;
     g.appendChild(el("polygon", {
-      points: corners(c, size),
+      points: corners(c, hex),
       fill, "fill-opacity": tile ? (room.id === ship.entry ? .34 : .22) : (room.id === ship.entry ? .95 : .72),
       stroke: room.id === ship.entry ? "#ffffff" : (tile ? fill : "var(--rule)"),
       "stroke-width": room.id === ship.entry ? 2.5 : (tile ? 2.5 : 1.5),
@@ -774,7 +1000,8 @@ function generate(){
   CURRENT = built.ship;
   const wanted = document.getElementById("art").value === "on";
   const art = wanted
-    ? artFor(built.ship.rooms, document.getElementById("seed").value, built.sections, built.occupied)
+    ? artFor(built.ship.rooms, document.getElementById("seed").value,
+             built.sections, built.occupied, built.ship)
     : null;
   draw(built.ship, art, built.sections);
 
@@ -791,7 +1018,7 @@ function generate(){
     ["length", built.stats.length + " sections"],
     ["loops", built.stats.loops + " possible"],
     ["deepest", Math.max(...built.ship.rooms.map(r => r.depth)) + " doors in"],
-    ["boards at", built.stats.atBow ? "the bow" : "the stern"],
+    ["boards at", built.stats.boards],
   ].map(([k, v]) => "<b>" + k + "</b><span>" + v + "</span>").join("");
 
   document.getElementById("legend").innerHTML = [...kinds].sort().map(k =>

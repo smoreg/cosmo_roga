@@ -194,7 +194,49 @@ all — otherwise the plan grows a hull wall through its own centre and stops
 reading as one ship. 176 of the 280 hundred-foot tiles carry no skin at all,
 which is the interior pool; 70 carry three sides, which is what an end cap is.
 
-**Still open: the doorways are not matched.** Every 100×100 tile carries doors
+**The plan is laid on the lattice, brick fashion.** A honeycomb puts alternate
+rows half a column across, and half a column is fifty feet — exactly the offset
+a hundred-foot tile is allowed to take. So neighbours meet along a full edge
+east and west and along a half edge on each diagonal, and the deck comes out
+continuous without anything becoming a square grid. Hexagons are inset inside
+their own cells, which is what leaves the gap a corridor runs through.
+
+**Four things decide which tile a compartment wears**, all of them read off the
+art by `geomorph_taxonomy.py`, which finds a wall as a white line and a door as
+a black break in it:
+
+- **Role** — what kind of deck it is.
+- **Skin** — hull plating. Wanted exactly where the section has no neighbour,
+  refused everywhere else, or the plan grows a hull wall through its own middle.
+- **Proud** — ink measured *outside* the tile's own bounds. Art that runs off
+  its edge has to have somewhere to run to, so a proud side must face space; laid
+  against a neighbour it paints over it.
+- **Doors, and where they sit.** 1625 of the 1768 openings on a hundred-foot
+  tile are a quarter or three quarters along the edge. Those are the ones that
+  line up — neighbour to neighbour on a whole section, and across a half-section
+  step as well, where the one at 25 meets the one at 75. An opening anywhere
+  else meets its neighbour's wall.
+
+**Fifty-foot corners chamfer the steps.** A hundred-foot grid can only change
+beam a hundred feet at a time, so an outline comes out as a flight of stairs.
+145 of the archive's fifty-foot pieces have plating on two adjoining sides and
+no art spilling off them — real corner plating rather than the masts, scoops
+and shuttles that make up most of that pool — and one laid into a notch, turned
+so its plating faces the two open sides, carries the hull line across the step.
+The first three attempts used the whole fifty-foot pool and looked like debris
+floating beside the ship; that is what `proud` is for.
+
+**The ship is placed rather than merely validated.** The drives are aft because
+that is where the thrust goes and the bridge is forward because that is where
+the windows are — a reactor amidships satisfies every rule the validator has
+and still looks like nobody drew the ship. Boarding is amidships by default,
+which is the only place all three systems can lie past the deep line at once:
+reactor and bridge are both marked `deep` and they sit at opposite ends.
+
+**Still open: nothing further.** Sixty-three ships over seven profiles, three
+boarding points and three seeds come back clean from `validateShip`.
+
+**Was open, now enforced:** Every 100×100 tile carries doors
 at roughly 25 and 75 feet along each edge, so on a whole-section grid they line
 up by construction, and across a half-section offset a door at 25 meets one at
 75. Neither is *checked* yet — selection matches plating, not openings. That is
