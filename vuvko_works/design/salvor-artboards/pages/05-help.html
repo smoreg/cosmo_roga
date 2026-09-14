@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SALVOR — Help card</title>
+<style>
+.salvor-web{--bg:#0a0d10;--panel-bg:#10151a;--fg-dim:#3f4a52;--fg:#b9c4cc;--bright:#dfe9f0;--accent:#e0a458;--burned:#4a3a3a;--line:#1d242a;--soft:#8f9aa2;--zone:#6f8a9a;--hull:#8a3a3a;--airlock:#a07a44;--bulkhead:#5a4e42;--good:#7fc97f;--bad:#d96a6a;--warn:#d9b56a;--hull-body:#1b242c;--hull-plate:#28343e;--hull-plate-lit:#33414d;--hull-deep:#080b0e;--hull-rim:#8fa8b6;
+  --mono: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  --amber-wash:#1a140a;
+  --red-wash:#1c1113;
+  position:fixed; inset:0; display:grid;
+  grid-template-columns:1fr clamp(340px, 31vw, 460px);
+  /* Three fixed-ish bands so the whole screen lands inside a 1366x768 laptop
+     without a scrollbar — the artboards were drawn 1240 tall, and the itch
+     viewport is 764 (docs/itch-page.md). The schematic takes what is left. */
+  grid-template-rows:38px 1fr auto;
+  background:var(--bg); color:var(--fg);
+  font-family:var(--mono); font-size:13px; line-height:1.45; overflow:hidden;
+}
+.salvor-web *{box-sizing:border-box;}
+
+/* --------------------------------------------------------------- the strip */
+/* Which ship this is and what turn it is: the two lines the panel used to open
+   with, moved out of it so the panel can start on the thing that matters. */
+.web-head{grid-column:1 / -1; grid-row:1; display:flex; align-items:center; gap:16px;
+  padding:0 14px; background:var(--panel-bg); border-bottom:1px solid var(--line);
+  white-space:nowrap; overflow:hidden;}
+.web-head .ship{color:var(--bright); font-weight:600; letter-spacing:.1em;
+  overflow:hidden; text-overflow:ellipsis;}
+.web-head .turn{margin-left:auto; color:var(--soft); font-size:11px; letter-spacing:.1em;
+  font-variant-numeric:tabular-nums;}
+
+/* ------------------------------------------------------------- the schematic */
+.web-map{grid-column:1; grid-row:2; min-width:0; min-height:0; padding:10px 4px 4px 12px;
+  background:radial-gradient(120% 90% at 30% 20%, #0f1519 0%, var(--bg) 70%);}
+.schematic{width:100%; height:100%; display:block;}
+
+/* The tug's board stands where the schematic does while the drone is home: no
+   boxes, no doors, nothing to walk (docs/tasks/G54-two-ships-confusion.md). */
+.web-board{margin:0; font-family:var(--mono); font-size:15px; line-height:1.5;
+  color:var(--fg); white-space:pre; overflow:auto;}
+.web-board::first-line{color:var(--accent);}
+.schematic text{font-family:var(--mono); fill:var(--fg);}
+
+.room-box{fill:#0d1216; fill-opacity:.85; stroke:var(--bulkhead); stroke-width:1;}
+.room-name{font-size:14px; letter-spacing:.06em; fill:var(--fg); font-weight:600;}
+.room-id{font-size:11px; fill:var(--fg-dim);}
+.glyph{font-size:14px; fill:var(--soft); letter-spacing:.16em;}
+.glyph.hostile{fill:var(--bad); font-weight:700;}
+
+/* Tiles (?tiles=1). A tile is a symbol of unit rects painted currentColor
+   (src/tiles/sprites.ts), so what fill is to a glyph, color is to a tile — and
+   the pair of rules below is the pair above, said in the other property. That
+   is the whole of the colour policy: whatever painted the letter paints the
+   picture, the one red on machines included (G40), and the compartment's state
+   still wins over it further down the block, exactly as it does for text. No
+   colour is named here that is not already named for glyphs. */
+.tile{color:var(--soft);}
+.tile.hostile{color:var(--bad);}
+/* The pictogram is the compartment's own, and quieter than its name: a label
+   for the box, never one of the things standing in it. */
+.zone-tile{color:var(--fg-dim);}
+/* The seventh thing and everything after it, counted rather than drawn. */
+.tile-more{fill:var(--fg-dim);}
+/* With the flag on, every letter left in the row is centred in the cell a tile
+   would have taken — and tracking is added after the last glyph as well as
+   between them, so a tracked string set from its middle sits half a letter-space
+   left of where it belongs. A pixel at this size, and it comes straight out of
+   the gap the row is measured on. Off in tile mode, unchanged everywhere else. */
+.has-tiles .glyph{letter-spacing:0;}
+
+/* The four states of a compartment, in the order a run meets them. Each takes
+   one signal and no more: a dash, a hue, a hue, and then the amber frame. */
+.room.is-unknown .room-box{stroke-dasharray:4 4; stroke:var(--fg-dim); fill-opacity:.25;}
+.room.is-unknown .room-name{fill:var(--fg-dim); letter-spacing:.28em;}
+.room.is-scanned .room-box{stroke:#2a3238; fill:#0c1115;}
+.room.is-scanned .room-name{fill:var(--fg-dim); font-weight:400;}
+.room.is-scanned .room-id,.room.is-scanned .glyph{fill:var(--fg-dim);}
+.room.is-scanned .tile,.room.is-scanned .zone-tile{color:var(--fg-dim);}
+.room.is-explored .room-box{stroke:var(--bulkhead);}
+.room.is-visible .room-box{stroke:var(--zone);}
+.room.is-visible .room-name{fill:var(--bright);}
+.room.is-current .room-box{stroke:var(--accent); stroke-width:2; fill:#151a1f; fill-opacity:.95;}
+.room.is-current .room-halo{fill:none; stroke:var(--accent); stroke-width:5; opacity:.10;}
+.room.is-current .room-name{fill:var(--bright);}
+.room.is-current .room-id{fill:var(--airlock);}
+.room.is-current .glyph{fill:var(--bright);}
+.room.is-current .tile{color:var(--bright);}
+.room.is-current .zone-tile{color:var(--airlock);}
+
+/* Machines in there, said on the box rather than only in one small glyph: a red
+   cap over the top edge with the count on it. An addition to the compartment's
+   state, never a replacement for it — the artboards' rule, and the answer to
+   "меня бьют, я не понимаю откуда" (docs/tasks/G55-playtest-findings.md). */
+.threat-cap{fill:var(--bad); opacity:.9;}
+.threat-count{font-size:11px; font-weight:700; fill:var(--bg);}
+
+/* A machine has just come into sight in there. Last in the block so it beats
+   every state above it, and colour only: the stroke width and the halo are left
+   where the state put them, so a box cannot resize or move while it flashes.
+   The blinking itself is not a CSS animation — the frame is redrawn on the beat
+   by ui/pulse.ts, which is also how the terminal view does it and how
+   prefers-reduced-motion is honoured without a second rule here. */
+/* Where the highlighted line of the move list would take the drone. Amber,
+   like everything the screen is asking a decision about, but without the halo
+   the compartment underfoot carries — the two must not be confusable. */
+.room.is-goal .room-box{stroke:var(--accent); stroke-dasharray:6 3;}
+.room.is-goal .room-name{fill:var(--accent);}
+/* The door a red hazard line has just named (SchematicDoor.target): the
+   same amber dashes a lock wears, on whatever state the door is in. */
+.door-wire.is-goal{stroke:var(--accent); stroke-width:2.5; stroke-dasharray:3 4;}
+.door.is-goal .door-label{fill:var(--accent);}
+
+.room.is-alarmed .room-box{stroke:var(--bad); fill:var(--red-wash);}
+.room.is-alarmed .room-name,.room.is-alarmed .room-id{fill:var(--bad);}
+
+/* Five door states and the airlock. Two rules, and the first one beats the
+   artboards' table:
+
+   1. A door you can walk through is the BRIGHTEST line on the map, not the
+      faintest. The artboards drew an open door as a hairline in the dim ink and every
+      other state louder, which is backwards for the thing the whole picture is
+      for — where can I go. Drawn that way the walkable graph disappeared into
+      the background and what was left read as loose labels: "карта всё ещё
+      говно, коридор на глаз не видно".
+   2. What stops you is a line with a GAP in it, and the worse the obstacle the
+      wider the gap. Weight says how hard, dash says how shut. */
+.door-wire{fill:none; stroke:var(--soft); stroke-width:2; stroke-linecap:round;
+  stroke-linejoin:round;}
+.door-wire.is-closed{stroke:var(--zone); stroke-dasharray:9 5;}
+.door-wire.is-locked{stroke:var(--accent); stroke-width:2.5; stroke-dasharray:3 4;}
+.door-wire.is-sealed{stroke:var(--bulkhead); stroke-width:3.5; stroke-dasharray:3 5;}
+.door-wire.is-broken{stroke:var(--fg-dim); stroke-width:1.5; stroke-dasharray:1 5;}
+.door-wire.is-airlock{stroke:var(--airlock); stroke-width:3.5;}
+
+/* The label is a mark on a wire, not a node on the graph. It had a filled box
+   and a border, so on a busy hull the eye counted twenty more boxes than there
+   are compartments. Only the two states worth stopping for keep a frame. */
+.door-tag{fill:var(--bg); stroke:none;}
+.door-label{font-size:10px; fill:var(--soft);}
+.door.is-closed .door-label{fill:var(--zone);}
+.door.is-locked .door-tag{fill:var(--accent);}
+.door.is-locked .door-label{fill:var(--bg); font-weight:700;}
+.door.is-sealed .door-tag{fill:var(--bulkhead); fill-opacity:.5;}
+.door.is-sealed .door-label{fill:var(--fg);}
+.door.is-broken .door-label{fill:var(--fg-dim);}
+.door.is-airlock .door-label{fill:var(--airlock); font-weight:700;}
+
+/* ------------------------------------------------------------- the honeycomb */
+/* The third view: hexagons and straight corridors (ui/web/hex-svg.ts). It
+   borrows the room and door state classes wholesale — a compartment is the same
+   compartment in all three drawings — and adds only what a hexagon has that a
+   box does not.
+
+   The corridor is drawn twice: a wide bulkhead-brown stroke for the walls, and
+   the door's own state stroke on top of it. That is why a closed door reads as
+   a corridor with a shut door in it rather than as a dashed line in space. */
+.hexmap .room-box{fill:#0c1116; fill-opacity:.9; stroke-width:1.5;}
+.hexmap .room-name{font-size:13px; letter-spacing:.04em;}
+.hexmap .room-id{font-size:10px;}
+.hexmap .glyph{font-size:12px; letter-spacing:.22em;}
+/* The compartment's pictogram sits over the drawn hull here, where the dim ink
+   the box view gives it would sink into the plating. The compartment hue is
+   what the honeycomb already paints an outline with, so it costs no new signal. */
+.hexmap .zone-tile{color:var(--zone);}
+.hexmap .room.is-current .room-halo{fill:none; stroke:var(--accent); stroke-width:7; opacity:.12;}
+.hexmap .hall-wall{stroke:var(--bulkhead); stroke-width:11; stroke-linecap:butt;}
+.hexmap .hall-wall.is-airlock{stroke:var(--airlock);}
+.hexmap .door-wire{stroke-width:3;}
+.hexmap .door-wire.is-open{stroke:#0c1116;}
+.hexmap .door-tag{fill:var(--bg); fill-opacity:.92;}
+.hexmap .door.link .door-tag{fill:var(--panel-bg); stroke:var(--zone); stroke-width:1;}
+.hexmap .door.link .door-label{fill:var(--zone);}
+
+/* The run a long door makes under the deck. Drawn before everything, so the
+   compartments and corridors it passes behind cover it: what is left is a line
+   you can follow from one chip to the other, which is what tells a walk the
+   long way round from a teleport. */
+.hexmap .duct{stroke:var(--zone); stroke-width:1; stroke-dasharray:2 6; opacity:.4;}
+.hexmap .duct.is-sealed{stroke:var(--bulkhead);}
+.hexmap .duct.is-locked{stroke:var(--accent); opacity:.3;}
+
+/* An unexplored hexagon is a shape and an id, and nothing else worth reading —
+   most of a hull is unexplored, and at full weight the dashes were the loudest
+   thing on the screen. */
+.hexmap .room.is-unknown .room-box{stroke:#232b31; stroke-dasharray:3 5;}
+.hexmap .room.is-unknown .room-id{fill:#38424a;}
+.hexmap .room.is-unknown .room-name{fill:#2b343a;}
+
+/* The drawn hull under the honeycomb (ui/web/hullart.ts, G81). Three steps of
+   tone and no fewer — the page under the ship, the hull's mass, the plate on
+   that mass — because a hull a shade off the background read as an outline
+   over nothing. Nothing in this block is amber: amber is the doors' and the
+   airlock's, and a hull that spent it on portholes lost the doors among them.
+   Every mark is steel or darker, and the skin line is the one thing brighter. */
+.hexmap .hull-art{stroke:none; opacity:1;}
+.hexmap .hull-skin{fill:var(--hull-body);}
+/* A hole cut out of the hull — the hub of a ring station: the page shows through. */
+.hexmap .hull-hole{fill:var(--bg);}
+.hexmap .hull-rim{fill:none; stroke:var(--hull-rim); stroke-width:3; stroke-linejoin:miter;
+  stroke-miterlimit:6;}
+.hexmap .hull-rim-in{fill:none; stroke:var(--bg); stroke-width:1; stroke-linejoin:miter;
+  stroke-miterlimit:6;}
+.hexmap .hull-wash{fill:var(--bg); opacity:.1;}
+.hexmap .hull-plate{fill:var(--hull-plate);}
+.hexmap .hull-plate-lit{fill:var(--hull-plate-lit); stroke:var(--zone); stroke-width:1.3;}
+.hexmap .hull-plate-rimmed{stroke:var(--hull-rim); stroke-width:1.8;}
+.hexmap .hull-pod .hull-plate{stroke:var(--hull-rim); stroke-width:2;}
+.hexmap .hull-deep{fill:var(--hull-deep);}
+.hexmap .hull-deep-rimmed{stroke:var(--zone); stroke-width:1.3;}
+.hexmap .hull-bell{fill:var(--hull-deep); stroke:var(--hull-rim); stroke-width:1.6;}
+.hexmap .hull-flame{fill:var(--zone); opacity:.22;}
+.hexmap .hull-light{fill:#ffffff; opacity:.045;}
+.hexmap .hull-line{stroke:var(--zone); stroke-width:1; fill:none;}
+.hexmap .hull-glass{fill:var(--zone); opacity:.9;}
+.hexmap .hull-steel{fill:var(--zone);}
+/* Over a hull, an unexplored hexagon lets a little of the plating through:
+   most of a hull is unexplored, and a page of near-black cells over a drawn
+   ship read as holes punched in it. The sibling combinator keeps this to the
+   frames that have a hull at all, so ?hull=0 looks exactly as it did. */
+.hexmap .hull-art ~ .room.is-unknown .room-box{fill-opacity:.55;}
+
+.tug-box{fill:#0d1216; stroke:var(--fg); stroke-width:1.5;}
+.tug-name{font-size:18px; fill:var(--fg);}
+.hull{stroke:var(--hull); stroke-width:2.5; opacity:.8;}
+.banner{font-size:14px; fill:var(--accent); letter-spacing:.05em;}
+.ship-line{font-size:11px; fill:var(--soft);}
+
+/* ------------------------------------------------------------------ the panel */
+.web-panel{grid-column:2; grid-row:2; min-height:0; overflow-y:auto; padding:10px 12px 16px;
+  background:var(--panel-bg); border-left:1px solid var(--line);
+  display:flex; flex-direction:column; gap:9px;}
+
+/* One block of the panel. panelBlocks already parts them with blank rows and
+   this is that parting drawn: a rule between blocks instead of an empty row,
+   which buys back the height the artboards spent on air. */
+.pb{display:flex; flex-direction:column; gap:1px;}
+.pb + .pb{border-top:1px solid var(--line); padding-top:8px;}
+.pl{white-space:pre; min-height:1.45em;}
+.pl.h{letter-spacing:.2em; font-size:10px; color:var(--soft);}
+.pl.hit{color:var(--bad); animation:salvor-hit .45s steps(2,end) 2;}
+@keyframes salvor-hit{0%,100%{opacity:1;} 50%{opacity:.25;}}
+.bar{letter-spacing:.5px;}
+.bar .off{color:var(--line);}
+
+/* The rack. A slot is a row with a bar in it, and it gets the row treatment: a
+   cold ground, a quiet left edge, and nothing loud — so that the one slot which
+   is loud has the whole panel to itself. */
+.pl.slot{padding:3px 7px; background:#0c1115; border:1px solid var(--line);
+  border-left:2px solid var(--line);}
+.pl.slot.is-exposed{background:var(--amber-wash); border-color:var(--accent);
+  border-left-width:4px; box-shadow:0 0 0 3px rgba(224,164,88,.10); font-weight:600;}
+.pl.slot.hit{border-color:var(--bad); border-left-color:var(--bad);}
+
+/* The ship's alert, coloured by the rung it is on (panel-html.ts puts the
+   level on the row as a class). Nothing below three: a counter. Three and four
+   are the ship shutting doors and sending its hunter — amber, the terminal's
+   own warn colour rather than the accent, so the one rule about amber (a
+   decision is required *here*) keeps its word. Five is the scuttle countdown:
+   red, and blinking, because it is the one number on the screen that is a
+   deadline. The blink is a CSS animation and not a beat redraw (ui/pulse.ts)
+   because it has to run while the player is thinking, not only on turns —
+   and it is switched off for anyone who asked their system for less motion. */
+.web-alert.is-l3,.web-alert.is-l4{color:var(--warn) !important; font-weight:600;}
+.web-alert.is-l5{color:var(--bad) !important; font-weight:700;
+  animation:salvor-alert .9s steps(2,end) infinite;}
+@keyframes salvor-alert{0%,100%{opacity:1;} 50%{opacity:.35;}}
+@media (prefers-reduced-motion: reduce){.web-alert.is-l5{animation:none;}}
+
+/* The same row lifted above the rack from three up: framed, on a wash of its
+   own colour, so the shape of the panel changes the moment the ship starts
+   answering — which is what the owner asked for in "уровень алерта должен
+   отображаться более очевидно". */
+.pb.web-alarm{border:1px solid var(--warn); background:var(--amber-wash); border-radius:2px;
+  padding:4px 8px; letter-spacing:.06em;}
+.pb.web-alarm.is-l5{border-color:var(--bad); background:var(--red-wash);}
+.pb.web-alarm + .pb{border-top:none; padding-top:0;}
+
+/* The exposed slot said twice: once as its own row in the rack, once as a small
+   mark in the bottom-left corner of the map, which is where the owner asked for
+   it — "следующий удар мелким значком снизу слева". It sits in the map cell of
+   the grid rather than over it, so it can never cover a compartment box. */
+.web-expose{grid-column:1; grid-row:2; align-self:end; justify-self:start;
+  margin:0 0 8px 12px; z-index:2; pointer-events:none;}
+.expose{border:1px solid var(--accent); background:var(--amber-wash); border-radius:2px;
+  padding:3px 8px; display:flex; align-items:baseline; gap:8px;}
+.expose .lbl{font-size:9px; letter-spacing:.16em; color:var(--airlock);}
+.expose .row{font-size:12px; font-weight:600; letter-spacing:.04em; color:var(--accent);
+  line-height:1.2; white-space:pre;}
+
+.acts{display:flex; flex-direction:column; gap:1px;}
+/* position:relative because the cursor mark is absolute inside it. Without it
+   the mark hangs off the root element instead of its own row, and lands in the
+   log at the foot of the screen — which is exactly where the owner found it. */
+.act{position:relative; display:grid; grid-template-columns:18px 1fr; gap:7px; align-items:baseline;
+  width:100%; text-align:left; padding:3px 6px; border:1px solid transparent; border-radius:2px;
+  background:none; color:var(--fg); font:inherit; cursor:pointer;}
+.act:hover{background:#18222a; border-color:#26333c;}
+.act .key{color:var(--soft); text-align:right; font-variant-numeric:tabular-nums;}
+.act .label{white-space:pre-wrap;}
+.act .extra{grid-column:2; color:var(--soft); font-size:11px;}
+.act.is-off{color:var(--fg-dim);} .act.is-off .key{color:var(--fg-dim);}
+.act.is-off .extra{color:var(--fg-dim);}
+.act.is-cursor{background:var(--amber-wash); border-color:var(--accent); color:var(--accent);}
+.act.is-cursor .key{color:var(--accent);}
+.act.is-cursor .label{font-weight:700;}
+.act .cursor{position:absolute; margin-left:-13px; color:var(--accent);}
+
+/* The keys, pinned to the bottom right corner of the panel in every state —
+   "подсказки по хоткеям всегда снизу справа" (docs/tasks/G48-travel-to-a-room.md).
+   panelBlocks already puts them on its last rows; margin-top:auto is what
+   keeps them at the corner when the panel is taller than its content. */
+.pb.foot{margin-top:auto; border-top:1px solid var(--line); padding-top:7px;
+  color:var(--soft); font-size:11px;}
+
+/* -------------------------------------------------------------------- the log */
+/* Seven lines and the newest of them at the bottom, which is what the terminal
+   shows too (LAYOUT.logHeight). The rest of the tail stays scrollable above:
+   mount.ts pins the box to its own bottom after every frame, because innerHTML
+   reopens it at the top otherwise — and the top of a log is the part already
+   read. */
+.web-log{grid-column:1 / -1; grid-row:3; height:124px; overflow-y:auto;
+  padding:6px 14px; border-top:1px solid var(--line); background:#0c1013; font-size:12px;
+  line-height:1.4;}
+.web-log div{white-space:pre-wrap;}
+.web-log .plain{color:var(--fg);} .web-log .good{color:var(--good);}
+.web-log .bad{color:var(--bad);} .web-log .warn{color:var(--warn);}
+/* Age, in three steps and by turn rather than by line count: this turn keeps
+   its tone, the turn before it goes soft, everything older goes dim
+   (ui/logline.ts, logFades). The gap is the same statement without colour —
+   four pixels where one turn ends and the next begins. */
+.web-log .recent{color:var(--soft);} .web-log .old{color:var(--fg-dim);}
+.web-log .turn-gap{margin-top:4px;}
+
+/* The alarm tone: a hazard the drone has been told about (systems/hazards.ts).
+   Red ink that never fades, and the newest one on a red ground across the
+   whole row — the same two rules the terminal draws it by, so a player who
+   reads only the bottom of the screen cannot miss it in either view. */
+.web-log .alarm{color:var(--bad); font-weight:600;}
+.web-log .alarm.live{background:var(--bad); color:var(--bright); margin:0 -14px; padding:1px 14px;}
+
+/* ---------------------------------------------------------------- the overlays */
+.web-over{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(6,9,11,.9); padding:24px; z-index:5;}
+.card{max-width:min(700px,92vw); max-height:88vh; overflow-y:auto; padding:20px 26px;
+  border:1px solid var(--line); border-top:2px solid var(--accent); border-radius:3px;
+  background:var(--panel-bg);}
+.card div{white-space:pre-wrap;}
+.card .h{color:var(--accent); font-size:19px; letter-spacing:.1em; margin-bottom:10px;}
+.card .head{color:var(--soft); font-size:10px; letter-spacing:.2em; margin-top:14px;}
+.card .keys{color:var(--fg);} .card .prose{color:var(--soft);}
+.card .sub{color:var(--fg); margin:10px 0;}
+.card .hint{color:var(--fg-dim); margin-top:14px;}
+.card.good{border-top-color:var(--good);} .card.good .h{color:var(--good);}
+.card.bad{border-top-color:var(--bad);} .card.bad .h{color:var(--bad);}
+
+/* ------------------------------------------------------------ the start screen
+   G84. The terminal spends rows on the name because rows are all a grid has;
+   here it is a type size, and the menu is a real three-column grid so the keys
+   line up without a padded string. Amber stays what rule 1 above says it is —
+   the key you are being asked to press — so the ring rows mark what they are
+   *on* with the bright token and leave the rest dim, exactly as the terminal does. */
+.card.title{max-width:min(760px,94vw); text-align:center;}
+.card.title .head, .card.title .hint, .card.title .keys{text-align:center;}
+.title-name{color:var(--accent); font-size:44px; font-weight:600; letter-spacing:.22em;
+  line-height:1.1; margin-bottom:10px;}
+.title-tag{color:var(--fg); font-size:15px; margin-bottom:6px;}
+.title-menu{display:inline-grid; grid-template-columns:auto auto auto; gap:2px 14px;
+  text-align:left; margin:10px 0 4px;}
+/* The row generates no box of its own, so the pointer and the hover live on
+   its three cells. Amber is spoken for (rule 1), so a row under the cursor
+   brightens its own ground rather than borrowing the signal colour. */
+.title-row{display:contents;}
+.title-row > span{cursor:pointer; padding:1px 4px; margin:-1px -4px;}
+.title-row:hover > span{background:var(--line);}
+.title-row:hover .title-label{color:var(--bright);}
+/* And the same ground under the row the arrows have walked to, which is the row
+   Enter does (ui/appstate.ts, the title branch). */
+.title-row.is-cursor > span{background:var(--line);}
+.title-row.is-cursor .title-label{color:var(--bright); font-weight:700;}
+.title-key{color:var(--accent); font-weight:600;}
+.title-label{color:var(--fg);}
+.title-value{color:var(--soft);}
+.title-on{color:var(--bright); font-weight:600;}
+.title-off{color:var(--fg-dim);}
+.title-foot{color:var(--fg-dim); font-size:11px; margin-top:16px;}
+</style>
+<style>html,body{margin:0;background:#05080d;}</style>
+</head><body>
+<div class="salvor-web"><div class="web-head"><span class="ship">SALVOR  OSPREY  sortie 1</span><span class="turn">turn 18</span></div><div class="web-map"><svg class="schematic" viewBox="0 0 858 394" preserveAspectRatio="xMidYMid meet" role="img"><path class="hull" d="M 830 12 L 830 382"/><path class="door-wire is-open" d="M 244 83.84 L 271 83.84 L 271 83.84 L 298 83.84"/><path class="door-wire is-open" d="M 430 83.84 L 457 83.84 L 457 83.84 L 484 83.84"/><path class="door-wire is-closed" d="M 616 83.84 L 643 83.84 L 643 83.84 L 670 83.84"/><path class="door-wire is-open" d="M 736 134 L 736 162"/><path class="door-wire is-open" d="M 430 109.68 L 457 109.68 L 457 187.84 L 484 187.84"/><path class="door-wire is-open" d="M 616 213.68 L 643 213.68 L 643 291.84000000000003 L 670 291.84000000000003"/><path class="door-wire is-locked" d="M 616 187.84 L 643 187.84 L 643 213.68 L 670 213.68"/><path class="door-wire is-closed" d="M 616 109.68 L 643 109.68 L 643 187.84 L 670 187.84"/><g class="room is-current" data-room="1"><rect class="room-halo" x="298" y="58" width="132" height="76" rx="3"/><rect class="room-box" x="298" y="58" width="132" height="76" rx="3"/><text class="room-name" x="308" y="83">SENSOR BAY</text><text class="room-id" x="420" y="122" text-anchor="end">r2</text><text class="glyph hostile" x="310" y="120">c</text><text class="glyph hostile" x="327" y="120">d</text><text class="glyph" x="344" y="120">X</text><text class="glyph" x="361" y="120">X</text><text class="glyph" x="378" y="120">X</text><rect class="threat-cap" x="402" y="51" width="22" height="14" rx="2"/><text class="threat-count" x="413" y="62" text-anchor="middle">2</text></g><g class="room is-visible" data-room="0"><rect class="room-box" x="112" y="58" width="132" height="76" rx="3"/><text class="room-name" x="122" y="83">DOCKING</text><text class="room-id" x="234" y="122" text-anchor="end">r1</text><text class="glyph" x="124" y="120">a1</text><text class="glyph" x="150" y="120">%</text></g><g class="room is-visible" data-room="2"><rect class="room-box" x="484" y="58" width="132" height="76" rx="3"/><text class="room-name" x="494" y="83">ENGINEERING</text><text class="room-id" x="606" y="122" text-anchor="end">r3</text><text class="glyph" x="496" y="120">+</text></g><g class="room is-unknown" data-room="3"><rect class="room-box" x="670" y="58" width="132" height="76" rx="3"/><text class="room-name" x="680" y="83">····</text><text class="room-id" x="792" y="122" text-anchor="end">r4</text></g><g class="room is-unknown" data-room="4"><rect class="room-box" x="670" y="162" width="132" height="76" rx="3"/><text class="room-name" x="680" y="187">····</text><text class="room-id" x="792" y="226" text-anchor="end">r5</text></g><g class="room is-visible" data-room="5"><rect class="room-box" x="484" y="162" width="132" height="76" rx="3"/><text class="room-name" x="494" y="187">SENSOR BAY</text><text class="room-id" x="606" y="226" text-anchor="end">r6</text><text class="glyph" x="496" y="224">X</text></g><g class="room is-unknown" data-room="6"><rect class="room-box" x="670" y="266" width="132" height="76" rx="3"/><text class="room-name" x="680" y="291">····</text><text class="room-id" x="792" y="330" text-anchor="end">r7</text></g><g class="door is-open"><rect class="door-tag" x="258" y="73.8" width="26" height="20" rx="3"/><text class="door-label" x="271" y="88.8" text-anchor="middle">d1</text></g><g class="door is-open"><rect class="door-tag" x="444" y="73.8" width="26" height="20" rx="3"/><text class="door-label" x="457" y="88.8" text-anchor="middle">d2</text></g><g class="door is-closed"><rect class="door-tag" x="630" y="73.8" width="26" height="20" rx="3"/><text class="door-label" x="643" y="88.8" text-anchor="middle">d3</text></g><g class="door is-open"><rect class="door-tag" x="723" y="138" width="26" height="20" rx="3"/><text class="door-label" x="736" y="153" text-anchor="middle">d4</text></g><g class="door is-open"><rect class="door-tag" x="444" y="138.8" width="26" height="20" rx="3"/><text class="door-label" x="457" y="153.8" text-anchor="middle">d5</text></g><g class="door is-open"><rect class="door-tag" x="630" y="242.8" width="26" height="20" rx="3"/><text class="door-label" x="643" y="257.8" text-anchor="middle">d6</text></g><g class="door is-locked"><rect class="door-tag" x="630" y="190.8" width="26" height="20" rx="3"/><text class="door-label" x="643" y="205.8" text-anchor="middle">d7</text></g><g class="door is-closed"><rect class="door-tag" x="630" y="138.8" width="26" height="20" rx="3"/><text class="door-label" x="643" y="153.8" text-anchor="middle">d8</text></g><g class="tug"><path class="door-wire is-airlock" d="M 66 96 L 112 96"/><rect class="tug-box" x="0" y="70" width="66" height="52" rx="4"/><text class="tug-name" x="33" y="103" text-anchor="middle">⌂</text><text class="door-label" x="89" y="88" text-anchor="middle">a1</text></g><text class="banner" x="16" y="30">DERELICT «OSPREY» · probe · 7 rooms · quiet</text><text class="ship-line" x="16" y="376">OSPREY · probe · 7 rooms · 4 seen</text></svg></div><div class="web-codex" style="grid-column:1;grid-row:2;align-self:start;justify-self:start;margin:8px 0 0 12px;z-index:2;pointer-events:none"><div style="border:1px solid var(--accent);background:var(--amber-wash);border-radius:2px;padding:2px 8px;color:var(--accent);font-size:12px;font-weight:600;letter-spacing:.06em">[i] 1</div></div><div class="web-panel"><section class="pb"><div class="pl" style="color:var(--bad)">CORE  ●○○</div><div class="pl slot" style="color:var(--fg)">1 CUTTER    <span class="bar"><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i></span></div><div class="pl slot" style="color:var(--burned)">2 -- burned --</div><div class="pl slot" style="color:var(--fg)">3 SCANNER   <span class="bar"><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i></span></div><div class="pl slot" style="color:var(--burned)">4 -- burned --</div><div class="pl slot" style="color:var(--fg)">5 CELL      <span class="bar"><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i><i class="on">▮</i></span></div><div class="pl slot" style="color:var(--fg-dim)">6 -- empty --</div></section><section class="pb"><div class="pl" style="color:var(--bad)">══ ENEMY IN HERE: 2 ════════</div><div class="pl" style="color:var(--good)">c scout 3/3 melee</div><div class="pl" style="color:var(--bad)">   burns PLATING</div><div class="pl" style="color:var(--good)">d feral drone 3/3 melee</div></section><section class="pb"><div class="pl h" style="color:var(--accent)">ACTIONS</div><div class="acts"><button type="button" class="act is-cursor" data-line="0"><span class="key"><span class="cursor">▸</span>1</span><span class="label">attack scout 3/3</span></button><button type="button" class="act" data-line="1"><span class="key">2</span><span class="label">attack feral drone 3/3</span></button><button type="button" class="act" data-line="2"><span class="key">3</span><span class="label">take cargo crate (8 CR)</span></button><button type="button" class="act" data-line="3"><span class="key">4</span><span class="label">take cargo crate (8 CR)</span></button><button type="button" class="act" data-line="4"><span class="key">5</span><span class="label">take cargo crate (8 CR)</span></button><button type="button" class="act" data-line="5"><span class="key">6</span><span class="label">go d1  DOCKING   open</span></button><button type="button" class="act" data-line="6"><span class="key">7</span><span class="label">go d2  ENGINEERI open</span></button><button type="button" class="act" data-line="7"><span class="key">8</span><span class="label">go d5  SENSOR    open</span></button></div></section><section class="pb"><div class="pl h" style="color:var(--accent)">GOAL  NEUTRALIZE  150 CR</div><div class="pl" style="color:var(--fg)">not found: ENGINE REACTOR</div><div class="pl" style="color:var(--fg)">TERMINAL</div></section><section class="pb"><div class="pl" style="color:var(--fg)">KEYS  0</div><div class="pl web-alert is-l0" style="color:var(--fg)">ALERT <span class="bar"><i class="off">▯</i><i class="off">▯</i><i class="off">▯</i><i class="off">▯</i><i class="off">▯</i></span></div><div class="pl" style="color:var(--fg)">CREDITS 25</div></section><section class="pb"><div class="pl h" style="color:var(--accent)">SENSOR BAY r2</div><div class="pl" style="color:var(--zone)"> d1 → DOCKING           open</div><div class="pl" style="color:var(--zone)"> d2 → ENGINEERING       open</div><div class="pl" style="color:var(--zone)"> d5 → SENSOR BAY        open</div><div class="pl" style="color:var(--fg-dim)"> … 3 more here</div></section><section class="pb foot"><div class="pl" style="color:var(--fg-dim)">m move  d doors  . brace</div><div class="pl" style="color:var(--fg-dim)">&lt; leave</div><div class="pl" style="color:var(--fg-dim)">o explore  Tab fight  ? help</div></section></div><div class="web-log"><div class="bad old">The feral drone hits your THRUSTERS (1/12).</div><div class="warn old turn-gap">In here: feral drone 3/3, melee.</div><div class="bad old">The scout hits your THRUSTERS (0/12).</div><div class="bad old">Your THRUSTERS burn out. You crawl on manipulators.</div><div class="warn old">A burned module is gone. Its slot is empty now.</div><div class="bad old">The feral drone hits your PLATING (13/16).</div><div class="bad old">The feral drone hits your PLATING (10/16).</div><div class="bad old turn-gap">The scout hits your PLATING (8/16).</div><div class="bad old">The feral drone hits your PLATING (5/16).</div><div class="bad old turn-gap">The feral drone hits your PLATING (3/16).</div><div class="bad recent turn-gap">The scout hits your PLATING (1/16).</div><div class="bad turn-gap">The scout hits your PLATING (0/13).</div><div class="bad">Your PLATING burns out. Nothing stands between the next hit and your core.</div><div class="bad">The feral drone hits you for 2.</div></div><div class="web-over"><div class="card"><div class="h">CONTROLS</div><div class="head">WHERE YOU ARE — inside a derelict</div><div class="prose">Take what pays, raise the ship's systems, then out</div><div class="prose">through the airlock: the hold is money only once home.</div><div class="prose">⌂ at the left edge of the schematic is your tug.</div><div class="prose"></div><div class="keys">ACT        1-9 0  a line of the list</div><div class="keys">PICK       up/down  enter does the marked line</div><div class="keys">BRACE      . or space   (braces: PLATING)</div><div class="keys">HIDE       h   where the compartment has cover</div><div class="keys">MOVE       m   where to walk · &lt;   out, or towards it</div><div class="keys">DOORS      d   the bulkheads here: shut, weld, open</div><div class="keys">SEAL       shift+D   weld the door you came through</div><div class="keys">EXPLORE    o   walk on; stops on anything new</div><div class="keys">ENGAGE     tab / shift+tab  shoot, or melee only</div><div class="keys">SCANNER    s   pulse: two doors out, loud</div><div class="keys">EMP        e   stun this compartment, 2 charges</div><div class="keys">WELDER     w   mend the weakest module</div><div class="keys">CELL       p   power a locked door or console</div><div class="keys">SPIKE      K   breach a lock, two turns, quiet</div><div class="keys">EMITTER    f   shoot into the line of fire</div><div class="keys">CUTTER     c   cut a door, three turns, loud</div><div class="keys">KEYCARD    a   spend a card on a lock, silent</div><div class="keys">SITUATION  i   what is going on here; badge counts new</div><div class="keys">LOG        PgUp   the last 200 lines; PgDn back</div><div class="keys">HELP       ?   VIEW V  LANG L  NEW shift+R  CLOSE esc</div><div class="prose">1/2   ? next page   esc closes</div></div></div></div>
+</body></html>

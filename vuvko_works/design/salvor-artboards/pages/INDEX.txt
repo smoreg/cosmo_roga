@@ -1,0 +1,8 @@
+01-title.html — Title: Seven keyed rows, every one clickable. The whole start of the game.
+02-tug.html — The tug: The hub between runs. Rack left, actions right, no map at all.
+03-derelict-graph.html — Aboard — graph map: The default view. Map left, panel right, log along the bottom.
+04-derelict-hex.html — Aboard — honeycomb: The same screen with the hex map and the drawn hull under it.
+05-help.html — Help card: A text card over the screen. Sized by column arithmetic today.
+06-codex.html — Codex: The reference card. Left list, right body.
+07-history.html — Log history: The log opened full. Compare with the kit's expanding drawer.
+08-lost.html — Ending — lost: An ending banner and a run summary.
