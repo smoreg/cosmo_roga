@@ -1,93 +1,67 @@
 # Repurposing the ship generator for SALVOR's rooms
 
-How the geomorph hull generator in this half could feed the compartment graph
-in the other one, what the 90° rotation actually costs, and which of the two
-pipelines is the one worth carrying across.
+How the geomorph hull generator in this half feeds the compartment graph in the
+other one, and what the 90° rotation costs.
 
-Written 2026-09-15, by reading both. Companion to
-[merging-the-halves.md](merging-the-halves.md), which covers the UI; this one
-is only about the world.
+Written 2026-09-15. Companion to [merging-the-halves.md](merging-the-halves.md),
+which covers the UI; this one is only about the world. **Rewritten the same day**
+— the first draft raised a pile of difficulties that came from assuming the
+tactical hex floor travelled with the ship. It does not. With that assumption
+dropped, most of them are not problems, and the ones that remain are listed at
+the end and are short.
 
-## First, a correction to the premise
+## The shape of it
 
-There is no second generator to choose. `vuvko_works/geomorph-core.js` is one
-file, loaded by both `hexmap.html` and `geomorphs.html`, and vendored into the
-game byte-for-byte by `game/scripts/sync-geomorph-core.mjs` with nothing but an
-export shim appended — the diff between the two copies is twenty-six lines of
-shim and a trailing newline. `shipyard.html` does not load it at all.
+Three decisions, already taken, make this much smaller than it first looked.
 
-So "use the prototype's generator rather than the game's" cannot mean the core.
-What it can mean is the **pipeline above** the core, and there the difference
-is real and the instinct is right.
+**One room per tile, and zones come from tile tags.** There is no need to
+rasterise the plan and hunt connected regions of floor — that is what
+`hexmap.html` does, and it is the slow way round. The taxonomy already tags
+every tile with its `roles`; a section *is* a compartment and its tag *is* its
+kind. The raster pass exists because the tactical floor needed to know which
+pixels were walkable, and the tactical floor is not coming.
 
-| | What it produces |
-|---|---|
-| `hexmap.html` | layout → raster → connected floor regions → **zones** → a lattice → **doors on shared hex edges**. Exports `zones[]`, `hexes[]`, `doors[]` |
-| `game/src/render` | layout → a deck plan with a per-hex tactical floor, many hexes to a room |
+**One hex per room.** SALVOR keeps compartments as graph nodes with a single
+lattice cell each (`rooms/gen/hexlayout.ts`). This half's sections are a square
+grid. That maps directly.
 
-SALVOR's world is a graph of compartments with **one cell per room**. The
-game's per-hex floor is therefore the wrong output entirely, and `hexmap.html`'s
-zone-and-door graph is the right one — minus its lattice, which SALVOR lays out
-itself. That is the piece to carry.
+**Deployment and movement change anyway.** SALVOR moves a drone room to room
+through doors; there is no per-hex walking, no zone of control, no reachable
+set. So the multi-hex room, which is the whole reason this half's pipeline is
+shaped the way it is, simply goes away.
 
-## The seam already exists, and it is one option object
+Put together: **the generator produces a section grid with tags and doors, and
+that is already a room graph.** Nothing in between is needed.
 
-`packages/engine/src/rooms/gen/hexlayout.ts` takes this:
+## The one thing worth checking was the lattice, and it holds
 
-```ts
-export interface HexLayoutOptions {
-  readonly allowed?: ReadonlySet<string>;
-}
-```
+A square grid has four orthogonal neighbours. SALVOR's `HEX_DIRS` has six
+directions and **none of them is vertical** — east, north-east, south-east,
+north-west, south-west, west, with the file noting that corridors "run level or
+diagonal and never vertical". That is the one place where a square section grid
+could genuinely fail to become a honeycomb, and it would fail quietly, as doors
+demoted from corridors to labelled chips.
 
-and its own comment says what it is for:
+It does not fail. Under an odd-r offset embedding, `(col, row) → (col −
+⌊row/2⌋, row)`, every orthogonal neighbour of every square cell stays adjacent
+on the lattice — 576 of 576 over a 12×12 grid, none lost. Two of the six hex
+directions are left with no square counterpart, which costs nothing: they are
+spare diagonals the layout may use or ignore.
 
-> `allowed` is a set of `hexKey` strings: the cells the honeycomb may use and no
-> others. The engine has no idea what shape they make — **a game that wants its
-> deck plan inside a drawn hull hands over the hull's cells**, and this file
-> sees coordinates.
+So doors between neighbouring sections are corridors, and `MASK_FLOOR` — the
+gate that hands a mask back when fewer than four fifths of doors can be drawn
+as corridors — is not in danger. It stays worth asserting in a test, as a
+tripwire rather than a risk.
 
-That is the integration, in one parameter. The generator's job becomes:
-produce a hull, reduce it to a set of hex cells, hand them over.
+Cells can therefore be written straight into `room.data[HEX_KEY]` rather than
+grown: `hexLayout`'s placement search is for a game that has a graph and wants
+a picture, and this is the other way round — the picture is what generated the
+graph.
 
-There is an acceptance test built in as well. `MASK_FLOOR = 0.8`: if fewer than
-four fifths of the ship's doors can be drawn as corridors inside the mask, the
-layout hands the mask back and lays out free instead, because "a picture that
-says a fifth of its doors in chips is a picture the owner reads as teleports".
-A geomorph hull that is too thin or too branchy will simply be refused, and it
-will say so. That is a good gate to have before any of this is believed.
-
-## Two ways to feed it, and they are different projects
-
-**(a) Mask only.** Send the hull *silhouette* as allowed cells. SALVOR's own
-`shipgen.ts` still makes the rooms, the doors and the guarantees; the geomorph
-side only decides what shape the ship is. Small, and reversible.
-
-**(b) Rooms as well.** Send `zones` as rooms and `doors` as doors, and let
-SALVOR lay out a graph it did not generate.
-
-**Take (a) first, and possibly only (a).** The reason is not effort, it is
-`gen/validate.ts`. SALVOR guarantees things about a ship it built: `locked`
-only on tree edges, `sealed` only on loops, the `required: true` kinds present
-(ENGINEERING, REACTOR, CONTROL), the `deep: true` ones actually deep. A
-geomorph-derived graph can satisfy none of those by construction — the artwork
-decides what rooms exist — so (b) means either relaxing the validator or
-post-processing a graph until it passes, and both of those trade away the
-thing that makes the other half's generator trustworthy. The mask changes how
-a ship *looks* without touching any of it.
-
-If (b) is ever wanted, the honest version is a repair pass that adds what the
-artwork did not provide, and it should be judged by `validateShip` reporting
-zero problems over a few hundred seeds, which is the standard that half already
-holds itself to.
-
-## The rotation: confirmed, and the numbers agree
-
-The instinct is right and the two halves already disagree in exactly the way
-that requires it.
+## The rotation, confirmed on the numbers
 
 **This half builds vertically, bow up.** In `geomorph-core.js` the command
-slots are at the top and the drives at the bottom:
+slots sit at the top and the drives at the bottom:
 
 ```
 line  724:  bow   = {x:x0, y:-100,   … role:"command", tag:"bow"}
@@ -96,111 +70,84 @@ line 1149:  slots.push({x:rim + i*100, y:0,     … role:"command"})
 line 1150:  slots.push({x:rim + i*100, y:H-100, … role:"drive"})
 ```
 
-**The other half draws horizontally, and derives which end is which.**
-`hullart.ts` does not hard-code it: `aftOf()` counts cells in the western and
-eastern thirds and calls the heavy end the stern, with the airlock breaking a
-tie. Then `sternX = box.minX`, `bowX = box.maxX` — engines left, nose right —
-whenever the west is heavier. And `hexlayout.ts` says "the root goes on its
-**western end**, so a mask longer than it is tall is walked end to end the way
-a ship is".
+**That half draws horizontally and derives which end is which.** `hullart.ts`
+hard-codes nothing: `aftOf()` counts cells in the western and eastern thirds,
+calls the heavy end the stern, and lets the airlock break a tie. Then
+`sternX = box.minX`, `bowX = box.maxX`.
 
-A 90° clockwise rotation maps `(x, y) → (H − y, x)`: the top goes east, the
-bottom goes west. So **engines left, head right** falls out of exactly the
-rotation asked for, and it is the orientation the other half's art already
-wants. Nothing has to be told; `aftOf` will agree on its own, because after the
-rotation the engineering block genuinely is the western mass.
+A 90° clockwise rotation maps `(x, y) → (H − y, x)`: top goes east, bottom goes
+west. **Engines left, head right** falls out of exactly the rotation asked for,
+and it is the orientation the other half's art already wants — `aftOf` will
+agree on its own, because after the rotation the engineering block genuinely is
+the western mass.
 
-It is worth being clear about how small this is. The rotation is a coordinate
-transform applied when the hull is reduced to hex cells — the mask is built in
-the rotated frame and nothing upstream changes. If the deck-plan artwork is
-ever drawn under the honeycomb it has to rotate too, which is a transform on
-one `<image>`; but per the merge plan, `hullart.ts` most likely wins the
-picture and the geomorph artwork may not travel at all. In that case the whole
-rotation is a handful of lines in the reducer that builds the mask.
+It is a coordinate transform on the section grid before cells are assigned.
+Nothing upstream changes. One transform, one test asserting drive slots land
+west and command slots east.
 
-## One conflict to settle before any of this is built
+## What is actually left
 
-`hexLayout` puts the **root** — the compartment the drone starts in — on the
-**western end** of the mask. After the rotation, west is the engine end.
+Three things, and only the first is large.
 
-So the docking bay lands at the stern, beside the drives, and the `deep` rooms
-(REACTOR, CONTROL) end up forward in the bow. That is not wrong — plenty of
-ships dock aft, and walking bow-ward toward the bridge is a perfectly good
-shape for a run — but it is a decision, and it is the opposite of the reading
-the geomorph art gives, where the bridge is the cap at the bow and the reactor
-sits with the engines.
-
-Three ways out, in order of how much they cost:
-
-1. **Accept it.** Dock aft, walk forward. Nothing to build; say it out loud in
-   the design so nobody treats it as a bug later.
-2. **Rotate anticlockwise instead** — head left, engines right — so the entry is
-   at the bow. Costs nothing technically, but it reads backwards against the
-   other half's existing art and against every screenshot already taken.
-3. **Give `hexLayoutOptions` a root-end knob.** Honest, small, and a change to
-   the other half's engine, which means the jam gate and consent.
-
-I would take 1, and revisit only if it plays badly.
-
-## The elephant: the core is mid-WIP
+### 1. The core is mid-WIP, and everything waits on it
 
 `c896921 "WIP: lay the hull out in fifty foot sections"` is the last commit to
-`geomorph-core.js`, it is on `main`, and its own message says the work is not
-finished — `src/core/missions.ts` profiles still need doubling in both axes. It
-is what produced the ship you saw with 50×50 sections inside the hull and two
-halves with nothing joining them.
+`geomorph-core.js`, it is on `main`, and its own message says the work is
+unfinished — `src/core/missions.ts` profiles still need doubling in both axes.
+It is what produces the hull with 50×50 sections loose inside it and two halves
+with nothing joining them.
 
-`hexmap.html` loads that same file. **Switching pipelines does not escape it.**
-Nothing downstream of the generator can be judged — not the mask, not the
-rotation, not `MASK_FLOOR` — until the hull is whole again, because a hull in
-two disconnected pieces fails the mask test for reasons that have nothing to do
-with the mask.
+A hull in two disconnected pieces is not a ship graph at all: it is two, and
+the second one is unreachable. Nothing downstream can be judged until it is
+whole. This is step zero and it is the only real blocker.
 
-Fix or revert first. That is step zero and everything else waits on it.
+### 2. The three systems need three compartments to stand in
 
-## Mission design: a smaller adapter than it looks
+SALVOR neutralises a derelict by raising `engine`, `core` and `terminal`
+(`content/objectives.ts`), each standing in a compartment, and `zones.ts` marks
+ENGINEERING, REACTOR and CONTROL as `required: true`. If compartments come from
+tile tags, then a ship whose tiles happen to include no reactor has no mission
+on it.
 
-SALVOR's missions are not a map format. A derelict is neutralised by raising
-three systems — `engine`, `core`, `terminal` (`content/objectives.ts`) — each
-standing in a compartment, each worked with a named tool for a number of turns
-at a stated loudness, marked `E`/`O`/`T` by `systems/populate.ts`. Charters sit
-on top as contracts. None of that reads a deck plan; all of it reads
-`Room.kind`.
+This is a requirement on the tile picker, not an obstacle: the generator
+already places by role — `command`, `drive`, `fuel` are slot roles it fills
+deliberately — so the fix is to make the same guarantee for the three the
+mission needs, and fail the seed if it cannot. That is how `validateShip`
+already behaves on the other side, so it is the same discipline rather than a
+new one.
 
-So the whole mission-side adapter is **roles → kind**. This half's taxonomy
-tags tiles with `roles` (`command`, `drive`, `weapon`, `fuel`…); that half has
-22 `RoomKindSpec`s carrying `weight`, `cover`, `required` and `deep`. The
-mapping is a table of about twenty rows.
+The `roles → kind` mapping itself is a table of about twenty rows.
 
-Under plan (a) even that is optional, because SALVOR is still choosing the
-kinds. It becomes necessary only if the geomorph side starts naming rooms —
-which is plan (b), which is the part I am arguing against.
+### 3. The drone docks aft
+
+`hexLayout` roots the run on the **western end** of a mask, so that "a mask
+longer than it is tall is walked end to end the way a ship is". After the
+rotation, west is the engine end. So the docking bay lands at the stern and the
+run walks forward toward the bridge.
+
+That is not wrong — plenty of ships dock aft, and walking bow-ward is a good
+shape for a run — but it is the opposite of the reading the geomorph art gives,
+where the bridge caps the bow and the reactor sits with the engines. Accept it
+and write it down, or rotate anticlockwise and have the entry at the bow. I
+would accept it; it costs nothing and reads fine.
 
 ## Order of work
 
-0. **Make the hull whole.** Fix or revert `c896921`. Nothing below is
-   measurable before this.
-1. **Mask spike.** Reduce a generated hull to a hex-cell set in the rotated
-   frame; call `hexLayout` with it; report `masked` and the corridor share over
-   a few hundred seeds. The answer is a number, and `MASK_FLOOR` already says
-   what counts as passing.
-2. **Rotation, properly.** One transform, one test asserting the drive slots
-   land west and the command slots east.
-3. **Settle the entry end.** Write down which of the three, and why.
-4. **Roles → kinds**, only if plan (b) is ever wanted.
+0. **Make the hull whole.** Fix or revert `c896921`.
+1. **Sections to cells.** Rotate, embed odd-r, write `room.data[HEX_KEY]`
+   directly. Assert the corridor share over a few hundred seeds as a tripwire.
+2. **Guarantee the three required roles**, and fail the seed otherwise.
+3. **Write down that the drone docks aft.**
 
-Steps 1–3 touch only this half; step 1 reads the other half's engine without
-changing it. Nothing here is blocked on the merge, and nothing here should be
-started before the jam gate closes.
+Steps 1–3 touch only this half. Nothing here is blocked on the rest of the
+merge, and nothing should start before the jam gate closes.
 
-## Open questions
+## What was wrong in the first draft
 
-1. Does a geomorph hull reduce to a mask that passes `MASK_FLOOR` at all? This
-   is the whole plan's load-bearing assumption and step 1 answers it.
-2. How many hexes wide is a mask meant to be? SALVOR puts one cell per
-   compartment; a 450 ft hull at a 25 ft hex is eighteen cells long, which is a
-   lot of ship for twenty rooms. The hex size may need to become a room size.
-3. Does the deck-plan artwork travel at all, or does `hullart.ts` win the
-   picture? If it travels, the rotation grows an image transform and the
-   CC BY-NC question comes back with it.
-4. Dock aft or dock forward?
+Recorded because the reasoning is worth not repeating. It framed a choice
+between `hexmap.html`'s pipeline and the game's, worried about many-hex rooms
+against one-cell compartments, and priced a mask-versus-rooms decision against
+`validateShip`. All three came from carrying the tactical floor across in my
+head. Once rooms are tiles, hexes are rooms, and movement is room-to-room, the
+question is not which pipeline to port — it is that most of the pipeline is not
+needed at all.
