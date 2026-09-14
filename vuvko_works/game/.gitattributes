@@ -1,0 +1,8 @@
+# The music, in LFS.
+#
+# Scoped to this directory on purpose. The other half tracks fourteen audio
+# files as ordinary blobs and they are small; a repository-wide `*.ogg` rule
+# would pull those into LFS on their next checkout, which is not this half's
+# business. Git reads attributes per directory, so this one reaches only what
+# sits under `vuvko_works/game/`.
+public/audio/music/** filter=lfs diff=lfs merge=lfs -text

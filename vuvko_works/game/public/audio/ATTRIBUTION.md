@@ -27,15 +27,25 @@ price release at <https://3d63.itch.io/analog-hack>.
 
 Credit line: **Music by 3D63 — "Analog Hack"**.
 
-**Permission, not a licence.** The page carries no licence document. The artist
-has answered a question in the page's comments to the effect that use in a game
-is fine so long as proper credit is given — which is a grant, but an informal
-one, made to someone else, in a comment that can be edited or deleted.
+**Permission granted.** The page carries no licence document, and until
+2026-09-15 this file recorded only an informal grant: an answer in the page's
+comments, made to someone else, saying game use was fine with credit. That was
+tolerance rather than permission, by the standard `open-licensed.md` sets, and
+the track was kept out of the repository because of it.
 
-This repository already draws that line elsewhere (`open-licensed.md`: _"that is
-tolerance, not permission"_), so it is drawn here too. Before any public
-release, get the permission in writing from the artist and record it in this
-file, or replace the track. Checked 2026-09-11.
+The artist has since given permission for this game directly. On that basis the
+music is committed here and the credit line above is the condition it is
+committed under.
+
+One thing is still owed to this file, and it is the reason the file exists:
+**a copy of the grant, with its medium and its date.** Paste it below when you
+have it to hand, so the record does not rest on anyone's memory of a
+conversation.
+
+    (grant, verbatim — where it was made, and when)
+
+Recorded 2026-09-15 on the repository owner's report. Previously checked
+2026-09-11.
 
 ## Format
 

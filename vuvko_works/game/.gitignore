@@ -16,8 +16,5 @@ design-bundle/
 # `npm run assets:atlas`. Not committed; see public/geomorphs/README.md.
 public/geomorphs/
 
-# Music: see public/audio/ATTRIBUTION.md before shipping any of it.
-public/audio/music/
-
 # itch deploy target
 .env
