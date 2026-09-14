@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Room Map — SALVOR hulls</title>
+<style>
+:root{
+  --void:#0e1a2e; --deck:#0a0e16; --panel:#0c1526; --ink:#d7e3f6; --dim:#8296b4;
+  --rule:#2b3f5e; --drone:#5fb8d9; --ship:#cf6a5a; --node:#5fbf9b; --door:#e8c15a;
+  --mono: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--void); color:var(--ink); font:13px/1.5 var(--mono);
+  display:grid; grid-template-columns:1fr 340px; height:100vh; overflow:hidden;
+}
+#stage{position:relative; overflow:hidden; background:var(--deck)}
+svg{width:100%; height:100%; display:block}
+#side{
+  border-left:1px solid var(--rule); background:var(--panel);
+  overflow:auto; padding:14px; display:flex; flex-direction:column; gap:14px;
+}
+h1{font-size:15px; letter-spacing:.14em; text-transform:uppercase; margin:0}
+h2{font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--dim);
+   margin:0 0 6px; font-weight:400}
+.row{display:flex; gap:8px; align-items:center}
+.row label{flex:0 0 92px; color:var(--dim)}
+input,select,button{
+  font:inherit; color:var(--ink); background:var(--void);
+  border:1px solid var(--rule); padding:5px 8px; border-radius:0;
+}
+input{flex:1; min-width:0}
+button{cursor:pointer}
+button:hover{border-color:var(--ink)}
+button.go{border-color:var(--drone); color:var(--drone); width:100%; padding:9px}
+button.go:hover{background:color-mix(in oklab, var(--drone) 20%, transparent)}
+#report{white-space:pre-wrap; font-size:12px; line-height:1.6}
+.ok{color:var(--node)} .bad{color:var(--ship)} .warn{color:var(--door)}
+#facts{display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px}
+#facts b{font-weight:400; color:var(--dim)}
+#json{
+  width:100%; height:150px; resize:vertical; font:11px/1.4 var(--mono);
+  background:var(--void); color:var(--dim); border:1px solid var(--rule); padding:6px;
+}
+.hint{color:var(--dim); font-size:11px; line-height:1.55}
+.legend{display:flex; flex-wrap:wrap; gap:4px 10px; font-size:11px; color:var(--dim)}
+.legend i{display:inline-block; width:9px; height:9px; margin-right:4px; font-style:normal}
+</style>
+</head>
+<body>
+
+<div id="stage"><svg id="map" role="img" aria-label="Generated room map"></svg></div>
+
+<div id="side">
+  <h1>Room map</h1>
+  <p class="hint">
+    A compartment graph on SALVOR's honeycomb: one room per hull section, one
+    lattice cell per room, doors on shared edges. Exports a <code>ShipData</code>
+    that <code>Ship.rehydrate</code> takes as it is. Run
+    <code>layoutShip</code> on it once for the terminal schematic.
+  </p>
+
+  <div>
+    <h2>Hull</h2>
+    <div class="row"><label for="seed">seed</label><input id="seed" value="OSPREY-1"></div>
+    <div class="row"><label for="prof">profile</label><input id="prof" value="2-4-5-5-4-4-3-2"></div>
+    <div class="row"><label for="dock">dock at</label>
+      <select id="dock" style="flex:1">
+        <option value="bow">the bow — walk aft to the reactor</option>
+        <option value="stern">the stern — walk forward to the bridge</option>
+      </select>
+    </div>
+    <div class="row"><label for="loops">loop doors</label><input id="loops" type="range" min="0" max="100" value="45"></div>
+  </div>
+
+  <button class="go" id="go">Generate</button>
+
+  <div>
+    <h2>The ship</h2>
+    <div id="facts"></div>
+  </div>
+
+  <div>
+    <h2>Validation</h2>
+    <div id="report"></div>
+  </div>
+
+  <div>
+    <h2>Kinds</h2>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div>
+    <h2>Export</h2>
+    <textarea id="json" readonly spellcheck="false"></textarea>
+    <div class="row" style="margin-top:6px">
+      <button id="save" style="flex:1">Download ShipData</button>
+      <button id="copy" style="flex:1">Copy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ===========================================================================
+   A room map for SALVOR.
+
+   The other half keeps a ship as a graph of compartments — `rooms[]`,
+   `doors[]`, `entry` — and draws it on a pointy-top hex lattice with exactly
+   one cell per room. This page produces that directly.
+
+   It does not rasterise a deck plan and it does not hunt connected regions of
+   floor. Those passes exist to tell a tactical floor which pixels are walkable,
+   and there is no tactical floor here: movement is room to room through doors.
+   A hull section *is* a compartment and its position *is* its kind.
+
+   Nothing is fetched, so it runs from `file://` and needs none of the artwork.
+   =========================================================================== */
+
+/* ------------------------------------------------------------------ lattice */
+
+/* SALVOR's six directions, in its order (`rooms/gen/hexlayout.ts`). Note that
+   none of them is vertical: corridors run level or diagonal and never up. */
+const HEX_DIRS = [
+  {q: 1, r: 0},   // east
+  {q: 1, r:-1},   // north-east
+  {q: 0, r: 1},   // south-east
+  {q: 0, r:-1},   // north-west
+  {q:-1, r: 1},   // south-west
+  {q:-1, r: 0},   // west
+];
+
+/* The corridor gap. One would pack the hexagons edge to edge and leave a
+   corridor nowhere to be; SALVOR's renderer scales by this and the difference
+   is the corridor. */
+const HEX_SPACING = 1.34;
+
+/* A square section grid onto the lattice, odd-r offset.
+
+   This is the one step that could quietly fail — four orthogonal neighbours
+   meeting six directions none of which is vertical — so it is worth saying
+   that it does not: every orthogonal neighbour of every cell stays adjacent,
+   and two spare diagonals are left over unused. */
+function axialOf(col, row){
+  return {q: col - ((row - (row & 1)) >> 1), r: row};
+}
+const keyOf = (c) => c.q + "," + c.r;
+function adjacent(a, b){
+  return HEX_DIRS.some(d => a.q + d.q === b.q && a.r + d.r === b.r);
+}
+
+/* ------------------------------------------------------------------- random */
+
+/* Counter-based, so a seed reproduces a ship exactly. */
+function rng(seed){
+  let h = 2166136261 >>> 0;
+  for (const ch of String(seed)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return function next(){
+    h ^= h << 13; h >>>= 0; h ^= h >>> 17; h ^= h << 5; h >>>= 0;
+    return h / 4294967296;
+  };
+}
+const pick = (rand, list) => list[Math.floor(rand() * list.length) % list.length];
+
+/* --------------------------------------------------------------- the hull */
+
+/* A profile digit counts sections across the beam, and rows are centred — the
+   same grammar `geomorph-core.js` reads, which is what makes "3-5-6-5-3" mean
+   the same hull on both sides. */
+function parseProfile(text){
+  const parts = String(text || "").split(/[^0-9]+/).filter(Boolean)
+    .map(Number).filter(n => n >= 1 && n <= 12);
+  return parts.length ? parts.slice(0, 16) : [1];
+}
+
+/**
+ * The section grid, already rotated.
+ *
+ * This half builds vertically with the command slots at the top and the drives
+ * at the bottom; the other half draws horizontally and reads the heavy end as
+ * the stern. Ninety degrees clockwise maps top to east and bottom to west, so
+ * the bow ends up on the right and the engines on the left — which is the
+ * orientation `hullart.ts` wants, and it will agree on its own because after
+ * the rotation the engineering block genuinely is the western mass.
+ *
+ * The rotation is this function's indexing and nothing else: row `i` of the
+ * profile, counted from the bow, becomes column `n - 1 - i`.
+ */
+function sectionsOf(profile){
+  /* Parity first. A row sits on the section grid only when its width matches
+     the beam's parity — mix the two and every compartment in that row lands
+     half a section across, which is the same reason `geomorph-core.js` squares
+     off a parity change it has no transition piece for. Here it would simply
+     put a row off-centre and make the hull look bent. */
+  const beam = Math.max(...profile);
+  const squared = profile.map(w => ((beam - w) & 1) ? Math.max(1, w - 1) : w);
+
+  const cells = [];
+  squared.forEach(function acrossTheBeam(width, i){
+    const col = squared.length - 1 - i;         // the rotation, in one line
+    const offset = (beam - width) / 2;          // exact, now parity is settled
+    for (let j = 0; j < width; j++){
+      cells.push({col, row: offset + j});
+    }
+  });
+  return {cells, beam, length: squared.length, squared};
+}
+
+/* --------------------------------------------------------------- the kinds */
+
+/* `games/salvor/src/content/zones.ts`, as the generator needs to know it: what
+   must appear exactly once, what must sit deep, and what may fill the rest. */
+const ENTRY_KIND = "docking";
+const DEEP_DEPTH = 3;
+const REQUIRED = [
+  {kind: "engineering", name: "ENGINEERING", deep: false},
+  {kind: "reactor",     name: "REACTOR",     deep: true},
+  {kind: "control",     name: "CONTROL",     deep: true},
+];
+const FILLER = [
+  {kind: "corridor",    name: "CORRIDOR RING", weight: 3, cover: false},
+  {kind: "cargo",       name: "CARGO BAY",     weight: 2, cover: true},
+  {kind: "storage",     name: "STORAGE",       weight: 2, cover: true},
+  {kind: "maintenance", name: "MAINTENANCE",   weight: 2, cover: true},
+  {kind: "hab",         name: "HAB BLOCK",     weight: 2, cover: false},
+  {kind: "workshop",    name: "WORKSHOP",      weight: 1, cover: true},
+  {kind: "armory",      name: "ARMORY",        weight: 1, cover: true},
+  {kind: "med",         name: "MED BAY",       weight: 1, cover: false},
+  {kind: "lab",         name: "LAB",           weight: 1, cover: false},
+  {kind: "mess",        name: "MESS",          weight: 1, cover: false},
+  {kind: "sensors",     name: "SENSOR BAY",    weight: 1, cover: false},
+  {kind: "cryo",        name: "CRYO",          weight: 1, cover: false},
+  {kind: "lifesupport", name: "LIFE SUPPORT",  weight: 1, cover: false},
+  {kind: "hydroponics", name: "HYDROPONICS",   weight: 1, cover: true},
+  {kind: "escapepods",  name: "ESCAPE PODS",   weight: 1, cover: false},
+];
+const COLOUR = {
+  docking:"#5fb8d9", reactor:"#cf6a5a", control:"#e8c15a", engineering:"#5fbf9b",
+  corridor:"#3b4c66", cargo:"#4a5f7e", storage:"#44566f", maintenance:"#465a74",
+  hab:"#53698a", workshop:"#4f6480", armory:"#7a5560", med:"#4d7a74",
+  lab:"#4b6f8a", mess:"#556a85", sensors:"#5a7fa0", cryo:"#5c7f9e",
+  lifesupport:"#4e7a68", hydroponics:"#4f7a5c", escapepods:"#6b6f8a",
+};
+const weighted = FILLER.flatMap(k => Array.from({length: k.weight}, () => k));
+
+/* ------------------------------------------------------------------- build */
+
+function buildShip(opts){
+  const rand = rng(opts.seed);
+  const profile = parseProfile(opts.profile);
+  const {cells, beam, length} = sectionsOf(profile);
+  if (cells.length < 8) return {error: "Too few sections. Give the profile more rows, or wider ones."};
+
+  /* Where the drone comes aboard. At the bow the run walks aft into the
+     engines, which is the reading the hull's own art gives; at the stern it
+     walks forward to the bridge. Both are legal and the deep rooms follow. */
+  const atBow = opts.dock === "bow";
+  const entryCol = atBow ? length - 1 : 0;
+  const onEntryEdge = cells.filter(c => c.col === entryCol);
+  const entryCell = onEntryEdge[Math.floor(rand() * onEntryEdge.length) % onEntryEdge.length];
+
+  /* Rooms, in a fixed order so ids are dense and a seed is reproducible. */
+  const order = cells.slice().sort((a, b) => a.col - b.col || a.row - b.row);
+  const rooms = order.map(function asRoom(cell, id){
+    return {
+      id, label: "r" + id, kind: "", name: "", depth: 0,
+      /* Filled in below. `col`/`row` are the terminal schematic's grid, not
+         the section grid and not the honeycomb — a column per depth, boxes
+         stacked down it. The real pass is `gen/layout.ts`'s `layoutShip`,
+         which the importing game runs; this is a sane starting point. */
+      col: 0, row: 0, cover: false, hazard: "",
+      explored: false, scanned: false, marks: [],
+      data: {hex: axialOf(cell.col, cell.row)},
+      _cell: cell,
+    };
+  });
+  const byKey = new Map(rooms.map(r => [keyOf(r.data.hex), r]));
+  const entry = byKey.get(keyOf(axialOf(entryCell.col, entryCell.row)));
+
+  /* Doors on shared edges. Every orthogonally neighbouring pair of sections is
+     a candidate; the lattice embedding guarantees the two cells touch, so each
+     one can be drawn as a corridor rather than a labelled chip. */
+  const candidates = [];
+  for (const room of rooms){
+    for (const step of [[1,0],[0,1]]){
+      const other = byKey.get(keyOf(axialOf(room._cell.col + step[0], room._cell.row + step[1])));
+      if (other) candidates.push({a: room.id, b: other.id});
+    }
+  }
+
+  /* A spanning tree first, so the ship is one ship. What is left over is a
+     loop, and only a loop may be shut for good: sealing a tree edge would
+     strand everything behind it, which is the guarantee `validateShip` checks
+     as "unreachable even with a cutter".
+
+     The tree is grown with a cap of two children a compartment. That is not
+     tidiness — the schematic draws a column per depth, so every door to a
+     deeper room leaves by the same wall, and a room with three of them is a
+     box with three wires out of one side, which `layoutFaults` refuses. A
+     compartment nothing will adopt at the cap is adopted anyway on a second
+     pass: a ship in two pieces is a worse fault than a crowded wall. */
+  const KIDS = 2;
+  const seen = new Set([entry.id]);
+  const kids = new Map([[entry.id, 0]]);
+  const tree = [];
+  const loops = [];
+  let pending = candidates.slice();
+
+  function grow(cap){
+    const queue = [...seen];
+    while (queue.length){
+      const here = queue.shift();
+      for (let i = pending.length - 1; i >= 0; i--){
+        const edge = pending[i];
+        const far = edge.a === here ? edge.b : edge.b === here ? edge.a : null;
+        if (far === null || seen.has(far)) continue;
+        if ((kids.get(here) ?? 0) >= cap) continue;
+        pending.splice(i, 1);
+        kids.set(here, (kids.get(here) ?? 0) + 1);
+        kids.set(far, 0);
+        seen.add(far); tree.push(edge); queue.push(far);
+      }
+    }
+  }
+  grow(KIDS);
+  if (seen.size !== rooms.length) grow(Infinity);
+  if (seen.size !== rooms.length){
+    return {error: "The profile makes a hull in more than one piece. Check the digits."};
+  }
+
+  /* Whatever the tree did not take is a loop, and a loop is optional. */
+  for (const edge of pending) loops.push(edge);
+
+  /* The entry carries the airlock as well, so it gives up its loops: a grid
+     cell has four orthogonal neighbours, which is the whole budget, and the
+     entry would otherwise come out at five and be refused. */
+  for (let i = loops.length - 1; i >= 0; i--){
+    if (loops[i].a === entry.id || loops[i].b === entry.id) loops.splice(i, 1);
+  }
+
+  /* Depth is doors from the entry, over the tree alone — which is what the
+     schematic's columns are, and the loops cannot shorten it because a loop is
+     only ever added between rooms the tree already placed. */
+  const doors = [];
+  const addDoor = (a, b, state) => {
+    doors.push({id: doors.length, label: "d" + doors.length, a, b, state});
+  };
+  for (const edge of tree) addDoor(edge.a, edge.b, rand() < 0.45 ? "closed" : "open");
+
+  const near = new Map([[entry.id, 0]]);
+  const walk = [entry.id];
+  while (walk.length){
+    const here = walk.shift();
+    for (const door of doors){
+      const far = door.a === here ? door.b : door.b === here ? door.a : null;
+      if (far === null || near.has(far)) continue;
+      near.set(far, near.get(here) + 1);
+      walk.push(far);
+    }
+  }
+  for (const room of rooms) room.depth = near.get(room.id) ?? 0;
+
+  const stacked = new Map();
+  for (const room of rooms){
+    const n = stacked.get(room.depth) ?? 0;
+    stacked.set(room.depth, n + 1);
+    room.col = room.depth;
+    room.row = n;
+  }
+
+  /* Now the loops — and only between compartments the tree left at the same
+     depth.
+
+     The schematic gives a box one wall per direction and allows two doors out
+     of a wall only if they leave it opposite ways. A room's shallower wall
+     already carries the door it was reached by, so a second one there is a
+     coin toss against that rule; and a third door to deeper rooms is refused
+     outright. A loop between equals lands on the top or the bottom instead,
+     where nothing is competing for the space. One per compartment, so two can
+     never land on the same one. */
+  const looped = new Set();
+  const loopShare = Number(opts.loops) / 100;
+  for (const edge of loops){
+    if (rand() > loopShare) continue;
+    if (near.get(edge.a) !== near.get(edge.b)) continue;
+    if (looped.has(edge.a) || looped.has(edge.b)) continue;
+    looped.add(edge.a); looped.add(edge.b);
+    addDoor(edge.a, edge.b, rand() < 0.5 ? "sealed" : "closed");
+  }
+
+  /* The three systems a derelict is neutralised by need three compartments to
+     stand in, each exactly once, and two of them below the deep line. Placed
+     before the filler so the filler can never crowd them out. */
+  const deepest = rooms.slice().sort((a, b) => b.depth - a.depth);
+  const taken = new Set([entry.id]);
+  const missing = [];
+  for (const spec of REQUIRED){
+    const fits = deepest.find(r => !taken.has(r.id) && (!spec.deep || r.depth >= DEEP_DEPTH));
+    if (!fits) { missing.push(spec.kind); continue; }
+    taken.add(fits.id);
+    fits.kind = spec.kind; fits.name = spec.name;
+  }
+
+  entry.kind = ENTRY_KIND; entry.name = "DOCKING BAY";
+  for (const room of rooms){
+    if (room.kind) continue;
+    const spec = pick(rand, weighted);
+    room.kind = spec.kind; room.name = spec.name; room.cover = spec.cover;
+    if (rand() < 0.10) room.hazard = "vented";
+  }
+
+  /* The airlock is a self-edge on the entry: one door, both ends the same room,
+     which is the shape `validateShip` insists on. */
+  doors.push({id: doors.length, label: "a1", a: entry.id, b: entry.id, state: "airlock"});
+
+  for (const room of rooms) delete room._cell;
+  return {
+    ship: {rooms, doors, entry: entry.id},
+    missing,
+    stats: {beam, length, loops: loops.length, sections: cells.length, atBow},
+  };
+}
+
+/* --------------------------------------------------------------- validation */
+
+/* The same questions `packages/engine/src/rooms/gen/validate.ts` asks, so the
+   page can say whether what it just made is usable before anyone downloads it. */
+function validate(ship, missing){
+  const out = [];
+  const say = (ok, text) => out.push({ok, text});
+
+  say(ship.rooms.every((r, i) => r.id === i), "room ids are dense");
+  say(ship.doors.every((d, i) => d.id === i), "door ids are dense");
+
+  const airlocks = ship.doors.filter(d => d.state === "airlock");
+  say(airlocks.length === 1, airlocks.length + " airlock, expected exactly one");
+  say(airlocks.length === 1 && airlocks[0].a === ship.entry && airlocks[0].b === ship.entry,
+      "the airlock hangs off the entry at both ends");
+
+  const entry = ship.rooms[ship.entry];
+  say(entry.depth === 0, "entry is at depth 0");
+  say(entry.kind === ENTRY_KIND, "entry is a " + ENTRY_KIND);
+
+  /* With a cutter every door but the airlock opens, so nothing may be an island. */
+  const seen = new Set([ship.entry]);
+  const queue = [ship.entry];
+  while (queue.length){
+    const here = queue.shift();
+    for (const door of ship.doors){
+      if (door.state === "airlock") continue;
+      const far = door.a === here ? door.b : door.b === here ? door.a : null;
+      if (far === null || seen.has(far)) continue;
+      seen.add(far); queue.push(far);
+    }
+  }
+  say(seen.size === ship.rooms.length,
+      seen.size === ship.rooms.length
+        ? "every room is reachable with a cutter"
+        : (ship.rooms.length - seen.size) + " rooms unreachable even with a cutter");
+
+  for (const spec of REQUIRED){
+    const found = ship.rooms.filter(r => r.kind === spec.kind);
+    say(found.length === 1, spec.kind + " appears " + found.length + " time(s), expected once");
+    if (spec.deep && found.length === 1){
+      say(found[0].depth >= DEEP_DEPTH,
+          spec.kind + " sits at depth " + found[0].depth + ", deep line is " + DEEP_DEPTH);
+    }
+  }
+  if (missing.length) say(false, "no compartment was deep enough for: " + missing.join(", "));
+
+  /* Every room's cell must actually touch its neighbours', or the picture says
+     a door in chips where there should be a corridor. */
+  const cellOf = new Map(ship.rooms.map(r => [r.id, r.data.hex]));
+  const chips = ship.doors.filter(d =>
+    d.state !== "airlock" && !adjacent(cellOf.get(d.a), cellOf.get(d.b))).length;
+  say(chips === 0, chips === 0
+    ? "every door is a corridor; none demoted to a chip"
+    : chips + " doors cannot be drawn as corridors");
+
+  return out;
+}
+
+/* ------------------------------------------------------------------ drawing */
+
+const SVG = "http://www.w3.org/2000/svg";
+function el(name, attrs){
+  const node = document.createElementNS(SVG, name);
+  for (const k in attrs) node.setAttribute(k, attrs[k]);
+  return node;
+}
+function centreOf(cell, size){
+  const s = size * HEX_SPACING;
+  return {x: s * Math.sqrt(3) * (cell.q + cell.r / 2), y: s * 1.5 * cell.r};
+}
+function corners(c, size){
+  const out = [];
+  for (let i = 0; i < 6; i++){
+    const a = Math.PI / 180 * (60 * i - 30);
+    out.push((c.x + size * Math.cos(a)).toFixed(2) + "," + (c.y + size * Math.sin(a)).toFixed(2));
+  }
+  return out.join(" ");
+}
+
+function draw(ship){
+  const svg = document.getElementById("map");
+  svg.replaceChildren();
+  const size = 30;
+  const seats = ship.rooms.map(r => centreOf(r.data.hex, size));
+
+  /* Corridors under the compartments, so a hexagon always covers its own end. */
+  const links = el("g", {"stroke-linecap":"round", fill:"none"});
+  for (const door of ship.doors){
+    if (door.state === "airlock") continue;
+    const a = seats[door.a], b = seats[door.b];
+    const shut = door.state === "sealed";
+    links.appendChild(el("line", {
+      x1:a.x, y1:a.y, x2:b.x, y2:b.y,
+      stroke: shut ? "var(--ship)" : "var(--door)",
+      "stroke-width": shut ? 3 : 5,
+      "stroke-dasharray": door.state === "closed" ? "6 5" : "",
+      opacity: shut ? .9 : .75,
+    }));
+  }
+  svg.appendChild(links);
+
+  const cells = el("g", {});
+  ship.rooms.forEach(function drawRoom(room, i){
+    const c = seats[i];
+    const fill = COLOUR[room.kind] || "#3b4c66";
+    const g = el("g", {});
+    g.appendChild(el("polygon", {
+      points: corners(c, size),
+      fill, "fill-opacity": room.id === ship.entry ? .95 : .72,
+      stroke: room.id === ship.entry ? "#ffffff" : "var(--rule)",
+      "stroke-width": room.id === ship.entry ? 2.5 : 1.5,
+    }));
+    const label = el("text", {
+      x: c.x, y: c.y - 2, "text-anchor":"middle", fill:"#08101c",
+      "font-size": 9, "font-weight": 700, "font-family":"var(--mono)",
+    });
+    label.textContent = room.name.split(" ")[0].slice(0, 8);
+    g.appendChild(label);
+    const sub = el("text", {
+      x: c.x, y: c.y + 10, "text-anchor":"middle", fill:"#08101c",
+      "font-size": 8, opacity:.75, "font-family":"var(--mono)",
+    });
+    sub.textContent = room.label + " d" + room.depth;
+    g.appendChild(sub);
+    cells.appendChild(g);
+  });
+  svg.appendChild(cells);
+
+  /* Which way the ship faces, said out loud on the picture. */
+  const box = seats.reduce((b, s) => ({
+    minX: Math.min(b.minX, s.x), maxX: Math.max(b.maxX, s.x),
+    minY: Math.min(b.minY, s.y), maxY: Math.max(b.maxY, s.y),
+  }), {minX:1e9, maxX:-1e9, minY:1e9, maxY:-1e9});
+  const mid = (box.minY + box.maxY) / 2;
+  for (const end of [{x: box.minX - size * 2.4, t:"ENGINES"}, {x: box.maxX + size * 2.4, t:"BOW"}]){
+    const tag = el("text", {
+      x: end.x, y: mid, "text-anchor":"middle", fill:"var(--dim)",
+      "font-size": 11, "letter-spacing": 2, "font-family":"var(--mono)",
+    });
+    tag.textContent = end.t;
+    svg.appendChild(tag);
+  }
+
+  const pad = size * 4.5;
+  svg.setAttribute("viewBox", [
+    (box.minX - pad).toFixed(1), (box.minY - pad).toFixed(1),
+    (box.maxX - box.minX + pad * 2).toFixed(1), (box.maxY - box.minY + pad * 2).toFixed(1),
+  ].join(" "));
+}
+
+/* --------------------------------------------------------------------- page */
+
+let CURRENT = null;
+
+function generate(){
+  const built = buildShip({
+    seed: document.getElementById("seed").value,
+    profile: document.getElementById("prof").value,
+    dock: document.getElementById("dock").value,
+    loops: document.getElementById("loops").value,
+  });
+  const report = document.getElementById("report");
+  if (built.error){
+    report.innerHTML = '<span class="bad">' + built.error + "</span>";
+    return;
+  }
+  CURRENT = built.ship;
+  draw(built.ship);
+
+  const checks = validate(built.ship, built.missing);
+  report.innerHTML = checks.map(c =>
+    '<span class="' + (c.ok ? "ok" : "bad") + '">' + (c.ok ? "OK  " : "BAD ") + c.text + "</span>"
+  ).join("\n");
+
+  const kinds = new Set(built.ship.rooms.map(r => r.kind));
+  document.getElementById("facts").innerHTML = [
+    ["rooms", built.ship.rooms.length],
+    ["doors", built.ship.doors.length],
+    ["beam", built.stats.beam + " sections"],
+    ["length", built.stats.length + " sections"],
+    ["loops", built.stats.loops + " possible"],
+    ["deepest", Math.max(...built.ship.rooms.map(r => r.depth)) + " doors in"],
+    ["boards at", built.stats.atBow ? "the bow" : "the stern"],
+  ].map(([k, v]) => "<b>" + k + "</b><span>" + v + "</span>").join("");
+
+  document.getElementById("legend").innerHTML = [...kinds].sort().map(k =>
+    '<span><i style="background:' + (COLOUR[k] || "#3b4c66") + '"></i>' + k + "</span>"
+  ).join("");
+
+  /* The export is the ship and nothing else: `ShipData` is exactly what
+     `JSON.stringify(ship)` produces on the other side. */
+  document.getElementById("json").value = JSON.stringify(built.ship, null, 1);
+}
+
+document.getElementById("go").onclick = generate;
+document.getElementById("save").onclick = function save(){
+  if (!CURRENT) return;
+  const name = "ship-" + String(document.getElementById("seed").value).replace(/\W+/g, "_") + ".json";
+  const a = document.createElement("a");
+  a.download = name;
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(CURRENT, null, 1)], {type:"application/json"}));
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+};
+document.getElementById("copy").onclick = function copy(){
+  const box = document.getElementById("json");
+  box.select();
+  navigator.clipboard?.writeText(box.value);
+};
+for (const id of ["seed", "prof", "dock", "loops"]){
+  document.getElementById(id).addEventListener("change", generate);
+}
+generate();
+</script>
+</body>
+</html>

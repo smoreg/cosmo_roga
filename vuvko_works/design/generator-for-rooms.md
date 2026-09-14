@@ -131,6 +131,39 @@ where the bridge caps the bow and the reactor sits with the engines. Accept it
 and write it down, or rotate anticlockwise and have the entry at the bow. I
 would accept it; it costs nothing and reads fine.
 
+## Built: `roomgen.html`
+
+The plan above is implemented at [`../roomgen.html`](../roomgen.html)
+(pictured in [roomgen.png](roomgen.png)). It is one self-contained page, no
+dependencies, no fetches — it runs from `file://` and needs none of the
+artwork, because a hull silhouette is a profile and a profile is eight digits.
+
+It emits a `ShipData` that `Ship.rehydrate` takes unchanged, with each room's
+lattice cell already in `room.data.hex`. **Verified against that half's own
+code rather than its own opinion**: `design/salvor-artboards/verify-ship.ts`
+rehydrates the export, runs `layoutShip`, and runs `validateShip` against a
+spec built from `content/zones.ts`. Forty-nine ships over seven profiles and
+seven seeds come back with zero problems.
+
+That verification was worth more than the page's own checks, because it found
+three whole classes of rule the plan had not mentioned and I would not have
+guessed:
+
+- **`col`/`row` are the terminal schematic, not the honeycomb**, and column *is*
+  depth. That is a second layout, `gen/layout.ts` already does it, and the page
+  does not carry a copy — it emits a sane starting grid and the importing game
+  runs `layoutShip` once.
+- **A box has four walls and a wall takes two doors**, so no compartment may
+  have three doors to deeper rooms. That is a cap of two children on the
+  spanning tree, which is a constraint on generation and not on drawing.
+- **A loop door is only safe between equals.** A shallower wall already carries
+  the door the room was reached by, so a second one there is a coin toss
+  against "two doors leave the same side the same way". Loops therefore join
+  rooms at equal depth, one per compartment.
+
+The entry gives up its loops as well: a grid cell has four neighbours, which is
+the whole door budget, and the airlock takes one of them.
+
 ## Order of work
 
 0. **Make the hull whole.** Fix or revert `c896921`.
