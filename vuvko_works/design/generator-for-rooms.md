@@ -173,20 +173,33 @@ taxonomy roles — `docking` wants `airlock` or `bay`, `reactor` wants `drive` o
 `fuel`, and so on down a table of nineteen rows. 280 of the 1789 tiles are a
 hundred feet square, which is enough spread to never repeat a neighbour.
 
-The plan is drawn as **one picture under the whole hull**, not as a tile
-clipped into each hexagon. Nothing is cut: neighbouring tiles meet, and the
-hull reads as a continuous deck rather than a row of coasters, with the
-honeycomb and its corridors drawn over the top.
+The plan is drawn **on the section grid, not on the lattice**, because a deck
+plan has to be continuous or it is not a ship — and the lattice cannot carry
+one. SALVOR spaces its hexagons apart on purpose: the gap between them is where
+a corridor goes. Sections have no such gap, a hundred feet of deck meets the
+next hundred feet, so the plan is laid out square and the honeycomb is placed
+over it, one hexagon to a section.
 
-That works because a lattice puts alternate rows half a column across, so the
-plan comes out bricked and slightly overlapped — and **a hundred-foot tile may
-legitimately sit half a section across where its doors allow it**, which is the
-archive's own rule rather than a liberty taken here. `geomorph-core.js` already
-reasons about it: `expandProfile` describes a hundred-to-fifty transition whose
-funnel opening is centred in its own hundred feet, so a row hanging under it is
-*meant* to sit half a section over and connects through the tile instead of
-through a section edge. A half-section offset is therefore not a misalignment
-to be snapped away; matching the doors across it is the thing to check.
+**Every tile is turned ninety degrees clockwise with the ship.** The archive
+draws upright — engines at the bottom, bridge at the top — and this hull is on
+its side, so a tile's north edge ends up facing the bow, which is east. Getting
+that wrong leaves the art merely sideways; getting it *silently* wrong matches
+every wall and doorway against the wrong edge as well, which is why the
+direction map is written down as a constant rather than folded into an angle.
+
+Selection uses the taxonomy's `skin` as well as its roles. A tile's skin sides
+are its hull plating, so a section at the edge of the ship wants plating
+exactly where it has no neighbour, and a section in the middle wants none at
+all — otherwise the plan grows a hull wall through its own centre and stops
+reading as one ship. 176 of the 280 hundred-foot tiles carry no skin at all,
+which is the interior pool; 70 carry three sides, which is what an end cap is.
+
+**Still open: the doorways are not matched.** Every 100×100 tile carries doors
+at roughly 25 and 75 feet along each edge, so on a whole-section grid they line
+up by construction, and across a half-section offset a door at 25 meets one at
+75. Neither is *checked* yet — selection matches plating, not openings. That is
+the remaining work if the plan is to be structurally honest rather than merely
+continuous.
 
 Two things follow from turning it round this way. The ship is a ship before
 there is any artwork at all, so the broken core cannot produce a broken graph.

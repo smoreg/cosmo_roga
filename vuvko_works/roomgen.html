@@ -269,6 +269,9 @@ const weighted = FILLER.flatMap(k => Array.from({length: k.weight}, () => k));
  */
 let TILES = null;
 
+/* The four ways out of a section, in ship space: west is aft, east is the bow. */
+const SHIP_STEP = {w: [-1, 0], e: [1, 0], n: [0, -1], s: [0, 1]};
+
 const KIND_ROLES = {
   docking:["airlock","bay"], engineering:["drive","service"], reactor:["drive","fuel"],
   control:["command"],       cargo:["bay"],                   storage:["bay","service"],
@@ -288,6 +291,7 @@ async function loadTiles(){
     ]);
     const drawable = new Set(man.tiles.filter(t => !t.overlay).map(t => t.path));
     const byRole = new Map();
+    const skin = new Map();
     const all = [];
     for (const path in tax.tiles){
       const tile = tax.tiles[path];
@@ -296,12 +300,13 @@ async function loadTiles(){
          else would have to be cut or stretched to sit under a hexagon. */
       if (ft[0] !== 100 || ft[1] !== 100 || !drawable.has(path)) continue;
       all.push(path);
+      skin.set(path, tile.skin || []);
       for (const role of tile.roles || []){
         if (!byRole.has(role)) byRole.set(role, []);
         byRole.get(role).push(path);
       }
     }
-    TILES = all.length ? {byRole, all} : null;
+    TILES = all.length ? {byRole, skin, all} : null;
     note.textContent = TILES
       ? all.length + " hundred-foot tiles indexed."
       : "No hundred-foot tiles in the index.";
@@ -312,19 +317,67 @@ async function loadTiles(){
   }
 }
 
-/* Which tile a compartment wears. Seeded, so a seed reproduces the picture. */
-function artFor(rooms, seed){
+/**
+ * Ship directions to tile edges, under the rotation.
+ *
+ * The archive draws its ships upright — engines at the bottom, bridge at the
+ * top — and this hull is turned ninety degrees clockwise, so every tile has to
+ * turn with it. A tile's north edge ends up facing the ship's bow, which is
+ * east. Get this wrong and the art is merely sideways; get it silently wrong
+ * and every wall and doorway is matched against the wrong edge as well.
+ */
+const TILE_SIDE = {e: "n", s: "e", w: "s", n: "w"};
+
+/**
+ * Which tile a compartment wears.
+ *
+ * Role decides what kind of deck it is; `skin` decides whether it can sit
+ * there at all. A tile's skin sides are its hull plating, so a section at the
+ * edge of the ship wants plating exactly where there is no neighbour, and a
+ * section in the middle wants none at all — otherwise the plan grows a hull
+ * wall through the middle of itself and stops reading as one ship.
+ *
+ * Seeded, so a seed reproduces the picture.
+ */
+function artFor(rooms, seed, sections, occupied){
   if (!TILES) return null;
   const rand = rng(seed + ":art");
   const out = new Map();
   for (const room of rooms){
     const roles = KIND_ROLES[room.kind] || [];
-    let pool = null;
+    let pool = [];
     for (const role of roles){
       const found = TILES.byRole.get(role);
-      if (found && found.length) { pool = found; break; }
+      if (found) pool = pool.concat(found);
     }
-    out.set(room.id, pick(rand, pool || TILES.all));
+    if (!pool.length) pool = TILES.all;
+
+    /* Where this section meets space rather than another compartment. */
+    const open = new Set();
+    for (const dir in SHIP_STEP){
+      const step = SHIP_STEP[dir];
+      const here = sections.get(room.id);
+      if (!occupied.has((here.col + step[0]) + "," + (here.row + step[1]))) open.add(dir);
+    }
+
+    let best = null, bestScore = -Infinity;
+    /* A bounded look: the pools run to a couple of hundred and every one is a
+       fair candidate, so this walks the whole pool from a seeded offset rather
+       than sampling it. */
+    const start = Math.floor(rand() * pool.length);
+    for (let n = 0; n < pool.length; n++){
+      const path = pool[(start + n) % pool.length];
+      const skin = new Set(TILES.skin.get(path) || []);
+      let score = 0;
+      for (const dir of ["n", "s", "e", "w"]){
+        const has = skin.has(TILE_SIDE[dir]);
+        if (open.has(dir)) score += has ? 3 : -1;
+        else score += has ? -4 : 1;     // plating inside the ship is the worst fault
+      }
+      if (score > bestScore) { bestScore = score; best = path; }
+      if (score === 4) break;            // a perfect fit; nothing to beat it
+    }
+    out.set(room.id, best);
   }
   return out;
 }
@@ -499,10 +552,15 @@ function buildShip(opts){
      which is the shape `validateShip` insists on. */
   doors.push({id: doors.length, label: "a1", a: entry.id, b: entry.id, state: "airlock"});
 
+  /* Where each compartment sits on the section grid. Kept beside the ship
+     rather than on it: `ShipData` is exactly what the other half serialises,
+     and a field it does not know is a field that comes back on a save. */
+  const sections = new Map(rooms.map(r => [r.id, {col: r._cell.col, row: r._cell.row}]));
+  const occupied = new Set(cells.map(c => c.col + "," + c.row));
   for (const room of rooms) delete room._cell;
   return {
     ship: {rooms, doors, entry: entry.id},
-    missing,
+    missing, sections, occupied,
     stats: {beam, length, loops: loops.length, sections: cells.length, atBow},
   };
 }
@@ -587,48 +645,45 @@ function corners(c, size){
   return out.join(" ");
 }
 
-function draw(ship, art){
+function draw(ship, art, sections){
   const svg = document.getElementById("map");
   svg.replaceChildren();
   const size = 30;
 
-  const seatsEarly = ship.rooms.map(r => centreOf(r.data.hex, size));
+  /* The plan is drawn on the section grid, not on the lattice.
 
-  /* The deck plan, as one picture under the whole ship.
+     A deck plan has to be continuous or it is not a ship, and the lattice
+     cannot carry one: SALVOR spaces its hexagons apart on purpose, because the
+     gap between them is where a corridor goes. Sections have no such gap — a
+     hundred feet of deck meets the next hundred feet — so the plan is laid out
+     square and the honeycomb is placed over it, one hexagon to a section.
 
-     Each section's tile is drawn at its own compartment's place and left
-     uncut, so neighbouring tiles meet and the hull reads as a continuous plan
-     rather than as a row of coasters. The lattice puts alternate rows half a
-     column across and sets them closer together than they are wide, so the
-     plan comes out bricked and slightly overlapped — which is what makes it
-     continuous, and is why nothing here is clipped.
+     Each tile is also turned ninety degrees clockwise with the rest of the
+     ship. The archive draws upright, engines at the bottom and bridge at the
+     top, and this hull is on its side. */
+  const pitch = size * 1.9;
+  const at = (id) => {
+    const cell = sections.get(id);
+    return {x: cell.col * pitch, y: cell.row * pitch};
+  };
+  const seats = ship.rooms.map(r => at(r.id));
 
-     It is scenery: the hexagons and the corridors are drawn over it, and a
-     wash goes between so the labels stay readable. */
   if (art){
-    /* Dimmed here rather than covered by a panel over the top: a rectangle
-       laid over the plan has edges, and those edges read as a box drawn round
-       the ship that means nothing. */
-    const plan = el("g", {opacity: .5});
-    /* Back to front, so a later tile's overlap falls on an earlier one and the
-       seam runs the same way down the whole ship. */
-    const order = ship.rooms.map((r, i) => i).sort((a, b) =>
-      seatsEarly[a].y - seatsEarly[b].y || seatsEarly[a].x - seatsEarly[b].x);
-    for (const i of order){
-      const tile = art.get(ship.rooms[i].id);
-      if (!tile) continue;
-      const c = seatsEarly[i];
+    const plan = el("g", {opacity: .62});
+    ship.rooms.forEach(function plate(room, i){
+      const tile = art.get(room.id);
+      if (!tile) return;
+      const c = seats[i];
+      const half = pitch / 2;
       plan.appendChild(el("image", {
         href: "geomorphs/" + tile,
-        x: c.x - size * 1.05, y: c.y - size * 1.05,
-        width: size * 2.1, height: size * 2.1,
-        preserveAspectRatio: "xMidYMid slice",
+        x: c.x - half, y: c.y - half, width: pitch, height: pitch,
+        preserveAspectRatio: "none",
+        transform: "rotate(90 " + c.x + " " + c.y + ")",
       }));
-    }
+    });
     svg.appendChild(plan);
   }
-  const seats = ship.rooms.map(r => centreOf(r.data.hex, size));
-
   /* Corridors under the compartments, so a hexagon always covers its own end. */
   const links = el("g", {"stroke-linecap":"round", fill:"none"});
   for (const door of ship.doors){
@@ -718,7 +773,10 @@ function generate(){
   }
   CURRENT = built.ship;
   const wanted = document.getElementById("art").value === "on";
-  draw(built.ship, wanted ? artFor(built.ship.rooms, document.getElementById("seed").value) : null);
+  const art = wanted
+    ? artFor(built.ship.rooms, document.getElementById("seed").value, built.sections, built.occupied)
+    : null;
+  draw(built.ship, art, built.sections);
 
   const checks = validate(built.ship, built.missing);
   report.innerHTML = checks.map(c =>
