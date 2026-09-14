@@ -164,6 +164,27 @@ guessed:
 The entry gives up its loops as well: a grid cell has four neighbours, which is
 the whole door budget, and the airlock takes one of them.
 
+### The deck art under the hexes
+
+Each compartment wears a hundred-foot tile, and the direction is the point.
+`hexmap.html` reads a room's kind *off* whatever tile landed under it; this
+decides the room first and then picks a tile to match, through the same
+taxonomy roles — `docking` wants `airlock` or `bay`, `reactor` wants `drive` or
+`fuel`, and so on down a table of nineteen rows. 280 of the 1789 tiles are a
+hundred feet square, which is enough spread to never repeat a neighbour.
+
+Two things follow from turning it round this way. The ship is a ship before
+there is any artwork at all, so the broken core cannot produce a broken graph.
+And the artwork can be missing without the ship changing: the tiles are fetched
+rather than bundled, so the page wants `python3 -m http.server` from
+`vuvko_works/` to show them, and draws bare compartments from `file://`.
+
+They are also **not in the repository** — `geomorphs/` is 634 MB of CC BY-NC
+art, fetched by `fetch_geomorphs.py` from the authors' own hosting. That is the
+same licence question the merge plan raises against carrying the deck plan
+across at all, and this page does not settle it; it only makes the picture
+available to look at while it is being decided.
+
 ## Order of work
 
 0. **Make the hull whole.** Fix or revert `c896921`.
