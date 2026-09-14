@@ -65,7 +65,7 @@ button.go:hover{background:color-mix(in oklab, var(--drone) 20%, transparent)}
   <div>
     <h2>Hull</h2>
     <div class="row"><label for="seed">seed</label><input id="seed" value="OSPREY-1"></div>
-    <div class="row"><label for="prof">profile</label><input id="prof" value="1-3-5-5-5-5-3-1"></div>
+    <div class="row"><label for="prof">beam</label><input id="prof" value="8-6-3"></div>
     <div class="row"><label for="dock">dock at</label>
       <select id="dock" style="flex:1">
         <option value="mid">amidships — both ends lie deep</option>
@@ -73,7 +73,7 @@ button.go:hover{background:color-mix(in oklab, var(--drone) 20%, transparent)}
         <option value="stern">the stern — walk forward to the bridge</option>
       </select>
     </div>
-    <div class="row"><label for="loops">loop doors</label><input id="loops" type="range" min="0" max="100" value="45"></div>
+    <div class="row"><label for="loops">loop doors</label><input id="loops" type="range" min="0" max="100" value="0"></div>
     <div class="row"><label for="art">deck art</label>
       <select id="art" style="flex:1">
         <option value="on">tiles under the hexes</option>
@@ -93,6 +93,7 @@ button.go:hover{background:color-mix(in oklab, var(--drone) 20%, transparent)}
   <div>
     <h2>Validation</h2>
     <div id="report"></div>
+    <p class="hint" id="loopnote"></p>
   </div>
 
   <div>
@@ -146,15 +147,6 @@ const HEX_DIRS = [
    is the corridor. */
 const HEX_SPACING = 1.34;
 
-/* A square section grid onto the lattice, odd-r offset.
-
-   This is the one step that could quietly fail — four orthogonal neighbours
-   meeting six directions none of which is vertical — so it is worth saying
-   that it does not: every orthogonal neighbour of every cell stays adjacent,
-   and two spare diagonals are left over unused. */
-function axialOf(col, row){
-  return {q: col - ((row - (row & 1)) >> 1), r: row};
-}
 const keyOf = (c) => c.q + "," + c.r;
 function adjacent(a, b){
   return HEX_DIRS.some(d => a.q + d.q === b.q && a.r + d.r === b.r);
@@ -175,53 +167,57 @@ const pick = (rand, list) => list[Math.floor(rand() * list.length) % list.length
 
 /* --------------------------------------------------------------- the hull */
 
-/* A profile digit counts sections across the beam, and rows are centred — the
-   same grammar `geomorph-core.js` reads, which is what makes "3-5-6-5-3" mean
-   the same hull on both sides. */
+/**
+ * A hull profile, read from the keel outward.
+ *
+ * The old encoding was a list of column widths, which quietly assumed a
+ * rectangular grid: on a honeycomb a "column" is not a straight line, every
+ * other row sits half a cell across, and a hull built that way cannot be
+ * symmetric about anything. This one is written in the lattice's own terms.
+ *
+ * Each digit is the number of compartments in one row *along the ship*,
+ * starting at the keel. "9-8-6-3" is a keel nine sections long, the rows
+ * either side of it eight, then six, then three — a hull nine by seven with
+ * the beam tapering away from the spine.
+ *
+ * Only half is given, because the other half is the same half. That is what
+ * makes the silhouette symmetric by construction rather than by arithmetic.
+ */
 function parseProfile(text){
   const parts = String(text || "").split(/[^0-9]+/).filter(Boolean)
-    .map(Number).filter(n => n >= 1 && n <= 12);
-  return parts.length ? parts.slice(0, 16) : [1];
+    .map(Number).filter(n => n >= 1 && n <= 16);
+  return parts.length ? parts.slice(0, 8) : [6];
 }
 
 /**
- * The section grid, already rotated.
+ * The hull as lattice cells, already symmetric and already turned.
  *
- * This half builds vertically with the command slots at the top and the drives
- * at the bottom; the other half draws horizontally and reads the heavy end as
- * the stern. Ninety degrees clockwise maps top to east and bottom to west, so
- * the bow ends up on the right and the engines on the left — which is the
- * orientation `hullart.ts` wants, and it will agree on its own because after
- * the rotation the engineering block genuinely is the western mass.
+ * Rows run along the ship and stack across the beam, so `q` is length and `r`
+ * is beam: low `q` is aft and high `q` is the bow. That is the ninety-degree
+ * turn the whole plan needs, taken here once and for all.
  *
- * The rotation is this function's indexing and nothing else: row `i` of the
- * profile, counted from the bow, becomes column `n - 1 - i`.
+ * The mirror is exact, and it is exact because of one identity. A cell's place
+ * along the ship is `q + r/2`, so a row at `-r` matching a row at `+r` needs
+ * `q' = q + r` — an integer, always. No rounding, no parity rule, and no
+ * column squared off to make the arithmetic come out: row minus two is row
+ * plus two, cell for cell.
  */
-function sectionsOf(profile){
-  /* The profile is taken as written.
-
-     It used to be squared off so every column matched the beam's parity, which
-     sounds tidy and is not: against a beam of five it turned 2-4-5-5-4-4-3-2
-     into 1-3-5-5-3-3-3-1, threw away half the shape and left a hull that
-     stepped in threes. A column whose parity differs simply sits half a
-     section off centre, and half a section is a thing the archive draws — so
-     the step is chamfered with a fifty-foot corner rather than legislated
-     away. */
-  const beam = Math.max(...profile);
+function hullCells(profile){
   const cells = [];
-  profile.forEach(function acrossTheBeam(width, i){
-    const col = profile.length - 1 - i;         // the rotation, in one line
-    /* Centred on the keel. A column whose width does not share the beam's
-       parity cannot be centred on a hundred-foot grid at all — it lands half a
-       section off, and the hull leans. Keep a profile's widths all one parity
-       and it is exactly symmetric; mix them and the chamfers soften what is
-       left. */
-    const offset = (beam - width) >> 1;
-    for (let j = 0; j < width; j++){
-      cells.push({col, row: offset + j});
-    }
+  profile.forEach(function alongTheShip(len, k){
+    /* Centre the row on the ship's middle. Rounding here only ever shifts a
+       row half a cell, which is the offset the lattice is built out of. */
+    const start = -Math.round((len - 1) / 2 + k / 2);
+    for (let i = 0; i < len; i++) cells.push({q: start + i, r: k});
+    /* And its reflection, which is the same row seen from the other side. */
+    if (k > 0) for (let i = 0; i < len; i++) cells.push({q: start + i + k, r: -k});
   });
-  return {cells, beam, length: profile.length};
+  const xs = cells.map(c => c.q + c.r / 2);
+  return {
+    cells,
+    beam: profile.length * 2 - 1,
+    length: Math.round(Math.max(...xs) - Math.min(...xs)) + 1,
+  };
 }
 
 /* --------------------------------------------------------------- the kinds */
@@ -279,8 +275,28 @@ const weighted = FILLER.flatMap(k => Array.from({length: k.weight}, () => k));
  */
 let TILES = null;
 
-/* The four ways out of a section, in ship space: west is aft, east is the bow. */
-const SHIP_STEP = {w: [-1, 0], e: [1, 0], n: [0, -1], s: [0, 1]};
+/**
+ * The six ways out of a compartment, and what each asks of the artwork.
+ *
+ * A hexagon has six neighbours and a square tile has four edges, which sounds
+ * like a mismatch and is not. Laid brick fashion a cell meets its east and
+ * west neighbours along a whole edge, and its four diagonal neighbours along
+ * half an edge each: two share its northern edge and two its southern. So a
+ * north edge carries up to two doorways and they are not interchangeable — the
+ * one to the north-east is the eastern of the two.
+ *
+ * Which is exactly why the archive puts its doors a quarter and three quarters
+ * along an edge. `side` is the ship-space edge the neighbour is reached
+ * through and `half` says which end of it.
+ */
+const SHIP_STEP = {
+  e:  {step: [1, 0],  side: "e", half: null},
+  w:  {step: [-1, 0], side: "w", half: null},
+  ne: {step: [1, -1], side: "n", half: "far"},
+  nw: {step: [0, -1], side: "n", half: "near"},
+  se: {step: [0, 1],  side: "s", half: "far"},
+  sw: {step: [-1, 1], side: "s", half: "near"},
+};
 
 const KIND_ROLES = {
   docking:["airlock","bay"], engineering:["drive","service"], reactor:["drive","fuel"],
@@ -373,10 +389,15 @@ const TILE_SIDE = {e: "n", s: "e", w: "s", n: "w"};
 const DOOR_STATIONS = [25, 75];
 const DOOR_SLOP = 2;
 
-function opensAt(positions){
-  return (positions || []).some(function standard(x){
-    return DOOR_STATIONS.some(st => Math.abs(x - st) <= DOOR_SLOP);
-  });
+/** How many of an edge's openings sit at a station a neighbour can meet. */
+function standardDoors(positions){
+  const seen = new Set();
+  for (const x of positions || []){
+    for (const st of DOOR_STATIONS){
+      if (Math.abs(x - st) <= DOOR_SLOP) seen.add(st);
+    }
+  }
+  return seen.size;
 }
 
 /**
@@ -408,7 +429,7 @@ function artFor(rooms, seed, sections, occupied, ship){
     joined.add(door.b + ">" + door.a);
   }
   const roomAt = new Map();
-  for (const [id, cell] of sections) roomAt.set(cell.col + "," + cell.row, id);
+  for (const [id, cell] of sections) roomAt.set(keyOf(cell), id);
 
   const out = new Map();
   for (const room of rooms){
@@ -420,15 +441,23 @@ function artFor(rooms, seed, sections, occupied, ship){
     }
     if (!pool.length) pool = TILES.all;
 
-    /* What each of the four walls has to be: space, a doorway, or a bulkhead. */
+    /* What each of the four walls has to be, folded down from six neighbours.
+       `doors` counts the openings that edge owes — up to two on the north and
+       south, which is why the archive's quarter-and-three-quarters stations
+       exist; `space` is true only when the whole edge faces out. */
     const here = sections.get(room.id);
-    const want = {};
+    const want = {n: {doors: 0, walls: 0, open: 0, faces: 0},
+                  s: {doors: 0, walls: 0, open: 0, faces: 0},
+                  e: {doors: 0, walls: 0, open: 0, faces: 0},
+                  w: {doors: 0, walls: 0, open: 0, faces: 0}};
     for (const dir in SHIP_STEP){
-      const step = SHIP_STEP[dir];
-      const key = (here.col + step[0]) + "," + (here.row + step[1]);
-      if (!occupied.has(key)) { want[dir] = "space"; continue; }
-      const far = roomAt.get(key);
-      want[dir] = joined.has(room.id + ">" + far) ? "door" : "wall";
+      const {step, side} = SHIP_STEP[dir];
+      const wall = want[side];
+      wall.faces++;
+      const key = keyOf({q: here.q + step[0], r: here.r + step[1]});
+      if (!occupied.has(key)) { wall.open++; continue; }
+      if (joined.has(room.id + ">" + roomAt.get(key))) wall.doors++;
+      else wall.walls++;
     }
 
     let best = null, bestScore = -Infinity;
@@ -444,31 +473,29 @@ function artFor(rooms, seed, sections, occupied, ship){
       let score = 0;
       for (const dir of ["n", "s", "e", "w"]){
         const side = TILE_SIDE[dir];
+        const need = want[dir];
         const plated = skin.has(side);
-        const lined = opensAt(doors[side]);
-        const opening = doors[side] !== undefined;
+        const stations = standardDoors(doors[side]);
         /* Art that runs off the edge of its own tile has to have somewhere to
            run to. A proud side laid against a neighbour paints over it, so the
-           spill is what says this tile faces out — and the two sides of that
-           are worth more than any other single fault here. */
-        if (proud.has(side)) score += want[dir] === "space" ? 4 : -8;
-        if (want[dir] === "space"){
-          /* Facing space: plating is what should be there, and a doorway
-             opening onto vacuum is the one thing that cannot be right. */
+           spill is what says this tile faces out. */
+        if (proud.has(side)) score += need.open === need.faces ? 4 : -8;
+
+        if (need.open === need.faces){
+          /* The whole edge faces space: plating is what belongs there, and a
+             doorway opening onto vacuum is the one thing that cannot be. */
           score += plated ? 3 : -1;
-          score += opening ? -3 : 1;
-        } else if (want[dir] === "door"){
-          /* The ship says there is a way through here, so the art has to
-             agree — and agree at the right place, or the opening meets its
-             neighbour's wall and the two decks do not join. */
-          score += lined ? 5 : opening ? 1 : -5;
-          score += plated ? -4 : 0;
+          score += stations > 0 ? -3 : 1;
         } else {
-          /* A neighbour, but no door: a bulkhead. Preferred, not demanded —
-             most interior tiles open on every side and refusing them all
-             would leave nothing to build a ship out of. */
+          /* Plating inside the ship is a hull wall through the middle of the
+             deck, whatever else the tile gets right. */
           score += plated ? -4 : 1;
-          score += opening ? -1 : 1;
+          /* And the openings: one for each neighbour this edge owes a door to,
+             at the stations that meet a neighbour's own. Short is the fault
+             that matters — a door that opens onto a wall is a room that cannot
+             be entered; spare openings are only untidy. */
+          score += stations >= need.doors ? 4 * need.doors : -6 * (need.doors - stations);
+          score += Math.max(0, stations - need.doors) * -1;
         }
       }
       if (score > bestScore) { bestScore = score; best = path; }
@@ -484,7 +511,7 @@ function artFor(rooms, seed, sections, occupied, ship){
 function buildShip(opts){
   const rand = rng(opts.seed);
   const profile = parseProfile(opts.profile);
-  const {cells, beam, length} = sectionsOf(profile);
+  const {cells, beam, length} = hullCells(profile);
   if (cells.length < 8) return {error: "Too few sections. Give the profile more rows, or wider ones."};
 
   /* Where the drone comes aboard. At the bow the run walks aft into the
@@ -497,12 +524,16 @@ function buildShip(opts){
      the middle and the ship runs away from you in both directions, which is
      the only place all three systems can lie past the deep line at once. */
   const atBow = opts.dock === "bow";
-  const entryCol = opts.dock === "mid" ? (length - 1) >> 1 : atBow ? length - 1 : 0;
-  const onEntryEdge = cells.filter(c => c.col === entryCol);
+  const along = (c) => c.q + c.r / 2;
+  const ends = cells.map(along);
+  const aft = Math.min(...ends), fore = Math.max(...ends);
+  const wantX = opts.dock === "mid" ? (aft + fore) / 2 : atBow ? fore : aft;
+  const reach = Math.min(...cells.map(c => Math.abs(along(c) - wantX)));
+  const onEntryEdge = cells.filter(c => Math.abs(along(c) - wantX) === reach);
   const entryCell = onEntryEdge[Math.floor(rand() * onEntryEdge.length) % onEntryEdge.length];
 
   /* Rooms, in a fixed order so ids are dense and a seed is reproducible. */
-  const order = cells.slice().sort((a, b) => a.col - b.col || a.row - b.row);
+  const order = cells.slice().sort((a, b) => along(a) - along(b) || a.r - b.r);
   const rooms = order.map(function asRoom(cell, id){
     return {
       id, label: "r" + id, kind: "", name: "", depth: 0,
@@ -512,20 +543,23 @@ function buildShip(opts){
          which the importing game runs; this is a sane starting point. */
       col: 0, row: 0, cover: false, hazard: "",
       explored: false, scanned: false, marks: [],
-      data: {hex: axialOf(cell.col, cell.row)},
+      data: {hex: {q: cell.q, r: cell.r}},
       _cell: cell,
     };
   });
   const byKey = new Map(rooms.map(r => [keyOf(r.data.hex), r]));
-  const entry = byKey.get(keyOf(axialOf(entryCell.col, entryCell.row)));
+  const entry = byKey.get(keyOf(entryCell));
 
   /* Doors on shared edges. Every orthogonally neighbouring pair of sections is
      a candidate; the lattice embedding guarantees the two cells touch, so each
      one can be drawn as a corridor rather than a labelled chip. */
+  /* Every shared edge is a candidate, and the lattice has six of them — the
+     two whole ones east and west, and the four halves on the diagonals. */
   const candidates = [];
   for (const room of rooms){
-    for (const step of [[1,0],[0,1]]){
-      const other = byKey.get(keyOf(axialOf(room._cell.col + step[0], room._cell.row + step[1])));
+    for (const dir of ["e", "se", "sw"]){          // half the six; the rest are these seen from the other end
+      const {step} = SHIP_STEP[dir];
+      const other = byKey.get(keyOf({q: room._cell.q + step[0], r: room._cell.r + step[1]}));
       if (other) candidates.push({a: room.id, b: other.id});
     }
   }
@@ -547,11 +581,18 @@ function buildShip(opts){
   const BAND = 6;
   const seen = new Set([entry.id]);
   const kids = new Map([[entry.id, 0]]);
+  /* How deep each compartment came out, and how many share that depth. The
+     schematic draws a column per depth and holds six boxes in one, so a band
+     that would overflow pushes its next compartment further in instead —
+     which is a longer walk, not a broken picture. */
+  const deep = new Map([[entry.id, 0]]);
+  const parent = new Map();
+  const wide = new Map([[0, 1]]);
   const tree = [];
   const loops = [];
   let pending = candidates.slice();
 
-  function grow(cap){
+  function grow(cap, band){
     const queue = [...seen];
     while (queue.length){
       const here = queue.shift();
@@ -565,19 +606,31 @@ function buildShip(opts){
            ship needs. */
         const limit = here === entry.id ? KIDS : cap;
         if ((kids.get(here) ?? 0) >= limit) continue;
+        const depth = deep.get(here) + 1;
+        /* Left for a deeper compartment to adopt, which is what keeps the band
+           inside what the schematic can draw. On the last pass anything still
+           unclaimed is taken anyway: a ship in two pieces is the worse fault. */
+        if (band && (wide.get(depth) ?? 0) >= BAND) continue;
         pending.splice(i, 1);
         kids.set(here, (kids.get(here) ?? 0) + 1);
         kids.set(far, 0);
+        deep.set(far, depth);
+        parent.set(far, here);
+        wide.set(depth, (wide.get(depth) ?? 0) + 1);
         seen.add(far); tree.push(edge); queue.push(far);
       }
     }
   }
   /* Relaxed a step at a time rather than all at once: the first compartment
      that cannot be adopted at two should not hand every other one a licence. */
-  for (const cap of [KIDS, 3, 4, Infinity]){
+  for (const cap of [KIDS, KIDS, 3, 4, Infinity]){
     if (seen.size === rooms.length) break;
-    grow(cap);
+    /* Two passes at two children: the first keeps the bands narrow, the second
+       takes whatever that left behind. */
+    grow(cap, cap === KIDS && !grow.relaxed);
+    if (cap === KIDS) grow.relaxed = true;
   }
+  grow.relaxed = false;
   if (seen.size !== rooms.length){
     return {error: "The profile makes a hull in more than one piece. Check the digits."};
   }
@@ -664,7 +717,17 @@ function buildShip(opts){
   const loopShare = Number(opts.loops) / 100;
   for (const edge of loops){
     if (rand() > loopShare) continue;
+    /* Between equals, and between siblings.
+
+       The schematic puts a column per depth and joins two boxes in one column
+       with a straight wire, so it will only draw the link if they end up in
+       neighbouring rows. Nothing here chooses those rows — `layoutShip` does,
+       on the other side — but it stacks a compartment's children together, so
+       two rooms that were reached through the same door are the pair most
+       likely to come out adjacent. Anything else is a wire across the column,
+       which that layout counts as a fault. */
     if (near.get(edge.a) !== near.get(edge.b)) continue;
+    if (parent.get(edge.a) !== parent.get(edge.b)) continue;
     if (looped.has(edge.a) || looped.has(edge.b)) continue;
     looped.add(edge.a); looped.add(edge.b);
     addDoor(edge.a, edge.b, rand() < 0.5 ? "sealed" : "closed");
@@ -687,7 +750,7 @@ function buildShip(opts){
     if (!wanted.length){ missing.push(spec.kind); continue; }
     /* `pull` is -1 for the stern and +1 for the bow; ties break on depth. */
     wanted.sort(function byEnd(a, b){
-      const ea = spec.pull * a._cell.col, eb = spec.pull * b._cell.col;
+      const ea = spec.pull * along(a._cell), eb = spec.pull * along(b._cell);
       return eb - ea || b.depth - a.depth;
     });
     const fits = wanted[0];
@@ -710,8 +773,8 @@ function buildShip(opts){
   /* Where each compartment sits on the section grid. Kept beside the ship
      rather than on it: `ShipData` is exactly what the other half serialises,
      and a field it does not know is a field that comes back on a save. */
-  const sections = new Map(rooms.map(r => [r.id, {col: r._cell.col, row: r._cell.row}]));
-  const occupied = new Set(cells.map(c => c.col + "," + c.row));
+  const sections = new Map(rooms.map(r => [r.id, {q: r._cell.q, r: r._cell.r}]));
+  const occupied = new Set(cells.map(keyOf));
   for (const room of rooms) delete room._cell;
   return {
     ship: {rooms, doors, entry: entry.id},
@@ -820,10 +883,13 @@ function draw(ship, art, sections){
      Each tile is turned ninety degrees clockwise with the rest of the ship:
      the archive draws upright, engines at the bottom and bridge at the top,
      and this hull is on its side. */
+  /* Axial to picture. A cell's place along the ship is `q + r/2` — the same
+     identity the mirror is built on — and rows are a pitch apart, so tiles of
+     one pitch square meet brick fashion with no gap anywhere. */
   const pitch = size * 2;
   const at = (id) => {
     const cell = sections.get(id);
-    return {x: (cell.col + (cell.row & 1) * 0.5) * pitch, y: cell.row * pitch};
+    return {x: (cell.q + cell.r / 2) * pitch, y: cell.r * pitch};
   };
   const seats = ship.rooms.map(r => at(r.id));
   /* Inset inside its own cell, which is what leaves the gap a corridor runs
@@ -833,67 +899,49 @@ function draw(ship, art, sections){
   if (art){
     const plan = el("g", {opacity: .62});
 
-    /* Fifty-foot corners at every step in the hull.
+    /* Fifty-foot corners where the hull steps.
 
-       A hundred-foot grid can only change beam a hundred feet at a time, so
-       the outline comes out as a flight of stairs. The archive has nearly a
-       thousand fifty-foot pieces and almost all of them are edge or corner
-       art, which is exactly what a step wants: half a section laid into the
-       notch turns a stair into a chamfer. They are decoration and carry no
-       compartment — the ship is the same ship without them. */
+       A notch is a cell the hull does not use but nearly surrounds: empty,
+       and with three or more of its six neighbours occupied. Filling it
+       carries the plating across the step instead of leaving a stair. Most of
+       the archive's fifty-foot pieces are masts and scoops and shuttles, which
+       read as debris beside a ship; the ones used here have plating on two
+       adjoining sides and nothing spilling off them. */
     if (TILES && TILES.corner.size){
       const trimRand = rng(seedOf() + ":trim");
-      const rowsIn = new Map();
-      for (const [, cell] of sections){
-        const list = rowsIn.get(cell.col) || [];
-        list.push(cell.row);
-        rowsIn.set(cell.col, list);
-      }
-      const edgeOf = (col) => {
-        const list = rowsIn.get(col);
-        return list ? {top: Math.min(...list), bottom: Math.max(...list)} : null;
-      };
-      const half = pitch / 2;
-      for (const [col] of rowsIn){
-        const here = edgeOf(col);
-        for (const side of [1, -1]){                 // east neighbour, then west
-          const near = edgeOf(col + side);
-          if (!near) continue;
-          for (const end of ["top", "bottom"]){
-            const mine = here[end], theirs = near[end];
-            const outward = end === "top" ? -1 : 1;
-            /* Only where my column reaches further out than its neighbour:
-               that is the corner with nothing in front of it. */
-            if (mine * outward <= theirs * outward) continue;
-            /* The corner has to face the way the notch is open: outward along
-               the beam, and on along the ship. Both are ship directions and
-               the art is in tile space, so both go through the same rotation
-               the tiles themselves do. */
-            const wantSkin = [
-              TILE_SIDE[outward === -1 ? "n" : "s"],
-              TILE_SIDE[side === 1 ? "e" : "w"],
-            ].sort().join("");
-            const pool = TILES.corner.get(wantSkin);
-            if (!pool || !pool.length) continue;
-            const tile = pick(trimRand, pool);
-            /* Into the notch: half way to the shorter neighbour, level with
-               the cell that overhangs it. The corner it fills is the one with
-               nothing in front of it. */
-            /* The notch cell itself, filled. Drawn at the size of the hole it
-               is filling rather than at fifty feet: a half-size fleck in the
-               middle of an empty cell reads as debris in space, and the point
-               of the piece is to carry the hull line across the step. */
-            const cx = (col + side + (mine & 1) * 0.5) * pitch;
-            const cy = mine * pitch;
-            plan.appendChild(el("image", {
-              href: "geomorphs/" + tile,
-              x: cx - pitch / 2, y: cy - pitch / 2, width: pitch, height: pitch,
-              preserveAspectRatio: "none",
-              transform: "rotate(90 " + cx + " " + cy + ")",
-              opacity: .9,
-            }));
-          }
+      const filled = new Set([...sections.values()].map(keyOf));
+      const notches = new Map();
+      for (const cell of sections.values()){
+        for (const dir in SHIP_STEP){
+          const {step} = SHIP_STEP[dir];
+          const near = {q: cell.q + step[0], r: cell.r + step[1]};
+          const key = keyOf(near);
+          if (filled.has(key)) continue;
+          notches.set(key, near);
         }
+      }
+      for (const [, near] of notches){
+        let held = 0;
+        const openSides = {n: 0, s: 0, e: 0, w: 0};
+        for (const dir in SHIP_STEP){
+          const {step, side} = SHIP_STEP[dir];
+          if (filled.has(keyOf({q: near.q + step[0], r: near.r + step[1]}))) held++;
+          else openSides[side]++;
+        }
+        if (held < 3) continue;                    // a lone cell in space, not a step
+        const facing = ["n", "s", "e", "w"].filter(d => openSides[d] > 0);
+        if (facing.length !== 2) continue;         // not a corner
+        const key = facing.map(d => TILE_SIDE[d]).sort().join("");
+        const pool = TILES.corner.get(key);
+        if (!pool || !pool.length) continue;
+        const cx = (near.q + near.r / 2) * pitch, cy = near.r * pitch;
+        plan.appendChild(el("image", {
+          href: "geomorphs/" + pick(trimRand, pool),
+          x: cx - pitch / 2, y: cy - pitch / 2, width: pitch, height: pitch,
+          preserveAspectRatio: "none",
+          transform: "rotate(90 " + cx + " " + cy + ")",
+          opacity: .85,
+        }));
       }
     }
     ship.rooms.forEach(function plate(room, i){
@@ -1009,6 +1057,20 @@ function generate(){
   report.innerHTML = checks.map(c =>
     '<span class="' + (c.ok ? "ok" : "bad") + '">' + (c.ok ? "OK  " : "BAD ") + c.text + "</span>"
   ).join("\n");
+
+  /* Loops are the one thing this side cannot promise. A second way between two
+     compartments is a wire drawn inside one column of the schematic, and that
+     column's rows are assigned by the importing game's own layout pass — so
+     whether the wire is drawable is decided after this page has finished. A
+     tree always draws. */
+  const rings = built.ship.doors.filter(d => d.state === "sealed" || d.state === "closed").length;
+  document.getElementById("loopnote").textContent = Number(document.getElementById("loops").value) > 0
+    ? "Loop doors are on. A loop joins two compartments at the same depth, which "
+      + "the schematic draws as a wire inside one column — and it will only draw "
+      + "it if that game's layout pass happens to put them in neighbouring rows. "
+      + "This side cannot know. A hull with no loops always draws."
+    : "";
+  void rings;
 
   const kinds = new Set(built.ship.rooms.map(r => r.kind));
   document.getElementById("facts").innerHTML = [

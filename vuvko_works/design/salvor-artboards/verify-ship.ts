@@ -18,7 +18,9 @@ import { join } from "node:path";
 
 const dir = process.argv[2] ?? ".";
 const spec: ShipSpec = {
-  rooms: [8, 40],
+  /* Wide on purpose: the range is a ship class's business and this is not
+     testing one, so a big hull must not read as a fault. */
+  rooms: [8, 80],
   maxDepth: 12,
   kinds: ZONE_KINDS,
   entryKind: ENTRY_KIND,

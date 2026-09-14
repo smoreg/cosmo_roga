@@ -194,6 +194,18 @@ all — otherwise the plan grows a hull wall through its own centre and stops
 reading as one ship. 176 of the 280 hundred-foot tiles carry no skin at all,
 which is the interior pool; 70 carry three sides, which is what an end cap is.
 
+**The hull is written in the lattice's own terms.** A profile used to be a
+list of column widths, which quietly assumed a rectangular grid: on a honeycomb
+a column is not a straight line, every other row sits half a cell across, and a
+hull built that way cannot be symmetric about anything. It is now read from the
+keel outward — `8-6-3` is a keel eight sections long with rows of six and three
+either side — and only half is given, because the other half is the same half.
+
+The mirror is exact and it is exact because of one identity. A cell's place
+along the ship is `q + r/2`, so a row at `−r` matching a row at `+r` needs
+`q' = q + r`, which is an integer, always. No rounding, no parity rule, no
+column squared off to make the arithmetic come out.
+
 **The plan is laid on the lattice, brick fashion.** A honeycomb puts alternate
 rows half a column across, and half a column is fifty feet — exactly the offset
 a hundred-foot tile is allowed to take. So neighbours meet along a full edge
@@ -233,8 +245,23 @@ and still looks like nobody drew the ship. Boarding is amidships by default,
 which is the only place all three systems can lie past the deep line at once:
 reactor and bridge are both marked `deep` and they sit at opposite ends.
 
-**Still open: nothing further.** Sixty-three ships over seven profiles, three
-boarding points and three seeds come back clean from `validateShip`.
+**A hexagon has six neighbours and a tile has four edges, and that is not a
+mismatch.** Laid brick fashion a cell meets east and west along a whole edge
+and its four diagonals along half an edge each — two sharing the northern edge,
+two the southern. So a north edge owes up to two doorways and they are not
+interchangeable: the one to the north-east is the eastern of the two. Which is
+exactly why the archive puts its doors a quarter and three quarters along an
+edge, and why matching them is a count per edge rather than a yes or no.
+
+**Still open: loop doors.** A loop joins two compartments at the same depth,
+which the schematic draws as a wire inside one column — and it will only draw
+it where that game's `layoutShip` happens to put them in neighbouring rows.
+This side cannot know: it does not assign those rows. Restricting loops to
+siblings did not help, so they are off by default and the page says why when
+they are turned on. A hull with no loops always draws.
+
+**Otherwise clean.** Sixty-three ships over seven profiles, three boarding
+points and three seeds, all passing `validateShip`.
 
 **Was open, now enforced:** Every 100×100 tile carries doors
 at roughly 25 and 75 feet along each edge, so on a whole-section grid they line
