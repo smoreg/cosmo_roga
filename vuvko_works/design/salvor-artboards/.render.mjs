@@ -17533,6 +17533,7 @@ var SEED = "artboard-1";
 var BOARDS = [
   {
     file: "01-title",
+    group: "Screens",
     title: "Title",
     note: "Seven keyed rows, every one clickable. The whole start of the game.",
     map: "graph",
@@ -17541,6 +17542,7 @@ var BOARDS = [
   },
   {
     file: "02-tug",
+    group: "Screens",
     title: "The tug",
     note: "The hub between runs. Rack left, actions right, no map at all.",
     map: "graph",
@@ -17549,6 +17551,7 @@ var BOARDS = [
   },
   {
     file: "03-derelict-graph",
+    group: "Screens",
     title: "Aboard \u2014 graph map",
     note: "The default view. Map left, panel right, log along the bottom.",
     map: "graph",
@@ -17557,6 +17560,7 @@ var BOARDS = [
   },
   {
     file: "04-derelict-hex",
+    group: "Screens",
     title: "Aboard \u2014 honeycomb",
     note: "The same screen with the hex map and the drawn hull under it.",
     map: "hex",
@@ -17565,6 +17569,7 @@ var BOARDS = [
   },
   {
     file: "05-help",
+    group: "Cards",
     title: "Help card",
     note: "A text card over the screen. Sized by column arithmetic today.",
     map: "graph",
@@ -17573,6 +17578,7 @@ var BOARDS = [
   },
   {
     file: "06-codex",
+    group: "Cards",
     title: "Codex",
     note: "The reference card. Left list, right body.",
     map: "graph",
@@ -17581,6 +17587,7 @@ var BOARDS = [
   },
   {
     file: "07-history",
+    group: "Cards",
     title: "Log history",
     note: "The log opened full. Compare with the kit's expanding drawer.",
     map: "graph",
@@ -17589,6 +17596,7 @@ var BOARDS = [
   },
   {
     file: "08-lost",
+    group: "Cards",
     title: "Ending \u2014 lost",
     note: "An ending banner and a run summary.",
     map: "graph",
@@ -17598,6 +17606,11 @@ var BOARDS = [
 ];
 function page(board, body) {
   return [
+    /* The pane reads its card index off the first line of each page. It sits
+       ahead of the doctype by the tool's contract, so the page is served in
+       quirks mode; everything below sets its own box model and lays out with
+       grid, and the screenshots are identical either way. */
+    `<!-- @dsCard group="${board.group}" -->`,
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',

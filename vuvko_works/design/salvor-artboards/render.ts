@@ -58,6 +58,8 @@ interface Board {
   readonly title: string;
   /** What a designer should look at here, in one line. */
   readonly note: string;
+  /** Which section of the Design System pane the card lands in. */
+  readonly group: string;
   readonly map: MapKind;
   readonly state: (base: AppState) => AppState;
   /** How far in this board is. Zero is the moment of boarding. */
@@ -69,6 +71,7 @@ const SEED = "artboard-1";
 const BOARDS: readonly Board[] = [
   {
     file: "01-title",
+    group: "Screens",
     title: "Title",
     note: "Seven keyed rows, every one clickable. The whole start of the game.",
     map: "graph",
@@ -77,6 +80,7 @@ const BOARDS: readonly Board[] = [
   },
   {
     file: "02-tug",
+    group: "Screens",
     title: "The tug",
     note: "The hub between runs. Rack left, actions right, no map at all.",
     map: "graph",
@@ -85,6 +89,7 @@ const BOARDS: readonly Board[] = [
   },
   {
     file: "03-derelict-graph",
+    group: "Screens",
     title: "Aboard — graph map",
     note: "The default view. Map left, panel right, log along the bottom.",
     map: "graph",
@@ -93,6 +98,7 @@ const BOARDS: readonly Board[] = [
   },
   {
     file: "04-derelict-hex",
+    group: "Screens",
     title: "Aboard — honeycomb",
     note: "The same screen with the hex map and the drawn hull under it.",
     map: "hex",
@@ -101,6 +107,7 @@ const BOARDS: readonly Board[] = [
   },
   {
     file: "05-help",
+    group: "Cards",
     title: "Help card",
     note: "A text card over the screen. Sized by column arithmetic today.",
     map: "graph",
@@ -109,6 +116,7 @@ const BOARDS: readonly Board[] = [
   },
   {
     file: "06-codex",
+    group: "Cards",
     title: "Codex",
     note: "The reference card. Left list, right body.",
     map: "graph",
@@ -117,6 +125,7 @@ const BOARDS: readonly Board[] = [
   },
   {
     file: "07-history",
+    group: "Cards",
     title: "Log history",
     note: "The log opened full. Compare with the kit's expanding drawer.",
     map: "graph",
@@ -125,6 +134,7 @@ const BOARDS: readonly Board[] = [
   },
   {
     file: "08-lost",
+    group: "Cards",
     title: "Ending — lost",
     note: "An ending banner and a run summary.",
     map: "graph",
@@ -136,6 +146,11 @@ const BOARDS: readonly Board[] = [
 /** One page, standing on its own: no fonts to fetch, no script, no network. */
 function page(board: Board, body: string): string {
   return [
+    /* The pane reads its card index off the first line of each page. It sits
+       ahead of the doctype by the tool's contract, so the page is served in
+       quirks mode; everything below sets its own box model and lays out with
+       grid, and the screenshots are identical either way. */
+    `<!-- @dsCard group="${board.group}" -->`,
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',
