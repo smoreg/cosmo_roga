@@ -592,13 +592,41 @@ function draw(ship, art){
   svg.replaceChildren();
   const size = 30;
 
-  /* One clip for every compartment: the hexagon at the origin, with each
-     room's group translated onto its own cell. */
-  const defs = el("defs", {});
-  const clip = el("clipPath", {id:"hexclip"});
-  clip.appendChild(el("polygon", {points: corners({x:0, y:0}, size)}));
-  defs.appendChild(clip);
-  svg.appendChild(defs);
+  const seatsEarly = ship.rooms.map(r => centreOf(r.data.hex, size));
+
+  /* The deck plan, as one picture under the whole ship.
+
+     Each section's tile is drawn at its own compartment's place and left
+     uncut, so neighbouring tiles meet and the hull reads as a continuous plan
+     rather than as a row of coasters. The lattice puts alternate rows half a
+     column across and sets them closer together than they are wide, so the
+     plan comes out bricked and slightly overlapped — which is what makes it
+     continuous, and is why nothing here is clipped.
+
+     It is scenery: the hexagons and the corridors are drawn over it, and a
+     wash goes between so the labels stay readable. */
+  if (art){
+    /* Dimmed here rather than covered by a panel over the top: a rectangle
+       laid over the plan has edges, and those edges read as a box drawn round
+       the ship that means nothing. */
+    const plan = el("g", {opacity: .5});
+    /* Back to front, so a later tile's overlap falls on an earlier one and the
+       seam runs the same way down the whole ship. */
+    const order = ship.rooms.map((r, i) => i).sort((a, b) =>
+      seatsEarly[a].y - seatsEarly[b].y || seatsEarly[a].x - seatsEarly[b].x);
+    for (const i of order){
+      const tile = art.get(ship.rooms[i].id);
+      if (!tile) continue;
+      const c = seatsEarly[i];
+      plan.appendChild(el("image", {
+        href: "geomorphs/" + tile,
+        x: c.x - size * 1.05, y: c.y - size * 1.05,
+        width: size * 2.1, height: size * 2.1,
+        preserveAspectRatio: "xMidYMid slice",
+      }));
+    }
+    svg.appendChild(plan);
+  }
   const seats = ship.rooms.map(r => centreOf(r.data.hex, size));
 
   /* Corridors under the compartments, so a hexagon always covers its own end. */
@@ -623,17 +651,6 @@ function draw(ship, art){
     const fill = COLOUR[room.kind] || "#3b4c66";
     const g = el("g", {});
     const tile = art ? art.get(room.id) : null;
-    if (tile){
-      /* The hexagon sits inside a square of side 2R, so a square tile covers it
-         with nothing to stretch. Clipped, and dimmed enough that the kind's own
-         colour still reads over it. */
-      const plate = el("g", {transform:"translate(" + c.x + "," + c.y + ")", "clip-path":"url(#hexclip)"});
-      plate.appendChild(el("image", {
-        href: "geomorphs/" + tile, x: -size, y: -size, width: size * 2, height: size * 2,
-        preserveAspectRatio: "xMidYMid slice",
-      }));
-      g.appendChild(plate);
-    }
     g.appendChild(el("polygon", {
       points: corners(c, size),
       fill, "fill-opacity": tile ? (room.id === ship.entry ? .34 : .22) : (room.id === ship.entry ? .95 : .72),

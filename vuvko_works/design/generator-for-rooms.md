@@ -173,6 +173,21 @@ taxonomy roles — `docking` wants `airlock` or `bay`, `reactor` wants `drive` o
 `fuel`, and so on down a table of nineteen rows. 280 of the 1789 tiles are a
 hundred feet square, which is enough spread to never repeat a neighbour.
 
+The plan is drawn as **one picture under the whole hull**, not as a tile
+clipped into each hexagon. Nothing is cut: neighbouring tiles meet, and the
+hull reads as a continuous deck rather than a row of coasters, with the
+honeycomb and its corridors drawn over the top.
+
+That works because a lattice puts alternate rows half a column across, so the
+plan comes out bricked and slightly overlapped — and **a hundred-foot tile may
+legitimately sit half a section across where its doors allow it**, which is the
+archive's own rule rather than a liberty taken here. `geomorph-core.js` already
+reasons about it: `expandProfile` describes a hundred-to-fifty transition whose
+funnel opening is centred in its own hundred feet, so a row hanging under it is
+*meant* to sit half a section over and connects through the tile instead of
+through a section edge. A half-section offset is therefore not a misalignment
+to be snapped away; matching the doors across it is the thing to check.
+
 Two things follow from turning it round this way. The ship is a ship before
 there is any artwork at all, so the broken core cannot produce a broken graph.
 And the artwork can be missing without the ship changing: the tiles are fetched
