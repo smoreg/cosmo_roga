@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties, ReactElement } from "react";
+import { linesOf, reveal } from "../reveal.js";
 import * as FX from "../../fx/derelict-fx.js";
 
 export interface LogEntry {
@@ -48,13 +49,7 @@ export function LogStrip({
   useEffect(
     function openRecord() {
       if (!expanded || recordRef.current === null) return;
-      const running = FX.scrambleReveal(
-        recordRef.current.querySelectorAll("[data-sc]"),
-        FX.PRESETS.all,
-      );
-      return () => {
-        running.cancel();
-      };
+      return reveal(linesOf(recordRef.current), FX.PRESETS.all);
     },
     [expanded],
   );
@@ -62,13 +57,7 @@ export function LogStrip({
   useEffect(
     function resolveNews() {
       if (tickerRef.current === null) return;
-      const running = FX.scrambleReveal(
-        tickerRef.current.querySelectorAll("[data-sc]"),
-        FX.PRESETS.hover,
-      );
-      return () => {
-        running.cancel();
-      };
+      return reveal(linesOf(tickerRef.current), FX.PRESETS.hover);
     },
     [last.text, last.tag],
   );

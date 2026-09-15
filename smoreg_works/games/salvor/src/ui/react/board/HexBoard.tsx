@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
+import { linesOf, reveal } from "../reveal.js";
 import * as FX from "../../fx/derelict-fx.js";
 
 /**
@@ -214,10 +215,7 @@ export function Popover({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(function resolve() {
     if (ref.current === null) return;
-    const running = FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"), FX.PRESETS.hover);
-    return () => {
-      running.cancel();
-    };
+    return reveal(linesOf(ref.current), FX.PRESETS.hover);
   }, []);
   const line = (o: CSSProperties, axis: "x" | "y"): CSSProperties => ({
     position: "absolute",

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { linesOf, reveal } from "../reveal.js";
 import * as FX from "../../fx/derelict-fx.js";
 import { Panel, Tag } from "../chrome/Panel.js";
 import type { CodexCard, EndingModel } from "../model.js";
@@ -31,10 +32,7 @@ export function Card({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(function resolve() {
     if (ref.current === null) return;
-    const running = FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"), FX.PRESETS.sheet);
-    return () => {
-      running.cancel();
-    };
+    return reveal(linesOf(ref.current), FX.PRESETS.sheet);
   }, [title, stencil]);
 
   return (

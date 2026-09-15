@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import { linesOf, reveal } from "../reveal.js";
 import * as FX from "../../fx/derelict-fx.js";
 import type { Tone } from "../meters/Rack.js";
 
@@ -216,13 +217,7 @@ export function MenuSheet({
   useEffect(
     function resolve() {
       if (leaving || ref.current === null) return;
-      const running = FX.scrambleReveal(
-        ref.current.querySelectorAll("[data-sc]"),
-        FX.PRESETS.sheet,
-      );
-      return () => {
-        running.cancel();
-      };
+      return reveal(linesOf(ref.current), FX.PRESETS.sheet);
     },
     [leaving],
   );

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { linesOf, reveal } from "../reveal.js";
 import * as FX from "../../fx/derelict-fx.js";
 import { Panel } from "../chrome/Panel.js";
 import { SEED_DIGITS, seedTyped, titleScreen } from "../../title.js";
@@ -34,10 +35,7 @@ export function TitleScreen({
 
   useEffect(function resolve() {
     if (ref.current === null) return;
-    const running = FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"), FX.PRESETS.all);
-    return () => {
-      running.cancel();
-    };
+    return reveal(linesOf(ref.current), FX.PRESETS.all);
   }, []);
 
   /* Typing a seed is the one thing the title holds state for, and it holds it

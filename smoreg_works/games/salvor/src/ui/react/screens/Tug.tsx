@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import * as FX from "../../fx/derelict-fx.js";
+import { linesOf, reveal } from "../reveal.js";
 import { Panel, Tag } from "../chrome/Panel.js";
 import type { Offer, TugModel } from "../model.js";
 
@@ -143,16 +144,7 @@ function useLines(deps: readonly unknown[]): RefObject<HTMLDivElement> {
     function resolve() {
       const host: HTMLDivElement | null = ref.current;
       if (host === null) return;
-      const leaves = Array.from(host.querySelectorAll("div,span")).filter(
-        (el) =>
-          el.textContent !== null &&
-          el.textContent.trim() !== "" &&
-          Array.from(el.childNodes).every((n) => n.nodeType === 3),
-      );
-      const running = FX.scrambleReveal(leaves, FX.PRESETS.all);
-      return () => {
-        running.cancel();
-      };
+      return reveal(linesOf(host), FX.PRESETS.all);
     },
     deps,
   );
@@ -207,10 +199,7 @@ function OfferList({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(function resolve() {
     if (ref.current === null) return;
-    const running = FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"), FX.PRESETS.all);
-    return () => {
-      running.cancel();
-    };
+    return reveal(linesOf(ref.current), FX.PRESETS.all);
   }, [level, offers.length]);
 
   return (

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { beforeAll, describe, expect, it } from "vitest";
-import { act } from "react";
+import { StrictMode, act } from "react";
 import { createRoot } from "react-dom/client";
 import { newGame } from "../src/game.js";
 import { App } from "../src/ui/react/App.js";
 import { Screen } from "../src/ui/react/Screen.js";
 import { boardOf, hereOf, commandsOf, rackOfHull } from "../src/ui/react/model.js";
+import { linesOf, reveal } from "../src/ui/react/reveal.js";
 import { doorWays } from "../src/ui/doorlist.js";
 import {
   codexOf,
@@ -471,5 +472,74 @@ describe("the rail is three keys, and one of them is not a menu", () => {
     /* Back is a page turn inside the housing, not a shut and an open. */
     expect(text(host)).toContain("New voyage");
     unmount();
+  });
+});
+
+describe("the reveal never leaves a screen blank", () => {
+  beforeAll(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    /* Motion ON, deliberately: every other test in this file turns it off so
+       it can read the words, and that is exactly the gap a blank tug shipped
+       through. `scrambleReveal` empties every line it is given synchronously
+       and fills it back over held frames, so under motion there is a window
+       where the screen legitimately says nothing — and a cancelled reveal used
+       to leave it there for good. */
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        onchange: null,
+        dispatchEvent: () => false,
+      }),
+    });
+  });
+
+  it("settles the tug back to its own words, under StrictMode's double pass", async () => {
+    const game = newGame(4242);
+    const tug = tugOf(game);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    /* StrictMode is the case that broke it: every effect runs, is cleaned up
+       and runs again, and the second pass used to start from the blanks the
+       first one left. */
+    act(() => {
+      root.render(
+        <StrictMode>
+          <Screen game={game} />
+        </StrictMode>,
+      );
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 800));
+    });
+    expect(text(host)).toContain(tug.callsign);
+    expect(text(host)).toContain("banked");
+    expect(text(host)).toContain(String(tug.account.credits));
+    for (const hull of tug.hulls) expect(text(host)).toContain(hull.name);
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it("puts the words back when a reveal is cut short", () => {
+    const host = document.createElement("div");
+    host.innerHTML = '<div data-sc>ENGINEERING</div><div data-sc>DOCKING BAY</div>';
+    document.body.append(host);
+    const lines = linesOf(host);
+    expect(lines).toHaveLength(2);
+    const stop = reveal(lines, { stagger: 0, ticks: 3, tickMs: 95 });
+    /* Mid-reveal the DOM says these lines have no text — which is why a filter
+       that believes it drops exactly the lines that need putting back. */
+    expect(linesOf(host)).toHaveLength(2);
+    stop();
+    expect(host.textContent).toBe("ENGINEERINGDOCKING BAY");
+    host.remove();
   });
 });
