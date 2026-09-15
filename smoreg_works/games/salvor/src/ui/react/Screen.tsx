@@ -22,6 +22,7 @@ import {
   rackOf,
   rackOfHull,
   routeIn,
+  nameOfDrone,
   tugOf,
   whoOf,
 } from "./model.js";
@@ -204,6 +205,7 @@ export function Screen({
   /* Which machine this drone was built as. A fact about the sortie, so it is
      read once and not per cell. */
   const who = useMemo(() => whoOf(game), [game, turn]);
+  const droneName = useMemo(() => nameOfDrone(game), [game, turn]);
   /**
    * The rack shows the drone that exists, unless the dock is pointing it at
    * one that does not yet. A preview says so by being a preview: nothing has
@@ -338,7 +340,7 @@ export function Screen({
         {home ? null : (
         <Panel
           title={goal.hull}
-          stencil={`sortie ${String(goal.sortie)}`}
+          stencil={`${droneName} · sortie ${String(goal.sortie)}`}
           width={300}
           style={{ position: "absolute", left: 14, top: 14, zIndex: 5 }}
         >
@@ -429,16 +431,29 @@ export function Screen({
               size={26}
               tone={looking === null ? "var(--sv-amber)" : "var(--sv-soft)"}
             />
-            <span
-              style={{
-                font: "var(--sv-stencil)",
-                letterSpacing: "var(--sv-stencil-track)",
-                textTransform: "uppercase",
-                color: "var(--sv-soft)",
-              }}
-            >
-              {looking === null ? "on the rails" : "not built yet"}
-            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+              <span
+                style={{
+                  font: "var(--sv-title)",
+                  letterSpacing: "var(--sv-title-track)",
+                  textTransform: "uppercase",
+                  color: looking === null ? "var(--sv-ink)" : "var(--sv-soft)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {looking === null ? droneName : "—"}
+              </span>
+              <span
+                style={{
+                  font: "var(--sv-stencil)",
+                  letterSpacing: "var(--sv-stencil-track)",
+                  textTransform: "uppercase",
+                  color: "var(--sv-soft)",
+                }}
+              >
+                {looking === null ? rack.hull : "not built yet"}
+              </span>
+            </div>
           </div>
           <CoreRack
             core={(preview ?? rack).core}

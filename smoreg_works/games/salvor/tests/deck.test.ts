@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { newGame } from "../src/game.js";
-import { undock } from "../src/systems/voyage.js";
+import { undock, voyageOf } from "../src/systems/voyage.js";
 import { hexLayout } from "@jamrog/engine";
 import { keelOf, mirror } from "../src/ui/react/hull.js";
 import { bleedScale, deckOf } from "../src/ui/react/deck.js";
-import { hereOf, whoOf } from "../src/ui/react/model.js";
+import { hereOf, nameOfDrone, whoOf } from "../src/ui/react/model.js";
+import { DRONE_NAMES, DRONE_TAGS, droneName } from "../src/content/drones.js";
 import { addWreck } from "../src/twist/rig.js";
 import {
   CRATE_ICON,
@@ -322,5 +323,74 @@ describe("salvage, crates and the ship's own systems", () => {
     expect(svg).toContain("#0a0d10");
     expect(svg).toContain("#e0a458");
     expect(svg.match(/<path/g)).toHaveLength(1);
+  });
+});
+
+describe("a drone has a name and keeps it", () => {
+  it("reads `NADIA KJ-07`: a name, a yard and two digits", () => {
+    for (const key of ["1:1:scrapper", "9:3:spark", "4242:2:ghost"]) {
+      const name = droneName(key);
+      expect(name, key).toMatch(/^[A-Z]+ (DS|KJ|MR|AL|AM)-\d{2}$/);
+    }
+    /* Two digits with a leading nought where it needs one: a yard stamps `07`,
+       and a column of them lines up. */
+    const numbers = new Set<string>();
+    for (let i = 0; i < 400; i++) numbers.add(droneName(`k${String(i)}`).slice(-2));
+    expect([...numbers].every((n) => /^\d{2}$/.test(n))).toBe(true);
+    expect(numbers.size).toBeGreaterThan(50);
+  });
+
+  it("keeps its name and its machine across the undock", () => {
+    /* The bug this replaces: the key was the *sortie* count, and undocking is
+       exactly when that changes — so the drone chosen on the dock was not the
+       drone that flew, and it turned into a different machine the instant it
+       cast off. */
+    const game = newGame(2026);
+    const atHome = whoOf(game);
+    const named = droneName(atHome);
+    expect(undock(game).ok).toBe(true);
+    expect(whoOf(game), "the drone changed on the way out").toBe(atHome);
+    expect(droneName(whoOf(game))).toBe(named);
+    expect(droneIcon(whoOf(game))).toBe(droneIcon(atHome));
+  });
+
+  it("is a different machine after the last one is lost", () => {
+    /* Drones built, not sorties flown: one for every one the voyage has lost,
+       and one more for the one standing there. */
+    const game = newGame(2026);
+    const first = whoOf(game);
+    const voyage = voyageOf(game);
+    voyage.state[voyage.current]?.deaths.push({ room: 0 as never, rig: undefined as never });
+    expect(whoOf(game)).not.toBe(first);
+  });
+
+  it("costs the run nothing: naming a drone spends no roll", () => {
+    const game = newGame(2026);
+    const before = game.rng.next();
+    droneName(whoOf(game));
+    nameOfDrone(game);
+    const again = newGame(2026);
+    expect(again.rng.next()).toBe(before);
+  });
+
+  it("does not hand two drones near-identical names", () => {
+    /* Three draws off one key rather than one, so a voyage that builds two in
+       a row does not get two names a letter apart. */
+    const a = droneName("2026:1:scrapper");
+    const b = droneName("2026:2:scrapper");
+    expect(a).not.toBe(b);
+    expect(a.split(" ")[0]).not.toBe(b.split(" ")[0]);
+  });
+
+  it("uses the whole table rather than a corner of it", () => {
+    const names = new Set<string>();
+    const tags = new Set<string>();
+    for (let i = 0; i < 600; i++) {
+      const [name, rest] = droneName(`s${String(i)}`).split(" ");
+      names.add(name as string);
+      tags.add((rest as string).split("-")[0] as string);
+    }
+    expect(tags.size).toBe(DRONE_TAGS.length);
+    expect(names.size).toBe(DRONE_NAMES.length);
   });
 });

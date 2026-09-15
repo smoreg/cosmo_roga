@@ -16,6 +16,7 @@ import { tugCallsign } from "../../content/hints.js";
 import { HULLS, hullName, hullTrait } from "../../content/hulls.js";
 import { OBJECTIVE_COUNT, objectiveSpec } from "../../content/objectives.js";
 import { isTug } from "../../content/tug.js";
+import { droneName } from "../../content/drones.js";
 import { codexFor } from "../../content/codex.js";
 import { helpHeadings, helpPages } from "../input.js";
 import { t } from "../../i18n.js";
@@ -390,9 +391,18 @@ export function routeIn(game: RoomGame, board: BoardModel) {
 const CORE_MAX = 3;
 
 /** The rack, as the drone wears it. Empty and burned look the same on purpose. */
-export function rackOf(game: RoomGame): { core: number; coreMax: number; slots: RackSlot[] } {
+export function rackOf(game: RoomGame): {
+  core: number;
+  coreMax: number;
+  slots: RackSlot[];
+  /** The class of the drone this rack is bolted into. */
+  hull: string;
+} {
+  const voyage = voyageOf(game);
+  const kind = HULLS.find((h) => h.id === voyage.hull);
+  const hull = kind === undefined ? "no drone" : hullName(kind);
   const rig = rigOf(game.player);
-  if (rig === undefined) return { core: 0, coreMax: 3, slots: [] };
+  if (rig === undefined) return { core: 0, coreMax: 3, slots: [], hull };
   const slots: RackSlot[] = rig.slots.map((slot) =>
     slot === null
       ? {}
@@ -401,7 +411,7 @@ export function rackOf(game: RoomGame): { core: number; coreMax: number; slots: 
   /* The core is the run: three pips, and the drone's own hp is how many are
      still lit. `CORE_MAX` rather than a field, because the entity carries no
      maximum and the rack's three boxes are a fact about the drone. */
-  return { core: game.player.hp, coreMax: CORE_MAX, slots };
+  return { core: game.player.hp, coreMax: CORE_MAX, slots, hull };
 }
 
 function maxOf(slot: { integrity: number; bonus?: number; base?: number }): number {
@@ -479,6 +489,8 @@ export interface TugModel {
     on: boolean;
     /** Which machine this one would be built as, for the icon. */
     who: string;
+    /** What it is called, where it is a drone and not a hull on a shelf. */
+    drone?: string;
     core: number;
     slots: number;
     speed?: number;
@@ -526,6 +538,7 @@ export function tugOf(game: RoomGame): TugModel {
          they are keyed on themselves — enough to tell them apart on the shelf
          without pretending a drone exists that does not. */
       who: voyage.hull === hull.id ? whoOf(game) : `hull:${hull.id}`,
+      ...(voyage.hull === hull.id ? { drone: droneName(whoOf(game)) } : {}),
       core: hull.core,
       slots: hull.slots,
       ...(hull.speed === undefined ? {} : { speed: hull.speed }),
@@ -756,15 +769,30 @@ function workOn(game: RoomGame, id: number): { work: { done: number; of: number 
 
 
 /**
- * Who this drone is.
+ * Who this drone is: the key everything about its identity is read off.
  *
- * A drone is built for a sortie and lost on it — the rack is what carries over
- * — so the thing that identifies one is the voyage it flew on and which sortie
- * of it that was. Two runs in a SPARK are two machines and are drawn as two
- * machines; the same drone is drawn the same way every time the board is
- * opened, because none of this is a roll (`board/Icon.tsx`, `droneIcon`).
+ * Keyed on how many drones the voyage has *built*, never on how many sorties
+ * it has flown. The two are not the same and the difference is a bug I shipped
+ * an hour ago: a drone that comes home and goes out again is one machine and
+ * two sorties, and undocking is exactly the moment the sortie count changes —
+ * so the drone chosen on the dock was not the drone that flew, and it was
+ * drawn as a different machine the instant it cast off.
+ *
+ * None of this is a roll. The rng is the run.
  */
 export function whoOf(game: RoomGame): string {
   const voyage = voyageOf(game);
-  return `${String(game.seed)}:${String(voyage.sortie)}:${voyage.hull ?? "none"}`;
+  /* Drones this voyage has put on the rails: one for every one it has lost,
+     and one more for the one standing there now. Derived and not stored,
+     because a field on the voyage is state the run carries — and a cosmetic
+     one would change the fingerprint every recorded replay is checked against
+     for a name nobody's ship ever felt. */
+  const lost = voyage.state.reduce((n, s) => n + s.deaths.length, 0);
+  const built = lost + (voyage.hull === undefined ? 0 : 1);
+  return `${String(game.seed)}:${String(built)}:${voyage.hull ?? "none"}`;
+}
+
+/** What this drone is called: `NADIA KJ-07`. */
+export function nameOfDrone(game: RoomGame): string {
+  return droneName(whoOf(game));
 }

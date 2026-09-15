@@ -364,6 +364,9 @@ function Drones({
                 size={20}
                 tone={hull.on ? "var(--sv-amber)" : "var(--sv-soft)"}
               />
+              {/* A drone is named and a hull has a class, so whichever this
+                  is answers for itself on the top line. The one on the rails
+                  is a machine somebody will lose; the other two are stock. */}
               <span
                 style={{
                   font: "var(--sv-title)",
@@ -372,7 +375,7 @@ function Drones({
                   color: hull.on ? "var(--sv-amber)" : "var(--sv-ink)",
                 }}
               >
-                {hull.name}
+                {hull.drone ?? hull.name}
               </span>
               <span
                 style={{
@@ -386,6 +389,19 @@ function Drones({
                 {hull.on ? "on the rails" : `${String(hull.price)} cr`}
               </span>
             </div>
+            {/* And the class under it, where the name took the top line. */}
+            {hull.drone === undefined ? null : (
+              <div
+                style={{
+                  font: "var(--sv-stencil)",
+                  letterSpacing: "var(--sv-stencil-track)",
+                  textTransform: "uppercase",
+                  color: "var(--sv-soft)",
+                }}
+              >
+                {hull.name}
+              </div>
+            )}
             <div style={{ font: "var(--sv-body)", color: "var(--sv-soft)" }}>{hull.trait}</div>
 
             {open ? (
