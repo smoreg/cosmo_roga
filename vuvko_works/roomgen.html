@@ -381,7 +381,9 @@ async function loadTiles(){
            four orientations are reached by flipping rather than by hoping one
            of each exists. Registered under every pair it can be turned into. */
         for (const flip of FLIPS){
-          const pair = sk.map(k => flip.of(TILE_SHIP[k])).sort().join("");
+          /* Indexed by the ship directions the plating actually ends up
+             facing, which is what the notch asks for. */
+          const pair = sk.map(k => facesAfter(k, flip)).sort().join("");
           if (!corner.has(pair)) corner.set(pair, []);
           corner.get(pair).push({path, flip});
         }
@@ -436,11 +438,29 @@ const TILE_SHIP = {n: "e", e: "s", s: "w", w: "n"};
  * so the missing ones are made rather than waited for.
  */
 const FLIPS = [
-  {sx: 1,  sy: 1,  of: (d) => d},
-  {sx: -1, sy: 1,  of: (d) => (d === "e" ? "w" : d === "w" ? "e" : d)},
-  {sx: 1,  sy: -1, of: (d) => (d === "n" ? "s" : d === "s" ? "n" : d)},
-  {sx: -1, sy: -1, of: (d) => (d === "e" ? "w" : d === "w" ? "e" : d === "n" ? "s" : "n")},
+  {sx: 1,  sy: 1},
+  {sx: -1, sy: 1},
+  {sx: 1,  sy: -1},
+  {sx: -1, sy: -1},
 ];
+
+/**
+ * Where a tile's own edge ends up pointing once the tile is drawn.
+ *
+ * Order matters and it is not the order it reads in. SVG applies
+ * `rotate(90) scale(sx sy)` to points right to left — the tile is mirrored
+ * first, in its own frame, and the result is then turned — so an edge is
+ * flipped as a *tile* edge and only then becomes a ship direction. Doing it
+ * the other way round, flipping after the turn, is a different transform for
+ * every one of the four corners, because a quarter turn and a mirror do not
+ * commute. That is what had the plating curving into the ship.
+ */
+function facesAfter(tileSide, flip){
+  let side = tileSide;
+  if (flip.sx < 0) side = side === "e" ? "w" : side === "w" ? "e" : side;
+  if (flip.sy < 0) side = side === "n" ? "s" : side === "s" ? "n" : side;
+  return TILE_SHIP[side];
+}
 
 /**
  * Where a doorway has to sit for two tiles to meet at it.
@@ -996,7 +1016,10 @@ function draw(ship, art, sections){
         if (held < 3) continue;                    // a lone cell in space, not a step
         const facing = ["n", "s", "e", "w"].filter(d => openSides[d] > 0);
         if (facing.length !== 2) continue;         // not a corner
-        const key = facing.map(d => TILE_SIDE[d]).sort().join("");
+        /* Ship directions, matching how the pool is indexed. It used to look
+           up a tile-space key against a ship-space index, which found a tile
+           for the wrong corner whenever the two happened to collide. */
+        const key = facing.slice().sort().join("");
         const pool = TILES.corner.get(key);
         if (!pool || !pool.length) continue;
         const cx = (near.q + near.r / 2) * pitch, cy = near.r * pitch;
