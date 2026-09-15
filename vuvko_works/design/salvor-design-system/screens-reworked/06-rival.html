@@ -1,0 +1,167 @@
+<!-- @dsCard group="Mechanics" viewport="1400x1560" name="06 · The rival" subtitle="Another tug's drone working the same hull — the race, the two verbs, and the twenty turns" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>SALVOR — the rival</title>
+<link rel="stylesheet" href="../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../_ds_bundle.js"></script>
+<style>
+body{margin:0;background:var(--sv-void);color:var(--sv-fg);font-family:var(--sv-font-mono)}
+.wrap{padding:36px 40px 68px;display:flex;flex-direction:column;gap:32px}
+h1{font:var(--sv-display);letter-spacing:var(--sv-display-track);text-transform:uppercase;color:var(--sv-ink);margin:0}
+h2{font:var(--sv-title);font-size:18px;letter-spacing:.24em;text-transform:uppercase;color:var(--sv-amber);margin:0;padding-bottom:10px;border-bottom:1px solid var(--sv-line)}
+.lead{font:var(--sv-body);font-size:16px;line-height:1.7;color:var(--sv-fg);max-width:980px;margin:12px 0 0}
+.note{font:var(--sv-body);color:var(--sv-soft);max-width:980px;margin:10px 0 0}
+.frame{height:450px;border:1px solid var(--sv-line);background:radial-gradient(ellipse 66% 60% at 46% 48%, var(--sv-deck) 0%, var(--sv-knock) 80%);position:relative;overflow:hidden}
+.cap{font:var(--sv-stencil);font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--sv-soft);margin-top:9px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:22px;margin-top:20px;align-items:start}
+</style>
+<script type="module">import * as FX from "../derelict-fx.js";window.FX=FX;</script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const {Panel,Tag,HexMap,SegmentMeter}=window.SALVORScreensAsBuilt_2b77ba;
+
+/* ── the competitor ────────────────────────────────────────────────────────
+ *
+ * A racer, not a fighter: it never hunts the drone and never chases it. Every
+ * turn it walks to the nearest system nobody has raised and works on it. What
+ * makes it dangerous is the clock; what makes it worth meeting is that it is a
+ * breacher, and a door it opens stays open.
+ *
+ * None of that has a drawing yet. The board can show a machine and the panel
+ * can show a number, and between them there is no way to see the one thing
+ * that matters — that somebody else is ahead of you and by how much.
+ */
+
+const ROOMS=[
+  {id:"r0",name:"Docking",q:1,r:0,state:"monitored",contents:[{kind:"crate"}]},
+  {id:"r3",name:"Cargo hold",q:0,r:1,state:"monitored",contents:[{kind:"crate"}]},
+  {id:"r2",name:"Sensor bay",q:1,r:1,state:"current",contents:[{kind:"crate"}]},
+  {id:"r4",name:"Terminal",q:2,r:1,state:"monitored",contents:[{kind:"terminal"}]},
+  {id:"r8",name:"Reactor",q:0,r:2,state:"monitored",contents:[{kind:"machine"}]},
+  {id:"r1",name:"Engine room",q:1,r:2,state:"monitored",contents:[{kind:"machine"},{kind:"sentry",threat:3}]},
+  {id:"r6",name:"Crew qtrs",q:2,r:2,state:"detected"}
+];
+const LINKS=[
+  {a:"r2",b:"r0",label:"d1",state:"open"},{a:"r2",b:"r3",label:"d2",state:"open"},
+  {a:"r2",b:"r4",label:"d3",state:"locked"},{a:"r2",b:"r1",label:"d5",state:"open"},
+  {a:"r0",b:"r4",label:"d6",state:"open"},{a:"r3",b:"r8",label:"d7",state:"open"},
+  {a:"r1",b:"r6",label:"d8",state:"sealed"}
+];
+
+/* Three boards, one story. It arrives; it takes a locked door you could not;
+   and then it is ahead of you and the door it broke is still open. */
+const STAGES=[
+  {
+    cap:"it is aboard, working the terminal",
+    rooms:ROOMS.map(r=>r.id==="r4"?{...r,contents:[{kind:"terminal"},{kind:"rival",threat:2}]}:r),
+    links:LINKS, them:1, us:0, note:"It walks to the nearest system nobody has raised, and works. Thirty turns a system."
+  },
+  {
+    cap:"a locked bulkhead costs it three turns, and stays broken",
+    rooms:ROOMS.map(r=>r.id==="r2"?{...r,contents:[{kind:"crate"},{kind:"rival",threat:2}]}:r),
+    links:LINKS.map(l=>l.label==="d3"?{...l,state:"broken"}:l), them:1, us:0,
+    note:"This is the half of it worth having. Following it through a door it opened is cheaper than cutting the same door yourself."
+  },
+  {
+    cap:"two up, and you are one behind",
+    rooms:ROOMS.map(r=>r.id==="r8"?{...r,contents:[{kind:"machine"},{kind:"rival",threat:2}]}:r),
+    links:LINKS.map(l=>l.label==="d3"?{...l,state:"broken"}:l), them:2, us:1,
+    note:"At three it takes the charter and the run has twenty turns to reach the airlock."
+  }
+];
+
+const VERBS=[
+  ["rob it","a blow knocks one module out onto the deck","two to take, then it runs at 3 core"],
+  ["follow it","a bulkhead it breached stays broken for the run","three turns of its time, none of yours"],
+  ["buy it off","it leaves the hull to you","100 cr · two rungs of alert"],
+  ["let it work","it raises a system you would have had to","it takes the charter at three"]
+];
+
+const STENCIL={font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase"};
+
+/* The race, said as a race: two rows against the same three, so "who is
+   ahead" is the shape of the thing rather than two numbers to subtract. */
+function Race({us,them,evac}){
+  const row=(label,n,tone)=><div style={{display:"flex",alignItems:"center",gap:11}}>
+    <span style={{width:56,flex:"none",...STENCIL,color:"var(--sv-soft)"}}>{label}</span>
+    <span style={{display:"flex",gap:4}}>
+      {[0,1,2].map(i=><span key={i} style={{width:34,height:14,background:i<n?tone:"var(--sv-plate-lit)"}}/>)}
+    </span>
+    <span style={{marginLeft:"auto",font:"var(--sv-display)",fontSize:20,letterSpacing:"var(--sv-display-track)",color:tone}}>{n}/3</span>
+  </div>;
+  return <div style={{display:"flex",flexDirection:"column",gap:9}}>
+    {row("you",us,"var(--sv-amber)")}
+    {row("them",them,"var(--sv-bad)")}
+    {evac?<div style={{marginTop:6,paddingTop:9,borderTop:"1px solid var(--sv-line)"}}>
+      <SegmentMeter label="to airlock" value={evac} max={20} tone="bad" height={11}/>
+    </div>:null}
+  </div>;
+}
+
+function Card(){
+  const [i,setI]=React.useState(0);
+  const st=STAGES[i];
+  return <div className="wrap">
+    <header>
+      <h1>The rival</h1>
+      <p className="lead">Another tug's drone, working the same hull. A racer and not a fighter — it never hunts you and never chases you. Every turn it walks to the nearest system nobody has raised and works on it, thirty turns a system, and at three the charter is gone and the run has twenty turns to reach the airlock.</p>
+      <p className="note">Nothing about it has a drawing yet. The board can show a machine and the panel can show a number, and between them there is no way to see the only thing that matters: somebody else is ahead of you, and by how much.</p>
+    </header>
+
+    <section>
+      <h2>I · The race, in three frames</h2>
+      <div style={{display:"flex",gap:8,marginTop:16}}>
+        {STAGES.map((s,n)=><span key={n} onClick={()=>setI(n)}
+          style={{...STENCIL,padding:"5px 11px",cursor:"pointer",background:n===i?"var(--sv-amber)":"transparent",border:n===i?"none":"1px solid var(--sv-line)",color:n===i?"var(--sv-knock)":"var(--sv-soft)"}}>{n+1}</span>)}
+      </div>
+      <div className="two">
+        <div>
+          <div className="frame"><HexMap rooms={st.rooms} links={st.links} drone="r2" size={96} spread={1.32}/></div>
+          <div className="cap">{st.cap}</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* The panel it needs, which does not exist on the board today. */}
+          <Panel variant="readout" title="Osprey II" stencil="rival" tone="bad" mount="none">
+            <Race us={st.us} them={st.them} evac={st.them>=3?20:0}/>
+            <div style={{marginTop:11,paddingTop:10,borderTop:"1px solid var(--sv-line)",display:"flex",gap:6,flexWrap:"wrap"}}>
+              <Tag tone="bad">breacher</Tag>
+              <Tag tone="neutral">carries 2</Tag>
+              <Tag tone="warn">runs at 3 core</Tag>
+            </div>
+          </Panel>
+          <Panel variant="readout" title="What it answers to" stencil="four" mount="none">
+            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+              {VERBS.map(([v,what,cost])=><div key={v} style={{padding:"7px 0",borderTop:v===VERBS[0][0]?"none":"1px solid var(--sv-line)"}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:9}}>
+                  <span style={{...STENCIL,color:"var(--sv-amber)"}}>{v}</span>
+                  <span style={{marginLeft:"auto",...STENCIL,fontSize:13,color:"var(--sv-soft)",textAlign:"right"}}>{cost}</span>
+                </div>
+                <div style={{font:"var(--sv-body)",color:"var(--sv-ink)",marginTop:2}}>{what}</div>
+              </div>)}
+            </div>
+          </Panel>
+        </div>
+      </div>
+      <p className="note">{st.note}</p>
+    </section>
+
+    <section>
+      <h2>II · What the board still has to say</h2>
+      <p className="note">Three things, and the system already knows all of them — none needs new machinery, only a drawing.</p>
+      <div style={{marginTop:16,display:"flex",flexDirection:"column",gap:2}}>
+        {[["a broken bulkhead","A door it breached is neither open nor locked: it is a hole, and it stays one. The door vocabulary has four states and this is a fifth."],
+          ["off the board","It is usually somewhere you cannot see. A rival two compartments away and working is the most important thing on the screen and currently the least visible — an edge marker on the hull, pointing, rather than a chip in a cell you are not looking at."],
+          ["the twenty turns","When it takes the charter the run stops being about salvage and becomes about the airlock. That is a different screen, not a smaller number: everything that is not the way out is noise from that turn on."]
+        ].map(([k,v])=><div key={k} style={{padding:"11px 0",borderTop:"1px solid var(--sv-line)"}}>
+          <div style={{...STENCIL,color:"var(--sv-amber)"}}>{k}</div>
+          <div style={{font:"var(--sv-body)",color:"var(--sv-fg)",marginTop:3,maxWidth:920}}>{v}</div>
+        </div>)}
+      </div>
+    </section>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Card/>);
+</script>
+</body></html>

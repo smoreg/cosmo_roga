@@ -8,6 +8,25 @@ is exactly what an admin panel is. Five levers got pulled — housings, a real
 type scale, a motion budget, a lit board, and in-world copy — and none of them
 added a thing to read.
 
+## Screens — mechanics
+
+`screens-reworked/05-alert.html`, `06-rival.html` and `07-rack.html` are not
+arrangements of an interface; they are three mechanics the game has and the
+board has no drawing for. Each one states the mechanic, shows what the system
+can say about it today, and ends with what it is asking the system for.
+
+They extended the board's own vocabulary where it was short, and those
+additions are live for every screen:
+
+- **`KIND` gained four actors** — `rival`, `ghost`, `bloom`, `jammer`. Three of
+  them are not trying to kill you, so a kind may now name its own `tone`:
+  `hostile` decides which row a thing sits in and what verbs it answers to,
+  `tone` decides what colour it is drawn in. Amber is the drone and red is a
+  threat, so neither was free for a racer or a spawner.
+- **`DOOR` gained `broken`** — a bulkhead the rival breached, which is neither
+  open nor locked. Drawn with its rungs cut through the middle rather than
+  absent, so it reads as a door that *was* shut.
+
 ## Before you change anything
 
 **`INTEGRATION.md`** is what this system learned when it was put on the real

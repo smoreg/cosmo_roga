@@ -1,0 +1,165 @@
+<!-- @dsCard group="Mechanics" viewport="1400x1620" name="07 · What goes wrong with a rack" subtitle="Infected, jammed, burned, grafted — the five states the rack is never drawn in" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>SALVOR — rack states</title>
+<link rel="stylesheet" href="../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../_ds_bundle.js"></script>
+<style>
+body{margin:0;background:var(--sv-void);color:var(--sv-fg);font-family:var(--sv-font-mono)}
+.wrap{padding:36px 40px 68px;display:flex;flex-direction:column;gap:32px}
+h1{font:var(--sv-display);letter-spacing:var(--sv-display-track);text-transform:uppercase;color:var(--sv-ink);margin:0}
+h2{font:var(--sv-title);font-size:18px;letter-spacing:.24em;text-transform:uppercase;color:var(--sv-amber);margin:0;padding-bottom:10px;border-bottom:1px solid var(--sv-line)}
+.lead{font:var(--sv-body);font-size:16px;line-height:1.7;color:var(--sv-fg);max-width:980px;margin:12px 0 0}
+.note{font:var(--sv-body);color:var(--sv-soft);max-width:980px;margin:10px 0 0}
+.rail{display:flex;gap:18px;flex-wrap:wrap;margin-top:20px;align-items:flex-start}
+.cap{font:var(--sv-stencil);font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--sv-soft);text-align:center;max-width:250px;margin-top:9px}
+</style>
+<script type="module">import * as FX from "../derelict-fx.js";window.FX=FX;</script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const {Panel,Tag,CoreRack,SegmentMeter}=window.SALVORScreensAsBuilt_2b77ba;
+
+/* ── the rack, when it is not healthy ──────────────────────────────────────
+ *
+ * The rack is on every screen there is and it is only ever drawn working. Five
+ * things can be wrong with it, and four of them are invisible today — a player
+ * looking at their own rack cannot tell that it is infected, that nothing in it
+ * is firing, or which of its parts is somebody else's and will go with the
+ * module if the module burns.
+ *
+ * All five are states of the same component, not five components. What is
+ * missing is the vocabulary to say them.
+ */
+
+const WORKING=[
+  {name:"Cutter",value:11,max:11},
+  {name:"Thrusters",value:12,max:12},
+  {name:"Scanner",value:8,max:8},
+  {name:"Plating",value:16,max:16},
+  {name:"Cell",value:8,max:8},
+  {empty:true}
+];
+
+const STRAINS=[
+  {id:"spasm",name:"SPASM", period:8,  does:"takes away your choice of what to expose",   spread:"20% to the next slot"},
+  {id:"rot",  name:"ROT",   period:5,  does:"eats the module it sits in, one point a beat",spread:"stays put"},
+  {id:"leech",name:"LEECH", period:12, does:"skims five credits off the account",          spread:"stays put"},
+  {id:"leash",name:"LEASH", period:18, does:"goes for the core itself",                    spread:"stays put"}
+];
+
+const STENCIL={font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase"};
+
+/* A slot that is not simply a bar. The mark rides to the left of the meter,
+   never inside it, so the bar is still directly comparable with every other
+   bar on the rack — the rule SlashMeter was built on. */
+function Mark({tone,children,title}){
+  return <span title={title} style={{width:15,flex:"none",textAlign:"center",font:"var(--sv-stencil)",fontSize:13,lineHeight:"19px",color:tone}}>{children}</span>;
+}
+
+function Rack({slots,jammed,title,core=3,coreMax=3}){
+  return <div style={{position:"relative",opacity:jammed?.5:1}}>
+    <CoreRack core={core} coreMax={coreMax} slots={slots.map(s=>({...s,name:s.name}))} title={title||"Core"}/>
+    {/* Marks overlaid beside the rows the meter draws. In the real component
+        these belong inside the slot row; here they show what that would read
+        like without forking SlashMeter for a sketch. */}
+    <div style={{position:"absolute",left:-19,top:52,display:"flex",flexDirection:"column",gap:8}}>
+      {slots.map((s,i)=><div key={i} style={{height:19,display:"flex",alignItems:"center"}}>
+        {s.virus?<Mark tone="var(--sv-warn)" title={"infected — "+s.virus}>◈</Mark>:null}
+        {s.graft?<Mark tone="var(--sv-zone)" title="grafted — somebody else's, and it goes with the module">⊕</Mark>:null}
+        {!s.virus&&!s.graft?<Mark tone="transparent"> </Mark>:null}
+      </div>)}
+    </div>
+    {jammed?<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+      <div style={{...STENCIL,background:"var(--sv-amber-deep)",color:"var(--sv-ink)",padding:"5px 12px"}}>jammed</div>
+    </div>:null}
+  </div>;
+}
+
+const CASES=[
+  {cap:"working — the only state drawn today",
+   slots:WORKING, note:"Six bays, five full. An empty bay and a burned bay look the same on purpose: the bay is there and nothing is in it."},
+  {cap:"infected · ROT in the SCANNER",
+   slots:WORKING.map((s,i)=>i===2?{...s,value:5,tone:"warn",virus:"ROT · 5 turns a beat"}:s),
+   note:"One virus per drone, naming a slot. It survives a sortie and a save — and goes with the module if that module burns out, which is the only way to be rid of it besides paying."},
+  {cap:"jammed — a jammer shares the compartment",
+   slots:WORKING, jammed:true,
+   note:"Nothing in the rack does anything while it stands there. What it costs is not a number but an ordering: kill the jammer first, or accept that this turn your rig is scrap metal."},
+  {cap:"burned · PLATING gone, and its bay with it",
+   slots:WORKING.map((s,i)=>i===3?{empty:true}:i===1?{...s,value:4,tone:"bad"}:s), core:1,
+   note:"Repairs bring a standing module back up; only a fitting fills an empty bay. This is the rack the tug screen opens on."},
+  {cap:"grafted · two bays are somebody else's",
+   slots:WORKING.map((s,i)=>i===0||i===4?{...s,graft:true}:s),
+   note:"A graft rides on the module, not the bay. Stow the module and the graft goes with it; burn the module and the graft is gone."}
+];
+
+function Card(){
+  return <div className="wrap">
+    <header>
+      <h1>What goes wrong with a rack</h1>
+      <p className="lead">The rack is on every screen there is, and it is only ever drawn working. Five things can be wrong with it and four are invisible today — a player looking at their own rig cannot tell that it is infected, that nothing in it is firing this turn, or which of its parts is somebody else's.</p>
+      <p className="note">All five are states of one component, not five components. What is missing is the vocabulary: a mark that rides beside a bar rather than inside it, so the bars stay directly comparable, and one plate over the whole rack for the state that is about the rack rather than about any bay in it.</p>
+    </header>
+
+    <section>
+      <h2>I · The five states</h2>
+      <div className="rail">
+        {CASES.map((c,i)=><div key={i} style={{width:250}}>
+          <Panel variant="readout" title="Rack" stencil={i?"state":"drone"} mount="none">
+            <Rack slots={c.slots} jammed={c.jammed} core={c.core==null?3:c.core}/>
+          </Panel>
+          <div className="cap">{c.cap}</div>
+        </div>)}
+      </div>
+      <div style={{marginTop:20,display:"flex",flexDirection:"column",gap:2}}>
+        {CASES.map((c,i)=><div key={i} style={{padding:"9px 0",borderTop:i?"1px solid var(--sv-line)":"none",display:"flex",gap:16,alignItems:"baseline"}}>
+          <span style={{width:250,flex:"none",...STENCIL,color:"var(--sv-amber)"}}>{c.cap.split(" ")[0]}</span>
+          <span style={{font:"var(--sv-body)",color:"var(--sv-fg)"}}>{c.note}</span>
+        </div>)}
+      </div>
+    </section>
+
+    <section>
+      <h2>II · The four strains</h2>
+      <p className="note">The risk sits on exactly the action a player wants to take: putting somebody else's module in the rack. Which strain came aboard is the hull's to decide, and each is a different clock — so the readout has to say <em style={{fontStyle:"normal",color:"var(--sv-ink)"}}>which</em> and <em style={{fontStyle:"normal",color:"var(--sv-ink)"}}>how long until the next beat</em>, and today it says neither.</p>
+      <div style={{display:"grid",gridTemplateColumns:"120px 130px minmax(0,1fr) 200px",gap:"2px 18px",marginTop:18}}>
+        {STRAINS.map((s,i)=><React.Fragment key={s.id}>
+          <div style={{padding:"9px 0",borderTop:i?"1px solid var(--sv-line)":"none"}}><Tag tone="warn">{s.name}</Tag></div>
+          <div style={{padding:"11px 0",borderTop:i?"1px solid var(--sv-line)":"none",...STENCIL,color:"var(--sv-soft)"}}>every {s.period} turns</div>
+          <div style={{padding:"11px 0",borderTop:i?"1px solid var(--sv-line)":"none",font:"var(--sv-body)",color:"var(--sv-ink)"}}>{s.does}</div>
+          <div style={{padding:"11px 0",borderTop:i?"1px solid var(--sv-line)":"none",...STENCIL,color:s.spread==="stays put"?"var(--sv-faint)":"var(--sv-bad)"}}>{s.spread}</div>
+        </React.Fragment>)}
+      </div>
+      <div style={{marginTop:22,maxWidth:420}}>
+        <Panel variant="readout" title="Scanner" stencil="infected" tone="warn" mount="none">
+          <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:10}}>
+            <Tag tone="warn" solid>ROT</Tag>
+            <span style={{font:"var(--sv-body)",color:"var(--sv-ink)"}}>eats the module it sits in</span>
+          </div>
+          {/* The clock a strain needs, counted the way a player counts: turns
+              until the next beat, not turns since the last one. */}
+          <SegmentMeter label="next beat" value={2} max={5} tone="warn" height={11}/>
+          <div style={{marginTop:10,paddingTop:9,borderTop:"1px solid var(--sv-line)",font:"var(--sv-body)",color:"var(--sv-soft)"}}>Cleaning it is 18 cr at the tug. Letting the SCANNER burn takes the strain with it.</div>
+        </Panel>
+      </div>
+    </section>
+
+    <section>
+      <h2>III · What this asks the system for</h2>
+      <div style={{marginTop:16,display:"flex",flexDirection:"column",gap:2}}>
+        {[["a mark beside a bar, never inside one","SlashMeter is left-aligned and never stretched so two modules of different size compare directly. A badge inside the bar would break that for every rack on every screen, so the marks ride in a gutter."],
+          ["one plate for a whole-rack state","Jammed is not a property of any bay — it is the rack not working. That is a plate over the component, the same move the menu makes over the board."],
+          ["a clock that counts down","Every other number in this game counts what is left. A strain should too, and the engine already keeps the period."],
+          ["a tone for 'not yours'","A graft and an infection are both foreign, and they are not the same kind of foreign. Zone blue for somebody else's, warn amber for something living in it."]
+        ].map(([k,v])=><div key={k} style={{padding:"11px 0",borderTop:"1px solid var(--sv-line)"}}>
+          <div style={{...STENCIL,color:"var(--sv-amber)"}}>{k}</div>
+          <div style={{font:"var(--sv-body)",color:"var(--sv-fg)",marginTop:3,maxWidth:920}}>{v}</div>
+        </div>)}
+      </div>
+    </section>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Card/>);
+</script>
+</body></html>

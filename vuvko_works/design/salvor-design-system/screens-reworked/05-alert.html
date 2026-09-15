@@ -1,0 +1,156 @@
+<!-- @dsCard group="Mechanics" viewport="1400x1720" name="05 · The alert ladder" subtitle="Five rungs, what the ship does on each, and what walks it back down" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>SALVOR — the alert ladder</title>
+<link rel="stylesheet" href="../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../_ds_bundle.js"></script>
+<style>
+body{margin:0;background:var(--sv-void);color:var(--sv-fg);font-family:var(--sv-font-mono)}
+.wrap{padding:36px 40px 68px;display:flex;flex-direction:column;gap:32px}
+h1{font:var(--sv-display);letter-spacing:var(--sv-display-track);text-transform:uppercase;color:var(--sv-ink);margin:0}
+h2{font:var(--sv-title);font-size:18px;letter-spacing:.24em;text-transform:uppercase;color:var(--sv-amber);margin:0;padding-bottom:10px;border-bottom:1px solid var(--sv-line)}
+.lead{font:var(--sv-body);font-size:16px;line-height:1.7;color:var(--sv-fg);max-width:980px;margin:12px 0 0}
+.note{font:var(--sv-body);color:var(--sv-soft);max-width:980px;margin:10px 0 0}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin-top:20px}
+.frame{height:430px;border:1px solid var(--sv-line);background:radial-gradient(ellipse 66% 60% at 46% 48%, var(--sv-deck) 0%, var(--sv-knock) 80%);position:relative;overflow:hidden}
+.cap{font:var(--sv-stencil);font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--sv-soft);margin-top:9px}
+</style>
+<script type="module">import * as FX from "../derelict-fx.js";window.FX=FX;</script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const {Panel,Tag,AlertDial,HexMap}=window.SALVORScreensAsBuilt_2b77ba;
+
+/* ── the run's clock, drawn ────────────────────────────────────────────────
+ *
+ * The board carries one dial with a number on it, and a number is the one part
+ * of this mechanic a player does not need — what they need is *what happens
+ * next*. Every rung is climbed exactly once on the way up, and each does a
+ * different thing, so the gauge is really a five-step script the ship is
+ * reading out. This screen draws the script.
+ *
+ * The gauge belongs to the **ship**, not to the drone: it is kept on the hull
+ * and survives walking back to the tug, so the derelict is still looking for
+ * you when you come back through the airlock a sortie later. That is the fact
+ * the tug screen has no business repeating and this one has to say.
+ */
+const RUNGS=[
+  {n:1,word:"NOTICED",  does:"Something heard you. Nothing moves yet.",                       posts:null,                 tone:"neutral"},
+  {n:2,word:"SEARCHING",does:"A machine is posted where you have already walked.",            posts:"one posted",         tone:"neutral"},
+  {n:3,word:"HUNTING",  does:"One is sent after you, and the ship starts shutting doors.",    posts:"one sent · doors",   tone:"warn"},
+  {n:4,word:"ENFORCER", does:"Its hunter wakes up. It does not stop and it does not lose you.",posts:"enforcer",          tone:"bad"},
+  {n:5,word:"SCUTTLE",  does:"Doors lock, and it begins venting its own compartments.",       posts:"15 turns' warning",  tone:"bad"}
+];
+
+/* Down is slower than up, and cover is what makes it bearable. */
+const DOWN=[
+  ["standing quiet, in the open","15 turns","one rung"],
+  ["standing quiet, in cover","8 turns","one rung"],
+  ["a drone died aboard since last entry","on entry","two rungs"],
+  ["all three systems up","—","the ladder switches off"]
+];
+
+const ROOMS=[
+  {id:"r0",name:"Docking",q:1,r:0,state:"monitored",contents:[{kind:"crate"}]},
+  {id:"r3",name:"Cargo hold",q:0,r:1,state:"monitored",contents:[{kind:"crate"},{kind:"crate"}],props:["vacuum"]},
+  {id:"r2",name:"Sensor bay",q:1,r:1,state:"current",contents:[{kind:"crate"}]},
+  {id:"r4",name:"Bridge",q:2,r:1,state:"monitored"},
+  {id:"r8",name:"Reactor",q:0,r:2,state:"monitored",contents:[{kind:"machine"}],props:["hazard"]},
+  {id:"r1",name:"Engineering",q:1,r:2,state:"monitored",contents:[{kind:"machine"}]},
+  {id:"r6",name:"Crew qtrs",q:2,r:2,state:"monitored",contents:[{kind:"crate"}]}
+];
+const LINKS=[
+  {a:"r2",b:"r0",label:"d1",state:"open"},{a:"r2",b:"r3",label:"d2",state:"open"},
+  {a:"r2",b:"r4",label:"d3",state:"open"},{a:"r2",b:"r1",label:"d5",state:"open"},
+  {a:"r0",b:"r4",label:"d6",state:"open"},{a:"r3",b:"r8",label:"d7",state:"open"},
+  {a:"r1",b:"r6",label:"d8",state:"open"}
+];
+
+/* What each rung has actually put on the board. The point of drawing it twice
+   is that the difference is the mechanic: at 2 a machine stands where you have
+   been, at 5 the compartments themselves start going. */
+const AT2=ROOMS.map(r=>r.id==="r0"?{...r,contents:[...(r.contents||[]),{kind:"scout",threat:2}],props:["alarmed"]}:r);
+const AT5=ROOMS.map(r=>{
+  if(r.id==="r0") return {...r,contents:[...(r.contents||[]),{kind:"sentry",threat:3}],props:["alarmed"]};
+  if(r.id==="r4") return {...r,contents:[{kind:"scout",threat:2}],props:["vacuum"]};
+  if(r.id==="r6") return {...r,props:["vacuum"]};
+  if(r.id==="r1") return {...r,contents:[...(r.contents||[]),{kind:"feral",threat:1}]};
+  return r;
+});
+const SHUT=LINKS.map(l=>["d3","d6","d8"].includes(l.label)?{...l,state:"locked"}:l);
+
+const STENCIL={font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase"};
+
+function Rung({r,lit}){
+  const c=r.tone==="bad"?"var(--sv-bad)":r.tone==="warn"?"var(--sv-warn)":"var(--sv-rim)";
+  return <div style={{display:"flex",alignItems:"flex-start",gap:14,padding:"10px 12px",background:lit?"color-mix(in oklab, "+c+" 13%, transparent)":"transparent",borderLeft:"3px solid "+(lit?c:"var(--sv-line)")}}>
+    {/* The number is the least of it, so it is the smallest thing on the row. */}
+    <span style={{width:16,flex:"none",...STENCIL,color:lit?c:"var(--sv-faint)"}}>{r.n}</span>
+    <span style={{width:104,flex:"none",font:"var(--sv-title)",letterSpacing:"var(--sv-title-track)",textTransform:"uppercase",color:lit?"var(--sv-ink)":"var(--sv-soft)"}}>{r.word}</span>
+    <span style={{flex:1,font:"var(--sv-body)",color:lit?"var(--sv-fg)":"var(--sv-soft)"}}>{r.does}</span>
+    {r.posts?<Tag tone={r.tone}>{r.posts}</Tag>:null}
+  </div>;
+}
+
+function Card(){
+  const [at,setAt]=React.useState(3);
+  return <div className="wrap">
+    <header>
+      <h1>The alert ladder</h1>
+      <p className="lead">The run's only clock, and the reason a drone cannot simply out-wait a hull. The board draws it as one dial with a number on it — but the number is the part a player does not need. What they need is what the ship does next, and every rung does something different.</p>
+      <p className="note">The gauge belongs to the <em style={{fontStyle:"normal",color:"var(--sv-ink)"}}>ship</em>, not the drone. It is kept on the hull, so it survives walking home: the derelict is still looking for you when you come back through the airlock a sortie later, at the level you left it.</p>
+    </header>
+
+    <section>
+      <h2>I · The five rungs</h2>
+      <p className="note">Climbed once each, on the way up. Drag the dial to read the ship's script from any rung.</p>
+      <div style={{display:"flex",gap:26,marginTop:18,alignItems:"flex-start"}}>
+        <Panel variant="readout" title="Gauge" stencil="the hull's" mount="none" width={210}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
+            <AlertDial value={at} max={5} label="alert" size={104}/>
+            <input type="range" min="0" max="5" value={at} onChange={(e)=>setAt(+e.target.value)}
+              style={{width:"100%",accentColor:"var(--sv-amber)"}}/>
+            <div style={{...STENCIL,color:"var(--sv-soft)",textAlign:"center"}}>{at===0?"quiet":RUNGS[at-1].word}</div>
+          </div>
+        </Panel>
+        <Panel variant="readout" title="What it does on the way up" stencil="once each" mount="none" style={{flex:1}}>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {RUNGS.map(r=><Rung key={r.n} r={r} lit={r.n<=at}/>)}
+          </div>
+        </Panel>
+      </div>
+    </section>
+
+    <section>
+      <h2>II · And what walks it back down</h2>
+      <p className="note">Down is slower than up, which is the whole of the pressure. Cover nearly halves it — that is what cover is <em style={{fontStyle:"normal",color:"var(--sv-ink)"}}>for</em>, and the board has no way of saying so yet.</p>
+      <div style={{marginTop:18,display:"grid",gridTemplateColumns:"minmax(0,1fr) 150px 190px",gap:"2px 18px"}}>
+        {DOWN.map(([what,cost,effect],i)=><React.Fragment key={i}>
+          <div style={{font:"var(--sv-body)",color:"var(--sv-ink)",padding:"7px 0",borderTop:i?"1px solid var(--sv-line)":"none"}}>{what}</div>
+          <div style={{...STENCIL,color:"var(--sv-soft)",padding:"9px 0",borderTop:i?"1px solid var(--sv-line)":"none"}}>{cost}</div>
+          <div style={{...STENCIL,color:"var(--sv-amber)",padding:"9px 0",borderTop:i?"1px solid var(--sv-line)":"none"}}>{effect}</div>
+        </React.Fragment>)}
+      </div>
+    </section>
+
+    <section>
+      <h2>III · The same hull at two rungs</h2>
+      <p className="note">The difference is the mechanic, and none of it is currently visible except as a number going up. At <strong style={{color:"var(--sv-ink)",fontWeight:400}}>SEARCHING</strong> a machine stands where you have already walked. At <strong style={{color:"var(--sv-bad)",fontWeight:400}}>SCUTTLE</strong> the doors are locked and the compartments themselves are going.</p>
+      <div className="two">
+        <div>
+          <div className="frame"><HexMap rooms={AT2} links={LINKS} drone="r2" size={96} spread={1.32}/></div>
+          <div className="cap">2 · searching — one posted behind you, that compartment alarmed</div>
+        </div>
+        <div>
+          <div className="frame"><HexMap rooms={AT5} links={SHUT} drone="r2" size={96} spread={1.32}/></div>
+          <div className="cap">5 · scuttle — three doors locked, two compartments vented, 15 turns' warning</div>
+        </div>
+      </div>
+      <p className="note">Open question for the board: a vented compartment already has a ring, but a compartment vented <em style={{fontStyle:"normal",color:"var(--sv-ink)"}}>by the scuttle while you watch</em> is a different event from one that was airless when you found it. Same ring today. It may want the reveal treatment — waist out, in red — rather than simply being there on the next frame.</p>
+    </section>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Card/>);
+</script>
+</body></html>

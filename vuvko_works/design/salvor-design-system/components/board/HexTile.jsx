@@ -38,8 +38,27 @@ const KIND={
   sentry:  {shape:"polygon(50% 0,100% 35%,82% 100%,18% 100%,0 35%)", hostile:true, name:"sentry",      at:"attack", near:"watch", note:"fixed · 5/5"},
   crate:   {shape:null,                                                            name:"cargo crate", at:"take",   near:null,    note:"8 cr"},
   terminal:{shape:"polygon(0 0,100% 0,100% 72%,62% 72%,62% 100%,38% 100%,38% 72%,0 72%)", name:"terminal", at:"read", near:null, note:"1 turn"},
-  machine: {shape:"circle(50%)",                                                   name:"machine",     at:"strip",  near:null,    note:"2 turns"}
+  machine: {shape:"circle(50%)",                                                   name:"machine",     at:"strip",  near:null,    note:"2 turns"},
+
+  /* Four actors the game has and the board had no word for. All of them sit in
+     the lower row — they act, so they are not loot — but only two of them are
+     trying to kill you, which is why `tone` is separate from `hostile` now.
+     `hostile` decides which row a thing sits in and what verbs it answers to;
+     `tone` decides what colour it is drawn in. Amber is the drone and red is a
+     threat, so neither is free for a racer or a spawner. */
+  rival:   {shape:"polygon(50% 0,100% 28%,100% 72%,50% 100%,0 72%,0 28%)",
+            hostile:true, tone:"var(--sv-rim)",     name:"rival drone", at:"rob",    near:"watch", note:"racer · never hunts you"},
+  ghost:   {shape:"polygon(50% 0,86% 22%,86% 78%,50% 100%,14% 78%,14% 22%)",
+            hostile:true, tone:"var(--sv-zone)",    name:"ghost",       at:"attack", near:"watch", note:"the rack you lost"},
+  bloom:   {shape:"polygon(50% 0,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%)",
+            hostile:true, tone:"var(--sv-warn)",    name:"hatchery",    at:"attack", near:null,    note:"static · hatching"},
+  jammer:  {shape:"polygon(50% 12%,88% 50%,50% 88%,12% 50%,50% 12%)",
+            hostile:true, tone:"var(--sv-amber-deep)", name:"jammer",  at:"attack", near:"watch", note:"your rack does nothing"}
 };
+
+/* What a thing is drawn in. A kind may name its own; otherwise threat is red
+   and everything else is the interactive colour. */
+function toneOf(k){ return k.tone||(k.hostile?"var(--sv-bad)":"var(--sv-amber)"); }
 
 function knowsOf(state){ return (STATE[state]||STATE.monitored).knows; }
 
@@ -125,15 +144,15 @@ export function Popover({tone="var(--sv-amber)",children,style}){
 export function Readout({item,here=true,style}){
   const k=KIND[item.kind]||KIND.machine;
   const verb=here?k.at:k.near;
-  const tone=k.hostile?"var(--sv-bad)":"var(--sv-amber)";
+  const tone=toneOf(k);
   return (
     <Popover tone={tone} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",whiteSpace:"nowrap",...style}}>
-      <span data-sc style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".12em",textTransform:"uppercase",color:k.hostile?"color-mix(in oklab, var(--sv-bad) 26%, var(--sv-ink))":"var(--sv-ink)"}}>
+      <span data-sc style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".12em",textTransform:"uppercase",color:k.hostile?"color-mix(in oklab, "+toneOf(k)+" 26%, var(--sv-ink))":"var(--sv-ink)"}}>
         {(item.name||k.name)+(item.n>1?" ×"+item.n:"")}
       </span>
       {k.hostile?(
         <span style={{display:"flex",gap:3}}>
-          {[0,1,2].map(i=><span key={i} style={{width:7,height:12,background:i<(item.threat||1)?"var(--sv-bad)":"var(--sv-plate-lit)"}}></span>)}
+          {[0,1,2].map(i=><span key={i} style={{width:7,height:12,background:i<(item.threat||1)?toneOf(k):"var(--sv-plate-lit)"}}></span>)}
         </span>
       ):<span data-sc style={{font:"var(--sv-body)",color:"var(--sv-soft)"}}>{k.note}</span>}
       {verb?<span data-sc style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",background:tone,color:"var(--sv-knock)",padding:"2px 6px"}}>{verb}</span>
@@ -144,14 +163,14 @@ export function Readout({item,here=true,style}){
 
 function Chip({item,size,here,onEnter,onLeave,onAct}){
   const k=KIND[item.kind]||KIND.machine;
-  const c=k.hostile?"var(--sv-bad)":"var(--sv-amber)";
+  const c=toneOf(k);
   const can=here?k.at:k.near;
   return (
     <div onMouseEnter={onEnter} onMouseLeave={onLeave}
       onClick={can&&onAct?(e)=>{e.stopPropagation();onAct(can,item);}:undefined}
       style={{display:"flex",alignItems:"center",gap:3,cursor:can&&onAct?"pointer":"help"}}>
       <div style={{width:size,height:size,flex:"none",background:c,clipPath:k.shape||undefined}}></div>
-      {item.n>1?<div style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,lineHeight:1,color:k.hostile?"color-mix(in oklab, var(--sv-bad) 26%, var(--sv-ink))":"var(--sv-amber-hi)"}}>{item.n}</div>:null}
+      {item.n>1?<div style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,lineHeight:1,color:k.hostile?"color-mix(in oklab, "+toneOf(k)+" 26%, var(--sv-ink))":"var(--sv-amber-hi)"}}>{item.n}</div>:null}
     </div>
   );
 }
@@ -313,7 +332,13 @@ const DOOR={
   closed: {c:"var(--sv-bulkhead)", bars:1, verbs:[["open","free"],["force","loud"],["weld shut","cutter · 2 turns"]]},
   locked: {c:"var(--sv-amber)",    bars:2, verbs:[["unlock","needs a key"],["force","loud · 1 turn"],["cut open","cutter · 2 turns"]]},
   sealed: {c:"var(--sv-burned)",   bars:3, verbs:[["cut open","cutter · 3 turns"]]},
-  airlock:{c:"var(--sv-airlock)",  bars:0, lock:true, verbs:[["cycle","1 turn"],["leave the hull","ends the sortie"]]}
+  airlock:{c:"var(--sv-airlock)",  bars:0, lock:true, verbs:[["cycle","1 turn"],["leave the hull","ends the sortie"]]},
+
+  /* A fifth state, and the odd one: a bulkhead the rival breached is neither
+     open nor locked. It is a hole, it stays one for the rest of the run, and
+     following it through is the cheapest door in the game. Drawn with the rungs
+     struck out rather than absent, so it reads as a door that *was* shut. */
+  broken: {c:"var(--sv-rim)",      bars:2, broke:true, verbs:[["walk through","free · it stays open"]]}
 };
 
 /* Owns the geometry, the camera and the board's interactions: pointy-top hexes
@@ -502,7 +527,13 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
                     <div style={{position:"absolute",left:0,right:0,bottom:0,height:2,background:c}}></div>
                   </div>
                 );})()}
-                {Array.from({length:d.bars}).map((_,n)=><div key={n} style={{position:"relative",width:3,height:17,background:d.c}}></div>)}
+                {Array.from({length:d.bars}).map((_,n)=>(
+                  /* Broken keeps its rungs and cuts them through the middle: a
+                     door that was shut and is not any more reads as history,
+                     which is what it is — somebody opened it and it stayed. */
+                  <div key={n} style={{position:"relative",width:3,height:17,background:d.c,
+                    clipPath:d.broke?"polygon(0 0,100% 0,100% 34%,0 34%,0 66%,100% 66%,100% 100%,0 100%)":undefined}}></div>
+                ))}
                 {d.lock?<div style={{position:"relative",width:11,height:11,background:d.c,clipPath:"polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)"}}></div>:null}
               </div>
 
