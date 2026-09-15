@@ -147,3 +147,9 @@ export function exchange(
 
 export function hitStop(ms?: number, options?: { onResume?: () => void }): Running;
 export function clearGhosts(root?: ParentNode): void;
+
+/** Run a reveal so cancelling it puts the words back. Returns the cleanup. */
+export function reveal(nodes: Iterable<Element> | ArrayLike<Element>, preset?: unknown): () => void;
+
+/** Every line of a subtree, counting ones already revealed and now blank. */
+export function linesOf(host: Element | null, selector?: string): Element[];

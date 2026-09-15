@@ -8,6 +8,18 @@ is exactly what an admin panel is. Five levers got pulled — housings, a real
 type scale, a motion budget, a lit board, and in-world copy — and none of them
 added a thing to read.
 
+## Before you change anything
+
+**`INTEGRATION.md`** is what this system learned when it was put on the real
+game. Two of its findings are bug classes rather than preferences — a cancelled
+reveal used to blank a whole screen, and a readout used to outlive the thing it
+named — and both are fixed here rather than downstream. Read it before touching
+`derelict-fx.js`, `Panel.jsx` or `HexTile.jsx`.
+
+The rule it adds to the motion budget: **components never call
+`scrambleReveal` directly.** `FX.reveal(FX.linesOf(host), preset)` puts the
+words back if the animation is cut short, which under React is routine.
+
 ## Foundations
 
 - **`styles.css`** — 46 tokens. Ground in six values lit top to bottom, one

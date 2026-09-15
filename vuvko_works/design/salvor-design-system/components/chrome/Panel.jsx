@@ -154,22 +154,18 @@ export function MenuSheet({title,stencil,rows=[],onBack,onClose,width=340,leavin
     if(leaving) return;
     const FX=typeof window!=="undefined"?(window.FX||window.DerelictFX):null;
     if(!FX||!ref.current) return;
-    let nodes=Array.from(ref.current.querySelectorAll("[data-sc]"));
-    if(!nodes.length){
-      /* Every leaf that holds text — a node whose children are all text — so
-         the whole sheet resolves whatever the caller passed as children. */
-      nodes=Array.from(ref.current.querySelectorAll("div,span,p")).filter(el=>{
-        if(!el.textContent.trim()) return false;
-        return Array.from(el.childNodes).every(n=>n.nodeType===3);
-      });
-    }
-    const h=FX.scrambleReveal(nodes,FX.PRESETS.sheet||FX.PRESETS.panel);
-    return ()=>h.cancel();
+    /* `reveal` rather than `scrambleReveal`, and `linesOf` rather than a
+       selector: a cancelled reveal must put its words back, and mid-reveal the
+       DOM says these lines have no text. Both learned the hard way — see
+       INTEGRATION.md, "A cancelled reveal". */
+    return FX.reveal(FX.linesOf(ref.current),FX.PRESETS.sheet||FX.PRESETS.panel);
   },[leaving]);
   const slide=drawer?{animation:(leaving?"sv-slide-out":"sv-slide-in")+" var(--sv-frame) var(--sv-step) 1 both"}:null;
   return (
-    <div ref={ref} style={{...slide,...(drawer?{height:"100%"}:null)}}>
-    <Panel variant="printed" title={title} stencil={stencil} mount="none" width={width} fill={drawer} style={drawer?{height:"100%",...style}:style}>
+    <div ref={ref} style={{position:"relative",...slide,...(drawer?{height:"100%"}:null)}}>
+    {onClose?<div onClick={onClose} title="close"
+      style={{position:"absolute",right:0,top:0,width:30,height:30,zIndex:20,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",font:"var(--sv-stencil)",fontSize:17,letterSpacing:0,lineHeight:1,color:"var(--sv-knock)"}}>×</div>:null}
+    <Panel variant="printed" title={title} mount="none" width={width} fill={drawer} style={drawer?{height:"100%",...style}:style}>
       {children}
       {rows.length?(
         <div style={{display:"flex",flexDirection:"column",gap:2}}>
@@ -184,10 +180,9 @@ export function MenuSheet({title,stencil,rows=[],onBack,onClose,width=340,leavin
           ))}
         </div>
       ):null}
-      {onBack||onClose?(
-        <div style={{display:"flex",gap:8,marginTop:"auto",paddingTop:12,borderTop:"1px solid var(--sv-line)"}}>
-          {onBack?<span onClick={onBack} style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",background:"var(--sv-amber)",color:"var(--sv-knock)",padding:"3px 9px",cursor:"pointer"}}>back</span>:null}
-          {onClose?<span onClick={onClose} style={{marginLeft:"auto",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-soft)",padding:"3px 0",cursor:"pointer"}}>close</span>:null}
+      {onBack?(
+        <div style={{display:"flex",marginTop:"auto",paddingTop:12,borderTop:"1px solid var(--sv-line)"}}>
+          <span onClick={onBack} style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",background:"var(--sv-amber)",color:"var(--sv-knock)",padding:"3px 9px",cursor:"pointer"}}>back</span>
         </div>
       ):null}
     </Panel>

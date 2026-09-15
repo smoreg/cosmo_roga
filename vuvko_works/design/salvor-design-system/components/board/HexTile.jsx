@@ -156,11 +156,34 @@ function Chip({item,size,here,onEnter,onLeave,onAct}){
   );
 }
 
-export function HexTile({name,id,contents=[],props=[],state="monitored",size=118,step=null,onClick,onMouseEnter,onMouseLeave,onAct,hot=false,style}){
+export function HexTile({name,id,contents=[],props=[],state="monitored",size=118,step=null,fresh=null,onClick,onMouseEnter,onMouseLeave,onAct,hot=false,style}){
   const s=STATE[state]||STATE.monitored;
   const [tip,setTip]=React.useState(null);
   const [seq,setSeq]=React.useState(0);
   const show=(c)=>{ setTip(c); setSeq(n=>n+1); };
+  const labelRef=React.useRef(null);
+
+  /* A hovered thing that dies unmounts its own chip, so no pointer ever leaves
+     it and the readout stands there naming something that is no longer aboard.
+     Killing a hostile used to leave its card floating beside an empty hex. */
+  React.useEffect(()=>{
+    if(!tip) return;
+    const still=group(contents).some(c=>c.kind===tip.kind);
+    if(!still) setTip(null);
+  },[contents,tip]);
+
+  /* The three things a compartment does when it stops being a rumour: the cell
+     opens out of its own waist, the name band draws from the middle to both
+     ends, and the name resolves out of scramble. Pass `fresh` as a number that
+     changes each time it happens — the layer is keyed on it, because a CSS
+     animation replays when the element is new and not when a property goes
+     back to a value it already had. */
+  React.useEffect(()=>{
+    if(fresh==null||!labelRef.current) return;
+    const FX=typeof window!=="undefined"?(window.FX||window.DerelictFX):null;
+    if(!FX||!FX.reveal) return;
+    return FX.reveal([labelRef.current],FX.PRESETS.name);
+  },[fresh]);
   const h=Math.round(size*RATIO);
   const here=state==="current";
   const shows=s.knows==="all";
@@ -188,6 +211,9 @@ export function HexTile({name,id,contents=[],props=[],state="monitored",size=118
           responds to the pointer. */}
       <div style={{position:"absolute",inset:0,clipPath:HEX,pointerEvents:"auto",cursor:onClick?"pointer":"default",zIndex:5}}></div>
 
+      {/* Everything painted, wrapped so a reveal can open it out of its own
+          waist. Nothing here takes a pointer the layers inside it did not. */}
+      <div key={fresh==null?"still":fresh} style={{position:"absolute",inset:0,animation:fresh==null?undefined:"sv-hex-grow var(--sv-frame) var(--sv-step) 1 both"}}>
       <div style={{position:"absolute",inset:0,clipPath:HEX,background:s.line,opacity:state==="undetected"?.55:1}}></div>
       {hot?<div style={{position:"absolute",inset:0,animation:"sv-hex-grow var(--sv-frame) var(--sv-step) 1 both",pointerEvents:"none",zIndex:3}}>
         <HexRing stroke="var(--sv-rim)" width={3}/>
@@ -215,14 +241,18 @@ export function HexTile({name,id,contents=[],props=[],state="monitored",size=118
             onEnter={()=>show(c)} onLeave={()=>setTip(null)}/>)}
         </div>
         {s.band?(
-          <div style={{alignSelf:"stretch",background:s.band,padding:"3px 0",textAlign:"center"}}>
-            <span style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,textTransform:"uppercase",color:"var(--sv-knock)",whiteSpace:"nowrap"}}>{fit}</span>
+          /* Out from the middle, the way every other border in this system is
+             drawn. A band that wiped in from one end would be the only thing
+             on the board with a reading direction. */
+          <div style={{alignSelf:"stretch",background:s.band,padding:"3px 0",textAlign:"center",transformOrigin:"center",animation:fresh==null?undefined:"sv-draw-x var(--sv-frame) var(--sv-step) 1 both"}}>
+            <span ref={labelRef} style={{display:"inline-block",font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,textTransform:"uppercase",color:"var(--sv-knock)",whiteSpace:"nowrap"}}>{fit}</span>
           </div>
         ):<div style={{height:20}}></div>}
         <div style={{height:22,display:"flex",alignItems:"center",gap:5}}>
           {foes.map((c,i)=><Chip key={i} item={c} size={17} here={here} onAct={onAct}
             onEnter={()=>show(c)} onLeave={()=>setTip(null)}/>)}
         </div>
+      </div>
       </div>
 
       {tip?<Readout key={seq} item={tip} here={here}

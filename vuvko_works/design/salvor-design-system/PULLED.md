@@ -1,5 +1,28 @@
 # What is here, and what is still in the project
 
+## The fourth pull, and the first push back
+
+Pulled 2026-09-15 after the integration work. One component changed and two
+screens appeared.
+
+**`MenuSheet`** moved its close from a footer word to a `×` in the top-right
+corner of the housing, and stopped passing `stencil` through to the panel. The
+footer now carries `back` alone. Applied here.
+
+**`screens-reworked/door-map.html`** and **`screens-reworked/chrome-variants.html`**
+are new explorations in the project. They are not tracked in this repo — it
+mirrors the system, not the explorations — so they were read and left there.
+
+Only `Panel.jsx` was compared byte for byte this pass; the other three
+components and `styles.css` were not re-fetched, so a change confined to one of
+them would not have been noticed here.
+
+Then, for the first time, this went the other way as well. `INTEGRATION.md` and
+the `reveal`/`linesOf` pair in `derelict-fx.js` were written from what the game
+integration found and pushed **up** into the project, so the next screen built
+there starts from the answers instead of rediscovering them. See that file.
+
+
 Pulled from the Claude Design project **SALVOR — Screens as Built**
 (`2b77ba4c-f54c-445d-a245-0224024bee1a`) on 2026-09-15, twice: the system
 itself at 05:25, a second pass at 05:46 and a third at 05:49.

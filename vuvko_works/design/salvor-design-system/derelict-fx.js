@@ -589,3 +589,76 @@ const API = {
 if (typeof window !== 'undefined') window.DerelictFX = API;
 
 export default API;
+
+/* ─────────────────────────────────────────────────────────── safe reveals ──
+ *
+ * `scrambleReveal` empties every line it is given *synchronously* and fills it
+ * back in over held frames, and `cancel` stops the frames and leaves the DOM
+ * where they got to. That is right for the library on its own terms — a
+ * cancelled animation should not fight whatever cancelled it — and wrong
+ * everywhere a framework is driving it, because a framework cancels routinely.
+ *
+ * React's StrictMode runs every effect, cleans it up and runs it again. The
+ * first pass blanks every line; the cleanup cancels it; and the second pass
+ * asks the DOM which elements hold text — and the answer is none, because the
+ * first pass just emptied them. So it reveals nothing and the blanks stand.
+ * This was shipped, in a whole screen that came up empty.
+ *
+ * These two are what a component should reach for instead. They were learned
+ * by integrating this system into a real game (`INTEGRATION.md`).
+ */
+
+/**
+ * Run a reveal so that cancelling it can never leave a blank screen.
+ *
+ * The text is remembered before the reveal starts and put back if the reveal
+ * does not finish. `data-text` is where it is kept, which is also where
+ * `scrambleReveal` looks for it, so a second pass over the same lines reads
+ * the words rather than the wreckage of the first.
+ *
+ * Returns a plain function, so it drops straight into a React effect:
+ *
+ *   React.useEffect(() => FX.reveal(FX.linesOf(ref.current), FX.PRESETS.sheet), [deps]);
+ */
+export function reveal(nodes, preset) {
+  const list = Array.from(nodes || []);
+  const kept = list.map(el => {
+    const text = el.dataset.text != null ? el.dataset.text : el.textContent;
+    el.dataset.text = text;
+    return { el, text };
+  });
+  let done = false;
+  const running = scrambleReveal(list, {
+    ...preset,
+    onDone: () => { done = true; if (preset && preset.onDone) preset.onDone(); }
+  });
+  return () => {
+    running.cancel();
+    if (done) return;
+    for (const k of kept) k.el.textContent = k.text;
+  };
+}
+
+/**
+ * Every line of a subtree, whether the author marked it or not.
+ *
+ * Marked ones win where there are any — a component that says which of its
+ * text is a line means it. Where there are none, a leaf is any element whose
+ * children are all text nodes, so a panel that grows a row does not need
+ * remembering to.
+ *
+ * A line that has been revealed before counts even while it is blank, and that
+ * is the whole reason this is a function rather than a selector: mid-reveal
+ * the DOM says these elements have no text, and a filter that believes it
+ * drops exactly the lines that most need putting back.
+ */
+export function linesOf(host, selector = '[data-sc]') {
+  if (!host) return [];
+  const marked = Array.from(host.querySelectorAll(selector));
+  if (marked.length) return marked;
+  return Array.from(host.querySelectorAll('div,span,p')).filter(el => {
+    if (!Array.from(el.childNodes).every(n => n.nodeType === 3)) return false;
+    if (el.dataset.text != null) return true;
+    return el.textContent.trim() !== '';
+  });
+}
