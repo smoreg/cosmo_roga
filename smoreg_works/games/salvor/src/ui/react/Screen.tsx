@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import type { RoomGame, RoomId } from "@jamrog/engine";
 import { HexBoard } from "./board/HexBoard.js";
-import type { BoardRoom, BoardThing } from "./board/HexBoard.js";
+import type { BoardDoor, BoardRoom, BoardThing } from "./board/HexBoard.js";
 import { Panel, Rail } from "./chrome/Panel.js";
 import { AlertDial, CoreRack } from "./meters/Rack.js";
 import { LogStrip } from "./action/Log.js";
@@ -10,6 +10,8 @@ import {
   alertOf,
   boardOf,
   codexOf,
+  commandsOf,
+  hereOf,
   endingOf,
   helpOf,
   historyOf,
@@ -21,6 +23,7 @@ import {
   tugOf,
 } from "./model.js";
 import type { Offer } from "./model.js";
+import { doorWays } from "../doorlist.js";
 import { CodexCardView, EndingCard, HelpCard, HistoryCard } from "./screens/Cards.js";
 import { TugScreen } from "./screens/Tug.js";
 import { roomActions } from "../actions.js";
@@ -110,7 +113,33 @@ export function Screen({ game, onNewVoyage }: { game: RoomGame; onNewVoyage?: ()
     again();
   };
 
+  /**
+   * A way through a bulkhead, spent.
+   *
+   * The index is the engine's own place in its own list, and which list it is
+   * depends on the sign: the door's ways where it has more than one, and the
+   * compartment's list where the single way lives (`model.ts`, `waysOf`). The
+   * view never carried the command itself, so it cannot have edited it.
+   */
+  const doorAct = (door: BoardDoor, index: number): void => {
+    const action =
+      index >= 0 ? doorWays(game, door.id)?.[index] : roomActions(game)[-1 - index];
+    if (action === undefined || !action.enabled) return;
+    game.playerCommand(action.cmd);
+    again();
+  };
+
+  /** A command that is about the drone rather than about anything in the room. */
+  const order = (offer: Offer): void => {
+    const action = roomActions(game)[offer.index];
+    if (action === undefined || !action.enabled) return;
+    game.playerCommand(action.cmd);
+    again();
+  };
+
   const board = useMemo(() => boardOf(game), [game, turn]);
+  const things = useMemo(() => hereOf(game), [game, turn]);
+  const commands = useMemo(() => commandsOf(game), [game, turn]);
   const tug = useMemo(() => tugOf(game), [game, turn]);
   const offers = useMemo(() => offersOf(game, level ?? undefined), [game, turn, level]);
   const route = useMemo(() => routeIn(game, board), [game, board]);
@@ -199,6 +228,7 @@ export function Screen({ game, onNewVoyage }: { game: RoomGame; onNewVoyage?: ()
             route={route}
             onWalk={walk}
             onAct={act}
+            onDoorAct={doorAct}
           />
         )}
 
@@ -270,19 +300,15 @@ export function Screen({ game, onNewVoyage }: { game: RoomGame; onNewVoyage?: ()
         </Panel>
 
         <Panel title={here?.name ?? "unscanned"} stencil={here?.label ?? "—"}>
-          <div
-            style={{
-              font: "var(--sv-stencil)",
-              fontSize: 14,
-              letterSpacing: ".14em",
-              textTransform: "uppercase",
-              color: "var(--sv-soft)",
-            }}
-          >
-            {here === undefined || here.things.length === 0
-              ? "nothing in here"
-              : "hover a shape for what it is · click to spend its verb"}
-          </div>
+          <Manifest things={things} onAct={(t) => act(here as BoardRoom, t)} />
+        </Panel>
+
+        <Panel title="Orders" stencil="drone">
+          <Lines
+            lines={commands}
+            empty="nothing to order"
+            onPick={order}
+          />
         </Panel>
       </div>
 
@@ -353,5 +379,157 @@ function Cards({
       }}
       onClose={onClose}
     />
+  );
+}
+
+/**
+ * What is in this compartment, in words, with the verb each thing answers to.
+ *
+ * The hexagon says the same thing in shapes. Both are here because they fail
+ * differently: a shape is quicker to read and impossible to find when it is
+ * behind the pointer, and a list is slower and always there. A thing with no
+ * verb is still listed — knowing a crate is present and cannot be opened from
+ * here is knowing something.
+ */
+function Manifest({
+  things,
+  onAct,
+}: {
+  things: readonly BoardThing[];
+  onAct: (thing: BoardThing) => void;
+}): ReactElement {
+  if (things.length === 0) {
+    return (
+      <div
+        style={{
+          font: "var(--sv-stencil)",
+          letterSpacing: "var(--sv-stencil-track)",
+          textTransform: "uppercase",
+          color: "var(--sv-soft)",
+        }}
+      >
+        nothing in here
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {things.map((thing) => {
+        const can = thing.verb !== undefined;
+        return (
+          <div
+            key={thing.id}
+            onClick={can ? () => onAct(thing) : undefined}
+            onMouseEnter={(e) => {
+              if (can)
+                e.currentTarget.style.background =
+                  "color-mix(in oklab, var(--sv-amber) 14%, transparent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 9,
+              padding: "5px 8px",
+              cursor: can ? "pointer" : "default",
+            }}
+          >
+            <span
+              style={{
+                width: 14,
+                flex: "none",
+                font: "var(--sv-mono)",
+                color: thing.hostile === true ? "var(--sv-bad)" : "var(--sv-amber)",
+              }}
+            >
+              {thing.glyph}
+            </span>
+            <span style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>{thing.name}</span>
+            <span
+              style={{
+                marginLeft: "auto",
+                font: "var(--sv-stencil)",
+                letterSpacing: "var(--sv-stencil-track)",
+                textTransform: "uppercase",
+                color: can ? "var(--sv-amber)" : "var(--sv-line)",
+              }}
+            >
+              {thing.verb ?? "—"}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A list of the engine's own lines, refusals kept and wearing their reason. */
+export function Lines({
+  lines,
+  empty,
+  onPick,
+}: {
+  lines: readonly Offer[];
+  empty: string;
+  onPick: (offer: Offer) => void;
+}): ReactElement {
+  if (lines.length === 0) {
+    return (
+      <div
+        style={{
+          font: "var(--sv-stencil)",
+          letterSpacing: "var(--sv-stencil-track)",
+          textTransform: "uppercase",
+          color: "var(--sv-soft)",
+        }}
+      >
+        {empty}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {lines.map((line) => (
+        <div
+          key={line.index}
+          title={line.enabled ? undefined : line.why}
+          onClick={line.enabled ? () => onPick(line) : undefined}
+          onMouseEnter={(e) => {
+            if (line.enabled)
+              e.currentTarget.style.background =
+                "color-mix(in oklab, var(--sv-amber) 14%, transparent)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+          }}
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 9,
+            padding: "5px 8px",
+            cursor: line.enabled ? "pointer" : "not-allowed",
+            opacity: line.enabled ? 1 : 0.5,
+          }}
+        >
+          <span style={{ width: 11, flex: "none", font: "var(--sv-stencil)", color: "var(--sv-amber)" }}>
+            ·
+          </span>
+          <span style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>{line.label}</span>
+          <span
+            style={{
+              marginLeft: "auto",
+              font: "var(--sv-stencil)",
+              letterSpacing: "var(--sv-stencil-track)",
+              textTransform: "uppercase",
+              color: line.enabled ? "var(--sv-soft)" : "var(--sv-bad)",
+            }}
+          >
+            {line.enabled ? (line.note ?? "") : (line.why ?? "no")}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import type { ReactElement } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
 import * as FX from "../../fx/derelict-fx.js";
 import { Panel, Tag } from "../chrome/Panel.js";
 import { AlertDial } from "../meters/Rack.js";
@@ -78,57 +78,22 @@ export function TugScreen({
         </Panel>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Panel title="Account" stencil="credits">
+      <Panel title="Dock" stencil="preview" fill>
+        <Fold head="account" open>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <Figure label="banked" value={tug.account.credits} big />
             <Figure label="carried" value={tug.account.loot} />
             <Figure label="keycards" value={tug.account.keys} />
             <Figure label="in the hold" value={tug.account.hold} />
+            <Figure label="sortie" value={tug.account.sortie} />
           </div>
-        </Panel>
+        </Fold>
 
-        <Panel title="Rack" stencil="hulls">
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {tug.hulls.map((hull) => (
-              <div
-                key={hull.id}
-                style={{
-                  padding: "7px 9px",
-                  background: hull.on
-                    ? "color-mix(in oklab, var(--sv-amber) 16%, transparent)"
-                    : "transparent",
-                  borderLeft: `2px solid ${hull.on ? "var(--sv-amber)" : "var(--sv-line)"}`,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <span
-                    style={{
-                      font: "var(--sv-title)",
-                      letterSpacing: "var(--sv-title-track)",
-                      textTransform: "uppercase",
-                      color: hull.on ? "var(--sv-amber)" : "var(--sv-ink)",
-                    }}
-                  >
-                    {hull.name}
-                  </span>
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      font: "var(--sv-stencil)",
-                      letterSpacing: "var(--sv-stencil-track)",
-                      color: "var(--sv-soft)",
-                    }}
-                  >
-                    {hull.on ? "on the rails" : `${String(hull.price)} cr`}
-                  </span>
-                </div>
-                <div style={{ font: "var(--sv-body)", color: "var(--sv-soft)" }}>{hull.trait}</div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      </div>
+        <Fold head="drones" open>
+          <Drones hulls={tug.hulls} />
+        </Fold>
+
+      </Panel>
     </div>
   );
 }
@@ -275,6 +240,126 @@ function OfferList({
           </div>
         ))
       )}
+    </div>
+  );
+}
+
+/**
+ * A section of the dock, which opens and shuts.
+ *
+ * Three panels stacked down the side of the tug was three headers, three
+ * borders and three sets of scanlines for what is one readout, and the third
+ * of them was always below the fold. One housing, three sections, and the ones
+ * a player is not looking at cost a line each.
+ */
+function Fold({
+  head,
+  open = false,
+  children,
+}: {
+  head: string;
+  open?: boolean;
+  children?: ReactNode;
+}): ReactElement {
+  const [on, setOn] = useState(open);
+  return (
+    <div style={{ borderTop: "1px solid var(--sv-line)", paddingTop: 7, marginTop: 7 }}>
+      <div
+        onClick={() => setOn(!on)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          cursor: "pointer",
+          font: "var(--sv-stencil)",
+          letterSpacing: "var(--sv-stencil-track)",
+          textTransform: "uppercase",
+          color: on ? "var(--sv-amber)" : "var(--sv-soft)",
+          marginBottom: on ? 6 : 0,
+        }}
+      >
+        <span style={{ width: 11 }}>{on ? "▾" : "▸"}</span>
+        {head}
+      </div>
+      {on ? children : null}
+    </div>
+  );
+}
+
+/**
+ * The three drones, and whichever one is being looked at.
+ *
+ * Hovering shows what the row cannot fit — the core, the slots, the five it
+ * comes with — and a click holds that open so two of them can be read one
+ * after the other without the pointer having to stay put. The row never buys
+ * anything: the rack is the place the choice is *read*, and the offer that
+ * spends credits is on the dock's own list, where every other price is.
+ */
+function Drones({ hulls }: { hulls: TugModel["hulls"] }): ReactElement {
+  const [look, setLook] = useState<string | null>(null);
+  const [held, setHeld] = useState<string | null>(null);
+  const shown = held ?? look;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {hulls.map((hull) => {
+        const open = shown === hull.id;
+        return (
+          <div
+            key={hull.id}
+            onMouseEnter={() => setLook(hull.id)}
+            onMouseLeave={() => setLook(null)}
+            onClick={() => setHeld(held === hull.id ? null : hull.id)}
+            style={{
+              padding: "6px 8px",
+              cursor: "pointer",
+              background: open ? "color-mix(in oklab, var(--sv-amber) 12%, transparent)" : "transparent",
+              borderLeft: `2px solid ${hull.on ? "var(--sv-amber)" : open ? "var(--sv-rim)" : "var(--sv-line)"}`,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span
+                style={{
+                  font: "var(--sv-title)",
+                  letterSpacing: "var(--sv-title-track)",
+                  textTransform: "uppercase",
+                  color: hull.on ? "var(--sv-amber)" : "var(--sv-ink)",
+                }}
+              >
+                {hull.name}
+              </span>
+              <span
+                style={{
+                  marginLeft: "auto",
+                  font: "var(--sv-stencil)",
+                  letterSpacing: "var(--sv-stencil-track)",
+                  textTransform: "uppercase",
+                  color: "var(--sv-soft)",
+                }}
+              >
+                {hull.on ? "on the rails" : `${String(hull.price)} cr`}
+              </span>
+            </div>
+            <div style={{ font: "var(--sv-body)", color: "var(--sv-soft)" }}>{hull.trait}</div>
+
+            {open ? (
+              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <Tag tone="amber">core {hull.core}</Tag>
+                  <Tag tone="neutral">{hull.slots} slots</Tag>
+                  {hull.speed === undefined ? null : <Tag tone="neutral">speed {hull.speed}</Tag>}
+                </div>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                  {hull.modules.map((m, i) => (
+                    <Tag key={`${m}-${String(i)}`} tone="neutral">
+                      {m}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

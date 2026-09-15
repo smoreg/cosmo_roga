@@ -5,6 +5,8 @@ import { createRoot } from "react-dom/client";
 import { newGame } from "../src/game.js";
 import { App } from "../src/ui/react/App.js";
 import { Screen } from "../src/ui/react/Screen.js";
+import { boardOf, hereOf, commandsOf } from "../src/ui/react/model.js";
+import { doorWays } from "../src/ui/doorlist.js";
 import {
   codexOf,
   endingOf,
@@ -204,7 +206,7 @@ describe("the title is in front of a run, not instead of one", () => {
     const { host, unmount } = mount(<App seed={4242} />);
     const screen = titleScreen({ ...DEFAULT_TITLE, seed: 4242 });
     const label = screen.items[0]?.label ?? "";
-    const row = [...host.querySelectorAll("span")].find((el) => el.textContent === label);
+    const row = Array.from(host.querySelectorAll("span")).find((el) => el.textContent === label);
     expect(row).toBeDefined();
     act(() => {
       row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -212,6 +214,112 @@ describe("the title is in front of a run, not instead of one", () => {
     /* The title is gone and the tug is up: a voyage opens docked. */
     expect(text(host)).not.toContain(screen.foot);
     expect(text(host)).toContain(tugOf(newGame(4242)).derelict.name);
+    unmount();
+  });
+});
+
+describe("the board does not outlive what it is about", () => {
+  beforeAll(stillFrames);
+
+  it("offers a bulkhead the ways the engine offers, and no others", () => {
+    const game = newGame(4242);
+    const board = boardOf(game);
+    /* Only the bulkheads the drone is standing next to answer for anything;
+       the rest say "not from here", which is the terminal's own rule. */
+    for (const door of board.doors) {
+      const ways = doorWays(game, door.id);
+      if (ways === undefined) continue;
+      const offered = ways.filter((a) => a.step === undefined);
+      expect(door.verbs.map((v) => v.verb)).toEqual(offered.map((a) => a.label));
+      expect(door.verbs.map((v) => v.enabled)).toEqual(offered.map((a) => a.enabled));
+    }
+  });
+
+  it("keeps a way the engine refuses on the menu, wearing its reason", () => {
+    const game = newGame(4242);
+    for (const door of boardOf(game).doors) {
+      for (const way of door.verbs) {
+        /* Nothing is dropped for being unaffordable, and nothing is offered
+           without saying what it costs or why it cannot be spent. */
+        expect(way.note.length > 0 || way.enabled).toBe(true);
+      }
+    }
+  });
+
+  it("drops a readout the moment its subject leaves the ship", () => {
+    const game = newGame(4242);
+    const { host, unmount } = mount(<Screen game={game} />);
+    /* The board is a function of the game: nothing it draws survives a thing
+       going, because nothing it draws is remembered separately from the game.
+       A chip with no thing behind it is the failure this guards. */
+    const board = boardOf(game);
+    const named = new Set(board.rooms.flatMap((r) => r.things.map((t) => t.name)));
+    for (const el of Array.from(host.querySelectorAll("[data-sc]"))) {
+      const text = el.textContent ?? "";
+      const machine = board.rooms
+        .flatMap((r) => r.things)
+        .find((t) => t.name === text && t.hostile === true);
+      if (machine !== undefined) expect(named.has(machine.name)).toBe(true);
+    }
+    unmount();
+  });
+});
+
+describe("the panel carries what the honeycomb cannot", () => {
+  beforeAll(stillFrames);
+
+  it("lists everything in the compartment, with the verb each answers to", () => {
+    const game = newGame(4242);
+    const here = hereOf(game);
+    const { host, unmount } = mount(<Screen game={game} />);
+    for (const thing of here) expect(text(host)).toContain(thing.name);
+    unmount();
+  });
+
+  it("offers the drone's own commands, which is where the way off a hull lives", () => {
+    const game = newGame(4242);
+    const commands = commandsOf(game);
+    const actions = roomActions(game);
+    /* Nothing aimed at a thing and nothing aimed at a bulkhead: those are the
+       board's. What is left is the drone's, and it must be exactly that. */
+    for (const line of commands) {
+      const cmd = actions[line.index]?.cmd;
+      expect(cmd).toBeDefined();
+      expect("target" in (cmd as object)).toBe(false);
+    }
+    expect(commands.map((c) => c.index)).toEqual([...new Set(commands.map((c) => c.index))]);
+  });
+
+  it("never offers the same line twice, on the board and in the panel both", () => {
+    const game = newGame(4242);
+    const board = boardOf(game);
+    const onBoard = new Set(board.rooms.flatMap((r) => r.things.map((t) => t.verb)));
+    for (const line of commandsOf(game)) {
+      /* A command in the panel that is also a thing's own verb would be two
+         ways to spend one turn, and the second is always the one that surprises. */
+      expect(onBoard.has(line.label)).toBe(false);
+    }
+  });
+});
+
+describe("the dock is read before it is spent", () => {
+  beforeAll(stillFrames);
+
+  it("carries everything an inspection of a drone shows", () => {
+    const game = newGame(4242);
+    for (const hull of tugOf(game).hulls) {
+      expect(hull.core).toBeGreaterThan(0);
+      expect(hull.slots).toBeGreaterThanOrEqual(hull.modules.length);
+      expect(hull.modules.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("puts the account and the three drones under one housing", () => {
+    const game = newGame(4242);
+    const { host, unmount } = mount(<Screen game={game} />);
+    expect(text(host)).toContain("account");
+    expect(text(host)).toContain("drones");
+    for (const hull of tugOf(game).hulls) expect(text(host)).toContain(hull.name);
     unmount();
   });
 });

@@ -3,6 +3,7 @@ import type { Entity, RoomGame, RoomId } from "@jamrog/engine";
 import { machineName } from "../../content/monsters.js";
 import { moduleName } from "../../content/modules.js";
 import { roomActions } from "../actions.js";
+import { doorWays } from "../doorlist.js";
 import { hostilesIn, rigOf } from "../../twist/rig.js";
 import { alertState } from "../../systems/alert.js";
 import { currentDerelict, voyageOf } from "../../systems/voyage.js";
@@ -141,12 +142,59 @@ export function boardOf(game: RoomGame): BoardModel {
     });
   }
 
+  /**
+   * Every way through a bulkhead the drone is standing next to.
+   *
+   * `doorWays` is the engine's own answer and it returns nothing when a door
+   * has fewer than two ways, which is the terminal's rule: a sublist of one is
+   * not a question. A popover of one is, so the single way is taken off the
+   * compartment's list instead — the menu is the only place a door's verbs are
+   * offered now that there is no numbered list beside the map.
+   */
   const placed = new Set(rooms.map((r) => r.id));
   const doors: BoardDoor[] = ship.doors
     .filter((d) => d.a !== d.b && placed.has(d.a) && placed.has(d.b))
-    .map((d) => ({ id: d.id, label: d.label, a: d.a, b: d.b, state: d.state, verbs: [] }));
+    .map((d) => ({
+      id: d.id,
+      label: d.label,
+      a: d.a,
+      b: d.b,
+      state: d.state,
+      verbs: waysOf(game, d.id),
+    }));
 
   return { rooms, doors, drone: game.player.room ?? null, laid: layout.masked || rooms.length > 0 };
+}
+
+/** The ways through one bulkhead, as lines a click can spend. */
+function waysOf(game: RoomGame, id: number): BoardDoor["verbs"] {
+  if (game.status !== "playing") return [];
+  const ways = doorWays(game, id);
+  if (ways !== undefined) {
+    return ways
+      .map((action, index) => ({ index, action }))
+      .filter(({ action }) => action.step === undefined)
+      .map(({ index, action }) => ({
+        index,
+        verb: action.label,
+        note: action.enabled ? (action.extra ?? "") : (action.why ?? "no"),
+        enabled: action.enabled,
+      }));
+  }
+  /* One way, or none. `roomActions` carries the single one on the
+     compartment's own list, so it is found there rather than invented here. */
+  const out: Array<BoardDoor["verbs"][number]> = [];
+  roomActions(game).forEach((action, index) => {
+    const cmd = action.cmd;
+    if (!("door" in cmd) || cmd.door !== id) return;
+    out.push({
+      index: -1 - index,
+      verb: action.label,
+      note: action.enabled ? (action.extra ?? "") : (action.why ?? "no"),
+      enabled: action.enabled,
+    });
+  });
+  return out;
 }
 
 /**
@@ -292,8 +340,24 @@ export interface TugModel {
   /** The hull the tug is tied to, and how the last drone left it. */
   derelict: { name: string; alert: number; online: number; of: number; sold: boolean; price: number };
   account: { credits: number; loot: number; keys: number; sortie: number; hold: number };
-  /** The rack: three hulls, their prices, and which one is on the rails. */
-  hulls: Array<{ id: string; name: string; trait: string; price: number; on: boolean }>;
+  /**
+   * The rack: three hulls, and everything an inspection shows.
+   *
+   * The whole of each is carried rather than the line the row prints, because
+   * the choice a voyage is made of is between these numbers and a player who
+   * cannot compare them is choosing on the strength of an adjective.
+   */
+  hulls: Array<{
+    id: string;
+    name: string;
+    trait: string;
+    price: number;
+    on: boolean;
+    core: number;
+    slots: number;
+    speed?: number;
+    modules: string[];
+  }>;
 }
 
 /**
@@ -331,6 +395,10 @@ export function tugOf(game: RoomGame): TugModel {
       trait: hullTrait(hull),
       price: hull.price,
       on: voyage.hull === hull.id,
+      core: hull.core,
+      slots: hull.slots,
+      ...(hull.speed === undefined ? {} : { speed: hull.speed }),
+      modules: hull.modules.map((m) => moduleName(m)),
     })),
   };
 }
@@ -412,4 +480,51 @@ export function codexOf(game: RoomGame, id: string): CodexCard | undefined {
     lore: t(entry.lore),
     answers: (entry.modules ?? []).map((m) => ({ name: moduleName(m), fitted: fitted.has(m) })),
   };
+}
+
+
+// ----------------------------------------------------- what the panel carries
+
+/**
+ * The things in this compartment, with the verb each one answers to.
+ *
+ * The same list the hexagon draws, in words: a player who cannot find a shape
+ * under the pointer can read the compartment instead, and a thing with no verb
+ * is still named — knowing a crate is there and cannot be opened from here is
+ * knowing something.
+ */
+export function hereOf(game: RoomGame): BoardThing[] {
+  const room = game.player.room;
+  if (room === undefined) return [];
+  return thingsIn(game, room, "current");
+}
+
+/**
+ * Everything the engine offers that is not aimed at a thing on the board.
+ *
+ * Objects carry their own verbs, and the ones left over are the commands that
+ * are about the drone rather than about anything in the room — casting off,
+ * sealing up behind you, waiting. They have nowhere on the honeycomb to live,
+ * so they live in the panel. `leave` is the one that matters most: a hull you
+ * cannot work out how to get off is a hull you die on.
+ */
+export function commandsOf(game: RoomGame): Offer[] {
+  if (game.status !== "playing") return [];
+  const out: Offer[] = [];
+  roomActions(game).forEach((action, index) => {
+    const cmd = action.cmd;
+    /* Anything with a target is a thing's own verb, and anything with a door is
+       on that bulkhead's menu. What is left is the drone's own list. */
+    if ("target" in cmd && cmd.target !== undefined) return;
+    if ("door" in cmd && cmd.door !== undefined) return;
+    if (action.step !== undefined || action.travel !== undefined) return;
+    out.push({
+      index,
+      label: action.label,
+      enabled: action.enabled,
+      ...(action.extra === undefined ? {} : { note: action.extra }),
+      ...(action.why === undefined ? {} : { why: action.why }),
+    });
+  });
+  return out;
 }

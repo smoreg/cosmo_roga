@@ -105,8 +105,13 @@ export interface BoardDoor {
   a: number;
   b: number;
   state: string;
-  /** Every way through it the drone could spend a turn on, from the engine. */
-  verbs: readonly { verb: string; note: string }[];
+  /**
+   * Every way through it, from the engine.
+   *
+   * `index` is how a click finds its command again: the view never holds a
+   * `RoomCommand` it might edit, it holds the engine's place in its own list.
+   */
+  verbs: readonly { index: number; verb: string; note: string; enabled: boolean }[];
 }
 
 interface DoorInk {
@@ -363,6 +368,19 @@ function HexTile({
 }): ReactElement {
   const s = STATE[room.knows];
   const [tip, setTip] = useState<Chip | null>(null);
+
+  /* A hovered thing that dies unmounts its own chip, so no pointer ever leaves
+     it and the readout stands there naming something that is not on the ship
+     any more. The board re-reads the game every turn; this drops the readout on
+     the same frame the thing it was about goes. */
+  useEffect(
+    function forget() {
+      if (tip === null) return;
+      const still = room.things.some((t) => t.id === tip.thing.id);
+      if (!still) setTip(null);
+    },
+    [room.things, tip],
+  );
   const [seq, setSeq] = useState(0);
   const h = Math.round(size * RATIO);
   const ring = s.shows ? room.props.map((p) => PROP[p]).filter((p) => p !== undefined)[0] : undefined;
@@ -601,12 +619,16 @@ export function HexBoard({
   spread?: number;
   onWalk?: (to: number, path: readonly number[]) => void;
   onAct?: (room: BoardRoom, thing: BoardThing) => void;
-  onDoorAct?: (door: BoardDoor, verb: string) => void;
+  onDoorAct?: (door: BoardDoor, index: number) => void;
   style?: CSSProperties;
 }): ReactElement {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [hover, setHover] = useState<number | null>(null);
   const [door, setDoor] = useState<number | null>(null);
+  /* A menu that only lives while the pointer is on it is a menu you race. A
+     click pins it: nothing but another click or a choice takes it down, so the
+     pointer can go the long way round and still arrive. */
+  const [pinned, setPinned] = useState(false);
   const [barred, setBarred] = useState<number | null>(null);
   const [moving, setMoving] = useState(false);
   const droneRef = useRef<HTMLDivElement>(null);
@@ -629,8 +651,14 @@ export function HexBoard({
     doorTimer.current = null;
   };
   const dropDoor = (): void => {
+    if (pinned) return;
     holdDoor();
     doorTimer.current = window.setTimeout(() => setDoor(null), 450);
+  };
+  const shutDoor = (): void => {
+    holdDoor();
+    setPinned(false);
+    setDoor(null);
   };
 
   const W = size * spread;
@@ -742,6 +770,7 @@ export function HexBoard({
         drag.current = null;
       }}
       onContextMenu={(e) => e.preventDefault()}
+      onClick={shutDoor}
       onDoubleClick={() => setPan({ x: 0, y: 0 })}
       style={{
         position: "relative",
@@ -777,10 +806,17 @@ export function HexBoard({
             <div key={d.id}>
               <div
                 onMouseEnter={() => {
+                  if (pinned) return;
                   holdDoor();
                   setDoor(d.id);
                 }}
                 onMouseLeave={dropDoor}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  holdDoor();
+                  setDoor(d.id);
+                  setPinned(true);
+                }}
                 style={{
                   position: "absolute",
                   left: p.x,
@@ -794,7 +830,7 @@ export function HexBoard({
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 4,
-                  cursor: "help",
+                  cursor: "pointer",
                 }}
               >
                 <div
@@ -971,7 +1007,7 @@ export function HexBoard({
               tone={ink.c}
               style={{ position: "absolute", ...at(mx, my), transform: anchor, zIndex: 70, minWidth: 200 }}
             >
-              <div onMouseEnter={holdDoor} onMouseLeave={dropDoor}>
+              <div onMouseEnter={holdDoor} onMouseLeave={dropDoor} onClick={(e) => e.stopPropagation()}>
                 <div
                   style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 9px", background: ink.c }}
                 >
@@ -990,12 +1026,15 @@ export function HexBoard({
                   ) : (
                     d.verbs.map((v) => (
                       <div
-                        key={v.verb}
+                        key={v.index}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDoorAct?.(d, v.verb);
+                          if (!v.enabled) return;
+                          shutDoor();
+                          onDoorAct?.(d, v.index);
                         }}
                         onMouseEnter={(e) => {
+                          if (!v.enabled) return;
                           e.currentTarget.style.background =
                             "color-mix(in oklab, var(--sv-amber) 16%, transparent)";
                         }}
@@ -1007,7 +1046,8 @@ export function HexBoard({
                           alignItems: "center",
                           gap: 10,
                           padding: "4px 9px",
-                          cursor: "pointer",
+                          cursor: v.enabled ? "pointer" : "not-allowed",
+                          opacity: v.enabled ? 1 : 0.45,
                         }}
                       >
                         <span data-sc style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>
@@ -1015,7 +1055,12 @@ export function HexBoard({
                         </span>
                         <span
                           data-sc
-                          style={{ ...STENCIL, marginLeft: "auto", letterSpacing: ".1em", color: "var(--sv-soft)" }}
+                          style={{
+                            ...STENCIL,
+                            marginLeft: "auto",
+                            letterSpacing: ".1em",
+                            color: v.enabled ? "var(--sv-soft)" : "var(--sv-bad)",
+                          }}
                         >
                           {v.note}
                         </span>
