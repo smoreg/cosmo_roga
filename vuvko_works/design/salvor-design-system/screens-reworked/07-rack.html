@@ -43,7 +43,7 @@ const WORKING=[
 ];
 
 const STRAINS=[
-  {id:"spasm",name:"SPASM", period:8,  does:"takes away your choice of what to expose",   spread:"20% to the next slot"},
+  {id:"spasm",name:"SPASM", period:8,  does:"takes away your choice of what to expose",   spread:"moves slot every 20 turns"},
   {id:"rot",  name:"ROT",   period:5,  does:"eats the module it sits in, one point a beat",spread:"stays put"},
   {id:"leech",name:"LEECH", period:12, does:"skims five credits off the account",          spread:"stays put"},
   {id:"leash",name:"LEASH", period:18, does:"goes for the core itself",                    spread:"stays put"}
@@ -140,7 +140,7 @@ function Card(){
           {/* The clock a strain needs, counted the way a player counts: turns
               until the next beat, not turns since the last one. */}
           <SegmentMeter label="next beat" value={2} max={5} tone="warn" height={11}/>
-          <div style={{marginTop:10,paddingTop:9,borderTop:"1px solid var(--sv-line)",font:"var(--sv-body)",color:"var(--sv-soft)"}}>Cleaning it is 18 cr at the tug. Letting the SCANNER burn takes the strain with it.</div>
+          <div style={{marginTop:10,paddingTop:9,borderTop:"1px solid var(--sv-line)",font:"var(--sv-body)",color:"var(--sv-soft)"}}>Two turns of welding purges it here, loudly. Letting the SCANNER burn takes the strain with it. The whole lifecycle is <strong style={{color:"var(--sv-amber)",fontWeight:400}}>08 · the virus</strong>.</div>
         </Panel>
       </div>
     </section>

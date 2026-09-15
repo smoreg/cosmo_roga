@@ -1,0 +1,172 @@
+<!-- @dsCard group="Mechanics" viewport="1400x1780" name="08 · The virus" subtitle="The risk sits on the action you want — where it comes from, what it does, and the three ways out" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>SALVOR — the virus</title>
+<link rel="stylesheet" href="../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../_ds_bundle.js"></script>
+<style>
+body{margin:0;background:var(--sv-void);color:var(--sv-fg);font-family:var(--sv-font-mono)}
+.wrap{padding:36px 40px 68px;display:flex;flex-direction:column;gap:32px}
+h1{font:var(--sv-display);letter-spacing:var(--sv-display-track);text-transform:uppercase;color:var(--sv-ink);margin:0}
+h2{font:var(--sv-title);font-size:18px;letter-spacing:.24em;text-transform:uppercase;color:var(--sv-amber);margin:0;padding-bottom:10px;border-bottom:1px solid var(--sv-line)}
+.lead{font:var(--sv-body);font-size:16px;line-height:1.7;color:var(--sv-fg);max-width:980px;margin:12px 0 0}
+.note{font:var(--sv-body);color:var(--sv-soft);max-width:980px;margin:10px 0 0}
+.rail{display:flex;gap:18px;flex-wrap:wrap;margin-top:20px;align-items:flex-start}
+.cap{font:var(--sv-stencil);font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--sv-soft);text-align:center;max-width:250px;margin-top:9px}
+</style>
+<script type="module">import * as FX from "../derelict-fx.js";window.FX=FX;</script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const {Panel,Tag,SegmentMeter,SlashMeter}=window.SALVORScreensAsBuilt_2b77ba;
+
+/* ── the virus ─────────────────────────────────────────────────────────────
+ *
+ * The one mechanic in this game whose whole design is *where the risk sits*.
+ * It sits on exactly the action the player already wants to take — putting
+ * somebody else's module in the rack — which is why a crate is free and a
+ * ghost's rack is a quarter chance. The safe option is the boring one, and
+ * passing it up is the game.
+ *
+ * `07 · what goes wrong with a rack` draws the infected rack as one of five
+ * states. This draws the lifecycle, because none of it is a state: catching it
+ * is a die roll on a verb, carrying it is a clock, and getting rid of it is
+ * three different prices in three different places.
+ */
+
+/* Where a part came from is the whole of the odds. A quarantine hull adds
+   0.15 to every row but the crate, which stays at zero whatever it adds —
+   that is the contract the crate exists for. */
+const SOURCES=[
+  {what:"a sealed cargo crate",  who:"factory",                     n:0,    tone:"good",    note:"the safe, boring option"},
+  {what:"a machine you stripped",who:"the ship's own",              n:.10,  tone:"warn",    note:""},
+  {what:"a dead drone's rack",   who:"somebody who came to do this",n:.15,  tone:"warn",    note:""},
+  {what:"the rival's salvage",   who:"another tug",                 n:.15,  tone:"warn",    note:"the same kind of thing as your own wreck"},
+  {what:"your own ghost",        who:"you, last sortie",            n:.25,  tone:"bad",     note:"the rack you already lost once"}
+];
+
+const STRAINS=[
+  {name:"SPASM", period:8,  beat:"fires a module you did not choose, loudly",  extra:"moves to the next intact slot every 20 turns", tone:"bad"},
+  {name:"ROT",   period:5,  beat:"one point of integrity off the module it is in", extra:"stays where it is", tone:"warn"},
+  {name:"LEECH", period:12, beat:"five credits off the account",               extra:"stays where it is", tone:"warn"},
+  {name:"LEASH", period:18, beat:"one point off the core",                     extra:"stays where it is", tone:"bad"}
+];
+
+/* Three ways out, and the point of drawing them together is that they are
+   priced in three different currencies: turns and noise, integrity, credits. */
+const OUTS=[
+  {verb:"purge it",  where:"aboard, with the WELDER",  cost:"2 consecutive turns · noise 5", what:"Welding it out where you stand. The cheapest in credits and the most expensive in the only thing the hull is counting."},
+  {verb:"let it burn",where:"aboard, by not caring",   cost:"the module",                     what:"A strain goes with the module it lives in. Burning your own good part to be rid of it is a real and expensive way out."},
+  {verb:"clean it",  where:"at the tug bench",         cost:"4 cr a point",                   what:"Safe, unhurried, and it is a sortie away. Everything the virus takes between here and there is the price of waiting."}
+];
+
+const STENCIL={font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase"};
+
+/* The odds, drawn as odds. A bar rather than a percentage because the decision
+   is a comparison — this part against that part — and nobody compares 0.15 to
+   0.25 as quickly as they compare two lengths. */
+function Odds({n,tone}){
+  const filled=Math.round(n*20);
+  return <div style={{display:"flex",alignItems:"center",gap:9}}>
+    <span style={{display:"flex",gap:1,font:"var(--sv-value)",fontSize:15,lineHeight:1}}>
+      {Array.from({length:20}).map((_,i)=><span key={i} style={{color:i<filled?"var(--sv-"+(tone==="good"?"good":tone==="bad"?"bad":"warn")+")":"var(--sv-plate-lit)"}}>/</span>)}
+    </span>
+    <span style={{width:42,...STENCIL,color:n?"var(--sv-ink)":"var(--sv-faint)"}}>{n?Math.round(n*100)+"%":"none"}</span>
+  </div>;
+}
+
+function Card(){
+  const [bonus,setBonus]=React.useState(false);
+  return <div className="wrap">
+    <header>
+      <h1>The virus</h1>
+      <p className="lead">The one mechanic here whose whole design is <em style={{fontStyle:"normal",color:"var(--sv-ink)"}}>where the risk sits</em>. It sits on exactly the action a player already wants to take — putting somebody else's module in the rack — which is why a sealed crate is free and a ghost's rack is a quarter chance. The safe option is the boring one, and passing it up is the game.</p>
+      <p className="note"><strong style={{color:"var(--sv-amber)",fontWeight:400}}>07 · what goes wrong with a rack</strong> draws the infected rack as one of five states. None of what follows is a state: catching it is a die roll on a verb, carrying it is a clock, and being rid of it is three prices in three currencies.</p>
+    </header>
+
+    <section>
+      <h2>I · Where it comes from</h2>
+      <p className="note">The odds are a property of the part's history, and nothing on the screen says so today — a pile of scrap and a dead drone's rack are the same chip on the same hex. This is the single largest thing the board owes this mechanic: <em style={{fontStyle:"normal",color:"var(--sv-ink)"}}>whose it was</em>, before you pick it up.</p>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginTop:16}}>
+        <span onClick={()=>setBonus(!bonus)} style={{...STENCIL,padding:"5px 11px",cursor:"pointer",background:bonus?"var(--sv-bad)":"transparent",border:bonus?"none":"1px solid var(--sv-line)",color:bonus?"var(--sv-knock)":"var(--sv-soft)"}}>quarantine hull</span>
+        <span style={{font:"var(--sv-body)",color:"var(--sv-soft)"}}>adds 15 points to every row but the crate</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,260px) 200px 260px minmax(0,1fr)",gap:"2px 20px",marginTop:16,alignItems:"center"}}>
+        {SOURCES.map((s,i)=>{
+          const n=s.n?Math.min(1,s.n+(bonus?.15:0)):0;
+          return <React.Fragment key={s.what}>
+            <div style={{padding:"9px 0",borderTop:i?"1px solid var(--sv-line)":"none",font:"var(--sv-body)",color:"var(--sv-ink)"}}>{s.what}</div>
+            <div style={{padding:"9px 0",borderTop:i?"1px solid var(--sv-line)":"none",...STENCIL,color:"var(--sv-soft)"}}>{s.who}</div>
+            <div style={{padding:"9px 0",borderTop:i?"1px solid var(--sv-line)":"none"}}><Odds n={n} tone={n===0?"good":n>=.25?"bad":"warn"}/></div>
+            <div style={{padding:"9px 0",borderTop:i?"1px solid var(--sv-line)":"none",font:"var(--sv-body)",color:"var(--sv-faint)"}}>{s.note}</div>
+          </React.Fragment>;
+        })}
+      </div>
+      <p className="note">A crate stays at zero whatever the hull adds. A quarantine ship that poisoned even the sealed crates would leave nothing to pass up, and the mechanic is the passing up.</p>
+    </section>
+
+    <section>
+      <h2>II · What it is, once it is in</h2>
+      <p className="note">One per drone, naming a slot. It survives a sortie and a save; it does not survive the module it lives in. Each strain is a different clock, so the readout has to say which strain and how long until the next beat — and today it says neither.</p>
+      <div className="rail">
+        {STRAINS.map(s=><div key={s.name} style={{width:250}}>
+          <Panel variant="readout" title={s.name} stencil="strain" tone={s.tone} mount="none">
+            <div style={{font:"var(--sv-body)",color:"var(--sv-ink)",minHeight:44}}>{s.beat}</div>
+            <div style={{marginTop:10,paddingTop:9,borderTop:"1px solid var(--sv-line)"}}>
+              <SlashMeter label="period" value={s.period} max={20} tone={s.tone==="bad"?"bad":"warn"}/>
+              <div style={{...STENCIL,color:"var(--sv-soft)",marginTop:7}}>every {s.period} turns</div>
+            </div>
+          </Panel>
+          <div className="cap">{s.extra}</div>
+        </div>)}
+      </div>
+      <p className="note">SPASM is the odd one and the worst one: it does not only beat, it <em style={{fontStyle:"normal",color:"var(--sv-ink)"}}>walks</em>, taking the next intact slot every twenty turns. Cleaning the module it was in does not help if it has already left — which is a thing the screen must be able to show, and a moved strain is exactly the sort of event the reveal animation exists for.</p>
+    </section>
+
+    <section>
+      <h2>III · The three ways out</h2>
+      <p className="note">Priced in three different currencies on purpose — turns and noise, integrity, credits — so which one is right depends on where the alert is and how far the airlock is, not on which is cheapest.</p>
+      <div className="rail">
+        {OUTS.map((o,i)=><div key={o.verb} style={{width:310}}>
+          <Panel variant="readout" title={o.verb} stencil={o.where} mount="none" tone={i===0?"amber":i===1?"bad":"good"}>
+            <div style={{font:"var(--sv-body)",color:"var(--sv-ink)",minHeight:88}}>{o.what}</div>
+            <div style={{marginTop:10,paddingTop:9,borderTop:"1px solid var(--sv-line)"}}>
+              <Tag tone={i===0?"warn":i===1?"bad":"good"} solid>{o.cost}</Tag>
+            </div>
+          </Panel>
+        </div>)}
+      </div>
+      <div style={{marginTop:24,maxWidth:440}}>
+        <Panel variant="readout" title="Purging" stencil="welder" tone="warn" mount="none">
+          {/* Two consecutive turns, so the readout is a progress the player can
+              be interrupted out of — the same count the objectives use, and for
+              the same reason: a line that forgets makes you start again. */}
+          <SegmentMeter label="welded" value={1} max={2} tone="warn" height={13}/>
+          <div style={{marginTop:11,display:"flex",gap:6,flexWrap:"wrap"}}>
+            <Tag tone="bad">noise 5</Tag>
+            <Tag tone="neutral">interruptible</Tag>
+          </div>
+          <div style={{marginTop:10,paddingTop:9,borderTop:"1px solid var(--sv-line)",font:"var(--sv-body)",color:"var(--sv-soft)"}}>Two turns standing still, heard across the hull. Being rid of it and being noticed are the same move.</div>
+        </Panel>
+      </div>
+    </section>
+
+    <section>
+      <h2>IV · What this asks the system for</h2>
+      <div style={{marginTop:16,display:"flex",flexDirection:"column",gap:2}}>
+        {[["whose it was, on the chip","The odds are a property of the part's history and the board cannot say it. A pile of scrap and a ghost's rack are the same shape today, and the difference between them is 0 and 25 per cent."],
+          ["a die roll that is visible before it is rolled","The verb that risks it is `fit`, and a player should be able to read the chance off the line they are about to press — not learn it from the log afterwards."],
+          ["a clock that counts down, per strain","Four different periods, and the rack shows none of them. The engine already keeps the period; the view has to turn it round, the way the objectives' turns were turned round."],
+          ["an event for a strain that moves","SPASM walking to the next slot is the one thing that happens to a rack without the player doing anything. It should announce itself the way a compartment does when it stops being a rumour — waist out, in warn, on the slot it arrived in."]
+        ].map(([k,v])=><div key={k} style={{padding:"11px 0",borderTop:"1px solid var(--sv-line)"}}>
+          <div style={{...STENCIL,color:"var(--sv-amber)"}}>{k}</div>
+          <div style={{font:"var(--sv-body)",color:"var(--sv-fg)",marginTop:3,maxWidth:920}}>{v}</div>
+        </div>)}
+      </div>
+    </section>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Card/>);
+</script>
+</body></html>
