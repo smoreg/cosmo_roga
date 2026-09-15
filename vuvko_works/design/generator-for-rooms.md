@@ -213,6 +213,16 @@ east and west and along a half edge on each diagonal, and the deck comes out
 continuous without anything becoming a square grid. Hexagons are inset inside
 their own cells, which is what leaves the gap a corridor runs through.
 
+**The gap between tiles was bleed, not geometry.** The archive draws a
+hundred-foot tile as a 1440-pixel square, and a hundred feet at sixty pixels to
+a five-foot square is 1200 — the other 240 are bleed, two squares of it on every
+side, which the manifest records per tile. Drawn whole into its own cell, every
+tile therefore sat inside a ten per cent margin and the deck came out as a grid
+of coasters with a ring of space round each one. Each tile is now drawn at the
+size that puts its *deck* on the cell, so the bleed hangs over its neighbours,
+which is what bleed is for. That one change is the difference between a deck
+plan and a tile set.
+
 **Four things decide which tile a compartment wears**, all of them read off the
 art by `geomorph_taxonomy.py`, which finds a wall as a white line and a door as
 a black break in it:

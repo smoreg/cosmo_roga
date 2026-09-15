@@ -315,19 +315,40 @@ async function loadTiles(){
       fetch("geomorphs/geomorphs.manifest.json").then(r => r.json()),
       fetch("tiles.taxonomy.json").then(r => r.json()),
     ]);
-    const drawable = new Set(man.tiles.filter(t => !t.overlay).map(t => t.path));
+    /**
+     * How much bigger the file is than the deck inside it.
+     *
+     * The archive draws a hundred-foot tile as 1440 pixels square, and a
+     * hundred feet at sixty pixels to a five-foot square is 1200 — the other
+     * 240 are bleed, two squares of it on every side, which the manifest
+     * records. Drawn whole into its own cell a tile therefore sits inside a
+     * ten per cent margin, and every tile on the deck is ringed by a gap it
+     * did not ask for. That is the gap; it was never the geometry.
+     *
+     * So each tile is drawn at the size that puts its *deck* on the cell and
+     * lets the bleed hang over its neighbours, which is what bleed is for.
+     */
+    const feetPerPx = man.feetPerSquare / man.pxPerSquare;
+    const drawable = new Map();
+    for (const tile of man.tiles){
+      if (tile.overlay) continue;
+      const deckPx = tile.w / feetPerPx;
+      drawable.set(tile.path, deckPx > 0 ? tile.px[0] / deckPx : 1);
+    }
     const byRole = new Map();
     const skin = new Map();
     const doors = new Map();
     const proud = new Map();
     const all = [];
     const corner = new Map();
+    const bleed = new Map();
     for (const path in tax.tiles){
       const tile = tax.tiles[path];
       const ft = tile.ft || [];
       /* One compartment is one section is one hundred feet square. Anything
          else would have to be cut or stretched to sit under a hexagon. */
       if (!drawable.has(path)) continue;
+      bleed.set(path, drawable.get(path));
       /* Fifty-foot pieces are kept aside for the chamfers, and only the ones
          that are edge art: a corner of open deck laid into a hull step reads
          as a hole rather than as plating. */
@@ -339,6 +360,7 @@ async function loadTiles(){
            sides and no art spilling off it. */
         const sk = tile.skin || [];
         if (sk.length !== 2 || (tile.proud || []).length) continue;
+        bleed.set(path, drawable.get(path));
         const key = sk.slice().sort().join("");
         if (!corner.has(key)) corner.set(key, []);
         corner.get(key).push(path);
@@ -354,7 +376,7 @@ async function loadTiles(){
         byRole.get(role).push(path);
       }
     }
-    TILES = all.length ? {byRole, skin, doors, proud, all, corner} : null;
+    TILES = all.length ? {byRole, skin, doors, proud, all, corner, bleed} : null;
     note.textContent = TILES
       ? all.length + " hundred-foot tiles, "
         + [...corner.values()].reduce((n, l) => n + l.length, 0) + " fifty-foot corners."
@@ -897,7 +919,7 @@ function draw(ship, art, sections){
   const hex = pitch * 0.5;
 
   if (art){
-    const plan = el("g", {opacity: .62});
+    const plan = el("g", {opacity: .78});
 
     /* Fifty-foot corners where the hull steps.
 
@@ -935,9 +957,11 @@ function draw(ship, art, sections){
         const pool = TILES.corner.get(key);
         if (!pool || !pool.length) continue;
         const cx = (near.q + near.r / 2) * pitch, cy = near.r * pitch;
+        const chosen = pick(trimRand, pool);
+        const span = pitch * (TILES.bleed.get(chosen) ?? 1);
         plan.appendChild(el("image", {
-          href: "geomorphs/" + pick(trimRand, pool),
-          x: cx - pitch / 2, y: cy - pitch / 2, width: pitch, height: pitch,
+          href: "geomorphs/" + chosen,
+          x: cx - span / 2, y: cy - span / 2, width: span, height: span,
           preserveAspectRatio: "none",
           transform: "rotate(90 " + cx + " " + cy + ")",
           opacity: .85,
@@ -948,10 +972,12 @@ function draw(ship, art, sections){
       const tile = art.get(room.id);
       if (!tile) return;
       const c = seats[i];
-      const half = pitch / 2;
+      /* Sized so the deck inside the file lands on the cell; the bleed goes
+         over the neighbours, where it belongs. */
+      const span = pitch * (TILES.bleed.get(tile) ?? 1);
       plan.appendChild(el("image", {
         href: "geomorphs/" + tile,
-        x: c.x - half, y: c.y - half, width: pitch, height: pitch,
+        x: c.x - span / 2, y: c.y - span / 2, width: span, height: span,
         preserveAspectRatio: "none",
         transform: "rotate(90 " + c.x + " " + c.y + ")",
       }));
