@@ -137,6 +137,16 @@ export interface BoardThing {
    * started, and they start again.
    */
   work?: { done: number; of: number };
+  /**
+   * The chance this piece of salvage is carrying the virus, 0..1.
+   *
+   * The odds are a property of the part's *history* — a sealed crate is zero,
+   * a machine's scrap a tenth, your own ghost's rack a quarter — and the board
+   * could not say so: a pile of scrap and a dead drone's rack were the same
+   * chip on the same hexagon, and the difference between them is nothing
+   * against one in four. A die roll should be readable before it is rolled.
+   */
+  risk?: number;
 }
 
 export interface BoardRoom {
@@ -366,6 +376,23 @@ function Readout({ chip }: { chip: Chip }): ReactElement {
       >
         {chip.n > 1 ? `${t.name} ×${chip.n}` : t.name}
       </span>
+      {/* The odds of what is in it, where the decision is made. A number rather
+          than a word because the decision is a comparison — this pile against
+          that one — and nobody compares "risky" to "riskier". */}
+      {t.risk === undefined ? null : (
+        <span
+          data-sc
+          style={{
+            ...STENCIL,
+            letterSpacing: ".12em",
+            background: t.risk >= 0.25 ? "var(--sv-bad)" : "var(--sv-warn)",
+            color: "var(--sv-knock)",
+            padding: "1px 6px",
+          }}
+        >
+          {`virus ${String(Math.round(t.risk * 100))}%`}
+        </span>
+      )}
       {t.hostile === true ? (
         <span style={{ display: "flex", gap: 3 }}>
           {[0, 1, 2].map((i) => (

@@ -7,7 +7,8 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { undock } from "../src/systems/voyage.js";
 import { Screen } from "../src/ui/react/Screen.js";
-import { boardOf } from "../src/ui/react/model.js";
+import { alertModelOf, boardOf } from "../src/ui/react/model.js";
+import { raiseAlert } from "../src/systems/alert.js";
 import * as FX from "../src/ui/fx/derelict-fx.js";
 import { DOORS } from "../src/systems/doors.js";
 import { RIG, findSlot, pulseWait, rigOf, PULSE_COOLDOWN } from "../src/twist/rig.js";
@@ -327,5 +328,39 @@ describe("the sweep animates a scan and nothing else", () => {
     });
     host.remove();
     vi.useRealTimers();
+  });
+});
+
+describe("what the design asked the screen to say out loud", () => {
+  it("prices the virus on the salvage, and says nothing about a sealed crate", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    /* Every wreck the hull holds, priced by whose it was. A crate is the safe,
+       boring option and the mechanic is passing it up — so a crate that showed
+       a number would be the one thing this must never do. */
+    const risks = boardOf(game)
+      .rooms.flatMap((r) => r.things)
+      .filter((t) => t.risk !== undefined);
+    for (const t of risks) {
+      expect(t.risk).toBeGreaterThan(0);
+      expect(t.risk).toBeLessThanOrEqual(1);
+      expect(t.name.startsWith("crate"), t.name).toBe(false);
+    }
+  });
+
+  it("reads the alert gauge off the ten-rung ladder, not off a five-rung one", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const gauge = alertModelOf(game);
+    /* The merge took the ladder from five rungs to ten and the dial kept
+       drawing five, so a ship at SCUTTLE showed a full gauge two rungs before
+       it was full and the same gauge at the top. */
+    expect(gauge.top).toBe(10);
+    expect(gauge.word).toBe("QUIET");
+    raiseAlert(game, 7);
+    expect(alertModelOf(game).level).toBe(7);
+    expect(alertModelOf(game).word).not.toBe("QUIET");
+    /* The only clock this mechanic has is the way back down. */
+    expect(alertModelOf(game).needed).toBeGreaterThan(0);
   });
 });

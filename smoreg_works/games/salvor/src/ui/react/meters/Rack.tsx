@@ -190,12 +190,15 @@ export function CoreRack({
   coreMax = 3,
   slots,
   title = "Core",
+  virus,
   style,
 }: {
   core?: number;
   coreMax?: number;
   slots: readonly RackSlot[];
   title?: string;
+  /** The strain aboard: which bay it is living in, and its next beat. */
+  virus?: { strain: string; slot: number; next: number; curing: boolean };
   style?: CSSProperties;
 }): ReactElement {
   const rows = useRef<HTMLDivElement>(null);
@@ -283,14 +286,42 @@ export function CoreRack({
               empty
             </div>
           ) : (
-            <SlashMeter
-              key={i}
-              data-slot={String(i)}
-              label={slot.name}
-              value={slot.value ?? 0}
-              max={slot.max ?? 0}
-              tone={slot.tone ?? toneFor(slot.value ?? 0, slot.max ?? 0)}
-            />
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <SlashMeter
+                data-slot={String(i)}
+                label={slot.name}
+                value={slot.value ?? 0}
+                max={slot.max ?? 0}
+                tone={virus?.slot === i ? "bad" : (slot.tone ?? toneFor(slot.value ?? 0, slot.max ?? 0))}
+              />
+              {/*
+                The strain, on the bay it is living in.
+
+                Four strains, four different periods, and the rack said nothing
+                about any of them — so the only way to learn there was a clock
+                was to watch a number change on a turn you did not spend. It is
+                drawn under the module rather than beside it because which bay
+                it is in is the fact that decides what to do about it: burning
+                that module is one of the three ways out.
+              */}
+              {virus?.slot !== i ? null : (
+                <div
+                  data-sc
+                  style={{
+                    marginLeft: 88,
+                    font: "var(--sv-stencil)",
+                    fontSize: 14,
+                    letterSpacing: ".12em",
+                    textTransform: "uppercase",
+                    color: "var(--sv-bad)",
+                  }}
+                >
+                  {virus.curing
+                    ? `${virus.strain} · purging`
+                    : `${virus.strain} · ${String(virus.next)} to beat`}
+                </div>
+              )}
+            </div>
           ),
         )}
       </div>
@@ -301,13 +332,24 @@ export function CoreRack({
 /** Alert. Five steps, and only the fifth sweeps: a printed gauge, not a bezel. */
 export function AlertDial({
   value = 0,
-  max = 5,
+  max = 10,
+  word = "QUIET",
+  quiet = 0,
+  needed = 8,
+  hidden = false,
   label = "Alert",
   size = 76,
   style,
 }: {
   value?: number;
   max?: number;
+  /** What this rung is called. The word is the gauge; the number is a footnote. */
+  word?: string;
+  /** Quiet turns banked toward the next rung down. */
+  quiet?: number;
+  needed?: number;
+  /** In cover: the climb down costs half as much, said as speed not as size. */
+  hidden?: boolean;
   label?: string;
   size?: number;
   style?: CSSProperties;
@@ -316,14 +358,13 @@ export function AlertDial({
   const seg = 360 / max;
   const deg = Math.max(0, Math.min(max, value)) * seg;
   return (
-    <div
-      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, ...style }}
-    >
+    <div style={{ display: "flex", alignItems: "center", gap: 11, ...style }}>
       <div
         style={{
           position: "relative",
           width: size,
           height: size,
+          flex: "none",
           borderRadius: "50%",
           background: "var(--sv-knock)",
           border: `1px solid ${value > 0 ? c : "var(--sv-plate-lit)"}`,
@@ -379,15 +420,53 @@ export function AlertDial({
           }}
         />
       </div>
-      <div
-        style={{
-          font: "var(--sv-stencil)",
-          letterSpacing: "var(--sv-stencil-track)",
-          textTransform: "uppercase",
-          color: "var(--sv-soft)",
-        }}
-      >
-        {label}
+
+      {/*
+        The word, and the way back down.
+
+        A ten-rung ladder where each rung does something different is a script
+        the ship is reading out, and "6" does not say which line it is on. The
+        teeth under it are the only clock the mechanic has: quiet turns banked
+        against the quiet turns a rung costs. Cover shows up as the count
+        filling twice as fast rather than as a shorter track, because a gauge
+        that changed size when the drone stepped behind a bulkhead would be
+        reporting the drone and not the ship.
+      */}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div
+          data-sc
+          style={{
+            font: "var(--sv-title)",
+            letterSpacing: "var(--sv-title-track)",
+            textTransform: "uppercase",
+            color: value > 0 ? "var(--sv-ink)" : "var(--sv-soft)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {word}
+        </div>
+        <div
+          style={{
+            font: "var(--sv-stencil)",
+            letterSpacing: "var(--sv-stencil-track)",
+            textTransform: "uppercase",
+            color: "var(--sv-soft)",
+            marginTop: 2,
+          }}
+        >
+          {label}
+        </div>
+        {value <= 0 ? null : (
+          <div style={{ marginTop: 5 }}>
+            <SlashMeter
+              value={Math.min(quiet, needed)}
+              max={needed}
+              tone={hidden ? "good" : "warn"}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

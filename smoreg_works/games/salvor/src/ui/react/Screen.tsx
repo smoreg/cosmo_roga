@@ -8,7 +8,7 @@ import { AlertDial, CoreRack, SegmentMeter } from "./meters/Rack.js";
 import { LogStrip } from "./action/Log.js";
 import * as FX from "../fx/derelict-fx.js";
 import { motionNow } from "./settings.js";
-import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf, workingOf } from "./model.js";
+import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf, workingOf, alertModelOf } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
 import { deckVersion, loadDeckIndex, watchDeck } from "./deckindex.js";
@@ -275,6 +275,7 @@ export function Screen({
   const things = useMemo(() => hereOf(game), [game, turn]);
   const commands = useMemo(() => commandsOf(game), [game, turn]);
   const working = useMemo(() => workingOf(game), [game, turn]);
+  const alert = useMemo(() => alertModelOf(game), [game, turn]);
   const goal = useMemo(() => goalOf(game), [game, turn]);
   /* Which machine this drone was built as. A fact about the sortie, so it is
      read once and not per cell. */
@@ -490,7 +491,16 @@ export function Screen({
               borderTop: "1px solid var(--sv-line)",
             }}
           >
-            <AlertDial value={alertOf(game)} max={5} label="alert" size={58} />
+            <AlertDial
+              value={alert.level}
+              max={alert.top}
+              word={alert.word}
+              quiet={alert.quiet}
+              needed={alert.needed}
+              hidden={alert.hidden}
+              label="alert"
+              size={58}
+            />
             <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
               <Stat label="systems" value={`${String(goal.online)}/${String(goal.of)}`} />
               <Stat label="keys" value={String(goal.keys)} />
@@ -581,7 +591,7 @@ export function Screen({
               </span>
             </div>
           </div>
-          <CoreRack core={rack.core} coreMax={rack.coreMax} slots={rack.slots} />
+          <CoreRack core={rack.core} coreMax={rack.coreMax} slots={rack.slots} virus={rack.virus} />
         </Panel>
 
         {home ? (
@@ -758,6 +768,20 @@ function Manifest({
                 twice for one set of things. */}
             <ThingIcon thing={thing} size={13} style={{ alignSelf: "center" }} />
             <span style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>{thing.name}</span>
+            {/* Whose it was, as the only thing about it that decides anything:
+                a sealed crate is free and a dead drone's rack is a quarter. */}
+            {thing.risk === undefined ? null : (
+              <span
+                style={{
+                  font: "var(--sv-stencil)",
+                  letterSpacing: "var(--sv-stencil-track)",
+                  textTransform: "uppercase",
+                  color: thing.risk >= 0.25 ? "var(--sv-bad)" : "var(--sv-warn)",
+                }}
+              >
+                {`virus ${String(Math.round(thing.risk * 100))}%`}
+              </span>
+            )}
             {thing.work === undefined ? null : (
               <span
                 style={{

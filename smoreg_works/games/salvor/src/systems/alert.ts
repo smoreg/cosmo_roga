@@ -180,6 +180,43 @@ const LADDER: Readonly<Record<number, Rung>> = {
 };
 
 /** The rung's word, for the corner of the map and the tug's board. */
+/**
+ * The gauge as a gauge, rather than as a number.
+ *
+ * The ladder has ten rungs and each does a different thing, so the number on
+ * its own is the one part of the mechanic a player does not need: what they
+ * need is the word for what the ship is doing and how long the way back down
+ * is. Down is the only clock there is — the climb up is driven by noise, not by
+ * turns — so the teeth are quiet turns spent out of quiet turns needed, and
+ * cover is visible in the count going up two at a time rather than in a
+ * different-sized gauge.
+ */
+export interface Gauge {
+  level: number;
+  top: number;
+  /** What this rung is called, or nothing at all at rung zero. */
+  word: Key | undefined;
+  /** Quiet turns banked toward the next rung down. */
+  quiet: number;
+  /** Quiet turns the drone needs, which cover halves. */
+  needed: number;
+  /** In cover, where the climb down costs half as much. */
+  hidden: boolean;
+}
+
+export function gaugeOf(game: RoomGame): Gauge {
+  const st = alertState(game);
+  const hidden = game.player.hidden === true;
+  return {
+    level: st.level,
+    top: MAX_LEVEL,
+    word: alertWord(st.level),
+    quiet: st.quietTurns,
+    needed: hidden ? QUIET_TURNS_HIDDEN : QUIET_TURNS,
+    hidden,
+  };
+}
+
 export function alertWord(level: number): Key | undefined {
   return LADDER[level]?.word;
 }

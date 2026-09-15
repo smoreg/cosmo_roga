@@ -6,7 +6,7 @@ import { roomActions } from "../actions.js";
 import { doorWays } from "../doorlist.js";
 import { findSlot, hostilesIn, pulseWait, rigOf, wrecksOn } from "../../twist/rig.js";
 import { BUCKET_GLYPH, CONTENT_KEYS, ONLINE_GLYPH, bucketName } from "../contents.js";
-import { alertState } from "../../systems/alert.js";
+import { gaugeOf, alertState } from "../../systems/alert.js";
 import { shipState } from "../../systems/shipstate.js";
 import { systemsAboard } from "../../systems/ship.js";
 import { keysHeld } from "../../systems/doors.js";
@@ -28,6 +28,11 @@ import { deckOf } from "./deck.js";
 import type { RackSlot } from "./meters/Rack.js";
 import type { LogEntry } from "./action/Log.js";
 import { jobNow, jobOn } from "../../systems/jobs.js";
+import { turnsToBeat, virusOf } from "../../systems/virus.js";
+import { strainName, strainOf } from "../../content/viruses.js";
+import { infectChance } from "../../systems/virus.js";
+import { wreckSource } from "../../twist/rig.js";
+import { specOfShip } from "../../content/derelicts.js";
 
 /**
  * Everything the React screen is allowed to know about the game.
@@ -133,6 +138,7 @@ function thingsIn(game: RoomGame, room: RoomId, knows: Knows): BoardThing[] {
          steps away for a turn comes back to a line that reads exactly as it
          did before they started, and starts again. */
       ...(room === game.player.room ? (workOn(game, thing.id) ?? {}) : {}),
+      ...(thing.risk === undefined ? {} : { risk: thing.risk }),
     };
     return offered === undefined ? base : { ...base, verb: offered.verb, note: offered.note };
   });
@@ -149,14 +155,21 @@ function thingsIn(game: RoomGame, room: RoomId, knows: Knows): BoardThing[] {
  * names are that module's, not a second opinion: a crate drawn `X` in one view
  * and `▪` in another would be two games.
  */
-function shipThings(game: RoomGame, room: RoomId): Array<{ id: number; glyph: string; name: string }> {
-  const out: Array<{ id: number; glyph: string; name: string }> = [];
+function shipThings(
+  game: RoomGame,
+  room: RoomId,
+): Array<{ id: number; glyph: string; name: string; risk?: number }> {
+  const out: Array<{ id: number; glyph: string; name: string; risk?: number }> = [];
+  /* What this hull adds to everything but a sealed crate. */
+  const bonus = specOfShip(game.ship)?.virusBonus ?? 0;
   for (const wreck of wrecksOn(game.ship, room)) {
     const kind = moduleKind(wreck.kind);
+    const risk = infectChance(wreckSource(wreck), bonus);
     out.push({
       id: wreck.id,
       glyph: wreck.glyph,
       name: `${wreck.glyph === "X" ? t("word.crate") : t("word.scrap")} ${moduleName(kind.id)}`,
+      ...(risk > 0 ? { risk } : {}),
     });
   }
   const data = game.ship.roomAt(room).data;
@@ -415,6 +428,15 @@ export function rackOf(game: RoomGame): {
   slots: RackSlot[];
   /** The class of the drone this rack is bolted into. */
   hull: string;
+  /**
+   * The strain aboard, where it is living and how long until its next beat.
+   *
+   * Four strains with four different periods, and the rack showed none of
+   * them: a player could read that something was wrong only by watching a
+   * number drop on a turn they did not spend. The engine has kept the clock
+   * all along (`systems/virus.ts`, `turnsToBeat`); this turns it round.
+   */
+  virus?: { strain: string; slot: number; next: number; curing: boolean };
 } {
   const voyage = voyageOf(game);
   const kind = HULLS.find((h) => h.id === voyage.hull);
@@ -426,10 +448,20 @@ export function rackOf(game: RoomGame): {
       ? {}
       : { name: moduleName(slot.kind), value: slot.integrity, max: maxOf(slot) },
   );
+  const v = virusOf(game.player);
+  const sick =
+    v === undefined || rig.slots[v.slot] === null || rig.slots[v.slot] === undefined
+      ? undefined
+      : {
+          strain: strainName(strainOf(v.strain)),
+          slot: v.slot,
+          next: turnsToBeat(game, v),
+          curing: v.curing !== undefined,
+        };
   /* The core is the run: three pips, and the drone's own hp is how many are
      still lit. `CORE_MAX` rather than a field, because the entity carries no
      maximum and the rack's three boxes are a fact about the drone. */
-  return { core: game.player.hp, coreMax: CORE_MAX, slots, hull };
+  return { core: game.player.hp, coreMax: CORE_MAX, slots, hull, ...(sick === undefined ? {} : { virus: sick }) };
 }
 
 function maxOf(slot: { integrity: number; bonus?: number; base?: number }): number {
@@ -451,6 +483,29 @@ export function logOf(game: RoomGame, keep = 14): LogEntry[] {
 /** How high the ship's alert has climbed, 0..5. */
 export function alertOf(game: RoomGame): number {
   return alertState(game).level;
+}
+
+/** The gauge with its word and its way back down, as the dial draws it. */
+export interface AlertModel {
+  level: number;
+  top: number;
+  /** `NOTICED`, `HUNTING`, `SCUTTLE` — the thing the ship is doing. */
+  word: string;
+  quiet: number;
+  needed: number;
+  hidden: boolean;
+}
+
+export function alertModelOf(game: RoomGame): AlertModel {
+  const g = gaugeOf(game);
+  return {
+    level: g.level,
+    top: g.top,
+    word: g.word === undefined ? "QUIET" : t(g.word).toUpperCase(),
+    quiet: g.quiet,
+    needed: g.needed,
+    hidden: g.hidden,
+  };
 }
 
 // ------------------------------------------------------------------ the tug
