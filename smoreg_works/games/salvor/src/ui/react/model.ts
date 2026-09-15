@@ -1,10 +1,11 @@
 import { hexLayout, isAlive } from "@jamrog/engine";
 import type { Entity, RoomGame, RoomId } from "@jamrog/engine";
 import { machineName } from "../../content/monsters.js";
-import { MODULES, moduleName } from "../../content/modules.js";
+import { MODULES, moduleKind, moduleName } from "../../content/modules.js";
 import { roomActions } from "../actions.js";
 import { doorWays } from "../doorlist.js";
-import { hostilesIn, rigOf } from "../../twist/rig.js";
+import { hostilesIn, rigOf, wrecksOn } from "../../twist/rig.js";
+import { BUCKET_GLYPH, CONTENT_KEYS, ONLINE_GLYPH, bucketName } from "../contents.js";
 import { alertState } from "../../systems/alert.js";
 import { currentDerelict, voyageOf } from "../../systems/voyage.js";
 import { derelictName } from "../../content/derelicts.js";
@@ -72,7 +73,19 @@ function verbsByTarget(game: RoomGame): Map<number, { verb: string; note?: strin
   return out;
 }
 
-/** What is standing or lying in a compartment, with the ids verbs bind to. */
+/**
+ * What is standing or lying in a compartment, with the ids verbs bind to.
+ *
+ * Machines and what is left of machines, in that order. A hostile that
+ * collapses becomes a pile on the floor with a module in it — the engine has
+ * always said so, and `act salvage {target}` has always been offered for it —
+ * but the board was walking the living and nothing else, so the reward for
+ * winning a fight was a compartment that looked empty.
+ *
+ * The prefix on the id is which list the number belongs to: machines are
+ * entities, wrecks are the ship's own numbering, and the two would otherwise
+ * be one integer meaning two things (`twist/rig.ts`, `FIRST_SHIP_ID`).
+ */
 function thingsIn(game: RoomGame, room: RoomId, knows: Knows): BoardThing[] {
   if (knows === "undetected" || knows === "detected") return [];
   const verbs =
@@ -80,7 +93,8 @@ function thingsIn(game: RoomGame, room: RoomId, knows: Knows): BoardThing[] {
       ? verbsByTarget(game)
       : new Map<number, { verb: string; note?: string }>();
   const hostile = new Set(hostilesIn(game, room).map((m) => m.id));
-  return machinesIn(game, room).map((machine): BoardThing => {
+
+  const machines = machinesIn(game, room).map((machine): BoardThing => {
     const offered = verbs.get(machine.id);
     const base: BoardThing = {
       id: `m${String(machine.id)}`,
@@ -94,6 +108,66 @@ function thingsIn(game: RoomGame, room: RoomId, knows: Knows): BoardThing[] {
       ...(offered === undefined ? {} : { verb: offered.verb, note: offered.note }),
     };
   });
+
+  /* Everything the ship itself holds, under one prefix because the ship holds
+     it under one counter (`twist/rig.ts`, `FIRST_SHIP_ID`): wreckage, bodies,
+     crates, its own systems, and whatever a charter left lying about. None of
+     it walks away, so it is listed in a compartment the drone only remembers
+     as readily as in the one it is standing in. */
+  const held = shipThings(game, room).map((thing): BoardThing => {
+    const offered = verbs.get(thing.id);
+    const base: BoardThing = {
+      id: `s${String(thing.id)}`,
+      glyph: thing.glyph,
+      name: thing.name,
+    };
+    return offered === undefined ? base : { ...base, verb: offered.verb, note: offered.note };
+  });
+
+  return [...machines, ...held];
+}
+
+/**
+ * Everything lying in a compartment that the ship numbers, with its number.
+ *
+ * `ui/contents.ts` walks the same buckets and throws the id away, because the
+ * picture it was built for had nothing to bind a verb to. That is exactly what
+ * the board needs, so this walks them again and keeps it. The glyphs and the
+ * names are that module's, not a second opinion: a crate drawn `X` in one view
+ * and `▪` in another would be two games.
+ */
+function shipThings(game: RoomGame, room: RoomId): Array<{ id: number; glyph: string; name: string }> {
+  const out: Array<{ id: number; glyph: string; name: string }> = [];
+  for (const wreck of wrecksOn(game.ship, room)) {
+    const kind = moduleKind(wreck.kind);
+    out.push({
+      id: wreck.id,
+      glyph: wreck.glyph,
+      name: `${wreck.glyph === "X" ? t("word.crate") : t("word.scrap")} ${moduleName(kind.id)}`,
+    });
+  }
+  const data = game.ship.roomAt(room).data;
+  for (const key of CONTENT_KEYS) {
+    const list = data[key];
+    if (!Array.isArray(list)) continue;
+    for (const raw of list) {
+      if (typeof raw !== "object" || raw === null) continue;
+      const rec = raw as { id?: unknown; glyph?: unknown; name?: unknown; label?: unknown; online?: unknown };
+      if (typeof rec.id !== "number") continue;
+      const own = typeof rec.glyph === "string" && rec.glyph.length > 0 ? rec.glyph[0] : undefined;
+      /* A system already up is drawn ticked rather than as the mark that means
+         "work to do here" — the old view's rule, kept whole. */
+      const glyph = rec.online === true ? ONLINE_GLYPH : (own ?? BUCKET_GLYPH[key]);
+      const name =
+        typeof rec.name === "string"
+          ? rec.name
+          : typeof rec.label === "string"
+            ? rec.label
+            : bucketName(key, raw);
+      out.push({ id: rec.id, glyph, name });
+    }
+  }
+  return out;
 }
 
 export interface BoardModel {
@@ -179,6 +253,9 @@ function waysOf(game: RoomGame, id: number): BoardDoor["verbs"] {
         verb: action.label,
         note: action.enabled ? (action.extra ?? "") : (action.why ?? "no"),
         enabled: action.enabled,
+        /* A way that is simply walking through is still walking: the board
+           plays the drone across rather than spending it where it stands. */
+        ...(action.cmd.kind === "go" ? { moves: true as const } : {}),
       }));
   }
   /* One way, or none. `roomActions` carries the single one on the
@@ -192,6 +269,7 @@ function waysOf(game: RoomGame, id: number): BoardDoor["verbs"] {
       verb: action.label,
       note: action.enabled ? (action.extra ?? "") : (action.why ?? "no"),
       enabled: action.enabled,
+      ...(cmd.kind === "go" ? { moves: true as const } : {}),
     });
   });
   return out;
@@ -510,12 +588,18 @@ export function hereOf(game: RoomGame): BoardThing[] {
  */
 export function commandsOf(game: RoomGame): Offer[] {
   if (game.status !== "playing") return [];
+  /* What the compartment is already carrying as an icon. A verb aimed at one
+     of those is on the thing itself; a verb aimed at anything else has nowhere
+     on the honeycomb to live and belongs here, whatever it is aimed at. The
+     point of asking rather than assuming is that nothing can be lost: an
+     `act` at a target the board does not draw used to vanish from both. */
+  const carried = new Set(hereOf(game).map((t) => Number(t.id.slice(1))));
   const out: Offer[] = [];
   roomActions(game).forEach((action, index) => {
     const cmd = action.cmd;
-    /* Anything with a target is a thing's own verb, and anything with a door is
-       on that bulkhead's menu. What is left is the drone's own list. */
-    if ("target" in cmd && cmd.target !== undefined) return;
+    /* Anything aimed at a thing on the board is that thing's own verb, and
+       anything aimed at a door is on that bulkhead's menu. */
+    if ("target" in cmd && cmd.target !== undefined && carried.has(cmd.target)) return;
     if ("door" in cmd && cmd.door !== undefined) return;
     if (action.step !== undefined || action.travel !== undefined) return;
     out.push({

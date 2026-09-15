@@ -112,7 +112,14 @@ export interface BoardDoor {
    * `index` is how a click finds its command again: the view never holds a
    * `RoomCommand` it might edit, it holds the engine's place in its own list.
    */
-  verbs: readonly { index: number; verb: string; note: string; enabled: boolean }[];
+  verbs: readonly {
+    index: number;
+    verb: string;
+    note: string;
+    enabled: boolean;
+    /** True where spending it walks the drone through rather than works on it. */
+    moves?: true;
+  }[];
 }
 
 /**
@@ -1135,6 +1142,15 @@ export function HexBoard({
                           e.stopPropagation();
                           if (!v.enabled) return;
                           shutDoor();
+                          /* Walking through a bulkhead is walking, and the
+                             drone crosses the board for it — the same hop a
+                             click on the far compartment plays. It used to
+                             spend the turn where it stood and the drone
+                             arrived without having gone. */
+                          if (v.moves === true && drone !== null) {
+                            go(d.a === drone ? d.b : d.a);
+                            return;
+                          }
                           onDoorAct?.(d, v.index);
                         }}
                         onMouseEnter={(e) => {

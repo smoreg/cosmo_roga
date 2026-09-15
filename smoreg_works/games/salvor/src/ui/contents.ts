@@ -34,7 +34,7 @@ export interface RoomThing {
  * this file must not crash a run because a card left something it did not
  * expect, and a save file round-trips through JSON with no types at all.
  */
-const CONTENT_KEYS = ["bodies", "crates", "systems", "items"] as const;
+export const CONTENT_KEYS = ["bodies", "crates", "systems", "items"] as const;
 
 /**
  * How much the drone knows about a compartment.
@@ -77,7 +77,7 @@ export const BUCKET_GLYPH: Readonly<Record<(typeof CONTENT_KEYS)[number], string
 };
 
 /** What each bucket's thing is called, when its record does not say. */
-function bucketName(key: (typeof CONTENT_KEYS)[number], raw: unknown): string {
+export function bucketName(key: (typeof CONTENT_KEYS)[number], raw: unknown): string {
   const rec = raw as { kind?: unknown; searched?: unknown } | null;
   const kind = typeof rec?.kind === "string" ? rec.kind : undefined;
   if (key === "bodies") return t(rec?.searched === true ? "thing.body.searched" : "thing.body");

@@ -19,6 +19,8 @@ import {
 } from "../src/ui/react/model.js";
 import { roomActions } from "../src/ui/actions.js";
 import { currentDerelict, undock } from "../src/systems/voyage.js";
+import { CONTENT_KEYS } from "../src/ui/contents.js";
+import { addWreck } from "../src/twist/rig.js";
 import { CODEX_IDS } from "../src/content/codex.js";
 import { titleScreen, DEFAULT_TITLE } from "../src/ui/title.js";
 
@@ -614,5 +616,79 @@ describe("a compartment that stops being a rumour says so", () => {
       root.unmount();
     });
     host.remove();
+  });
+});
+
+describe("everything in a compartment is an icon and a command, or neither", () => {
+  beforeAll(stillFrames);
+
+  it("lists what the ship holds, not only what is alive in it", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    /* Wreckage, bodies, crates, the ship's own systems and whatever a charter
+       left lying about are all numbered by the ship, and all of them used to
+       be invisible: the board walked the living and nothing else. */
+    const ship = game.ship;
+    const withStuff = ship.rooms.find((r) => {
+      const d = r.data as Record<string, unknown>;
+      return CONTENT_KEYS.some((k) => Array.isArray(d[k]) && (d[k] as unknown[]).length > 0);
+    });
+    if (withStuff === undefined) return;
+    const room = boardOf(game).rooms.find((r) => r.id === withStuff.id);
+    if (room === undefined || room.knows === "undetected" || room.knows === "detected") return;
+    expect(room.things.length).toBeGreaterThan(0);
+  });
+
+  it("gives scrap an id the engine will answer to", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const here = game.player.room as number;
+    /* A machine that collapses leaves a pile with a module in it, and the
+       engine has always offered `act salvage {target}` for it. */
+    const before = hereOf(game).length;
+    addWreck(game, here, "cutter", 4);
+    const after = hereOf(game);
+    expect(after.length).toBe(before + 1);
+    const scrap = after[after.length - 1];
+    expect(scrap?.id.startsWith("s")).toBe(true);
+    expect(Number(scrap?.id.slice(1))).toBeGreaterThan(0);
+    expect(scrap?.glyph.length).toBe(1);
+    expect(scrap?.name.length).toBeGreaterThan(0);
+  });
+
+  it("loses no verb: everything aimed at anything is on a thing or on the list", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    addWreck(game, game.player.room as number, "scanner", 3);
+
+    const things = hereOf(game);
+    const onThings = new Set(things.map((t) => Number(t.id.slice(1))));
+    const onList = new Set(commandsOf(game).map((c) => c.index));
+
+    roomActions(game).forEach((action, index) => {
+      if (!action.enabled) return;
+      const cmd = action.cmd;
+      if (action.step !== undefined || action.travel !== undefined) return;
+      if ("door" in cmd && cmd.door !== undefined) return;
+      const target = "target" in cmd ? cmd.target : undefined;
+      /* Every enabled line is reachable: on the thing it is aimed at, or in
+         the panel. A verb that is in neither is a turn the player cannot
+         spend, and that is the failure this pins. */
+      const reachable = (target !== undefined && onThings.has(target)) || onList.has(index);
+      expect(reachable, `${action.label} is on neither`).toBe(true);
+    });
+  });
+
+  it("marks a way through a bulkhead as walking, so the drone crosses for it", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const board = boardOf(game);
+    const walking = board.doors.flatMap((d) => d.verbs).filter((v) => v.moves === true);
+    /* Standing next to an open door there is always a way through it, and it
+       is walking — so the board plays the drone across rather than spending
+       the turn where it stands. */
+    for (const way of walking) expect(way.enabled).toBe(true);
+    const here = board.doors.filter((d) => d.verbs.length > 0);
+    if (here.length > 0) expect(walking.length).toBeGreaterThan(0);
   });
 });

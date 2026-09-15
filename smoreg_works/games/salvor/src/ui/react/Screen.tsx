@@ -219,12 +219,20 @@ export function Screen({
     again();
   };
 
-  /** Spend a thing's own verb on it, by finding the command the engine offered. */
+  /**
+   * Spend a thing's own verb on it, by finding the command the engine offered.
+   *
+   * The prefix decides which list the number is in. A machine is an entity and
+   * a wreck is one of the ship's own things, and they are numbered separately —
+   * so looking a bare integer up in both would be one number meaning two
+   * things, and the wrong one would be spent the first time they collided.
+   */
   const act = (_room: BoardRoom, thing: BoardThing): void => {
     const id = Number(thing.id.slice(1));
+    const entity = thing.id.startsWith("m");
     const action = roomActions(game).find((a) => {
       const cmd = a.cmd;
-      if (cmd.kind === "attack") return cmd.target === id;
+      if (cmd.kind === "attack") return entity && cmd.target === id;
       if (cmd.kind === "act") return cmd.target === id;
       return false;
     });
