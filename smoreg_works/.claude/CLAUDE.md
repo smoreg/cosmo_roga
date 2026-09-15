@@ -110,6 +110,9 @@ node tools/deck/bake.mjs          # из games/salvor: палубная граф
 node tools/audio/copy.mjs        # из games/salvor: музыка в public/audio
 node tools/machines/fetch.mjs    # из games/salvor: иконки машин и дрона (сеть)
 node tools/sfx/bake.mjs          # из games/salvor: семь эффектов в public/audio/sfx
+node tools/cover/shoot.mjs       # из games/salvor: обложка 630x500 в assets/cover.png
+                                 #   при запущенном npm run dev; нужен playwright
+                                 #   (PLAYWRIGHT=..., CHROME=/usr/bin/chromium)
 npm run zip -w games/salvor      # dist + проверка + derelict-rogue-web.zip
 npm run publish:itch -w games/salvor   # то же + butler push на itch
 ```
