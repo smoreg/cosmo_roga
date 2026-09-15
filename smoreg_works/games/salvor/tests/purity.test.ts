@@ -235,6 +235,14 @@ function allowedText(line: string, quoted: string, stripped: string): boolean {
   // is structure, and the words inside it came through `t()` upstream.
   if (/[<>]/.test(stripped) || /\w="/.test(stripped)) return true;
   if (/^[\s\dMLCZ.,+-]+$/.test(stripped)) return true;
+  /* And a whole path, which the rule above only half knew: it listed M, L, C
+     and Z, and a drawn icon uses the rest of the grammar — arcs, quadratics,
+     relative moves. Tied to starting with a move command followed by a number,
+     so it cannot be satisfied by a run of capitals that happen to be in the
+     set: `M` then a digit is a path and is not a word. */
+  if (/^[Mm][\s\d.,+-]/.test(stripped) && /^[MmZzLlHhVvCcSsQqTtAa\s\d.,+\-eE]+$/.test(stripped)) {
+    return true;
+  }
   if (/\bthrow new Error\(/.test(line)) return true;
   const escaped = quoted.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   if (new RegExp(`"${escaped}"\\s*:`).test(line)) return true;

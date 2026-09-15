@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactElement } from "react";
 import type { BoardThing } from "./HexBoard.js";
+import { MACHINE_BOX, MACHINE_ICON } from "./machines.js";
 
 /**
  * What a thing looks like, once, for everywhere it is drawn.
@@ -74,7 +75,19 @@ export function toneOf(thing: { glyph: string; hostile?: true }): string {
   return "var(--sv-amber)";
 }
 
-/** One thing, at whatever size the place drawing it has room for. */
+/**
+ * One thing, at whatever size the place drawing it has room for.
+ *
+ * A face where there is one, a silhouette everywhere else. The eight machines
+ * of the band are drawn (`machines.ts`) because eight shapes that all mean "a
+ * thing that is coming for you" are eight shapes to tell apart, and a face is
+ * one to recognise. Everything else — the five machines the ship places
+ * itself, and everything that is not a machine at all — keeps its silhouette,
+ * which says what kind of thing it is rather than which one.
+ *
+ * Both are drawn in the same tone and at the same size, so a row of them lines
+ * up whichever a thing turns out to be.
+ */
 export function ThingIcon({
   thing,
   size = 15,
@@ -84,6 +97,20 @@ export function ThingIcon({
   size?: number;
   style?: CSSProperties;
 }): ReactElement {
+  const drawn = thing.hostile === true ? MACHINE_ICON[thing.glyph] : undefined;
+  if (drawn !== undefined) {
+    return (
+      <svg
+        viewBox={`0 0 ${String(MACHINE_BOX)} ${String(MACHINE_BOX)}`}
+        width={size}
+        height={size}
+        aria-hidden
+        style={{ flex: "none", color: toneOf(thing), display: "block", ...style }}
+      >
+        <path d={drawn} fill="currentColor" />
+      </svg>
+    );
+  }
   return (
     <div
       style={{

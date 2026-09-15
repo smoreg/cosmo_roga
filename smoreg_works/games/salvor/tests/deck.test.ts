@@ -6,6 +6,8 @@ import { undock } from "../src/systems/voyage.js";
 import { hexLayout } from "@jamrog/engine";
 import { keelOf, mirror } from "../src/ui/react/hull.js";
 import { bleedScale, deckOf } from "../src/ui/react/deck.js";
+import { MACHINE_ICON } from "../src/ui/react/board/machines.js";
+import { MONSTERS } from "../src/content/monsters.js";
 import type { DeckIndex } from "../src/ui/react/deck.js";
 
 /**
@@ -165,5 +167,47 @@ describe("what the bake promises the board", () => {
        this board draws. The jam ships as a zip, so this is a real budget and
        not a preference. */
     expect(bytes).toBeLessThan(5_000_000);
+  });
+});
+
+describe("the machines the board draws as faces", () => {
+  it("has an icon for every machine of the band, and for no other", () => {
+    /* Eight shapes that all mean "a thing coming for you" are eight shapes to
+       tell apart; a face is one to recognise. So the band is drawn and the
+       ones the ship places itself keep their silhouettes — the shape says what
+       kind of thing it is, and there is no face to confuse it with.
+ 
+       "The band" is weight, not the list: all twelve machines live in
+       `MONSTERS` and the four with no weight are never rolled for, only put
+       where the ship wants them. */
+    const band = new Set(MONSTERS.filter((m) => m.weight > 0).map((m) => m.ch));
+    expect(band.size).toBe(8);
+    expect(MONSTERS.length).toBe(12);
+    for (const ch of band) expect(MACHINE_ICON[ch], `no icon for ${ch}`).toBeDefined();
+    expect(Object.keys(MACHINE_ICON)).toHaveLength(band.size);
+  });
+
+  it("carries the drawing and not the site's backing square", () => {
+    /* Each download is a black square with a white icon on it. The square is
+       the site's background; left in, it would paint over the deck. */
+    for (const [ch, d] of Object.entries(MACHINE_ICON)) {
+      expect(d.startsWith("M0 0h512v512H0z"), `${ch} kept the backing square`).toBe(false);
+      expect(d.length, ch).toBeGreaterThan(200);
+      /* Path data and nothing else: no `fill`, no colour, nothing that would
+         stop the board painting it whatever the compartment is worth. */
+      expect(d, ch).toMatch(/^[MmZzLlHhVvCcSsQqTtAa\s\d.,+\-eE]+$/);
+    }
+  });
+
+  it("is credited where the licence asks, and where a player can find it", () => {
+    /* CC BY 3.0 asks for attribution and nothing else, so the one thing that
+       must not drift is the notice. */
+    const credits = readFileSync(join(import.meta.dirname, "..", "..", "..", "assets", "CREDITS.md"), "utf8");
+    expect(credits).toContain("game-icons.net");
+    expect(credits).toContain("CC BY 3.0");
+    for (const who of ["Lorc", "Delapouite", "Lord Berandas"]) expect(credits).toContain(who);
+    /* And the geomorphs, whose licence asks for more than a notice. */
+    expect(credits).toContain("CC BY-NC 4.0");
+    expect(credits).toContain("некоммерческим");
   });
 });
