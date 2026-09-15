@@ -384,6 +384,18 @@ async function loadTiles(){
  */
 const TILE_SIDE = {e: "n", s: "e", w: "s", n: "w"};
 
+/** Drawn as drawn. */
+const NO_FLIP = {sx: 1, sy: 1};
+/**
+ * Mirrored across the keel.
+ *
+ * In the tile's own frame, which is the frame the transform is applied in:
+ * SVG runs `rotate(90) scale(sx sy)` right to left, so a tile is mirrored
+ * first and turned afterwards. Swapping the tile's east and west before the
+ * quarter turn is what swaps the ship's north and south after it.
+ */
+const MIRROR = {sx: -1, sy: 1};
+
 /**
  * Where a doorway has to sit for two tiles to meet at it.
  *
@@ -438,8 +450,33 @@ function artFor(rooms, seed, sections, occupied, ship){
   const roomAt = new Map();
   for (const [id, cell] of sections) roomAt.set(keyOf(cell), id);
 
-  const out = new Map();
+  /**
+   * Which compartment lies opposite this one across the keel.
+   *
+   * The hull is built by reflecting row `+r` into row `-r` with `q' = q + r`,
+   * so the same identity finds the pair again here. A ship is symmetric about
+   * its keel and its plating should be too: the far side wears the same tile
+   * as the near side, mirrored, which is the one thing that makes a hull look
+   * drawn rather than assembled.
+   */
+  const mirrorOf = new Map();
   for (const room of rooms){
+    const cell = sections.get(room.id);
+    if (cell.r === 0) continue;
+    const twin = roomAt.get(keyOf({q: cell.q + cell.r, r: -cell.r}));
+    if (twin !== undefined) mirrorOf.set(room.id, twin);
+  }
+
+  /* The near side first — the keel and everything north of it — because the
+     far side is going to copy it. */
+  const nearFirst = rooms.slice().sort(function keelOut(a, b){
+    return sections.get(a.id).r - sections.get(b.id).r;
+  });
+
+  const out = new Map();
+  for (const room of nearFirst){
+    /* Already decided, by the compartment it faces across the keel. */
+    if (out.has(room.id)) continue;
     const roles = KIND_ROLES[room.kind] || [];
     let pool = [];
     for (const role of roles){
@@ -508,7 +545,18 @@ function artFor(rooms, seed, sections, occupied, ship){
       if (score > bestScore) { bestScore = score; best = path; }
       if (score >= 16) break;            // nothing can beat a wall-perfect fit
     }
-    out.set(room.id, best);
+    out.set(room.id, {path: best, flip: NO_FLIP});
+
+    /* And its opposite number, mirrored across the keel.
+
+       `scale(-1 1)` in the tile's own frame is what mirrors the *ship* north
+       to south, because the tile is mirrored before it is turned: run the two
+       through in that order and a tile edge facing the ship's north comes out
+       facing its south, with east and west left alone. Flipping in ship space
+       instead would mirror the ship along its length, which is not a thing a
+       hull does. */
+    const twin = mirrorOf.get(room.id);
+    if (twin !== undefined && best !== null) out.set(twin, {path: best, flip: MIRROR});
   }
   return out;
 }
@@ -916,18 +964,22 @@ function draw(ship, art, sections){
     const plan = el("g", {opacity: .78});
 
     ship.rooms.forEach(function plate(room, i){
-      const tile = art.get(room.id);
-      if (!tile) return;
+      const worn = art.get(room.id);
+      if (!worn || !worn.path) return;
       const c = seats[i];
       /* Sized so the deck inside the file lands on the cell; the bleed goes
          over the neighbours, where it belongs. */
-      const span = pitch * (TILES.bleed.get(tile) ?? 1);
-      plan.appendChild(el("image", {
-        href: "geomorphs/" + tile,
-        x: c.x - span / 2, y: c.y - span / 2, width: span, height: span,
+      const span = pitch * (TILES.bleed.get(worn.path) ?? 1);
+      const held = el("g", {
+        transform: "translate(" + c.x + " " + c.y + ") rotate(90) scale("
+          + worn.flip.sx + " " + worn.flip.sy + ")",
+      });
+      held.appendChild(el("image", {
+        href: "geomorphs/" + worn.path,
+        x: -span / 2, y: -span / 2, width: span, height: span,
         preserveAspectRatio: "none",
-        transform: "rotate(90 " + c.x + " " + c.y + ")",
       }));
+      plan.appendChild(held);
     });
     svg.appendChild(plan);
   }

@@ -255,6 +255,26 @@ core, side, loose, island. 211 of the fifty-foot pieces are corners; asking for
 "anything with two plated sides" instead got masts, scoops and an engine block
 used as a chamfer. A drive is not plating: it has its own place at the stern.
 
+**The plating is mirrored across the keel.** The hull is built by reflecting
+row `+r` into row `−r`, so the same identity finds the pair again when the art
+is chosen: the near side is decided by scoring and the far side wears the same
+tile, mirrored. A ship is symmetric about its keel and its plating should be
+too — it is the single thing that makes a hull look drawn rather than
+assembled.
+
+The mirror is `scale(-1 1)` in the *tile's* frame, not the ship's, because SVG
+runs `rotate(90) scale(sx sy)` right to left: a tile is mirrored before it is
+turned, so swapping its east and west first is what swaps the ship's north and
+south afterwards. Mirroring in ship space instead would reflect the hull along
+its length, which is not a thing a ship does.
+
+**The cost is on the far side's doorways.** A mirrored tile was chosen for its
+twin's walls, and the door graph is not symmetric — the spanning tree is grown
+once, not reflected — so an opening on the far side may not land where that
+compartment needs one. Symmetry was asked for and symmetry wins; the honest fix
+is to reflect the tree as well, which would make the doors symmetric too and is
+a change to the topology rather than to the picture.
+
 **Nothing is added at the edges, and the fifty-foot corners are gone.** They
 were laid into the notches beside the hull to chamfer its steps, through four
 attempts: the whole fifty-foot pool, then pieces with two plated sides, then
