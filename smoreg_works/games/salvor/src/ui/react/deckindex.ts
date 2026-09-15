@@ -37,6 +37,21 @@ export function deckVersion(): number {
   return version;
 }
 
+/**
+ * Adopt an index, from wherever it came.
+ *
+ * Separate from the fetch because getting the bytes and taking them up are two
+ * different things, and only one of them needs a network: a test that wants a
+ * board with decks on it says so directly instead of standing a server up, and
+ * does not have to be run after some other test that happened to warm the
+ * cache.
+ */
+export function applyDeckIndex(got: DeckIndex): void {
+  index = got;
+  version++;
+  for (const fn of watching) fn();
+}
+
 export function watchDeck(fn: () => void): () => void {
   watching.add(fn);
   return () => {
@@ -52,10 +67,7 @@ export function loadDeckIndex(): Promise<void> {
   return fetch("deck/deck.json")
     .then((r) => (r.ok ? (r.json() as Promise<DeckIndex>) : null))
     .then((got) => {
-      if (got === null) return;
-      index = got;
-      version++;
-      for (const fn of watching) fn();
+      if (got !== null) applyDeckIndex(got);
     })
     .catch(() => undefined);
 }

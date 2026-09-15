@@ -7,7 +7,7 @@ import { App } from "../src/ui/react/App.js";
 import { Screen } from "../src/ui/react/Screen.js";
 import { boardOf, hereOf, commandsOf, rackOfHull } from "../src/ui/react/model.js";
 import { linesOf, reveal } from "../src/ui/react/reveal.js";
-import { loadDeckIndex } from "../src/ui/react/deckindex.js";
+import { applyDeckIndex, loadDeckIndex } from "../src/ui/react/deckindex.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { doorWays } from "../src/ui/doorlist.js";
@@ -847,5 +847,62 @@ describe("the deck art arrives after the board has already drawn", () => {
     });
     host.remove();
     globalThis.fetch = real;
+  });
+});
+
+describe("the deck is drawn where it can actually be seen", () => {
+  beforeAll(stillFrames);
+
+  it("is never painted over by the layers that come after it", () => {
+    /* Three times now something has been correct in the DOM and invisible on
+       the screen. A property ring repaints the middle of its cell to draw its
+       own dashes, so a deck painted at the cell's own inset was covered by
+       every compartment that had one — and a test that only asked "is there an
+       img" passed the whole time. This asks the harder question: is anything
+       opaque painted after it, inside it. */
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    /* Said directly rather than fetched, so this test stands on its own and
+       not on whichever other test happened to warm the cache first. */
+    applyDeckIndex(
+      JSON.parse(
+        readFileSync(join(import.meta.dirname, "..", "public", "deck", "deck.json"), "utf8"),
+      ) as Parameters<typeof applyDeckIndex>[0],
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<Screen game={game} />);
+    });
+
+    const imgs = Array.from(host.querySelectorAll("img"));
+    expect(imgs.length).toBeGreaterThan(0);
+    for (const img of imgs) {
+      const tile = img.closest("div")?.parentElement;
+      expect(tile).not.toBeNull();
+      const wrapper = img.parentElement as HTMLElement;
+      for (const sib of Array.from(tile?.children ?? [])) {
+        if (sib === wrapper || !sib.contains(img) === false) continue;
+        const style = sib.getAttribute("style") ?? "";
+        /* A later sibling that fills its whole box with a solid colour would
+           bury the deck. The scanlines are the one exception: they are meant
+           to lie over it, and they are a transparent gradient. */
+        const covers =
+          style.includes("clip-path") &&
+          style.includes("background") &&
+          !style.includes("sv-scan") &&
+          !style.includes("repeating-linear") &&
+          !style.includes("transparent");
+        if (!covers) continue;
+        const after = wrapper.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING;
+        expect(after, `a solid layer is painted after the deck: ${style.slice(0, 80)}`).toBe(0);
+      }
+    }
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
   });
 });

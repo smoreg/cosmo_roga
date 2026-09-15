@@ -488,6 +488,11 @@ function HexTile({
   const loot = s.shows ? group(room.things.filter((t) => t.hostile !== true)) : [];
   const foes = s.shows ? group(room.things.filter((t) => t.hostile === true)) : [];
   const base = s.strong === true || hot ? 2.5 : 1.5;
+  /* Inside the innermost edge there is. A property ring repaints the middle of
+     the cell to draw its own dashes, so a deck painted at `base` was covered by
+     any compartment that had one — which was every compartment the drone could
+     see in the screenshot that started this. */
+  const deckInset = ring === undefined ? base : base + 9;
   /* The band is the hex's full inset width, so the budget is the assembled
      line against the band rather than each word against a guess. */
   const chars = Math.floor((size - 8) / 8.4);
@@ -653,44 +658,6 @@ function HexTile({
       )}
       <div style={{ position: "absolute", inset: base, clipPath: HEX, background: fill }} />
 
-      {/* The deck itself, under everything the board says about it.
-
-          Scaled past its own bleed — the file is a hundred and twenty feet of
-          picture around a hundred feet of deck, and drawing the whole of it
-          leaves a tenth of the hexagon empty all the way round, which is what
-          made the first version of this look like coasters rather than a ship.
-          `scaleX(-1)` on the far side of the keel, so the two halves mirror.
-          Held well back in opacity: this is the floor, and a floor that
-          competes with what is standing on it is a floor nobody reads past. */}
-      {s.shows && room.deck?.id !== undefined ? (
-        <div
-          style={{
-            position: "absolute",
-            inset: base,
-            clipPath: HEX,
-            overflow: "hidden",
-            pointerEvents: "none",
-          }}
-        >
-          <img
-            src={tileUrl(room.deck.id)}
-            alt=""
-            draggable={false}
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              width: `${String(DECK_SCALE * 100)}%`,
-              height: `${String(DECK_SCALE * 100)}%`,
-              transform: `translate(-50%,-50%)${room.deck.flipped ? " scaleX(-1)" : ""}`,
-              opacity: room.knows === "current" ? 0.5 : 0.34,
-              filter: "grayscale(1) contrast(1.15)",
-              mixBlendMode: "luminosity",
-            }}
-          />
-        </div>
-      ) : null}
-
       <div style={{ position: "absolute", inset: base, clipPath: HEX, background: "var(--sv-scan)" }} />
       {ring === undefined ? null : (
         <>
@@ -708,6 +675,44 @@ function HexTile({
           />
         </>
       )}
+
+      {/* The deck itself, under everything the board says about it.
+
+          Scaled past its own bleed — the file is a hundred and twenty feet of
+          picture around a hundred feet of deck, and drawing the whole of it
+          leaves a tenth of the hexagon empty all the way round, which is what
+          made the first version of this look like coasters rather than a ship.
+          `scaleX(-1)` on the far side of the keel, so the two halves mirror.
+          Held well back in opacity: this is the floor, and a floor that
+          competes with what is standing on it is a floor nobody reads past. */}
+      {s.shows && room.deck?.id !== undefined ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: deckInset,
+            clipPath: HEX,
+            overflow: "hidden",
+            pointerEvents: "none",
+          }}
+        >
+          <img
+            src={tileUrl(room.deck.id)}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: `${String(DECK_SCALE * 100)}%`,
+              height: `${String(DECK_SCALE * 100)}%`,
+              transform: `translate(-50%,-50%)${room.deck.flipped ? " scaleX(-1)" : ""}`,
+              opacity: room.knows === "current" ? 0.42 : 0.3,
+              filter: "grayscale(1) contrast(1.2) brightness(1.1)",
+            }}
+          />
+        </div>
+      ) : null}
+
 
       <div
         style={{
