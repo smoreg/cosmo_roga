@@ -453,7 +453,14 @@ describe("the panel says why the drone is here and what it stands to lose", () =
     const { host, unmount } = mount(<Screen game={game} />);
     expect(text(host)).toContain(goal.hull);
     expect(text(host)).toContain("goal");
-    expect(text(host)).toContain(String(goal.worth));
+    /* What was signed, not what a voyage is generally for. The line used to
+       say the hull's sale price whatever the contract was, so a run carrying a
+       RETRIEVE read "neutralize · 220 cr" and went looking for three systems. */
+    for (const c of goal.contracts) {
+      expect(text(host), c.name).toContain(c.name);
+      expect(text(host), c.text).toContain(c.text);
+      expect(text(host)).toContain(String(c.payout));
+    }
     expect(text(host)).toContain("held");
     expect(text(host)).toContain("banked");
     unmount();

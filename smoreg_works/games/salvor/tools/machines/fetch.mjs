@@ -85,6 +85,7 @@ const FIXED = [
   { id: "crate", author: "delapouite", slug: "wooden-crate" },
   { id: "system", author: "delapouite", slug: "server-rack" },
   { id: "body", author: "lorc", slug: "pirate-grave" },
+  { id: "cog", author: "lorc", slug: "cog" },
 ];
 
 /** The mark on the tab. */
@@ -194,6 +195,9 @@ export const SYSTEM_ICON = ${JSON.stringify(fixed.system.d)};
 
 /** Somebody who came out here to do this job. */
 export const BODY_ICON = ${JSON.stringify(fixed.body.d)};
+
+/** Settings, on the rail. */
+export const COG_ICON = ${JSON.stringify(fixed.cog.d)};
 `,
 );
 console.log(`\n→ src/ui/react/board/machines.ts`);

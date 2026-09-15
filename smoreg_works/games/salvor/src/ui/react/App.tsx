@@ -33,6 +33,9 @@ export function App({ seed }: { seed: number }): ReactElement {
   const [page, setPage] = useState<MenuPage>("root");
   const [game, setGame] = useState<SalvorGame | null>(null);
   const [running, setRunning] = useState(false);
+  /* Muting is not a volume of zero: it silences without forgetting where the
+     slider was, so unmuting puts it back rather than at nothing. */
+  const [muted, setMuted] = useState(false);
   const [settings, setSettings] = useState<MenuSettings>(() => ({
     volume: storedVolume(),
     motion: storedMotion(),
@@ -58,9 +61,14 @@ export function App({ seed }: { seed: number }): ReactElement {
   useEffect(
     function score() {
       if (!started) return;
-      music.play(running && game !== null ? missionTrackFor(String(game.seed)) : MENU_MUSIC);
+      /* The track follows the *run*, not the screen. Opening the menu mid-run
+         used to start the menu music over the top of it, which is the game
+         announcing that you have left when you have only paused: the drone is
+         where you left it and so is the score. It changes when a voyage starts
+         and when one ends, and at no other time. */
+      music.play(game === null ? MENU_MUSIC : missionTrackFor(String(game.seed)));
     },
-    [started, running, game],
+    [started, game],
   );
 
   if (!started) return <Splash onStart={() => setStarted(true)} />;
@@ -69,6 +77,13 @@ export function App({ seed }: { seed: number }): ReactElement {
     return (
       <Screen
         game={game}
+        muted={muted}
+        settings={settings}
+        onMute={(next) => {
+          setMuted(next);
+          music.setVolume(next ? 0 : settings.volume);
+        }}
+        onSettings={change}
         onMenu={() => setRunning(false)}
         onNewVoyage={() => {
           setGame(null);

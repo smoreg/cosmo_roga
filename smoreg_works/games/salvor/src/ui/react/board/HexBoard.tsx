@@ -149,6 +149,16 @@ export interface BoardRoom {
   things: readonly BoardThing[];
   props: readonly string[];
   /**
+   * The compartment a signed contract points at.
+   *
+   * Drawn before it is known and named as little as the drone knows: a job
+   * that says "the med bay" and a board that will not say which hexagon that
+   * is leaves a player walking the ship reading labels. What the ring does
+   * *not* do is tell them what is in it — the cell keeps whatever knowledge
+   * state it had, so marking the goal is not scanning it.
+   */
+  goal?: true;
+  /**
    * The deck this compartment wears, where the build has art for it.
    *
    * `flipped` is the far side of the keel: the same section, seen from the
@@ -617,6 +627,14 @@ function HexTile({
           opacity: room.knows === "undetected" ? 0.55 : 1,
         }}
       />
+      {/* The contract's own compartment, ringed before it is found. Its own
+          colour, because amber is the drone and red is a threat and this is
+          neither: it is the reason the drone is aboard. */}
+      {room.goal === true ? (
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 4 }}>
+          <HexRing stroke="var(--sv-good)" width={3} dash="9 7" />
+        </div>
+      ) : null}
       {room.knows === "wrecked" ? (
         <>
           {/* A rim that is there and does not close: the hull line survives,

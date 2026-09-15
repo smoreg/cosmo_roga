@@ -339,7 +339,10 @@ export function MenuSheet({
 
 export interface RailItem {
   id: string;
-  glyph: string;
+  /** A letter, where the key is a letter. */
+  glyph?: string;
+  /** Or a drawing, where it is one. Path data in a 512 box, like the machines. */
+  path?: string;
   title: string;
 }
 
@@ -389,7 +392,13 @@ export function Rail({
             font: "var(--sv-stencil)",
           }}
         >
-          {it.glyph}
+          {it.path === undefined ? (
+            it.glyph
+          ) : (
+            <svg viewBox="0 0 512 512" width={19} height={19} aria-hidden style={{ display: "block" }}>
+              <path d={it.path} fill="currentColor" />
+            </svg>
+          )}
         </div>
       ))}
     </div>

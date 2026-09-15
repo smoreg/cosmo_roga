@@ -10,7 +10,8 @@ import { alertState } from "../../systems/alert.js";
 import { shipState } from "../../systems/shipstate.js";
 import { systemsAboard } from "../../systems/ship.js";
 import { keysHeld } from "../../systems/doors.js";
-import { currentDerelict, voyageOf } from "../../systems/voyage.js";
+import { charterTag, currentDerelict, derelictAboard, voyageOf } from "../../systems/voyage.js";
+import { zoneName } from "../../content/zones.js";
 import { derelictName } from "../../content/derelicts.js";
 import { tugCallsign } from "../../content/hints.js";
 import { HULLS, hullName, hullTrait } from "../../content/hulls.js";
@@ -271,6 +272,15 @@ export function boardOf(game: RoomGame): BoardModel {
       props: [],
     });
   }
+
+  /* What the run came for, ringed. Only where a contract names a compartment:
+     START 3 and SALVAGE are about the whole hull and would ring everything. */
+  const wanted = new Set(
+    contractsOf(game)
+      .filter((c) => !c.done && c.room?.id !== undefined)
+      .map((c) => c.room?.id),
+  );
+  for (const room of rooms) if (wanted.has(room.id)) room.goal = true;
 
   const placed = new Set(rooms.map((r) => r.id));
   const doors: BoardDoor[] = ship.doors
@@ -679,6 +689,18 @@ export function commandsOf(game: RoomGame): Offer[] {
 
 // ------------------------------------------------------------------ the goal
 
+/** One signed job, as the panel says it. */
+export interface Contract {
+  /** `RETRIEVE`, `UPLOAD`, `START 3`, `SALVAGE` — the job's own name. */
+  name: string;
+  /** What it asks for, in a sentence. */
+  text: string;
+  done: boolean;
+  /** Where it asks for it, where it asks somewhere in particular. */
+  room?: { kind: string; name: string; id?: RoomId };
+  payout: number;
+}
+
 export interface GoalModel {
   /** The hull being worked, and which sortie of the voyage this is. */
   hull: string;
@@ -693,6 +715,15 @@ export interface GoalModel {
   keys: number;
   held: number;
   banked: number;
+  /**
+   * What was actually signed for this hull.
+   *
+   * The panel said "goal · neutralize · 150 cr" whatever the contract was,
+   * which is the *kind* of thing a voyage is for and not the thing this one
+   * is: a run carrying a RETRIEVE reads that line and goes looking for three
+   * systems. The contracts are on the voyage and always have been.
+   */
+  contracts: Contract[];
 }
 
 /**
@@ -721,7 +752,38 @@ export function goalOf(game: RoomGame): GoalModel {
     keys: keysHeld(game.player),
     held: voyage.loot,
     banked: voyage.credits,
+    contracts: contractsOf(game),
   };
+}
+
+/**
+ * The jobs signed against the hull the drone is on.
+ *
+ * Where one names a compartment, the compartment is found and carried with it:
+ * a contract that says "the med bay" and a board that will not say which
+ * hexagon that is leaves the player to walk the ship reading labels. The room
+ * is named by *kind*, and a hull has one of each, so this is a lookup and not
+ * a guess.
+ */
+function contractsOf(game: RoomGame): Contract[] {
+  const voyage = voyageOf(game);
+  const state = derelictAboard(game) ?? currentDerelict(game);
+  return voyage.charters.map((charter): Contract => {
+    const done = voyage.paid.includes(charter.id);
+    const kind = charter.target?.kind;
+    const base: Contract = {
+      name: charterTag(charter),
+      text: charter.text,
+      done,
+      payout: charter.id === "neutralize" ? state.spec.salePrice : charter.payout,
+    };
+    if (kind === undefined) return base;
+    const room = game.ship.rooms.find((r) => r.kind === kind);
+    return {
+      ...base,
+      room: { kind, name: zoneName(kind), ...(room === undefined ? {} : { id: room.id }) },
+    };
+  });
 }
 
 /**

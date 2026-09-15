@@ -12,12 +12,19 @@ import { doorWays } from "../doorlist.js";
 import { deckVersion, loadDeckIndex, watchDeck } from "./deckindex.js";
 import { CodexCardView, EndingCard } from "./screens/Cards.js";
 import { DroneIcon, ThingIcon } from "./board/Icon.js";
+import { COG_ICON } from "./board/machines.js";
+import { AboutSheet, SettingsSheet, type MenuSettings } from "./screens/Menu.js";
+import { DEFAULT_MOTION, DEFAULT_VOLUME } from "./settings.js";
 import { DockPreview, TugOrders } from "./screens/Tug.js";
 import { roomActions } from "../actions.js";
+import { isStop, makeTraveller } from "../auto.js";
 import { codexQueue, readCodex } from "../../systems/codex.js";
 
 /** The cards that can stand over the run. One at a time, and never a turn. */
 type Card = "none" | "codex" | "ending";
+
+/** What the rail can put over the run: two sheets, both dismissed by a click away. */
+type Sheet = "none" | "about" | "settings";
 
 /**
  * The screen, and the only thing that talks to the game.
@@ -29,10 +36,20 @@ type Card = "none" | "codex" | "ending";
  */
 export function Screen({
   game,
+  muted = false,
+  settings = { volume: DEFAULT_VOLUME, motion: DEFAULT_MOTION },
+  onMute,
+  onSettings,
   onMenu,
   onNewVoyage,
 }: {
   game: RoomGame;
+  muted?: boolean;
+  /* Defaulted, so the board can be rendered on its own — by a test, or by any
+     future screen that wants one without the whole shell around it. */
+  settings?: MenuSettings;
+  onMute?: (muted: boolean) => void;
+  onSettings?: (next: MenuSettings) => void;
   /** Out to the menu, which is this same chrome with the drawer open. */
   onMenu?: () => void;
   onNewVoyage?: () => void;
@@ -42,6 +59,7 @@ export function Screen({
   const [card, setCard] = useState<Card>("none");
   const [page, setPage] = useState(0);
   const [queue, setQueue] = useState<string[]>([]);
+  const [sheet, setSheet] = useState<Sheet>("none");
   /** Which group of the tug's list is open. `null` is the top of it. */
   const [level, setLevel] = useState<string | null>(null);
   /* Which drone the dock is pointing the rack at. Null is the one on the
@@ -161,13 +179,33 @@ export function Screen({
   const here = board.rooms.find((r) => r.id === board.drone);
 
   /** Walk it. The board has already played the hops; this spends the turns. */
-  const walk = (_to: RoomId, path: readonly number[]): void => {
-    for (const step of path) {
-      const door = game.ship
-        .doorsOf(game.player.room as RoomId)
-        .find((d) => game.ship.other(d, game.player.room as RoomId) === step);
-      if (door === undefined) break;
-      game.playerCommand({ kind: "go", door: door.id });
+  /**
+   * Walk it, the engine's way.
+   *
+   * This used to be a loop over the path, spending a `go` per step until it ran
+   * out. That is not a walk, it is a teleport with extra turns: the drone went
+   * through a compartment with a machine standing in it, through a hazard it
+   * had been told about, and through a blow that landed on the way, and only
+   * stopped when the list did.
+   *
+   * `makeTraveller` is the rule and has been all along. It hands back a command
+   * or a reason to stop — something in the room, something on the door,
+   * something that just happened to the drone — and a reason to stop is where
+   * the walk ends and the player takes over. The line it gives is said, because
+   * a walk that halts without saying why reads as a refusal.
+   */
+  const walk = (to: RoomId): void => {
+    const traveller = makeTraveller(to);
+    /* Bounded, because a traveller that is asked for one more step forever is
+       a page that stops answering. No hull has this many compartments. */
+    for (let step = 0; step < 200; step++) {
+      const next = traveller.step(game);
+      if (isStop(next)) {
+        if (next.stop !== "") game.log.add(next.stop, game.schedule.time, "warn");
+        break;
+      }
+      if (!game.playerCommand(next.cmd).ok) break;
+      if (game.status !== "playing") break;
     }
     again();
   };
@@ -207,17 +245,32 @@ export function Screen({
         userSelect: "none",
       }}
     >
-      {/* One key. Everything that used to be behind the other two is in the
-          menu now, and the menu is this same chrome with its drawer open. */}
+      {/* Four keys. The first leaves — the menu is this same chrome with its
+          drawer open, so going to it is going out rather than opening a third
+          thing over the run. The other three answer where they stand: two open
+          a sheet, and the sound is a toggle, because it is the one setting
+          somebody reaches for mid-turn and a menu-page-row is three presses
+          for a thing that is one. */}
       <Rail
         style={{ gridColumn: 1, gridRow: 1, zIndex: 90 }}
+        active={sheet === "none" ? undefined : sheet}
         onSelect={(id) => {
-          /* One key, and it leaves. The menu is this chrome with its drawer
-             open, so going to it is going out rather than opening something
-             over the top of the run. */
-          if (id === "sys") onMenu?.();
+          if (id === "sys") {
+            onMenu?.();
+            return;
+          }
+          if (id === "sound") {
+            onMute?.(!muted);
+            return;
+          }
+          setSheet(sheet === id ? "none" : (id as Sheet));
         }}
-        items={[{ id: "sys", glyph: "≡", title: "menu" }]}
+        items={[
+          { id: "sys", glyph: "≡", title: "menu" },
+          { id: "about", glyph: "i", title: "about" },
+          { id: "settings", path: COG_ICON, title: "settings" },
+          { id: "sound", glyph: muted ? "◁" : "◀", title: muted ? "sound off" : "sound on" },
+        ]}
       />
 
       <div
@@ -245,7 +298,7 @@ export function Screen({
             doors={board.doors}
             drone={board.drone}
             route={route}
-            onWalk={walk}
+            onWalk={(to) => walk(to)}
             onAct={act}
             onDoorAct={doorAct}
             who={who}
@@ -264,29 +317,53 @@ export function Screen({
           width={300}
           style={{ position: "absolute", left: 14, top: 14, zIndex: 5 }}
         >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <span
-              style={{
-                font: "var(--sv-stencil)",
-                letterSpacing: "var(--sv-stencil-track)",
-                textTransform: "uppercase",
-                color: "var(--sv-amber)",
-              }}
-            >
-              goal
-            </span>
-            <span style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>{goal.goal}</span>
-            <span
-              style={{
-                marginLeft: "auto",
-                font: "var(--sv-display)",
-                fontSize: 22,
-                letterSpacing: "var(--sv-display-track)",
-                color: "var(--sv-amber-hi)",
-              }}
-            >
-              {goal.worth} <span style={{ color: "var(--sv-soft)" }}>cr</span>
-            </span>
+          {/* What was signed, rather than what a voyage is generally for. The
+              line used to say "neutralize" whatever the contract was, so a run
+              carrying a RETRIEVE read it and went looking for three systems. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {(goal.contracts.length === 0
+              ? [{ name: goal.goal, text: "", done: false, payout: goal.worth }]
+              : goal.contracts
+            ).map((c) => (
+              <div key={c.name} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+                  <span
+                    style={{
+                      font: "var(--sv-stencil)",
+                      letterSpacing: "var(--sv-stencil-track)",
+                      textTransform: "uppercase",
+                      color: c.done ? "var(--sv-good)" : "var(--sv-amber)",
+                    }}
+                  >
+                    {c.done ? "done" : "goal"}
+                  </span>
+                  <span
+                    style={{
+                      font: "var(--sv-title)",
+                      letterSpacing: "var(--sv-title-track)",
+                      textTransform: "uppercase",
+                      color: "var(--sv-ink)",
+                    }}
+                  >
+                    {c.name}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      font: "var(--sv-display)",
+                      fontSize: 20,
+                      letterSpacing: "var(--sv-display-track)",
+                      color: "var(--sv-amber-hi)",
+                    }}
+                  >
+                    {c.payout} <span style={{ color: "var(--sv-soft)" }}>cr</span>
+                  </span>
+                </div>
+                {c.text === "" ? null : (
+                  <div style={{ font: "var(--sv-body)", color: "var(--sv-fg)" }}>{c.text}</div>
+                )}
+              </div>
+            ))}
           </div>
 
           <div
@@ -314,7 +391,37 @@ export function Screen({
         </Panel>
         )}
 
-        {card === "none" ? null : (
+        {/* A sheet is dismissed by a click anywhere that is not the sheet. On the
+          main menu there is nowhere else — the menu *is* the screen — so only
+          here does the scrim take a click. */}
+      {sheet === "none" ? null : (
+        <div
+          onClick={() => setSheet("none")}
+          style={{
+            gridColumn: "2 / -1",
+            gridRow: 1,
+            position: "relative",
+            zIndex: 50,
+            background: "color-mix(in oklab, var(--sv-deep) 66%, transparent)",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: "absolute", left: 0, top: 0, bottom: 0, display: "flex" }}
+          >
+            {sheet === "about" ? <AboutSheet onClose={() => setSheet("none")} /> : null}
+            {sheet === "settings" ? (
+              <SettingsSheet
+                settings={settings}
+                onSettings={onSettings ?? (() => undefined)}
+                onClose={() => setSheet("none")}
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {card === "none" ? null : (
           <Cards
             card={card}
             game={game}

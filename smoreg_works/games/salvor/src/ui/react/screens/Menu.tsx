@@ -191,39 +191,8 @@ export function Menu({
           ) : null}
 
           {page === "settings" ? (
-            <MenuSheet title="Settings" width={380} onBack={() => onPage("root")}>
-              <Line label="volume">
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round(settings.volume * 100)}
-                    onChange={(e) => onSettings({ ...settings, volume: Number(e.target.value) / 100 })}
-                    style={{ flex: 1, accentColor: "var(--sv-amber)" }}
-                  />
-                  <span style={{ width: 44, textAlign: "right", ...STENCIL, color: "var(--sv-ink)" }}>
-                    {Math.round(settings.volume * 100)}
-                  </span>
-                </div>
-              </Line>
-
-              <Line label="motion">
-                <Pick
-                  value={settings.motion}
-                  of={["instant", "faster", "normal"] as const}
-                  onPick={(motion) => onSettings({ ...settings, motion })}
-                />
-              </Line>
-
-              <div style={{ ...STENCIL, color: "var(--sv-line)" }}>
-                {FRAME_MS[settings.motion] === 0
-                  ? "no frames"
-                  : `${String(FRAME_MS[settings.motion])}ms a frame`}
-              </div>
-            </MenuSheet>
+            <SettingsSheet settings={settings} onSettings={onSettings} onBack={() => onPage("root")} />
           ) : null}
-
           {page === "credits" ? (
             <MenuSheet title="Credits" width={400} onBack={() => onPage("root")}>
               <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
@@ -264,20 +233,7 @@ export function Menu({
             </MenuSheet>
           ) : null}
 
-          {page === "about" ? (
-            <MenuSheet title="About" width={400} onBack={() => onPage("root")}>
-              <div data-sc style={{ font: "var(--sv-body)", color: "var(--sv-fg)" }}>
-                A turn-based salvage game. One drone into a hulk, three systems
-                started, and back out with whatever it was carrying.
-              </div>
-              <div
-                data-sc
-                style={{ marginTop: 12, font: "var(--sv-body)", color: "var(--sv-soft)" }}
-              >
-                Made for roguetemple&apos;s Fortnight 2.
-              </div>
-            </MenuSheet>
-          ) : null}
+          {page === "about" ? <AboutSheet onBack={() => onPage("root")} /> : null}
         </div>
       </div>
 
@@ -286,5 +242,81 @@ export function Menu({
           have nothing to say are still where a player will later find them. */}
       <LogStrip entries={log} style={{ gridColumn: "1 / -1", gridRow: 2, zIndex: 100 }} />
     </div>
+  );
+}
+
+/**
+ * Settings, wherever they are opened from.
+ *
+ * The menu opens them as a page of itself and the rail opens them over a run,
+ * and they are the same sheet both times: a setting that looked different
+ * depending on where you reached it would be two settings to keep in step.
+ * `onBack` is the menu's way out and `onClose` is the rail's — a page goes
+ * back to the page above it, a sheet over a run simply goes.
+ */
+export function SettingsSheet({
+  settings,
+  onSettings,
+  onBack,
+  onClose,
+}: {
+  settings: MenuSettings;
+  onSettings: (next: MenuSettings) => void;
+  onBack?: () => void;
+  onClose?: () => void;
+}): ReactElement {
+  return (
+    <MenuSheet title="Settings" width={380} onBack={onBack} onClose={onClose}>
+      <Line label="volume">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(settings.volume * 100)}
+            onChange={(e) => onSettings({ ...settings, volume: Number(e.target.value) / 100 })}
+            style={{ flex: 1, accentColor: "var(--sv-amber)" }}
+          />
+          <span style={{ width: 44, textAlign: "right", ...STENCIL, color: "var(--sv-ink)" }}>
+            {Math.round(settings.volume * 100)}
+          </span>
+        </div>
+      </Line>
+
+      <Line label="motion">
+        <Pick
+          value={settings.motion}
+          of={["instant", "faster", "normal"] as const}
+          onPick={(motion) => onSettings({ ...settings, motion })}
+        />
+      </Line>
+
+      <div style={{ ...STENCIL, color: "var(--sv-line)" }}>
+        {FRAME_MS[settings.motion] === 0
+          ? "no frames"
+          : `${String(FRAME_MS[settings.motion])}ms a frame`}
+      </div>
+    </MenuSheet>
+  );
+}
+
+/** What the game is, in two sentences. The same sheet from the menu or the rail. */
+export function AboutSheet({
+  onBack,
+  onClose,
+}: {
+  onBack?: () => void;
+  onClose?: () => void;
+}): ReactElement {
+  return (
+    <MenuSheet title="About" width={400} onBack={onBack} onClose={onClose}>
+      <div data-sc style={{ font: "var(--sv-body)", color: "var(--sv-fg)" }}>
+        A turn-based salvage game. One drone into a hulk, three systems started,
+        and back out with whatever it was carrying.
+      </div>
+      <div data-sc style={{ marginTop: 12, font: "var(--sv-body)", color: "var(--sv-soft)" }}>
+        Made for roguetemple&apos;s Fortnight 2.
+      </div>
+    </MenuSheet>
   );
 }
