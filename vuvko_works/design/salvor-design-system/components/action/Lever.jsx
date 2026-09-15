@@ -59,6 +59,7 @@ export function LogStrip({entries=[],expanded=false,onToggle,height=30,style}){
   const last=entries[0]||{tag:"",text:""};
   const ink=(t)=>t==="bad"?"color-mix(in oklab, var(--sv-bad) 30%, var(--sv-ink))":t==="warn"?"var(--sv-warn)":"var(--sv-fg)";
   const recordRef=React.useRef(null);
+  const tickerRef=React.useRef(null);
   /* The record was already written, so it resolves all at once rather than
      line by line — a log you have to wait through is a log you stop opening. */
   React.useEffect(()=>{
@@ -68,6 +69,15 @@ export function LogStrip({entries=[],expanded=false,onToggle,height=30,style}){
     const h=FX.scrambleReveal(recordRef.current.querySelectorAll("[data-sc]"),FX.PRESETS.all||{stagger:0,ticks:3,tickMs:95});
     return ()=>h.cancel();
   },[expanded]);
+
+  /* A line the machine has just written resolves as it arrives — this is the
+     one log animation that is about news rather than about reading. */
+  React.useEffect(()=>{
+    const FX=typeof window!=="undefined"?(window.FX||window.DerelictFX):null;
+    if(!FX||!tickerRef.current) return;
+    const h=FX.scrambleReveal(tickerRef.current.querySelectorAll("[data-sc]"),FX.PRESETS.hover);
+    return ()=>h.cancel();
+  },[last.text,last.tag]);
   return (
     <div style={{position:"relative",background:"var(--sv-plate)",borderTop:"1px solid var(--sv-line)",fontFamily:"var(--sv-font-mono)",...style}}>
       {expanded?(
@@ -83,9 +93,9 @@ export function LogStrip({entries=[],expanded=false,onToggle,height=30,style}){
       ):null}
       <div onClick={onToggle} style={{height,display:"flex",alignItems:"center",cursor:onToggle?"pointer":"default"}}>
         <div style={{alignSelf:"stretch",display:"flex",alignItems:"center",padding:"0 12px",background:"var(--sv-amber)",clipPath:"polygon(0 0,100% 0,100% 100%,6px 100%,0 calc(100% - 6px))",font:"var(--sv-stencil)",fontSize:14,letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-knock)"}}>log</div>
-        <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:12,padding:"0 14px"}}>
-          <div style={{flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".12em",textTransform:"uppercase",color:"var(--sv-amber)"}}>{last.tag}</div>
-          <div style={{font:"var(--sv-body)",color:"var(--sv-fg)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{last.text}</div>
+        <div ref={tickerRef} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:12,padding:"0 14px"}}>
+          <div data-sc style={{flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".12em",textTransform:"uppercase",color:"var(--sv-amber)"}}>{last.tag}</div>
+          <div data-sc style={{font:"var(--sv-body)",color:"var(--sv-fg)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{last.text}</div>
           <div style={{marginLeft:"auto",flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".12em",textTransform:"uppercase",color:"var(--sv-soft)"}}>{expanded?"close":entries.length+" kept"}</div>
         </div>
       </div>

@@ -2,7 +2,21 @@
 
 Pulled from the Claude Design project **SALVOR — Screens as Built**
 (`2b77ba4c-f54c-445d-a245-0224024bee1a`) on 2026-09-15, twice: the system
-itself at 05:25 and a second pass at 05:46.
+itself at 05:25, a second pass at 05:46 and a third at 05:49.
+
+## The third pull
+
+One change, in `LogStrip`. The collapsed ticker now descrambles when a new
+line arrives, keyed on the line itself rather than on any open/close state, at
+the `hover` preset. The note in the source draws the distinction it turns on:
+this is the one log animation that is about **news** rather than about
+reading — the expanded record still resolves all at once, because a record was
+already written and a log you have to wait through is a log you stop opening.
+
+The manifest was byte-identical across this pull, so no component appeared,
+moved or changed its exports. Content changes in files this repo does not
+track — the screens, the cards, the template — would not show up in that
+comparison and have not been checked.
 
 ## The second pull
 
