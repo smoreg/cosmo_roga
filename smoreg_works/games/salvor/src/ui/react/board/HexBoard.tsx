@@ -87,6 +87,16 @@ export interface BoardThing {
   /** What that costs, in the engine's own words: "8 cr", "2 turns", "loud". */
   note?: string;
   threat?: number;
+  /**
+   * A job already begun on this thing: turns spent out of turns it takes.
+   *
+   * The engine keeps what is *left* — it is what the bots read to know a job
+   * moved at all — and this is the same number turned round, because a player
+   * wants to know how far in they are. Without it, stepping away for a turn
+   * and coming back shows a line reading exactly as it did before they
+   * started, and they start again.
+   */
+  work?: { done: number; of: number };
 }
 
 export interface BoardRoom {
@@ -311,6 +321,23 @@ function Readout({ chip }: { chip: Chip }): ReactElement {
       ) : t.note === undefined ? null : (
         <span data-sc style={{ font: "var(--sv-body)", color: "var(--sv-soft)" }}>
           {t.note}
+        </span>
+      )}
+      {t.work === undefined ? null : (
+        /* A job begun, counted the way a player counts it: turns spent out of
+           turns it takes. Beside the verb, because it is the same decision —
+           press again and this number goes up by one. */
+        <span style={{ display: "flex", gap: 2 }}>
+          {Array.from({ length: t.work.of }, (_, i) => (
+            <span
+              key={i}
+              style={{
+                width: 6,
+                height: 12,
+                background: i < t.work!.done ? "var(--sv-good)" : "var(--sv-plate-lit)",
+              }}
+            />
+          ))}
         </span>
       )}
       {t.verb === undefined ? (

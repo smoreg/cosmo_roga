@@ -11,6 +11,7 @@ import {
   boardOf,
   codexOf,
   commandsOf,
+  goalOf,
   hereOf,
   endingOf,
   helpOf,
@@ -191,6 +192,7 @@ export function Screen({
   const board = useMemo(() => boardOf(game), [game, turn]);
   const things = useMemo(() => hereOf(game), [game, turn]);
   const commands = useMemo(() => commandsOf(game), [game, turn]);
+  const goal = useMemo(() => goalOf(game), [game, turn]);
   /**
    * The rack shows the drone that exists, unless the dock is pointing it at
    * one that does not yet. A preview says so by being a preview: nothing has
@@ -316,36 +318,63 @@ export function Screen({
           />
         )}
 
+        {/* Who you are and what you came for, mounted to the map's top-left —
+            the arrangement the design draws. What the hull is worth is a fact
+            about the whole voyage; what the drone is carrying is a fact about
+            the next mistake, since loot dies with it and banked credits do
+            not. That pair is the decision "one more compartment, or home". */}
         {home ? null : (
         <Panel
-          title={game.ship.rooms.length > 0 ? "Derelict" : "Hull"}
-          stencil={`turn ${String(game.schedule.time)}`}
+          title={goal.hull}
+          stencil={`sortie ${String(goal.sortie)}`}
           width={300}
           style={{ position: "absolute", left: 14, top: 14, zIndex: 5 }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            <AlertDial value={alertOf(game)} max={5} label="alert" size={66} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <div
-                style={{
-                  font: "var(--sv-stencil)",
-                  letterSpacing: "var(--sv-stencil-track)",
-                  textTransform: "uppercase",
-                  color: "var(--sv-soft)",
-                }}
-              >
-                compartments
-              </div>
-              <div
-                style={{
-                  font: "var(--sv-display)",
-                  fontSize: 34,
-                  letterSpacing: "var(--sv-display-track)",
-                  color: "var(--sv-ink)",
-                }}
-              >
-                {board.rooms.length}
-              </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span
+              style={{
+                font: "var(--sv-stencil)",
+                letterSpacing: "var(--sv-stencil-track)",
+                textTransform: "uppercase",
+                color: "var(--sv-amber)",
+              }}
+            >
+              goal
+            </span>
+            <span style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>{goal.goal}</span>
+            <span
+              style={{
+                marginLeft: "auto",
+                font: "var(--sv-display)",
+                fontSize: 22,
+                letterSpacing: "var(--sv-display-track)",
+                color: "var(--sv-amber-hi)",
+              }}
+            >
+              {goal.worth} <span style={{ color: "var(--sv-soft)" }}>cr</span>
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 18,
+              marginTop: 9,
+              paddingTop: 9,
+              borderTop: "1px solid var(--sv-line)",
+            }}
+          >
+            <AlertDial value={alertOf(game)} max={5} label="alert" size={58} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+              <Stat label="systems" value={`${String(goal.online)}/${String(goal.of)}`} />
+              <Stat label="keys" value={String(goal.keys)} />
+              <Stat
+                label="held"
+                value={`${String(goal.held)} cr`}
+                tone={goal.held > 0 ? "var(--sv-amber-hi)" : undefined}
+              />
+              <Stat label="banked" value={`${String(goal.banked)} cr`} />
             </div>
           </div>
         </Panel>
@@ -541,6 +570,18 @@ function Manifest({
               {thing.glyph}
             </span>
             <span style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>{thing.name}</span>
+            {thing.work === undefined ? null : (
+              <span
+                style={{
+                  font: "var(--sv-stencil)",
+                  letterSpacing: "var(--sv-stencil-track)",
+                  textTransform: "uppercase",
+                  color: "var(--sv-good)",
+                }}
+              >
+                {thing.work.done}/{thing.work.of}
+              </span>
+            )}
             <span
               style={{
                 marginLeft: "auto",
@@ -870,5 +911,33 @@ function Controls({
         )}
       </div>
     </MenuSheet>
+  );
+}
+
+/** One line of the goal panel: a name and the number that answers it. */
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}): ReactElement {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+      <span
+        style={{
+          flex: 1,
+          font: "var(--sv-stencil)",
+          letterSpacing: "var(--sv-stencil-track)",
+          textTransform: "uppercase",
+          color: "var(--sv-soft)",
+        }}
+      >
+        {label}
+      </span>
+      <span style={{ font: "var(--sv-body)", color: tone ?? "var(--sv-ink)" }}>{value}</span>
+    </div>
   );
 }

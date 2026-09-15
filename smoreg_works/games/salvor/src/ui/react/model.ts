@@ -7,11 +7,14 @@ import { doorWays } from "../doorlist.js";
 import { hostilesIn, rigOf, wrecksOn } from "../../twist/rig.js";
 import { BUCKET_GLYPH, CONTENT_KEYS, ONLINE_GLYPH, bucketName } from "../contents.js";
 import { alertState } from "../../systems/alert.js";
+import { shipState } from "../../systems/shipstate.js";
+import { systemsAboard } from "../../systems/ship.js";
+import { keysHeld } from "../../systems/doors.js";
 import { currentDerelict, voyageOf } from "../../systems/voyage.js";
 import { derelictName } from "../../content/derelicts.js";
 import { tugCallsign } from "../../content/hints.js";
 import { HULLS, hullName, hullTrait } from "../../content/hulls.js";
-import { OBJECTIVE_COUNT } from "../../content/objectives.js";
+import { OBJECTIVE_COUNT, objectiveSpec } from "../../content/objectives.js";
 import { isTug } from "../../content/tug.js";
 import { codexFor } from "../../content/codex.js";
 import { helpHeadings, helpPages } from "../input.js";
@@ -120,6 +123,10 @@ function thingsIn(game: RoomGame, room: RoomId, knows: Knows): BoardThing[] {
       id: `s${String(thing.id)}`,
       glyph: thing.glyph,
       name: thing.name,
+      /* A job already begun says how far in it is. Without it a player who
+         steps away for a turn comes back to a line that reads exactly as it
+         did before they started, and starts again. */
+      ...(room === game.player.room ? (workOn(game, thing.id) ?? {}) : {}),
     };
     return offered === undefined ? base : { ...base, verb: offered.verb, note: offered.note };
   });
@@ -632,4 +639,71 @@ export function rackOfHull(id: string): { core: number; coreMax: number; slots: 
   });
   while (slots.length < hull.slots) slots.push({});
   return { core: hull.core, coreMax: hull.core, slots };
+}
+
+// ------------------------------------------------------------------ the goal
+
+export interface GoalModel {
+  /** The hull being worked, and which sortie of the voyage this is. */
+  hull: string;
+  sortie: number;
+  /** What the run is for, and how much of it is done. */
+  goal: string;
+  online: number;
+  of: number;
+  /** What the hull is worth once it is done. */
+  worth: number;
+  /** Keycards the drone is carrying, and credits it has not banked yet. */
+  keys: number;
+  held: number;
+  banked: number;
+}
+
+/**
+ * Why the drone is here, and what it stands to lose.
+ *
+ * Four facts, and none of them is on the board: what the hull is worth is a
+ * number about the whole voyage, and what the drone is carrying is a number
+ * about the next mistake — loot is lost with the drone and banked credits are
+ * not, which is the whole of the decision "one more compartment or home".
+ *
+ * Aboard, how far along the hull is comes from the *ship's* own record rather
+ * than the voyage's: a derelict half neutralised is the ship's condition, and
+ * the run walks back into it a sortie later with a different drone.
+ */
+export function goalOf(game: RoomGame): GoalModel {
+  const voyage = voyageOf(game);
+  const state = currentDerelict(game);
+  const aboard = isTug(game) ? state.online.length : shipState(game).online.length;
+  return {
+    hull: derelictName(state.spec),
+    sortie: voyage.sortie,
+    goal: t("charter.name.neutralize"),
+    online: aboard,
+    of: OBJECTIVE_COUNT,
+    worth: state.spec.salePrice,
+    keys: keysHeld(game.player),
+    held: voyage.loot,
+    banked: voyage.credits,
+  };
+}
+
+/**
+ * A job already begun, as turns spent out of turns needed.
+ *
+ * The engine keeps what is *left* — it is what the bots read to know a job
+ * moved at all — and a player wants to know how far in they are, so the count
+ * is turned round here rather than in the engine. One job at a time is a fact
+ * about the ship, not a limitation: `ShipState.work` is a single record
+ * because walking away from a splice and starting another abandons the first.
+ */
+function workOn(game: RoomGame, id: number): { work: { done: number; of: number } } | undefined {
+  const work = shipState(game).work;
+  if (work === undefined || work.id !== id) return undefined;
+  const system = systemsAboard(game).find((s) => s.id === id);
+  if (system === undefined) return undefined;
+  const spec = objectiveSpec(system.kind);
+  const job = spec?.jobs.find((j) => j.tool === work.tool);
+  if (job === undefined) return undefined;
+  return { work: { done: job.turns - work.left, of: job.turns } };
 }

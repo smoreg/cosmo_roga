@@ -21,6 +21,12 @@ import { roomActions } from "../src/ui/actions.js";
 import { currentDerelict, undock } from "../src/systems/voyage.js";
 import { CONTENT_KEYS } from "../src/ui/contents.js";
 import { addWreck } from "../src/twist/rig.js";
+import { goalOf } from "../src/ui/react/model.js";
+import { derelictName } from "../src/content/derelicts.js";
+import { OBJECTIVE_COUNT, objectiveSpec } from "../src/content/objectives.js";
+import { voyageOf } from "../src/systems/voyage.js";
+import { shipState } from "../src/systems/shipstate.js";
+import { systemsAboard } from "../src/systems/ship.js";
 import { CODEX_IDS } from "../src/content/codex.js";
 import { titleScreen, DEFAULT_TITLE } from "../src/ui/title.js";
 
@@ -690,5 +696,57 @@ describe("everything in a compartment is an icon and a command, or neither", () 
     for (const way of walking) expect(way.enabled).toBe(true);
     const here = board.doors.filter((d) => d.verbs.length > 0);
     if (here.length > 0) expect(walking.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the panel says why the drone is here and what it stands to lose", () => {
+  beforeAll(stillFrames);
+
+  it("names the hull, the goal, what it is worth and what is being carried", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const goal = goalOf(game);
+    const state = currentDerelict(game);
+    expect(goal.hull).toBe(derelictName(state.spec));
+    expect(goal.worth).toBe(state.spec.salePrice);
+    expect(goal.of).toBe(OBJECTIVE_COUNT);
+    expect(goal.banked).toBe(voyageOf(game).credits);
+    /* Loot and credits are different numbers on purpose: one dies with the
+       drone and one does not, and that pair is the whole of "one more
+       compartment, or home". */
+    expect(goal.held).toBe(voyageOf(game).loot);
+
+    const { host, unmount } = mount(<Screen game={game} />);
+    expect(text(host)).toContain(goal.hull);
+    expect(text(host)).toContain("goal");
+    expect(text(host)).toContain(String(goal.worth));
+    expect(text(host)).toContain("held");
+    expect(text(host)).toContain("banked");
+    unmount();
+  });
+
+  it("counts a half-done job the way a player counts it", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    /* The engine keeps what is left, because that is what tells a bot the job
+       moved. A player wants to know how far in they are, so the count is
+       turned round — and it has to still be turned round after walking away,
+       which is exactly when a line that forgot would make them start over. */
+    const aboard = systemsAboard(game);
+    if (aboard.length === 0) return;
+    const system = aboard[0]!;
+    const spec = objectiveSpec(system.kind);
+    const job = spec?.jobs[0];
+    if (job === undefined) return;
+    shipState(game).work = { id: system.id, left: job.turns - 1, tool: job.tool };
+
+    const room = game.ship.rooms.find((r) =>
+      ((r.data as Record<string, unknown>).systems as { id: number }[] | undefined)?.some(
+        (x) => x.id === system.id,
+      ),
+    );
+    if (room === undefined || room.id !== game.player.room) return;
+    const thing = hereOf(game).find((t) => t.id === `s${String(system.id)}`);
+    expect(thing?.work).toEqual({ done: 1, of: job.turns });
   });
 });
