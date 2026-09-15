@@ -8,13 +8,18 @@ import type { Offer, TugModel } from "../model.js";
 /**
  * Home, which is a decision and not a place.
  *
- * The honeycomb does not come back with the drone. What stands here is the
- * account, the hull the tug is tied to and the rack — and the offers, each one
- * an object carrying its own verb, exactly as a machine on the board does. The
- * rule the board keeps holds here too: the engine decided what may be done and
- * why not, and this draws the answer.
+ * The honeycomb does not come back with the drone, so what stands where it
+ * would have been is the decision: the hull the tug is tied to, and the orders
+ * that can be given about it. Each is an object carrying its own verb, exactly
+ * as a machine on the board is, and the rule the board keeps holds here too —
+ * the engine decided what may be done and why not, and this draws the answer.
+ *
+ * What is merely *looked at* — the account, the drones on the rack — is not
+ * here. It is in the readout down the right-hand side, where the rack and the
+ * compartment are when there is a ship to be aboard, so that one side of the
+ * screen is always the thing being done and the other is always the state.
  */
-export function TugScreen({
+export function TugOrders({
   tug,
   offers,
   level,
@@ -33,14 +38,12 @@ export function TugScreen({
         position: "absolute",
         inset: 0,
         overflowY: "auto",
-        display: "grid",
-        gridTemplateColumns: "minmax(0,1fr) 360px",
+        display: "flex",
+        flexDirection: "column",
         gap: 14,
-        alignContent: "start",
         padding: 18,
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
         <Panel title={tug.callsign} stencil="tug">
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
             <AlertDial value={tug.derelict.alert} max={5} label="alert" size={66} />
@@ -73,27 +76,10 @@ export function TugScreen({
           </div>
         </Panel>
 
-        <Panel title={level === null ? "Dock" : level} stencil={`sortie ${String(tug.account.sortie)}`} fill>
+        <Panel title={level === null ? "Orders" : level} stencil="dock" fill>
           <OfferList offers={offers} level={level} onPick={onPick} onLevel={onLevel} />
         </Panel>
-      </div>
 
-      <Panel title="Dock" stencil="preview" fill>
-        <Fold head="account" open>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <Figure label="banked" value={tug.account.credits} big />
-            <Figure label="carried" value={tug.account.loot} />
-            <Figure label="keycards" value={tug.account.keys} />
-            <Figure label="in the hold" value={tug.account.hold} />
-            <Figure label="sortie" value={tug.account.sortie} />
-          </div>
-        </Fold>
-
-        <Fold head="drones" open>
-          <Drones hulls={tug.hulls} />
-        </Fold>
-
-      </Panel>
     </div>
   );
 }
@@ -295,10 +281,25 @@ function Fold({
  * anything: the rack is the place the choice is *read*, and the offer that
  * spends credits is on the dock's own list, where every other price is.
  */
-function Drones({ hulls }: { hulls: TugModel["hulls"] }): ReactElement {
-  const [look, setLook] = useState<string | null>(null);
+function Drones({
+  hulls,
+  onLook,
+}: {
+  hulls: TugModel["hulls"];
+  onLook: (id: string | null) => void;
+}): ReactElement {
+  /* Hovering points the rack at a hull for as long as the pointer is on it;
+     clicking holds it there, so two of them can be read one after the other
+     without the pointer having to stay put. */
   const [held, setHeld] = useState<string | null>(null);
+  const [look, setLook] = useState<string | null>(null);
   const shown = held ?? look;
+  useEffect(
+    function tellTheRack() {
+      onLook(shown);
+    },
+    [shown],
+  );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {hulls.map((hull) => {
@@ -309,6 +310,7 @@ function Drones({ hulls }: { hulls: TugModel["hulls"] }): ReactElement {
             onMouseEnter={() => setLook(hull.id)}
             onMouseLeave={() => setLook(null)}
             onClick={() => setHeld(held === hull.id ? null : hull.id)}
+            title={hull.on ? "the drone on the rails" : "look at this one in the rack above"}
             style={{
               padding: "6px 8px",
               cursor: "pointer",
@@ -342,24 +344,50 @@ function Drones({ hulls }: { hulls: TugModel["hulls"] }): ReactElement {
             <div style={{ font: "var(--sv-body)", color: "var(--sv-soft)" }}>{hull.trait}</div>
 
             {open ? (
-              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <Tag tone="amber">core {hull.core}</Tag>
-                  <Tag tone="neutral">{hull.slots} slots</Tag>
-                  {hull.speed === undefined ? null : <Tag tone="neutral">speed {hull.speed}</Tag>}
-                </div>
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                  {hull.modules.map((m, i) => (
-                    <Tag key={`${m}-${String(i)}`} tone="neutral">
-                      {m}
-                    </Tag>
-                  ))}
-                </div>
+              <div style={{ marginTop: 5, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <Tag tone="amber">core {hull.core}</Tag>
+                <Tag tone="neutral">{hull.slots} slots</Tag>
+                {hull.speed === undefined ? null : <Tag tone="neutral">speed {hull.speed}</Tag>}
               </div>
             ) : null}
           </div>
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The readout: what the dock is, rather than what can be done about it.
+ *
+ * One housing with folds, because three panels down one side was three
+ * headers, three borders and three sets of scanlines for one readout, and the
+ * third was always below the fold. Picking a drone here does not buy it — it
+ * points the rack above at that hull instead, so two racks can be compared
+ * where the rack already is, rather than in a summary beside it.
+ */
+export function DockPreview({
+  tug,
+  onLook,
+}: {
+  tug: TugModel;
+  onLook: (id: string | null) => void;
+}): ReactElement {
+  return (
+    <Panel title="Dock" stencil="preview">
+      <Fold head="account" open>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <Figure label="banked" value={tug.account.credits} big />
+          <Figure label="carried" value={tug.account.loot} />
+          <Figure label="keycards" value={tug.account.keys} />
+          <Figure label="in the hold" value={tug.account.hold} />
+          <Figure label="sortie" value={tug.account.sortie} />
+        </div>
+      </Fold>
+
+      <Fold head="drones" open>
+        <Drones hulls={tug.hulls} onLook={onLook} />
+      </Fold>
+    </Panel>
   );
 }

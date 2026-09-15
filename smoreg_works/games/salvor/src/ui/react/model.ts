@@ -1,7 +1,7 @@
 import { hexLayout, isAlive } from "@jamrog/engine";
 import type { Entity, RoomGame, RoomId } from "@jamrog/engine";
 import { machineName } from "../../content/monsters.js";
-import { moduleName } from "../../content/modules.js";
+import { MODULES, moduleName } from "../../content/modules.js";
 import { roomActions } from "../actions.js";
 import { doorWays } from "../doorlist.js";
 import { hostilesIn, rigOf } from "../../twist/rig.js";
@@ -527,4 +527,25 @@ export function commandsOf(game: RoomGame): Offer[] {
     });
   });
   return out;
+}
+
+
+/**
+ * A hull's rack as it comes off the rails, for looking at rather than flying.
+ *
+ * The rack panel shows the drone that exists; this shows one that does not
+ * yet, out of the catalogue rather than out of the game, so a player weighing
+ * eight slots against six can see both racks instead of two adjectives. It is
+ * a preview and it says so by being a different question: no integrity has
+ * been spent on a hull nobody has undocked in.
+ */
+export function rackOfHull(id: string): { core: number; coreMax: number; slots: RackSlot[] } | undefined {
+  const hull = HULLS.find((h) => h.id === id);
+  if (hull === undefined) return undefined;
+  const slots: RackSlot[] = hull.modules.map((kind) => {
+    const full = hull.base?.[kind] ?? MODULES[kind].integrity;
+    return { name: moduleName(kind), value: full, max: full };
+  });
+  while (slots.length < hull.slots) slots.push({});
+  return { core: hull.core, coreMax: hull.core, slots };
 }

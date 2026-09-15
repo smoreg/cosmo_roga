@@ -19,13 +19,14 @@ import {
   logOf,
   offersOf,
   rackOf,
+  rackOfHull,
   routeIn,
   tugOf,
 } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
 import { CodexCardView, EndingCard, HelpCard, HistoryCard } from "./screens/Cards.js";
-import { TugScreen } from "./screens/Tug.js";
+import { DockPreview, TugOrders } from "./screens/Tug.js";
 import { roomActions } from "../actions.js";
 import { codexQueue, readCodex } from "../../systems/codex.js";
 
@@ -48,6 +49,9 @@ export function Screen({ game, onNewVoyage }: { game: RoomGame; onNewVoyage?: ()
   const [queue, setQueue] = useState<string[]>([]);
   /** Which group of the tug's list is open. `null` is the top of it. */
   const [level, setLevel] = useState<string | null>(null);
+  /* Which drone the dock is pointing the rack at. Null is the one on the
+     rails, which is the drone that actually exists. */
+  const [looking, setLooking] = useState<string | null>(null);
   const again = useCallback(() => setTurn((n) => n + 1), []);
 
   const home = isHome(game);
@@ -140,6 +144,15 @@ export function Screen({ game, onNewVoyage }: { game: RoomGame; onNewVoyage?: ()
   const board = useMemo(() => boardOf(game), [game, turn]);
   const things = useMemo(() => hereOf(game), [game, turn]);
   const commands = useMemo(() => commandsOf(game), [game, turn]);
+  /**
+   * The rack shows the drone that exists, unless the dock is pointing it at
+   * one that does not yet. A preview says so by being a preview: nothing has
+   * been spent on a hull nobody has undocked in, so every bay is full.
+   */
+  const preview = useMemo(
+    () => (looking === null ? undefined : rackOfHull(looking)),
+    [looking],
+  );
   const tug = useMemo(() => tugOf(game), [game, turn]);
   const offers = useMemo(() => offersOf(game, level ?? undefined), [game, turn, level]);
   const route = useMemo(() => routeIn(game, board), [game, board]);
@@ -213,7 +226,7 @@ export function Screen({ game, onNewVoyage }: { game: RoomGame; onNewVoyage?: ()
         }}
       >
         {home ? (
-          <TugScreen
+          <TugOrders
             tug={tug}
             offers={offers}
             level={level}
@@ -295,21 +308,27 @@ export function Screen({ game, onNewVoyage }: { game: RoomGame; onNewVoyage?: ()
           gap: 8,
         }}
       >
-        <Panel title="Rack" stencil="drone">
-          <CoreRack core={rack.core} coreMax={rack.coreMax} slots={rack.slots} />
-        </Panel>
-
-        <Panel title={here?.name ?? "unscanned"} stencil={here?.label ?? "—"}>
-          <Manifest things={things} onAct={(t) => act(here as BoardRoom, t)} />
-        </Panel>
-
-        <Panel title="Orders" stencil="drone">
-          <Lines
-            lines={commands}
-            empty="nothing to order"
-            onPick={order}
+        <Panel title="Rack" stencil={preview === undefined ? "drone" : "preview"}>
+          <CoreRack
+            core={(preview ?? rack).core}
+            coreMax={(preview ?? rack).coreMax}
+            slots={(preview ?? rack).slots}
           />
         </Panel>
+
+        {home ? (
+          <DockPreview tug={tug} onLook={setLooking} />
+        ) : (
+          <>
+            <Panel title={here?.name ?? "unscanned"} stencil={here?.label ?? "—"}>
+              <Manifest things={things} onAct={(t) => act(here as BoardRoom, t)} />
+            </Panel>
+
+            <Panel title="Orders" stencil="drone">
+              <Lines lines={commands} empty="nothing to order" onPick={order} />
+            </Panel>
+          </>
+        )}
       </div>
 
       <LogStrip

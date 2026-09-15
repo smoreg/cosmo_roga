@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { newGame } from "../src/game.js";
 import { App } from "../src/ui/react/App.js";
 import { Screen } from "../src/ui/react/Screen.js";
-import { boardOf, hereOf, commandsOf } from "../src/ui/react/model.js";
+import { boardOf, hereOf, commandsOf, rackOfHull } from "../src/ui/react/model.js";
 import { doorWays } from "../src/ui/doorlist.js";
 import {
   codexOf,
@@ -314,12 +314,61 @@ describe("the dock is read before it is spent", () => {
     }
   });
 
-  it("puts the account and the three drones under one housing", () => {
+  it("puts the account and the three drones under one housing, and only one", () => {
     const game = newGame(4242);
     const { host, unmount } = mount(<Screen game={game} />);
     expect(text(host)).toContain("account");
     expect(text(host)).toContain("drones");
     for (const hull of tugOf(game).hulls) expect(text(host)).toContain(hull.name);
+    /* The dock was being drawn twice — the readout, and an empty compartment
+       panel behind it wearing the same name. One housing, one title. */
+    const docks = Array.from(host.querySelectorAll("div")).filter(
+      (d) => d.textContent === "Dock",
+    );
+    expect(docks.length).toBeLessThanOrEqual(1);
+    unmount();
+  });
+
+  it("gives the orders the middle, where the honeycomb would be", () => {
+    const game = newGame(4242);
+    const { host, unmount } = mount(<Screen game={game} />);
+    /* The tug's own list is the one list. It used to be said twice: once in
+       the middle as the dock, and again down the side as orders. */
+    const titles = Array.from(host.querySelectorAll("div"))
+      .map((d) => d.textContent)
+      .filter((t) => t === "Orders");
+    expect(titles.length).toBe(1);
+    for (const offer of offersOf(game)) expect(text(host)).toContain(offer.label);
+    unmount();
+  });
+
+  it("points the rack at whichever drone the dock is looking at", () => {
+    const game = newGame(4242);
+    const flying = tugOf(game).hulls.find((h) => h.on);
+    const other = tugOf(game).hulls.find((h) => !h.on);
+    expect(flying).toBeDefined();
+    expect(other).toBeDefined();
+    const preview = rackOfHull(other?.id ?? "");
+    expect(preview).toBeDefined();
+    /* A hull nobody has undocked in has spent no integrity, so every bay it
+       comes with is full — which is what makes it readable as a preview. */
+    expect(preview?.slots.filter((s) => s.name !== undefined)).toHaveLength(
+      other?.modules.length ?? -1,
+    );
+    expect(preview?.slots).toHaveLength(other?.slots ?? -1);
+    expect(preview?.core).toBe(other?.core);
+    expect(rackOfHull("no-such-hull")).toBeUndefined();
+
+    const { host, unmount } = mount(<Screen game={game} />);
+    const row = Array.from(host.querySelectorAll("span")).find(
+      (el) => el.textContent === other?.name,
+    );
+    expect(row).toBeDefined();
+    act(() => {
+      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    /* The rack above now names that hull's modules, not the flying one's. */
+    for (const m of other?.modules ?? []) expect(text(host)).toContain(m);
     unmount();
   });
 });

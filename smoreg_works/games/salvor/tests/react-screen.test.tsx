@@ -4,7 +4,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { newGame } from "../src/game.js";
 import { Screen } from "../src/ui/react/Screen.js";
-import { boardOf, rackOf, logOf, routeIn } from "../src/ui/react/model.js";
+import { boardOf, isHome, rackOf, logOf, routeIn } from "../src/ui/react/model.js";
+import { undock } from "../src/systems/voyage.js";
 
 /**
  * The React view, against a real game.
@@ -77,7 +78,12 @@ describe("the board reads the game", () => {
   });
 
   it("mounts and draws the ship's own compartment names", () => {
+    /* Aboard, not at home: a voyage opens docked, and the tug draws no
+       honeycomb at all — it is a decision and not a place (`screens/Tug.tsx`).
+       So the board is given a ship before it is asked to draw one. */
     const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    expect(isHome(game)).toBe(false);
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
