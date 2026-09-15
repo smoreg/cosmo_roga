@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { RoomGame, RoomId } from "@jamrog/engine";
 import { HexBoard } from "./board/HexBoard.js";
@@ -26,6 +26,7 @@ import {
 } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
+import { deckVersion, watchDeck } from "./deckindex.js";
 import { CodexCardView, EndingCard, HistoryCard } from "./screens/Cards.js";
 import { DockPreview, TugOrders } from "./screens/Tug.js";
 import { roomActions } from "../actions.js";
@@ -189,7 +190,12 @@ export function Screen({
     again();
   };
 
-  const board = useMemo(() => boardOf(game), [game, turn]);
+  /* The deck art lands after the first paint, and a board that had already
+     read the index while it was empty would never read it again — so the
+     arrival is a store the board subscribes to, like any other change. */
+  const art = useSyncExternalStore(watchDeck, deckVersion, deckVersion);
+
+  const board = useMemo(() => boardOf(game), [game, turn, art]);
   const things = useMemo(() => hereOf(game), [game, turn]);
   const commands = useMemo(() => commandsOf(game), [game, turn]);
   const goal = useMemo(() => goalOf(game), [game, turn]);

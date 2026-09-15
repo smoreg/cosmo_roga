@@ -7,6 +7,9 @@ import { App } from "../src/ui/react/App.js";
 import { Screen } from "../src/ui/react/Screen.js";
 import { boardOf, hereOf, commandsOf, rackOfHull } from "../src/ui/react/model.js";
 import { linesOf, reveal } from "../src/ui/react/reveal.js";
+import { loadDeckIndex } from "../src/ui/react/deckindex.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { doorWays } from "../src/ui/doorlist.js";
 import {
   codexOf,
@@ -791,5 +794,58 @@ describe("wreckage is drawn, and is unmistakably shut", () => {
     }
     expect(game.player.room).toBe(before);
     unmount();
+  });
+});
+
+describe("the deck art arrives after the board has already drawn", () => {
+  beforeAll(stillFrames);
+
+  it("draws the decks when the index lands, without waiting for a turn", async () => {
+    /* The exact shape of the bug: the board renders, reads an index that is
+       still empty, and the fetch resolves a moment later. Nothing had changed
+       as far as React was concerned, so the art was fetched, parsed, stored —
+       and never drawn until the next turn moved the board on its own. */
+    const index = JSON.parse(
+      readFileSync(join(import.meta.dirname, "..", "public", "deck", "deck.json"), "utf8"),
+    ) as { tiles: { id: string }[] };
+
+    let land: (r: Response) => void = () => undefined;
+    const waiting = new Promise<Response>((res) => {
+      land = res;
+    });
+    const real = globalThis.fetch;
+    globalThis.fetch = (() => waiting) as typeof fetch;
+
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<Screen game={game} />);
+    });
+    void loadDeckIndex();
+
+    /* Nothing yet: the art has not arrived. */
+    expect(host.querySelectorAll("img").length).toBe(0);
+    const before = game.schedule.time;
+
+    await act(async () => {
+      land({ ok: true, json: () => Promise.resolve(index) } as unknown as Response);
+      await waiting;
+      await Promise.resolve();
+    });
+
+    /* And now, with no turn taken. */
+    const drawn = Array.from(host.querySelectorAll("img"));
+    expect(drawn.length).toBeGreaterThan(0);
+    for (const img of drawn) expect(img.getAttribute("src")).toMatch(/^deck\/t\/[0-9a-f]{12}\.webp$/);
+    expect(game.schedule.time).toBe(before);
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+    globalThis.fetch = real;
   });
 });

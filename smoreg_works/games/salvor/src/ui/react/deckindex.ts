@@ -16,8 +16,32 @@ import type { DeckIndex } from "./deck.js";
 let index: DeckIndex | null = null;
 let asked = false;
 
+/**
+ * Bumped when the index lands, and watched by the board.
+ *
+ * Without this the art was fetched, parsed, stored — and never drawn, because
+ * nothing had changed as far as React was concerned. The board had already
+ * read `deckIndex()` while it was still null and would not read it again until
+ * a turn was taken, so the decks appeared on the first move and not on load.
+ * That is the whole bug, and a version nobody subscribes to is how it hid.
+ */
+let version = 0;
+const watching = new Set<() => void>();
+
 export function deckIndex(): DeckIndex | null {
   return index;
+}
+
+/** For `useSyncExternalStore`: changes exactly once, when the art arrives. */
+export function deckVersion(): number {
+  return version;
+}
+
+export function watchDeck(fn: () => void): () => void {
+  watching.add(fn);
+  return () => {
+    watching.delete(fn);
+  };
 }
 
 /** Ask for it. Safe to call repeatedly; the second call does nothing. */
@@ -28,7 +52,10 @@ export function loadDeckIndex(): Promise<void> {
   return fetch("deck/deck.json")
     .then((r) => (r.ok ? (r.json() as Promise<DeckIndex>) : null))
     .then((got) => {
-      if (got !== null) index = got;
+      if (got === null) return;
+      index = got;
+      version++;
+      for (const fn of watching) fn();
     })
     .catch(() => undefined);
 }
