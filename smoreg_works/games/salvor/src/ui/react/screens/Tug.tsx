@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { ReactElement, RefObject } from "react";
 import * as FX from "../../fx/derelict-fx.js";
 import { linesOf, reveal } from "../reveal.js";
@@ -20,6 +20,12 @@ import type { Offer, TugModel } from "../model.js";
  * compartment are when there is a ship to be aboard, so that one side of the
  * screen is always the thing being done and the other is always the state.
  */
+const STENCIL = {
+  font: "var(--sv-stencil)",
+  letterSpacing: "var(--sv-stencil-track)",
+  textTransform: "uppercase",
+} as const;
+
 export function TugOrders({
   tug,
   offers,
@@ -119,9 +125,25 @@ export function TugOrders({
           </div>
         </Panel>
 
-        <Panel title={level === null ? "Orders" : level} stencil="dock" fill>
-          <OfferList offers={offers} level={level} onPick={onPick} onLevel={onLevel} />
-        </Panel>
+        {/* One panel per group, and the groups are the engine's own: where to
+            fly, what to fly, and what is bolted to it (`ui/actions.ts`,
+            `TUG_ROWS`). They were one list with headings in it, which is right
+            for ten numbered lines on a terminal and wrong here — three things
+            a player does at the tug should be three things on the screen.
+
+            Opened into a group, the panels give way to it: a sublist is one
+            question and the rest of the dock is not an answer to it. */}
+        {level !== null ? (
+          <Panel title={level} stencil="dock" fill>
+            <OfferList offers={offers} level={level} onPick={onPick} onLevel={onLevel} />
+          </Panel>
+        ) : (
+          grouped(offers).map((group) => (
+            <Panel key={group.title} title={group.title} stencil="dock">
+              <OfferList offers={group.offers} level={null} onPick={onPick} onLevel={onLevel} />
+            </Panel>
+          ))
+        )}
 
     </div>
   );
@@ -186,6 +208,26 @@ function Figure({ label, value, big = false }: { label: string; value: number; b
  * A refused line stays on the list wearing its reason rather than vanishing:
  * a shelf that hides what cannot be afforded teaches nothing about the price.
  */
+/**
+ * The list, cut where the engine cut it.
+ *
+ * An offer carries a heading only on the line that opens its group, so the
+ * groups are already in the order and already named — this walks them out.
+ * Anything before the first heading belongs to the group it is printed under,
+ * which at the tug is the voyage: casting off is a thing you do about where
+ * you are going.
+ */
+function grouped(offers: readonly Offer[]): Array<{ title: string; offers: Offer[] }> {
+  const out: Array<{ title: string; offers: Offer[] }> = [];
+  for (const offer of offers) {
+    if (offer.head !== undefined || out.length === 0) {
+      out.push({ title: offer.head ?? "Orders", offers: [] });
+    }
+    (out[out.length - 1] as { offers: Offer[] }).offers.push(offer);
+  }
+  return out;
+}
+
 function OfferList({
   offers,
   level,
@@ -295,151 +337,68 @@ function OfferList({
   );
 }
 
-
 /**
- * The three drones, and whichever one is being looked at.
+ * The drone the tug has, and nothing about the ones it could buy.
  *
- * Hovering shows what the row cannot fit — the core, the slots, the five it
- * comes with — and a click holds that open so two of them can be read one
- * after the other without the pointer having to stay put. The row never buys
- * anything: the rack is the place the choice is *read*, and the offer that
- * spends credits is on the dock's own list, where every other price is.
+ * This side of the screen is the readout: what is here. It listed all three
+ * classes for a while, which made it a shelf — and a shelf belongs with the
+ * other things that are bought, on the orders side. A voyage owns one drone at
+ * a time (`Voyage.hull`), so this is that one, or it is the gap where it
+ * should be.
  */
-function Drones({
-  hulls,
-  onLook,
-}: {
-  hulls: TugModel["hulls"];
-  onLook: (id: string | null) => void;
-}): ReactElement {
-  /* A click points the rack at a hull, and nothing else does.
-     Hover used to, and it made the rack flicker through three drones on the
-     way down the list to the one being aimed at — a panel that changes under
-     a pointer merely passing over is a panel you cannot read while reaching
-     for anything else. Clicking is the whole gesture: press to look, press
-     again to put it back. The row still lights under the pointer, because it
-     is a thing that can be pressed and has to say so. */
-  const [held, setHeld] = useState<string | null>(null);
-  useEffect(
-    function tellTheRack() {
-      onLook(held);
-    },
-    [held],
-  );
+export function DockPreview({ tug }: { tug: TugModel }): ReactElement {
+  const d = tug.drone;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {hulls.map((hull) => {
-        const open = held === hull.id;
-        return (
-          <div
-            key={hull.id}
-            onClick={() => setHeld(held === hull.id ? null : hull.id)}
-            onMouseEnter={(e) => {
-              if (!open)
-                e.currentTarget.style.background =
-                  "color-mix(in oklab, var(--sv-amber) 7%, transparent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-            }}
-            title={
-              open
-                ? "put the rack back"
-                : hull.on
-                  ? "the drone on the rails"
-                  : "show this one in the rack above"
-            }
-            style={{
-              padding: "6px 8px",
-              cursor: "pointer",
-              background: open ? "color-mix(in oklab, var(--sv-amber) 12%, transparent)" : "transparent",
-              borderLeft: `2px solid ${hull.on ? "var(--sv-amber)" : open ? "var(--sv-rim)" : "var(--sv-line)"}`,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              {/* The machine it is, or would be. The one on the rails is this
-                  sortie's drone and is drawn as the board draws it. */}
-              <DroneIcon
-                who={hull.who}
-                size={20}
-                tone={hull.on ? "var(--sv-amber)" : "var(--sv-soft)"}
-              />
-              {/* A drone is named and a hull has a class, so whichever this
-                  is answers for itself on the top line. The one on the rails
-                  is a machine somebody will lose; the other two are stock. */}
+    <Panel title="Dock" stencil={d === undefined ? "empty" : "on the rails"}>
+      {d === undefined ? (
+        <div style={{ font: "var(--sv-body)", color: "var(--sv-soft)" }}>
+          No drone on the rails. Buying one is the first order.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+            <DroneIcon who={d.who} size={30} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
               <span
                 style={{
                   font: "var(--sv-title)",
                   letterSpacing: "var(--sv-title-track)",
                   textTransform: "uppercase",
-                  color: hull.on ? "var(--sv-amber)" : "var(--sv-ink)",
+                  color: "var(--sv-ink)",
+                  whiteSpace: "nowrap",
                 }}
               >
-                {hull.drone ?? hull.name}
+                {d.name}
               </span>
-              <span
-                style={{
-                  marginLeft: "auto",
-                  font: "var(--sv-stencil)",
-                  letterSpacing: "var(--sv-stencil-track)",
-                  textTransform: "uppercase",
-                  color: "var(--sv-soft)",
-                }}
-              >
-                {hull.on ? "on the rails" : `${String(hull.price)} cr`}
-              </span>
+              <span style={{ ...STENCIL, color: "var(--sv-soft)" }}>{d.hull}</span>
             </div>
-            {/* And the class under it, where the name took the top line. */}
-            {hull.drone === undefined ? null : (
-              <div
-                style={{
-                  font: "var(--sv-stencil)",
-                  letterSpacing: "var(--sv-stencil-track)",
-                  textTransform: "uppercase",
-                  color: "var(--sv-soft)",
-                }}
-              >
-                {hull.name}
-              </div>
-            )}
-            <div style={{ font: "var(--sv-body)", color: "var(--sv-soft)" }}>{hull.trait}</div>
-
-            {open ? (
-              <div style={{ marginTop: 5, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <Tag tone="amber">core {hull.core}</Tag>
-                <Tag tone="neutral">{hull.slots} slots</Tag>
-                {hull.speed === undefined ? null : <Tag tone="neutral">speed {hull.speed}</Tag>}
-              </div>
-            ) : null}
           </div>
-        );
-      })}
-    </div>
-  );
-}
 
-/**
- * The rack the tug keeps, which is three drones and a choice between them.
- *
- * The account used to be folded in above it and is now under the tug's own
- * name, where it belongs: what the tug *has* is one reading and what it can
- * *fly* is another, and stacking them made a readout that answered two
- * questions nobody asks together. Picking a drone here does not buy it — it
- * points the rack above at that hull instead, so two racks can be compared
- * where the rack already is, rather than in a summary beside it.
- */
-export function DockPreview({
-  tug,
-  onLook,
-}: {
-  tug: TugModel;
-  onLook: (id: string | null) => void;
-}): ReactElement {
-  return (
-    <Panel title="Dock" stencil="drones">
-      <div ref={useLines([tug.hulls.length])}>
-        <Drones hulls={tug.hulls} onLook={onLook} />
-      </div>
+          <div style={{ font: "var(--sv-body)", color: "var(--sv-soft)" }}>{d.trait}</div>
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Tag tone="amber">core {d.core}</Tag>
+            <Tag tone="neutral">{d.slots} slots</Tag>
+            {d.speed === undefined ? null : <Tag tone="neutral">speed {d.speed}</Tag>}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 5,
+              flexWrap: "wrap",
+              paddingTop: 9,
+              borderTop: "1px solid var(--sv-line)",
+            }}
+          >
+            {d.modules.map((m, i) => (
+              <Tag key={`${m}-${String(i)}`} tone="neutral">
+                {m}
+              </Tag>
+            ))}
+          </div>
+        </div>
+      )}
     </Panel>
   );
 }

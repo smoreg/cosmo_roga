@@ -214,29 +214,26 @@ export function Splash({ onStart }: { onStart: () => void }): ReactElement {
         </div>
 
         {stage === "waiting" ? (
-          <div style={{ marginTop: 26 }}>
-            <Panel title="Stand by" stencil="dock">
-              <div data-sc style={{ font: "var(--sv-body)", color: "var(--sv-fg)" }}>
-                A turn-based salvage game about sending one drone into a hulk and getting it back
-                out.
-              </div>
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: "9px 0",
-                  textAlign: "center",
-                  background: "var(--sv-amber)",
-                  color: "var(--sv-knock)",
-                  font: "var(--sv-display)",
-                  fontSize: 24,
-                  letterSpacing: "var(--sv-display-track)",
-                  textTransform: "uppercase",
-                  animation: "sv-flick var(--sv-frame-3) var(--sv-step) infinite",
-                }}
-              >
-                click to start
-              </div>
-            </Panel>
+          /* The name and the way in, and nothing else. A door does not need a
+             panel around it or a sentence under it, and it does not blink:
+             there is one thing on this screen, so nothing has to compete for
+             the eye — a mark that flashes when it is the only mark reads as a
+             fault rather than as an invitation. */
+          <div
+            style={{
+              marginTop: 26,
+              padding: "12px 0",
+              textAlign: "center",
+              clipPath: "var(--sv-cut-bl)",
+              background: "var(--sv-amber)",
+              color: "var(--sv-knock)",
+              font: "var(--sv-display)",
+              fontSize: 26,
+              letterSpacing: "var(--sv-display-track)",
+              textTransform: "uppercase",
+            }}
+          >
+            click to start
           </div>
         ) : (
           <div style={{ marginTop: 26 }}>

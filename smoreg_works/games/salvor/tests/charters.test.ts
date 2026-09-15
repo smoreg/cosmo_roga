@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { Key } from "../src/content/i18n/keys.js";
 import { Rng, RoomGame, validateShip, type CardContext, type Room, type RoomCommand, type Ship, type System } from "@jamrog/engine";
 import { GAME_CONFIG, type SalvorGame } from "../src/game.js";
 import { gatedOffers } from "../src/systems/tug.js";

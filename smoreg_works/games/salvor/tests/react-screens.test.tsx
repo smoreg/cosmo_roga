@@ -5,21 +5,13 @@ import { createRoot } from "react-dom/client";
 import { newGame } from "../src/game.js";
 import { App } from "../src/ui/react/App.js";
 import { Screen } from "../src/ui/react/Screen.js";
-import { boardOf, hereOf, commandsOf, rackOfHull } from "../src/ui/react/model.js";
+import { boardOf, hereOf, commandsOf } from "../src/ui/react/model.js";
 import { linesOf, reveal } from "../src/ui/react/reveal.js";
 import { applyDeckIndex, loadDeckIndex } from "../src/ui/react/deckindex.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { doorWays } from "../src/ui/doorlist.js";
-import {
-  codexOf,
-  endingOf,
-  helpOf,
-  historyOf,
-  isHome,
-  offersOf,
-  tugOf,
-} from "../src/ui/react/model.js";
+import { codexOf, endingOf, helpOf, historyOf, isHome, offersOf, tugOf } from "../src/ui/react/model.js";
 import { roomActions } from "../src/ui/actions.js";
 import { currentDerelict, undock } from "../src/systems/voyage.js";
 import { CONTENT_KEYS } from "../src/ui/contents.js";
@@ -128,16 +120,6 @@ describe("the tug is a decision, and says what the engine says", () => {
     unmount();
   });
 
-  it("says the account and the rack the voyage actually has", () => {
-    const game = newGame(7);
-    const tug = tugOf(game);
-    const { host, unmount } = mount(<Screen game={game} />);
-    expect(text(host)).toContain(String(tug.account.credits));
-    for (const hull of tug.hulls) expect(text(host)).toContain(hull.name);
-    /* One hull is on the rails, and it is the voyage's own. */
-    expect(tug.hulls.filter((h) => h.on)).toHaveLength(1);
-    unmount();
-  });
 });
 
 describe("the cards are read, never played", () => {
@@ -338,32 +320,6 @@ describe("the panel carries what the honeycomb cannot", () => {
 describe("the dock is read before it is spent", () => {
   beforeAll(stillFrames);
 
-  it("carries everything an inspection of a drone shows", () => {
-    const game = newGame(4242);
-    for (const hull of tugOf(game).hulls) {
-      expect(hull.core).toBeGreaterThan(0);
-      expect(hull.slots).toBeGreaterThanOrEqual(hull.modules.length);
-      expect(hull.modules.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("says the account under the tug's own name, and the drones in the dock", () => {
-    const game = newGame(4242);
-    const tug = tugOf(game);
-    const { host, unmount } = mount(<Screen game={game} />);
-    /* The account is the tug's, so it is under the tug's callsign. */
-    expect(text(host)).toContain(tug.callsign);
-    expect(text(host)).toContain("banked");
-    for (const hull of tug.hulls) expect(text(host)).toContain(hull.name);
-    /* The dock was being drawn twice — the readout, and an empty compartment
-       panel behind it wearing the same name. One housing, one title. */
-    const docks = Array.from(host.querySelectorAll("div")).filter(
-      (d) => d.textContent === "Dock",
-    );
-    expect(docks.length).toBeLessThanOrEqual(1);
-    unmount();
-  });
-
   it("carries no alarm, because the tug has none and the hull's is history", () => {
     const game = newGame(4242);
     const tug = tugOf(game);
@@ -383,62 +339,16 @@ describe("the dock is read before it is spent", () => {
   it("gives the orders the middle, where the honeycomb would be", () => {
     const game = newGame(4242);
     const { host, unmount } = mount(<Screen game={game} />);
-    /* The tug's own list is the one list. It used to be said twice: once in
-       the middle as the dock, and again down the side as orders. */
-    const titles = Array.from(host.querySelectorAll("div"))
-      .map((d) => d.textContent)
-      .filter((t) => t === "Orders");
-    expect(titles.length).toBe(1);
+    /* Every line the engine offers is on the screen, and each is on it once.
+       It used to be said twice — in the middle as the dock, and again down the
+       side as orders — and it is now split across the three panels the engine
+       already groups it into rather than being one list with headings. */
     for (const offer of offersOf(game)) expect(text(host)).toContain(offer.label);
+    const heads = new Set(offersOf(game).map((o) => o.head).filter((h) => h !== undefined));
+    expect(heads.size).toBeGreaterThanOrEqual(3);
     unmount();
   });
 
-  it("points the rack at whichever drone the dock is looking at", () => {
-    const game = newGame(4242);
-    const flying = tugOf(game).hulls.find((h) => h.on);
-    const other = tugOf(game).hulls.find((h) => !h.on);
-    expect(flying).toBeDefined();
-    expect(other).toBeDefined();
-    const preview = rackOfHull(other?.id ?? "");
-    expect(preview).toBeDefined();
-    /* A hull nobody has undocked in has spent no integrity, so every bay it
-       comes with is full — which is what makes it readable as a preview. */
-    expect(preview?.slots.filter((s) => s.name !== undefined)).toHaveLength(
-      other?.modules.length ?? -1,
-    );
-    expect(preview?.slots).toHaveLength(other?.slots ?? -1);
-    expect(preview?.core).toBe(other?.core);
-    expect(rackOfHull("no-such-hull")).toBeUndefined();
-
-    const { host, unmount } = mount(<Screen game={game} />);
-    const row = Array.from(host.querySelectorAll("span")).find(
-      (el) => el.textContent === other?.name,
-    );
-    expect(row).toBeDefined();
-
-    /* Passing over a row changes nothing. The rack sits directly above a list
-       of three, and one that swapped under a pointer on its way somewhere else
-       flickered through all three before settling on the one being aimed at. */
-    act(() => {
-      row?.parentElement?.parentElement?.dispatchEvent(
-        new MouseEvent("mouseover", { bubbles: true }),
-      );
-    });
-    for (const m of flying?.modules ?? []) expect(text(host)).toContain(m);
-
-    act(() => {
-      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    /* The rack above now names that hull's modules, not the flying one's. */
-    for (const m of other?.modules ?? []) expect(text(host)).toContain(m);
-
-    /* And pressing it again puts the rack back on the drone that exists. */
-    act(() => {
-      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    for (const m of flying?.modules ?? []) expect(text(host)).toContain(m);
-    unmount();
-  });
 });
 
 describe("the rail is three keys, and one of them is not a menu", () => {
@@ -558,35 +468,6 @@ describe("the reveal never leaves a screen blank", () => {
         dispatchEvent: () => false,
       }),
     });
-  });
-
-  it("settles the tug back to its own words, under StrictMode's double pass", async () => {
-    const game = newGame(4242);
-    const tug = tugOf(game);
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    /* StrictMode is the case that broke it: every effect runs, is cleaned up
-       and runs again, and the second pass used to start from the blanks the
-       first one left. */
-    act(() => {
-      root.render(
-        <StrictMode>
-          <Screen game={game} />
-        </StrictMode>,
-      );
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 800));
-    });
-    expect(text(host)).toContain(tug.callsign);
-    expect(text(host)).toContain("banked");
-    expect(text(host)).toContain(String(tug.account.credits));
-    for (const hull of tug.hulls) expect(text(host)).toContain(hull.name);
-    act(() => {
-      root.unmount();
-    });
-    host.remove();
   });
 
   it("puts the words back when a reveal is cut short", () => {
@@ -1003,5 +884,99 @@ describe("every compartment has a floor, and an unscanned one cannot be read off
     for (const room of boardOf(game).rooms.filter((r) => r.knows === "wrecked")) {
       expect(room.deck).toBeUndefined();
     }
+  });
+});
+
+describe("the reveal never leaves a screen blank", () => {
+  beforeAll(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    /* Motion ON, deliberately: every other test here turns it off so it can
+       read the words, and that is exactly the gap a blank tug shipped through
+       once already. */
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        onchange: null,
+        dispatchEvent: () => false,
+      }),
+    });
+  });
+
+  it("settles the tug back to its own words, under StrictMode's double pass", async () => {
+    const game = newGame(4242);
+    const tug = tugOf(game);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    /* StrictMode is the case that broke it: every effect runs, is cleaned up
+       and runs again, and the second pass used to start from the blanks the
+       first one left. */
+    act(() => {
+      root.render(
+        <StrictMode>
+          <Screen game={game} />
+        </StrictMode>,
+      );
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 800));
+    });
+    expect(text(host)).toContain(tug.callsign);
+    expect(text(host)).toContain("banked");
+    expect(text(host)).toContain(tug.drone?.name ?? "");
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  });
+});
+
+describe("the dock is what the tug has", () => {
+  beforeAll(stillFrames);
+
+  it("shows the drone on the rails and not the three the yard sells", () => {
+    const game = newGame(4242);
+    const tug = tugOf(game);
+    /* A voyage owns one drone at a time. The readout used to list every class
+       for sale, which made it a shelf — and a shelf is a thing you buy from,
+       so it belongs with the orders. */
+    expect(tug.drone).toBeDefined();
+    expect(tug.drone?.name).toMatch(/^[A-Z]+ (DS|KJ|MR|AL|AM)-\d{2}$/);
+    expect(tug.drone?.core).toBeGreaterThan(0);
+    expect(tug.drone?.slots).toBeGreaterThanOrEqual(tug.drone?.modules.length ?? 0);
+
+    const { host, unmount } = mount(<Screen game={game} />);
+    expect(text(host)).toContain(tug.drone?.name ?? "");
+    expect(text(host)).toContain(tug.drone?.hull ?? "");
+    unmount();
+  });
+
+  it("says so plainly when there is no drone to show", () => {
+    const game = newGame(4242);
+    voyageOf(game).hull = undefined;
+    expect(tugOf(game).drone).toBeUndefined();
+    const { host, unmount } = mount(<Screen game={game} />);
+    expect(text(host)).toContain("No drone on the rails");
+    unmount();
+  });
+
+  it("gives the orders one panel per thing a player does at the tug", () => {
+    const game = newGame(4242);
+    const heads = offersOf(game)
+      .map((o) => o.head)
+      .filter((h) => h !== undefined);
+    /* The groups are the engine's own — where to fly, what to fly, and what is
+       bolted to it — and each is its own panel rather than a heading inside
+       one long list. */
+    expect(heads.length).toBeGreaterThanOrEqual(3);
+    const { host, unmount } = mount(<Screen game={game} />);
+    for (const head of heads) expect(text(host)).toContain(head);
+    unmount();
   });
 });

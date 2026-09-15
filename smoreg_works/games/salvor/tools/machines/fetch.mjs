@@ -84,6 +84,7 @@ const LOOT = [
 const FIXED = [
   { id: "crate", author: "delapouite", slug: "wooden-crate" },
   { id: "system", author: "delapouite", slug: "server-rack" },
+  { id: "body", author: "lorc", slug: "pirate-grave" },
 ];
 
 /** The mark on the tab. */
@@ -190,6 +191,9 @@ ${loot.map((r) => `  /** ${r.author}/${r.slug} */\n  ${JSON.stringify(r.d)},`).j
 /** A crate is a crate and a system is a rack, wherever either of them stands. */
 export const CRATE_ICON = ${JSON.stringify(fixed.crate.d)};
 export const SYSTEM_ICON = ${JSON.stringify(fixed.system.d)};
+
+/** Somebody who came out here to do this job. */
+export const BODY_ICON = ${JSON.stringify(fixed.body.d)};
 `,
 );
 console.log(`\n→ src/ui/react/board/machines.ts`);

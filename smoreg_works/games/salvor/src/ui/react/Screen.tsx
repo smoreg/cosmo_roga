@@ -6,26 +6,7 @@ import type { BoardDoor, BoardRoom, BoardThing } from "./board/HexBoard.js";
 import { MenuSheet, Panel, Rail } from "./chrome/Panel.js";
 import { AlertDial, CoreRack } from "./meters/Rack.js";
 import { LogStrip } from "./action/Log.js";
-import {
-  alertOf,
-  boardOf,
-  codexOf,
-  commandsOf,
-  goalOf,
-  hereOf,
-  endingOf,
-  helpOf,
-  historyOf,
-  isHome,
-  logOf,
-  offersOf,
-  rackOf,
-  rackOfHull,
-  routeIn,
-  nameOfDrone,
-  tugOf,
-  whoOf,
-} from "./model.js";
+import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, helpOf, historyOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
 import { deckVersion, loadDeckIndex, watchDeck } from "./deckindex.js";
@@ -76,7 +57,6 @@ export function Screen({
   const [level, setLevel] = useState<string | null>(null);
   /* Which drone the dock is pointing the rack at. Null is the one on the
      rails, which is the drone that actually exists. */
-  const [looking, setLooking] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<Drawer>("none");
   /* A sheet on its way out is still on screen, so which one is leaving is a
      fact the layer needs and the animation is the only thing that ends it. */
@@ -222,10 +202,6 @@ export function Screen({
    * one that does not yet. A preview says so by being a preview: nothing has
    * been spent on a hull nobody has undocked in, so every bay is full.
    */
-  const preview = useMemo(
-    () => (looking === null ? undefined : rackOfHull(looking)),
-    [looking],
-  );
   const tug = useMemo(() => tugOf(game), [game, turn]);
   const offers = useMemo(() => offersOf(game, level ?? undefined), [game, turn, level]);
   const route = useMemo(() => routeIn(game, board), [game, board]);
@@ -433,26 +409,22 @@ export function Screen({
           gap: 8,
         }}
       >
-        <Panel title="Rack" stencil={preview === undefined ? "drone" : "preview"}>
+        <Panel title="Rack" stencil="drone">
           {/* Whose rack this is, drawn as the machine it belongs to — the one
               flying, or whichever the dock is pointing at. */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
-            <DroneIcon
-              who={looking === null ? who : `hull:${looking}`}
-              size={26}
-              tone={looking === null ? "var(--sv-amber)" : "var(--sv-soft)"}
-            />
+            <DroneIcon who={who} size={26} />
             <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
               <span
                 style={{
                   font: "var(--sv-title)",
                   letterSpacing: "var(--sv-title-track)",
                   textTransform: "uppercase",
-                  color: looking === null ? "var(--sv-ink)" : "var(--sv-soft)",
+                  color: "var(--sv-ink)",
                   whiteSpace: "nowrap",
                 }}
               >
-                {looking === null ? droneName : "—"}
+                {droneName}
               </span>
               <span
                 style={{
@@ -462,19 +434,15 @@ export function Screen({
                   color: "var(--sv-soft)",
                 }}
               >
-                {looking === null ? rack.hull : "not built yet"}
+                {rack.hull}
               </span>
             </div>
           </div>
-          <CoreRack
-            core={(preview ?? rack).core}
-            coreMax={(preview ?? rack).coreMax}
-            slots={(preview ?? rack).slots}
-          />
+          <CoreRack core={rack.core} coreMax={rack.coreMax} slots={rack.slots} />
         </Panel>
 
         {home ? (
-          <DockPreview tug={tug} onLook={setLooking} />
+          <DockPreview tug={tug} />
         ) : (
           <>
             <Panel title={here?.name ?? "unscanned"} stencil={here?.label ?? "—"}>

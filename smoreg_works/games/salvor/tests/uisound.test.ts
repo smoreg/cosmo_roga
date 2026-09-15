@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import { initialState, type AppEffect, type AppState } from "../src/ui/appstate.js";
-import type { UiIntent } from "../src/ui/input.js";
+
 import { SFX_VOLUME } from "../src/ui/sfx.js";
 import { BLIPS, REPEAT_GAP_MS, UI_MAX_GAIN, UiSound, blipFor, type BlipContext, type BlipId, type Press } from "../src/ui/uisound.js";
 

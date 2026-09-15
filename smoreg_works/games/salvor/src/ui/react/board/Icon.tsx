@@ -6,6 +6,7 @@ import {
   LOOT_ICON,
   MACHINE_BOX,
   MACHINE_ICON,
+  BODY_ICON,
   SYSTEM_ICON,
 } from "./machines.js";
 
@@ -105,14 +106,16 @@ export function toneOf(thing: { glyph: string; hostile?: true }): string {
  * modules and do not pretend to: they vary so two piles in one compartment can
  * be told apart, and nothing more.
  *
- * Bodies keep their silhouette. A cross is already the clearest thing it could
- * be, and the one object on the board that is not machinery should not start
- * looking like more of it.
+ * A body is a grave rather than a cross. The cross was the clearest mark it
+ * could have been and it was still a mark: what is lying there is somebody who
+ * came out here to do this job, and a drawing says that where a symbol only
+ * points at it.
  */
 function lootPath(thing: BoardThing): string | undefined {
   if (thing.glyph === "X") return CRATE_ICON;
   if (thing.glyph === "+" || thing.glyph === "✓") return SYSTEM_ICON;
   if (thing.glyph === "%") return LOOT_ICON[bucket(thing.id, LOOT_ICON.length)];
+  if (thing.glyph === "†") return BODY_ICON;
   return undefined;
 }
 

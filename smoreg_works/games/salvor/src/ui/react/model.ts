@@ -1,7 +1,7 @@
 import { hexLayout, isAlive } from "@jamrog/engine";
 import type { Entity, RoomGame, RoomId } from "@jamrog/engine";
 import { machineName } from "../../content/monsters.js";
-import { MODULES, moduleKind, moduleName } from "../../content/modules.js";
+import { moduleKind, moduleName } from "../../content/modules.js";
 import { roomActions } from "../actions.js";
 import { doorWays } from "../doorlist.js";
 import { hostilesIn, rigOf, wrecksOn } from "../../twist/rig.js";
@@ -475,27 +475,27 @@ export interface TugModel {
   derelict: { name: string; alert: number; online: number; of: number; sold: boolean; price: number };
   account: { credits: number; loot: number; keys: number; sortie: number; hold: number };
   /**
-   * The rack: three hulls, and everything an inspection shows.
+   * The drone on the rails, where there is one.
    *
-   * The whole of each is carried rather than the line the row prints, because
-   * the choice a voyage is made of is between these numbers and a player who
-   * cannot compare them is choosing on the strength of an adjective.
+   * One and not three. The readout used to list every hull the yard sells,
+   * which is a shelf and belongs with the other things that can be bought —
+   * what this side of the screen is for is what the tug *has*. A voyage owns
+   * a single drone at a time (`Voyage.hull`), so this is it or it is nothing.
    */
-  hulls: Array<{
+  drone?: {
     id: string;
-    name: string;
-    trait: string;
-    price: number;
-    on: boolean;
     /** Which machine this one would be built as, for the icon. */
     who: string;
-    /** What it is called, where it is a drone and not a hull on a shelf. */
-    drone?: string;
+    /** What it is called: `NADIA KJ-07`. */
+    name: string;
+    /** And what class of machine it is. */
+    hull: string;
+    trait: string;
     core: number;
     slots: number;
     speed?: number;
     modules: string[];
-  }>;
+  };
 }
 
 /**
@@ -510,6 +510,7 @@ export interface TugModel {
 export function tugOf(game: RoomGame): TugModel {
   const voyage = voyageOf(game);
   const state = currentDerelict(game);
+  const flying = HULLS.find((h) => h.id === voyage.hull);
   return {
     callsign: tugCallsign(game.seed),
     derelict: {
@@ -527,23 +528,21 @@ export function tugOf(game: RoomGame): TugModel {
       sortie: voyage.sortie,
       hold: voyage.hold.length,
     },
-    hulls: HULLS.map((hull) => ({
-      id: hull.id,
-      name: hullName(hull),
-      trait: hullTrait(hull),
-      price: hull.price,
-      on: voyage.hull === hull.id,
-      /* The one on the rails is *this* drone, so it is drawn as the machine
-         the board is drawing. The other two are hulls and not drones yet, so
-         they are keyed on themselves — enough to tell them apart on the shelf
-         without pretending a drone exists that does not. */
-      who: voyage.hull === hull.id ? whoOf(game) : `hull:${hull.id}`,
-      ...(voyage.hull === hull.id ? { drone: droneName(whoOf(game)) } : {}),
-      core: hull.core,
-      slots: hull.slots,
-      ...(hull.speed === undefined ? {} : { speed: hull.speed }),
-      modules: hull.modules.map((m) => moduleName(m)),
-    })),
+    ...(flying === undefined
+      ? {}
+      : {
+          drone: {
+            id: flying.id,
+            who: whoOf(game),
+            name: droneName(whoOf(game)),
+            hull: hullName(flying),
+            trait: hullTrait(flying),
+            core: flying.core,
+            slots: flying.slots,
+            ...(flying.speed === undefined ? {} : { speed: flying.speed }),
+            modules: flying.modules.map((m) => moduleName(m)),
+          },
+        }),
   };
 }
 
@@ -626,7 +625,6 @@ export function codexOf(game: RoomGame, id: string): CodexCard | undefined {
   };
 }
 
-
 // ----------------------------------------------------- what the panel carries
 
 /**
@@ -677,27 +675,6 @@ export function commandsOf(game: RoomGame): Offer[] {
     });
   });
   return out;
-}
-
-
-/**
- * A hull's rack as it comes off the rails, for looking at rather than flying.
- *
- * The rack panel shows the drone that exists; this shows one that does not
- * yet, out of the catalogue rather than out of the game, so a player weighing
- * eight slots against six can see both racks instead of two adjectives. It is
- * a preview and it says so by being a different question: no integrity has
- * been spent on a hull nobody has undocked in.
- */
-export function rackOfHull(id: string): { core: number; coreMax: number; slots: RackSlot[] } | undefined {
-  const hull = HULLS.find((h) => h.id === id);
-  if (hull === undefined) return undefined;
-  const slots: RackSlot[] = hull.modules.map((kind) => {
-    const full = hull.base?.[kind] ?? MODULES[kind].integrity;
-    return { name: moduleName(kind), value: full, max: full };
-  });
-  while (slots.length < hull.slots) slots.push({});
-  return { core: hull.core, coreMax: hull.core, slots };
 }
 
 // ------------------------------------------------------------------ the goal
@@ -766,7 +743,6 @@ function workOn(game: RoomGame, id: number): { work: { done: number; of: number 
   if (job === undefined) return undefined;
   return { work: { done: job.turns - work.left, of: job.turns } };
 }
-
 
 /**
  * Who this drone is: the key everything about its identity is read off.
