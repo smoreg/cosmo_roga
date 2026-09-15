@@ -255,14 +255,23 @@ core, side, loose, island. 211 of the fifty-foot pieces are corners; asking for
 "anything with two plated sides" instead got masts, scoops and an engine block
 used as a chamfer. A drive is not plating: it has its own place at the stern.
 
-**Fifty-foot corners chamfer the steps.** A hundred-foot grid can only change
-beam a hundred feet at a time, so an outline comes out as a flight of stairs.
-145 of the archive's fifty-foot pieces have plating on two adjoining sides and
-no art spilling off them — real corner plating rather than the masts, scoops
-and shuttles that make up most of that pool — and one laid into a notch, turned
-so its plating faces the two open sides, carries the hull line across the step.
-The first three attempts used the whole fifty-foot pool and looked like debris
-floating beside the ship; that is what `proud` is for.
+**Nothing is added at the edges, and the fifty-foot corners are gone.** They
+were laid into the notches beside the hull to chamfer its steps, through four
+attempts: the whole fifty-foot pool, then pieces with two plated sides, then
+`class: "corner"` with the plating read off the art, then the same with the
+mirror composed in the right order. Each attempt looked better than the last
+and every one of them was wrong for the same reason.
+
+A compartment facing space is already given a tile that is plated on that side
+— that is what the scoring asks for. So the outline of the ship is the outline
+of its own tiles, and a corner laid in the notch beside one is a second hull
+edge built over empty space next to a hull edge that was already there:
+plating growing off the side of plating. Worse where a tile's art is drawn
+proud, because then the notch it is deliberately spilling into gets filled in
+behind it.
+
+A step in a hull is a step. The right way to soften one is a finer profile,
+not a patch over the corner.
 
 **The ship is placed rather than merely validated.** The drives are aft because
 that is where the thrust goes and the bridge is forward because that is where

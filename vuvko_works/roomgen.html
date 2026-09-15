@@ -340,7 +340,6 @@ async function loadTiles(){
     const doors = new Map();
     const proud = new Map();
     const all = [];
-    const corner = new Map();
     const bleed = new Map();
     for (const path in tax.tiles){
       const tile = tax.tiles[path];
@@ -349,46 +348,6 @@ async function loadTiles(){
          else would have to be cut or stretched to sit under a hexagon. */
       if (!drawable.has(path)) continue;
       bleed.set(path, drawable.get(path));
-      /* Fifty-foot pieces are kept aside for the chamfers, and only the ones
-         that are edge art: a corner of open deck laid into a hull step reads
-         as a hole rather than as plating. */
-      if (ft[0] === 50 && ft[1] === 50){
-        /* Corner plating, and the taxonomy is asked rather than guessed at.
-           Three tests, each of which was learnt from a picture:
-
-           `class` is the archive's own word for the shape — 211 of the
-           fifty-foot pieces are corners and the rest are caps, edges, cores
-           and loose fittings, which is why filling a notch with "anything
-           with two plated sides" put masts and shuttles beside the ship.
-
-           `source` says where the plating was read from. "art" means the hull
-           curve is actually drawn on those sides; "folder" means it was
-           guessed from the folder name because the art showed none, and the
-           taxonomy's own note says that guess stamped 135 of 143 fully walled
-           rooms as hull corners. Those are the open rooms that were turning up
-           at the edge of the ship with their walls missing.
-
-           And a drive is not plating. An engine block has its own place at the
-           stern; it is not what a step in the hull is made of. */
-        const sk = tile.skin || [];
-        if (sk.length !== 2) continue;
-        if (tile.class !== "corner" || tile.source !== "art") continue;
-        if ((tile.proud || []).length) continue;
-        if ((tile.roles || []).some(r => r === "drive" || r === "fuel")) continue;
-        if (!sk.every(k => (tile.sides || {})[k] === "shaped")) continue;
-        bleed.set(path, drawable.get(path));
-        /* The archive draws a corner in whichever hand it was drawn in, so the
-           four orientations are reached by flipping rather than by hoping one
-           of each exists. Registered under every pair it can be turned into. */
-        for (const flip of FLIPS){
-          /* Indexed by the ship directions the plating actually ends up
-             facing, which is what the notch asks for. */
-          const pair = sk.map(k => facesAfter(k, flip)).sort().join("");
-          if (!corner.has(pair)) corner.set(pair, []);
-          corner.get(pair).push({path, flip});
-        }
-        continue;
-      }
       if (ft[0] !== 100 || ft[1] !== 100) continue;
       /* Same caution on the big tiles: plating guessed from a folder name is
          not plating, so a tile is only allowed to claim a side faces space
@@ -403,10 +362,9 @@ async function loadTiles(){
         byRole.get(role).push(path);
       }
     }
-    TILES = all.length ? {byRole, skin, doors, proud, all, corner, bleed} : null;
+    TILES = all.length ? {byRole, skin, doors, proud, all, bleed} : null;
     note.textContent = TILES
-      ? all.length + " hundred-foot tiles, "
-        + [...corner.values()].reduce((n, l) => n + l.length, 0) + " fifty-foot corners."
+      ? all.length + " hundred-foot tiles indexed."
       : "No hundred-foot tiles in the index.";
   } catch {
     TILES = null;
@@ -425,42 +383,6 @@ async function loadTiles(){
  * and every wall and doorway is matched against the wrong edge as well.
  */
 const TILE_SIDE = {e: "n", s: "e", w: "s", n: "w"};
-
-/** The same map read the other way: which way a tile's own edge ends up facing. */
-const TILE_SHIP = {n: "e", e: "s", s: "w", w: "n"};
-
-/**
- * The four hands a corner can be drawn in.
- *
- * The archive draws each corner once, in whichever hand it was drawn in, so
- * three of the four orientations simply do not exist as files. They exist as
- * reflections, which is how the archive itself ships its `[Mirror]` variants —
- * so the missing ones are made rather than waited for.
- */
-const FLIPS = [
-  {sx: 1,  sy: 1},
-  {sx: -1, sy: 1},
-  {sx: 1,  sy: -1},
-  {sx: -1, sy: -1},
-];
-
-/**
- * Where a tile's own edge ends up pointing once the tile is drawn.
- *
- * Order matters and it is not the order it reads in. SVG applies
- * `rotate(90) scale(sx sy)` to points right to left — the tile is mirrored
- * first, in its own frame, and the result is then turned — so an edge is
- * flipped as a *tile* edge and only then becomes a ship direction. Doing it
- * the other way round, flipping after the turn, is a different transform for
- * every one of the four corners, because a quarter turn and a mirror do not
- * commute. That is what had the plating curving into the ship.
- */
-function facesAfter(tileSide, flip){
-  let side = tileSide;
-  if (flip.sx < 0) side = side === "e" ? "w" : side === "w" ? "e" : side;
-  if (flip.sy < 0) side = side === "n" ? "s" : side === "s" ? "n" : side;
-  return TILE_SHIP[side];
-}
 
 /**
  * Where a doorway has to sit for two tiles to meet at it.
@@ -967,7 +889,16 @@ function draw(ship, art, sections){
 
      Each tile is turned ninety degrees clockwise with the rest of the ship:
      the archive draws upright, engines at the bottom and bridge at the top,
-     and this hull is on its side. */
+     and this hull is on its side.
+
+     Nothing is added at the edges. A compartment facing space is given a tile
+     that is plated on that side — that is what the scoring asks for — so the
+     ship's outline is already the outline of its own tiles. Fifty-foot corners
+     were laid into the notches beside them for a while, to chamfer the steps,
+     and every one was a second hull edge built over empty space next to a hull
+     edge that was already there: plating growing off the side of plating, and
+     twice over where a tile's art was drawn proud and had the notch it was
+     spilling into filled in behind it. A step in a hull is a step. */
   /* Axial to picture. A cell's place along the ship is `q + r/2` — the same
      identity the mirror is built on — and rows are a pitch apart, so tiles of
      one pitch square meet brick fashion with no gap anywhere. */
@@ -984,60 +915,6 @@ function draw(ship, art, sections){
   if (art){
     const plan = el("g", {opacity: .78});
 
-    /* Fifty-foot corners where the hull steps.
-
-       A notch is a cell the hull does not use but nearly surrounds: empty,
-       and with three or more of its six neighbours occupied. Filling it
-       carries the plating across the step instead of leaving a stair. Most of
-       the archive's fifty-foot pieces are masts and scoops and shuttles, which
-       read as debris beside a ship; the ones used here have plating on two
-       adjoining sides and nothing spilling off them. */
-    if (TILES && TILES.corner.size){
-      const trimRand = rng(seedOf() + ":trim");
-      const filled = new Set([...sections.values()].map(keyOf));
-      const notches = new Map();
-      for (const cell of sections.values()){
-        for (const dir in SHIP_STEP){
-          const {step} = SHIP_STEP[dir];
-          const near = {q: cell.q + step[0], r: cell.r + step[1]};
-          const key = keyOf(near);
-          if (filled.has(key)) continue;
-          notches.set(key, near);
-        }
-      }
-      for (const [, near] of notches){
-        let held = 0;
-        const openSides = {n: 0, s: 0, e: 0, w: 0};
-        for (const dir in SHIP_STEP){
-          const {step, side} = SHIP_STEP[dir];
-          if (filled.has(keyOf({q: near.q + step[0], r: near.r + step[1]}))) held++;
-          else openSides[side]++;
-        }
-        if (held < 3) continue;                    // a lone cell in space, not a step
-        const facing = ["n", "s", "e", "w"].filter(d => openSides[d] > 0);
-        if (facing.length !== 2) continue;         // not a corner
-        /* Ship directions, matching how the pool is indexed. It used to look
-           up a tile-space key against a ship-space index, which found a tile
-           for the wrong corner whenever the two happened to collide. */
-        const key = facing.slice().sort().join("");
-        const pool = TILES.corner.get(key);
-        if (!pool || !pool.length) continue;
-        const cx = (near.q + near.r / 2) * pitch, cy = near.r * pitch;
-        const chosen = pick(trimRand, pool);
-        const span = pitch * (TILES.bleed.get(chosen.path) ?? 1);
-        const plate = el("g", {
-          transform: "translate(" + cx + " " + cy + ") rotate(90) scale("
-            + chosen.flip.sx + " " + chosen.flip.sy + ")",
-          opacity: .85,
-        });
-        plate.appendChild(el("image", {
-          href: "geomorphs/" + chosen.path,
-          x: -span / 2, y: -span / 2, width: span, height: span,
-          preserveAspectRatio: "none",
-        }));
-        plan.appendChild(plate);
-      }
-    }
     ship.rooms.forEach(function plate(room, i){
       const tile = art.get(room.id);
       if (!tile) return;
