@@ -1091,33 +1091,63 @@ export function HexBoard({
     return -1;
   };
 
-  /* One teleport per compartment: the drone dissolves out of each room and
-     reassembles in the next, so a three-room walk reads as three hops. The pip
-     is placed imperatively while it plays so React is not fighting it; the
-     caller commits the new position when it lands. */
-  const hop = (el: HTMLElement, ids: readonly number[], i: number, done: () => void): FX.Running => {
-    const room = byId.get(ids[i] as number);
-    if (room === undefined) {
-      done();
-      return { cancel: () => undefined };
-    }
-    const c = centre(room);
-    return FX.teleport(
-      el,
-      { left: c.x - 20, top: c.y - hexH / 2 - 24 },
-      {
-        faceEl: el.querySelector("[data-fx-face]"),
-        label: "◆",
-        onDone: () => {
-          if (i + 1 < ids.length) {
-            fx.current = hop(el, ids, i + 1, done);
-            return;
-          }
-          done();
+  /**
+   * The drone arriving, as a flicker rather than as a flight.
+   *
+   * There used to be a `teleport` per compartment here, played along the
+   * *planned* route and handing the turn to the game only when it finished.
+   * Two bugs fell out of that and the owner hit both in one screenshot. The
+   * token walked the whole route while the drone walked as far as the rules
+   * let it, so the mark ended up hovering over a compartment the drone was
+   * never in — "the icon moved but the drone did not". And the animation
+   * carried `label: "◆"`, which `teleport` writes back into the face when it
+   * lands: the face is a drawing, `textContent` wipes the drawing, and the
+   * drone became a diamond for the rest of the run.
+   *
+   * The position is React's now, always, so it cannot be stale — the mark is
+   * wherever the game says the drone is, on the frame the game says it. What
+   * is left is the arrival: two held frames of the face cutting out, which is
+   * a step being seen rather than a thing being followed. The walk itself is
+   * already one compartment a frame (`ui/react/Screen.tsx`).
+   */
+  useEffect(
+    function arrived() {
+      if (drone === null) return;
+      const el = droneRef.current;
+      if (el === null) return;
+      fx.current?.cancel();
+      setMoving(true);
+      fx.current = FX.frames(
+        [
+          () => {
+            el.style.opacity = "0";
+          },
+          () => {
+            el.style.opacity = "1";
+          },
+          () => {
+            el.style.opacity = "0";
+          },
+        ],
+        {
+          frame: FX.FRAME / 3,
+          onDone: () => {
+            /* However it ends — cancelled by the next step, unmounted, skipped
+               for reduced motion — the drone is visible. A mark you cannot see
+               is worse than one that did not animate. */
+            el.style.opacity = "1";
+            setMoving(false);
+          },
         },
-      },
-    );
-  };
+      );
+      return () => {
+        fx.current?.cancel();
+        el.style.opacity = "1";
+        setMoving(false);
+      };
+    },
+    [drone],
+  );
 
   const go = (to: number): void => {
     const here = route(to);
@@ -1127,17 +1157,10 @@ export function HexBoard({
       return;
     }
     setBarred(null);
-    const el = droneRef.current;
-    if (el === null) {
-      onWalk?.(to, here.path);
-      return;
-    }
-    fx.current?.cancel();
-    setMoving(true);
-    fx.current = hop(el, here.path, 0, () => {
-      setMoving(false);
-      onWalk?.(to, here.path);
-    });
+    /* Straight to the game. The board does not get to decide where the drone
+       ends up — it draws where the drone is, a compartment at a time, as the
+       walk spends the turns. */
+    onWalk?.(to, here.path);
   };
 
   const at = (x: number, y: number): CSSProperties => ({

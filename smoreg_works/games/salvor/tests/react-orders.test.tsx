@@ -576,3 +576,85 @@ describe("a run survives the tab closing", () => {
     expect(suspended(), "a save from an older build is not this game").toBe(false);
   });
 });
+
+describe("the drone mark is where the drone is", () => {
+  beforeAll(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        onchange: null,
+        dispatchEvent: () => false,
+      }),
+    });
+  });
+
+  /**
+   * Two bugs the owner hit in one screenshot, both from the board animating
+   * the *planned* route and handing the turn to the game only when it landed:
+   * the mark walked the whole way while the drone walked as far as the rules
+   * let it, and the animation wrote its own label into the face — which is a
+   * drawing, so the drone became a diamond for the rest of the run.
+   */
+  it("hands the walk to the game rather than playing it first", () => {
+    vi.useFakeTimers();
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<Screen game={game} />);
+    });
+
+    const from = game.player.room;
+    const door = game.ship
+      .doorsOf(game.roomOf(game.player).id)
+      .find((d) => d.state !== "airlock" && d.state !== "sealed" && d.state !== "locked");
+    expect(door, "no way out of the docking bay").toBeDefined();
+    const to = game.ship.other(door!, from!);
+    const hex = host.querySelector(`[data-room="${String(to)}"]`);
+    expect(hex).not.toBeNull();
+
+    act(() => {
+      hex!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    /* The first step is spent on the press, not after an animation. */
+    expect(game.player.room, "the drone did not move").toBe(to);
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+    vi.useRealTimers();
+  });
+
+  it("keeps the drone's own face rather than a glyph", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<Screen game={game} />);
+    });
+
+    const face = host.querySelector("[data-fx-face]");
+    expect(face).not.toBeNull();
+    /* A drawing, not a character: the move animation used to write its label
+       into this node, and `textContent` takes the drawing with it. */
+    expect(face!.querySelector("svg"), "the drone's face is not a drawing").not.toBeNull();
+    expect(face!.textContent).not.toBe("◆");
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  });
+});
