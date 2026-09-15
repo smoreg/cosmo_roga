@@ -46,7 +46,7 @@ function keys(state: AppState, ...events: KeyLike[]): AppState {
 describe("the start screen answers the five questions", () => {
   it("names the game and says in one line what it is", () => {
     const screen = titleScreen(DEFAULT_TITLE);
-    expect(screen.name).toBe("SALVOR");
+    expect(screen.name).toBe("DERELICT ROGUE");
     // One line, not a paragraph: the owner's complaint about the old card was
     // that the pitch was three rows of small text nobody reads.
     expect(screen.tagline).not.toContain("\n");

@@ -19,7 +19,16 @@ import { t } from "../src/i18n.js";
 import { OBJECTIVES, objectiveName } from "../src/content/objectives.js";
 
 /** A callsign too long for the heading's column, so the class has to stand in. */
-const LONG_CALLSIGN = CALLSIGNS.findIndex((c) => c.length > 12);
+/**
+ * A callsign the heading cannot fit, worked out rather than guessed.
+ *
+ * It used to be "longer than twelve", which was true while the head opened
+ * with the game's name and stopped being true the moment that came off: the
+ * column got fourteen characters wider and every callsign fitted. The budget
+ * is what the rule is actually about, so the test asks for it.
+ */
+const HEAD_BUDGET = PANEL_WIDTH - (t("panel.sortie", { n: 1 }).length + 2);
+const LONG_CALLSIGN = CALLSIGNS.findIndex((c) => c.length > HEAD_BUDGET);
 import { THEME } from "../src/ui/theme.js";
 
 /**
@@ -133,21 +142,27 @@ describe("every line fits the panel", () => {
 describe("the blocks, in the doc's own order", () => {
   it("heads with the hull's callsign, the sortie and the turn", () => {
     // The callsign and not the class: a voyage is four hulls and three of them
-    // can be freighters, so `SALVOR  freighter  sortie 2` names none of them
+    // can be freighters, so `freighter  sortie 2` names none of them
     // (docs/tasks/G55-playtest-findings.md).
     const game = gameIn();
     const out = lines(game);
-    expect(out[0]).toBe(`SALVOR  ${flavourCallsign(derelictAboard(game)!.flavour)}  sortie 1`);
+    expect(out[0]).toBe(`${flavourCallsign(derelictAboard(game)!.flavour)}  sortie 1`);
     expect(out[1]).toBe("turn 0");
   });
 
-  it("falls back to the class where a callsign will not fit the column", () => {
-    // A clipped callsign is a hull nobody has heard of, so the long ones give
-    // way to the word the catalogue uses instead.
-    const game = gameIn();
-    game.currentShip.data.type = "freighter";
-    derelictAboard(game)!.flavour = { ...derelictAboard(game)!.flavour, callsign: LONG_CALLSIGN };
-    expect(lines(game)[0]).toBe("SALVOR  freighter  sortie 1");
+  it("has room for every callsign the catalogue has", () => {
+    /* The rule is still there — a clipped callsign is a hull nobody has heard
+       of, so a long one gives way to the class — but nothing triggers it any
+       more. Taking the game's name off the heading gave the column fourteen
+       characters back, and the longest callsign in the catalogue now fits with
+       room to spare.
+
+       So what is held here is the fact that makes the fallback unreachable,
+       which is the one that can regress: add a callsign longer than the head
+       and this says so, before a player meets a hull called `BRIGHT ANCH`. */
+    expect(LONG_CALLSIGN, `${String(HEAD_BUDGET)} columns`).toBe(-1);
+    const longest = CALLSIGNS.reduce((a, b) => (a.length >= b.length ? a : b));
+    expect(longest.length, longest).toBeLessThanOrEqual(HEAD_BUDGET);
   });
 
   it("puts the rack above the compartment and the compartment above the list", () => {
@@ -1034,7 +1049,7 @@ describe("the panel at home", () => {
     const out = panelBlocks(game, roomActions(game));
     const text = out.map((l) => l.text);
 
-    expect(text[0]).toBe(`SALVOR  tug → ${flavourCallsign(currentDerelict(game).flavour)}`);
+    expect(text[0]).toBe(`tug → ${flavourCallsign(currentDerelict(game).flavour)}`);
     expect(text[text.length - 1]).toBe("? help");
     for (const station of ["DOCK", "HOLD", "BENCH", "HELM"]) {
       expect(text.some((l) => l.includes(station)), station).toBe(false);

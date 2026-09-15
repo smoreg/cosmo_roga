@@ -820,8 +820,8 @@ export const EN = {
   "danger.still": "sits",
   "log.contacts.here": "In here: {list}.",
   "log.contacts.one": "{machine} {hp}, {danger}",
-  "panel.head.tug": "SALVOR  tug",
-  "panel.head.tugTo": "SALVOR  tug → {hull}",
+  "panel.head.tug": "tug",
+  "panel.head.tugTo": "tug → {hull}",
   "help.where.tug.head": "WHERE YOU ARE — your own tug",
   "help.where.tug.1": "One screen, no walking: buy a drone, mend it, stow",
   "help.where.tug.2": "or sell what you will not fly, pick a hull, cast off.",
@@ -845,7 +845,7 @@ export const EN = {
 
   // ---------------------------------------------------------- title and help
 
-  "title.name": "SALVOR",
+  "title.name": "DERELICT ROGUE",
   "title.tagline": "A turn-based roguelike. Start a derelict's three systems, get out, sell the hull.",
   "title.menu.head": "MENU",
   "title.menu.voyage": "Send the tug",

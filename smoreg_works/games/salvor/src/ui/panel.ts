@@ -874,12 +874,13 @@ function heading(game: RoomGame): string {
     const docked = hullWord(game, dockedDerelict(game), derelictNameOf(tag(game, "docked")));
     return docked === undefined ? t("panel.head.tug") : t("panel.head.tugTo", { hull: docked });
   }
+  /* The hull and the sortie, and not the game's name.
+     It used to open with the title — `SALVOR  LODESTAR  sortie 1` — which
+     spent a third of a forty-two column head telling the player which game
+     they had launched. The header names the ship this is and how often it has
+     been tried, which is what somebody looking at it wants to know. */
   const named = hullWord(game, derelictAboard(game), derelictNameOf(tag(game, "type")));
-  const parts = [
-    t("title.name"),
-    named ?? t("word.derelict"),
-    t("panel.sortie", { n: game.currentShip.visits }),
-  ];
+  const parts = [named ?? t("word.derelict"), t("panel.sortie", { n: game.currentShip.visits })];
   return parts.join("  ");
 }
 
@@ -902,7 +903,7 @@ function hullWord(
   const callsign = flavourCallsign(state.flavour);
   const rest = isTug(game)
     ? t("panel.head.tugTo", { hull: "" }).length
-    : t("title.name").length + 2 + t("panel.sortie", { n: game.currentShip.visits }).length + 2;
+    : t("panel.sortie", { n: game.currentShip.visits }).length + 2;
   return callsign.length + rest <= PANEL_WIDTH ? callsign : fallback;
 }
 

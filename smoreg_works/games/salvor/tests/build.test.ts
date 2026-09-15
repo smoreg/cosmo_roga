@@ -38,7 +38,7 @@ describe("the page around the game", () => {
 
   it("names the game in the tab and mounts it where main.tsx looks", () => {
     const html = read("index.html");
-    expect(html).toContain("<title>SALVOR</title>");
+    expect(html).toContain("<title>Derelict Rogue</title>");
     expect(html).toContain('id="game"');
     expect(read("src/main.tsx")).toContain('getElementById("game")');
   });

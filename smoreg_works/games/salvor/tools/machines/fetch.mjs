@@ -121,7 +121,7 @@ const mark = await pathOf(MARK);
 writeFileSync(
   join(here, "..", "..", "public", "favicon.svg"),
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <title>SALVOR</title>
+  <title>Derelict Rogue</title>
   <rect width="512" height="512" rx="80" fill="#0a0d10"/>
   <path d="${mark}" fill="#e0a458"/>
 </svg>
