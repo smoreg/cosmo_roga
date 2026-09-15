@@ -1,19 +1,6 @@
-import {
-  RoomDistance,
-  blockedBy,
-  exploreTarget,
-  type Door,
-  type DoorFilter,
-  type DoorId,
-  type Entity,
-  type Room,
-  type RoomCommand,
-  type RoomGame,
-  type RoomId,
-  type Ship,
-} from "@jamrog/engine";
+import { RoomDistance, blockedBy, exploreTarget, type Door, type DoorFilter, type DoorId, type Entity, type Room, type RoomCommand, type RoomGame, type RoomId, type Ship } from "@jamrog/engine";
 import { moduleName, type ModuleId } from "../content/modules.js";
-import { machineName } from "../content/monsters.js";
+
 import { isTug } from "../content/tug.js";
 import { doorStateWord } from "../content/words.js";
 import { roomName } from "../content/zones.js";

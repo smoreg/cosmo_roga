@@ -1,6 +1,6 @@
 import type { DoorId, RoomCommand, RoomGame, RoomId } from "@jamrog/engine";
 import { isTug } from "../content/tug.js";
-import { cycleLang, t } from "../i18n.js";
+import { t } from "../i18n.js";
 import {
   ACTION_KEYS,
   doorStands,
@@ -99,8 +99,6 @@ export type AppEffect =
   | { kind: "fight"; melee: boolean }
   /** Abort a walk in progress. */
   | { kind: "stopAuto" }
-  /** The language changed under the whole screen. Redraw, spend nothing. */
-  | { kind: "language" }
   /**
    * New seed, new voyage.
    *
@@ -398,9 +396,6 @@ function titleRow(state: AppState, game: RoomGame, row: TitleRowKind): AppState 
       return { ...state, overlay: "help", helpPage: 0, titleHelp: true, effect: IDLE };
     case "seed":
       return { ...state, seedText: "", effect: IDLE };
-    case "lang":
-      cycleLang();
-      return { ...state, effect: { kind: "language" } };
     case "view":
       return { ...state, effect: { kind: "view" } };
     case "sound":
@@ -540,16 +535,6 @@ function moved(cursor: number, delta: number, length: number): number {
  * comes back as an effect.
  */
 export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): AppState {
-  // `L` comes before every other rule, because it is the one control that has
-  // to work on screens where nothing else does: the title a player cannot read,
-  // and the error card they are being asked to report. It spends no turn and
-  // never dismisses anything — the screen simply comes back in another
-  // language.
-  if (intent.kind === "language") {
-    cycleLang();
-    return { ...state, effect: { kind: "language" } };
-  }
-
   // A broken run takes exactly one key: the one that starts a new one. Every
   // other key would ask the sim a question it has already failed to answer.
   if (state.crash !== undefined) {

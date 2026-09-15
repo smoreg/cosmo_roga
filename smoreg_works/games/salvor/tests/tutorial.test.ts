@@ -18,7 +18,7 @@ import {
 } from "../src/content/tutorial.js";
 import { POPULATE, roomList, type Body, type ShipSystem } from "../src/systems/populate.js";
 import { voyageOf } from "../src/systems/voyage.js";
-import { LANGS, setLang, tIn } from "../src/i18n.js";
+import { t } from "../src/i18n.js";
 
 /**
  * The hull a training run is taught on, and the seven lines it is taught with
@@ -305,11 +305,11 @@ describe("the seven lines", () => {
       "derelict.tutorial",
       ...TUTORIAL_SPEC.flavour.map((_, i) => `flavour.${TUTORIAL_ID}.${i}`),
     ] as const;
-    for (const lang of LANGS) {
+    {
       for (const key of keys) {
-        const line = tIn(lang, key as never);
-        expect(line, `${lang}: ${key}`).toBeTruthy();
-        expect(line, `${lang}: ${key}`).not.toBe(key);
+        const line = t(key as never);
+        expect(line, `${key}`).toBeTruthy();
+        expect(line, `${key}`).not.toBe(key);
       }
     }
     // The flavour line reads `{callsign} · {hull} · {first} · {second}`, so a
@@ -362,22 +362,6 @@ describe("a training run", () => {
     // not a reading list, so none of them is ticked off before it happens.
     for (const id of ["exposure", "burned", "keycard", "sold", "death"]) {
       expect(saidHint(game.player, id), id).toBe(false);
-    }
-  });
-
-  it("still answers its win and death lines in the language that is on", () => {
-    // The training pack is built on `SALVOR` as a prototype and not spread from
-    // it: three of those fields are getters, and a spread would freeze all
-    // three to whichever language was on when the run was made.
-    const game = newGame(TUTORIAL_SEED, true);
-    try {
-      setLang("ru");
-      const ru = game.content.winLine;
-      setLang("es");
-      expect(game.content.winLine).not.toBe(ru);
-      expect(game.content.deathLine).toBeTruthy();
-    } finally {
-      setLang("en");
     }
   });
 });

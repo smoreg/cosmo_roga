@@ -1,16 +1,9 @@
 import type { Door, Entity, RoomGame, RoomId } from "@jamrog/engine";
-import { MODULES, moduleName, type ModuleId } from "../content/modules.js";
+
 import { salvageTarget, type Charter } from "../content/charters.js";
 import { derelictNameOf, flavourCallsign } from "../content/derelicts.js";
 import { machineName } from "../content/monsters.js";
-import {
-  OBJECTIVE_COUNT,
-  OBJECTIVES,
-  SYSTEM_GLYPH,
-  objectiveName,
-  toolName,
-  type ObjectiveSpec,
-} from "../content/objectives.js";
+import { OBJECTIVE_COUNT, OBJECTIVES, SYSTEM_GLYPH, objectiveName, toolName, type ObjectiveSpec } from "../content/objectives.js";
 import { isTug } from "../content/tug.js";
 import { roomName, zoneName } from "../content/zones.js";
 import { t, tId } from "../i18n.js";
@@ -683,7 +676,6 @@ function contactsOf(
   return [...seen, ...strikersNear(game, here)];
 }
 
-
 /**
  * `E enforcer 10/10 hunter`, inside the panel's twenty-eight columns — and
  * `c scout 3/3 d4 shoots` for one that is still a door away.
@@ -735,8 +727,6 @@ function contactLine(machine: Entity, door: string | undefined): string {
   const name = clipName(machineName(machine.name), Math.max(3, room));
   return clip(`${machine.ch} ${name} ${hp}${tail}`);
 }
-
-
 
 /**
  * Everything below the numbered list, and the reason the list is what gets
@@ -1027,7 +1017,6 @@ function contentLine(glyph: string, name: string, right: string): string {
   const text = clipTo(name, width - (right.length > 0 ? 1 : 0));
   return ` ${glyph} ${right.length > 0 ? text.padEnd(width) : text}${right}`;
 }
-
 
 /**
  * The verbs that never take a number. Two rows rather than the mock-up's one,

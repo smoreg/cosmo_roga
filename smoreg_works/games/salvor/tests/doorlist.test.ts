@@ -1,20 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { RoomGame, type RoomGameConfig } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { moduleKind, moduleName, type ModuleId } from "../src/content/modules.js";
-import { DEFAULT_LANG, LANGS, setLang, t } from "../src/i18n.js";
+import { t } from "../src/i18n.js";
 import { applyDerived, findSlot, rigOf } from "../src/twist/rig.js";
 import { ACTION_WIDTH, BACK_KEY, doorStands, roomActions, type Action } from "../src/ui/actions.js";
-import {
-  doorBehind,
-  doorLevel,
-  doorWays,
-  doorWaysStand,
-  doorsStand,
-  sealBehind,
-  soleWay,
-} from "../src/ui/doorlist.js";
+import { doorBehind, doorLevel, doorWays, doorWaysStand, doorsStand, sealBehind, soleWay } from "../src/ui/doorlist.js";
 
 /**
  * The bulkheads of a compartment as a list of their own: the level `d` opens
@@ -101,8 +93,6 @@ const rows = (game: RoomGame): Action[] => doorLevel(game).filter((a) => a.step 
 const labels = (game: RoomGame): string[] => doorLevel(game).map((a) => a.label);
 const rowFor = (game: RoomGame, label: string): Action | undefined =>
   doorLevel(game).find((a) => a.label.includes(label));
-
-afterEach(() => setLang(DEFAULT_LANG));
 
 describe("the list of bulkheads", () => {
   it("gives every door of the compartment a row, in door order, and a way back", () => {
@@ -390,13 +380,12 @@ describe("the list never lies", () => {
   });
 
   it("fits the panel in all three languages", () => {
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       for (const room of ["r1", "r2", "r5", "r6"]) {
         const game = gameIn(room);
         give(game, "welder");
         for (const row of doorLevel(game)) {
-          expect(row.label.length, `${lang} ${room} «${row.label}»`).toBeLessThanOrEqual(ACTION_WIDTH);
+          expect(row.label.length, `${room} «${row.label}»`).toBeLessThanOrEqual(ACTION_WIDTH);
         }
       }
     }

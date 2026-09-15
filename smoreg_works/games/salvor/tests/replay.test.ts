@@ -3,31 +3,15 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  RoomDistance,
-  RoomGame,
-  Rng,
-  SAVE_VERSION,
-  decodeRun,
-  encodeRun,
-  isAlive,
-  replayRooms,
-  walkerOf,
-  type DoorFilter,
-  type RoomCommand,
-  type RoomGameConfig,
-  type RoomId,
-  type System,
-} from "@jamrog/engine";
-import { BOTS_ROOMS, shipFromText } from "@jamrog/engine/testing";
-import { GAME_CONFIG, SALVOR } from "../src/game.js";
+import { RoomDistance, RoomGame, Rng, SAVE_VERSION, decodeRun, encodeRun, isAlive, replayRooms, walkerOf, type DoorFilter, type RoomCommand, type RoomGameConfig, type RoomId, type System } from "@jamrog/engine";
+import { BOTS_ROOMS } from "@jamrog/engine/testing";
+import { GAME_CONFIG } from "../src/game.js";
 import { FREIGHTER } from "../src/content/derelicts.js";
 import { TUG_ID, tugRoomKind } from "../src/content/tug.js";
-import { TUG, gatedOffers } from "../src/systems/tug.js";
-import { POPULATE } from "../src/systems/populate.js";
-import { DOORS } from "../src/systems/doors.js";
-import { SHIP, systemsAboard } from "../src/systems/ship.js";
-import { VOYAGE, voyageOf } from "../src/systems/voyage.js";
+import { gatedOffers } from "../src/systems/tug.js";
+
+import { systemsAboard } from "../src/systems/ship.js";
+import { voyageOf } from "../src/systems/voyage.js";
 import { rigOf } from "../src/twist/rig.js";
 
 /**
@@ -179,7 +163,7 @@ function playRival(game: RoomGame, seed: number): void {
  * is built around. Spends whatever the compartment offers on the way — the
  * body in the docking bay is where the terminal's keycard comes from.
  */
-function playSale(game: RoomGame, seed: number): void {
+function playSale(game: RoomGame, _seed: number): void {
   const spent = new Map<string, Set<string>>();
 
   for (let n = 0; n < 400 && !game.isOver(); n++) {

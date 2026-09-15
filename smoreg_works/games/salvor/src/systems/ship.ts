@@ -1,32 +1,7 @@
-import {
-  TURN_COST,
-  type ActionOffer,
-  type Outcome,
-  type RoomCommand,
-  type RoomGame,
-  type System,
-} from "@jamrog/engine";
+import { TURN_COST, type ActionOffer, type Outcome, type RoomCommand, type RoomGame, type System } from "@jamrog/engine";
 import { moduleBurnLine } from "../content/modules.js";
-import {
-  OBJECTIVE_COUNT,
-  needsLine,
-  objectiveName,
-  objectiveOnlineLine,
-  objectiveSpec,
-  toolExposes,
-  toolName,
-  type ObjectiveId,
-  type ObjectiveJob,
-  type ObjectiveSpec,
-} from "../content/objectives.js";
-import {
-  applyDerived,
-  findSlot,
-  registerHackTarget,
-  rigOf,
-  routeDamage,
-  type HackTarget,
-} from "../twist/rig.js";
+import { OBJECTIVE_COUNT, needsLine, objectiveName, objectiveOnlineLine, objectiveSpec, toolExposes, toolName, type ObjectiveJob, type ObjectiveSpec } from "../content/objectives.js";
+import { applyDerived, findSlot, registerHackTarget, rigOf, routeDamage, type HackTarget } from "../twist/rig.js";
 import { hint, turnRoom } from "../content/hints.js";
 import { t } from "../i18n.js";
 import { raiseAlert, standDown } from "./alert.js";
@@ -67,7 +42,6 @@ const BROKEN_OFF_KEY = "log.work.break.splice";
 
 const FAIL = (reason: string): Outcome => ({ ok: false, cost: 0, reason });
 const DONE = (): Outcome => ({ ok: true, cost: TURN_COST });
-
 
 /** Every system aboard the ship the drone is on, raised or not. */
 export function systemsAboard(game: RoomGame): ShipSystem[] {

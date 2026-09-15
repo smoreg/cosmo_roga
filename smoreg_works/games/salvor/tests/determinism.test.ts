@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RoomGame, Rng, replayRooms, type RoomCommand } from "@jamrog/engine";
 import { BOTS_ROOMS } from "@jamrog/engine/testing";
-import { DEFAULT_LANG, setLang } from "../src/i18n.js";
 import { GAME_CONFIG, newGame } from "../src/game.js";
 
 /**
@@ -170,23 +169,4 @@ describe("two voyages in one process", () => {
     }
   });
 
-  /**
-   * The language is process-wide (`i18n.ts`), so a voyage recorded in one and
-   * replayed in another would be a divergence nobody could see in the seed.
-   * Nothing translated may reach the world.
-   */
-  it("the world is the same in every language", () => {
-    try {
-      const worlds = (["en", "ru", "es"] as const).map((lang) => {
-        setLang(lang);
-        const r = runner(3);
-        for (let i = 0; i < STEPS; i++) press(r);
-        return worldOf(r.game);
-      });
-      expect(worlds[1]).toBe(worlds[0]);
-      expect(worlds[2]).toBe(worlds[0]);
-    } finally {
-      setLang(DEFAULT_LANG);
-    }
-  });
 });

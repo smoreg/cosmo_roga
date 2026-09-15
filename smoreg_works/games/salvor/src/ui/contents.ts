@@ -1,16 +1,12 @@
-import { isAlive, portsOf, type Entity, type Room, type RoomGame, type RoomId, type Ship } from "@jamrog/engine";
-import { derelictNameOf } from "../content/derelicts.js";
-import { tugCallsign } from "../content/hints.js";
+import { isAlive, type Entity, type Room, type RoomGame, type RoomId, type Ship } from "@jamrog/engine";
+
 import { moduleKind, moduleName } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
-import { roomName } from "../content/zones.js";
+
 import { t } from "../i18n.js";
 import { hazardKind } from "../content/hazards.js";
-import { isTug } from "../content/tug.js";
-import { alertState } from "../systems/alert.js";
-import { doorHazard, hazardKnown, hazardsOf, roomHazard, signsFresh, type HazardRecord } from "../systems/hazardstate.js";
+import { doorHazard, hazardKnown, hazardsOf, roomHazard, type HazardRecord } from "../systems/hazardstate.js";
 import { hostilesIn, wrecksOn } from "../twist/rig.js";
-import { strikersNear } from "./strikers.js";
 
 /**
  * What is in a compartment, in words.
@@ -89,58 +85,6 @@ function bucketName(key: (typeof CONTENT_KEYS)[number], raw: unknown): string {
   if (key === "items") return t(kind === "console" ? "thing.console" : "thing.package");
   return t("thing.system");
 }
-
-
-/**
- * Compartments flashing on this frame, when nothing is: the ordinary case, and
- * a shared empty set rather than a fresh one per frame.
- */
-const NO_ALARM: ReadonlySet<RoomId> = new Set();
-const NO_DOORS: ReadonlySet<number> = new Set();
-
-
-
-
-
-/** Columns the banner may use: the schematic's own width, short of the hull line. */
-
-
-/** `«KESTREL» · freighter`, with whichever half the store actually has. */
-function named(name: string | undefined, type: string | undefined): string {
-  const parts: string[] = [];
-  if (name) parts.push(`«${name}»`);
-  if (type) parts.push(type);
-  return parts.length === 0 ? t("word.unknownHull") : parts.join(" · ");
-}
-
-/** `KESTREL (freighter)` — the same hull, named inside somebody else's sentence. */
-function hull(name: string | undefined, type: string | undefined): string {
-  if (!name) return type ?? t("word.unknownHull");
-  return type ? `${name} (${type})` : name;
-}
-
-/** `quiet` or `alert 2`: the gauge, in the word the tug's own panel uses. */
-function alertWord(game: RoomGame): string {
-  const level = alertState(game).level;
-  return level === 0 ? t("panel.quiet") : t("panel.alertAt", { n: level });
-}
-
-/**
- * The hull the tug is tied to, when the drone is standing at the tug's airlock
- * and the voyage has already been aboard it once.
- *
- * `data.from` is the voyage's own note on the tug's store entry
- * (`systems/voyage.ts`), read defensively: it round-trips through a save, and a
- * schematic that throws is a black screen.
- */
-function dockedHull(game: RoomGame): { ship: Ship; data: Record<string, unknown> } | undefined {
-  if (!isTug(game) || !game.atAirlock()) return undefined;
-  const from = game.currentShip.data.from;
-  const stored = typeof from === "string" ? game.ships.get(from) : undefined;
-  return stored ? { ship: stored.ship, data: stored.data } : undefined;
-}
-
-
 
 
 /** Everything lying in a compartment, in the order the panel lists it. */
@@ -249,8 +193,6 @@ export function machinesIn(game: RoomGame, room: RoomId): Entity[] {
 
 // -------------------------------------------------------------------- pieces
 
-
-
 /**
  * A compartment nobody is looking at: what was left lying in it, because
  * wreckage stays where it fell and machines do not — except after a pulse,
@@ -303,7 +245,6 @@ function homeThings(ship: Ship, room: Room): RoomThing[] {
   return airlock ? [{ glyph: airlock.label, name: airlock.label }] : [];
 }
 
-
 /**
  * A string the derelict catalogue left on the ship's store entry. Defensive:
  * the catalogue (G36) fills these in, and until it does the schematic says
@@ -316,18 +257,6 @@ export function tag(game: RoomGame, key: string): string | undefined {
 function tagOf(data: Record<string, unknown>, key: string): string | undefined {
   const value = data[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-/**
- * Cut at a word, the way `clipName` cuts a name: a banner ending `(корса`
- * reads as a typo, one ending at a whole word reads as a width. The separator
- * a cut leaves dangling goes with it.
- */
-function clipTo(text: string, width: number): string {
-  if (text.length <= width) return text;
-  const word = text.lastIndexOf(" ", width);
-  const cut = word > 0 ? text.slice(0, word) : text.slice(0, Math.max(0, width));
-  return cut.replace(/[\s·:,]+$/, "");
 }
 
 /**
@@ -354,26 +283,4 @@ function asThing(raw: unknown, fallback: string, called: string): RoomThing | un
   const name =
     typeof thing.name === "string" ? thing.name : typeof thing.label === "string" ? thing.label : called;
   return { glyph, name };
-}
-
-/**
- * Which of the two ports on a side each door takes. The layout allows two per
- * side and demands they head in different directions, so ordering them by the
- * rows they cross is what stops two wires leaving one side and crossing in the
- * gutter — the rule the generator validates against (`layoutFaults`).
- */
-function portMap(ship: Ship): Map<string, 0 | 1> {
-  const out = new Map<string, 0 | 1>();
-  for (const room of ship.rooms) {
-    for (const [, uses] of portsOf(ship, room.id)) {
-      [...uses]
-        .sort((a, b) => a.dy - b.dy || a.door.id - b.door.id)
-        .forEach((use, i) => out.set(portKey(room.id, use.door.id), i === 0 ? 0 : 1));
-    }
-  }
-  return out;
-}
-
-function portKey(room: RoomId, door: number): string {
-  return `${room}:${door}`;
 }

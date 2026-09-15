@@ -584,7 +584,7 @@ describe("the bench", () => {
   it("names the module it is about to mend and what mending it costs", () => {
     const game = atTheBench();
     const slot = findSlot(rig(game), "scanner")!;
-    const cap = capOf(rig(game).slots[slot]!);
+    const _cap = capOf(rig(game).slots[slot]!);
     rig(game).slots[slot]!.integrity = 1;
 
     // The price is the new information: it is what the module is short, and it

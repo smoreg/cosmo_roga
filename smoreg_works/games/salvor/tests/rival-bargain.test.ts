@@ -1,3 +1,4 @@
+import { t } from "../src/i18n.js";
 import { describe, it, expect } from "vitest";
 import {
   RoomGame,
@@ -12,7 +13,6 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { FREIGHTER } from "../src/content/derelicts.js";
 import { MONSTERS } from "../src/content/monsters.js";
-import { LANGS, setLang, tIn } from "../src/i18n.js";
 import { OBJECTIVE_COUNT } from "../src/content/objectives.js";
 import { ACTION_WIDTH, roomActions } from "../src/ui/actions.js";
 import { PANEL_WIDTH } from "../src/ui/panel.js";
@@ -500,24 +500,23 @@ describe("a rival with a deal is not robbed", () => {
 
 describe("the bargain fits the action column in all three languages", () => {
   it("keeps every one of the three lines inside twenty-five columns", () => {
-    for (const lang of LANGS) {
+    {
       for (const [key, params] of [
         ["action.rival.payoff", { price: PRICE }],
         ["action.rival.aside", { price: PRICE }],
         ["action.rival.split", undefined],
       ] as const) {
-        const label = tIn(lang, key, params);
-        expect(label.length, `${lang}: ${label}`).toBeLessThanOrEqual(ACTION_WIDTH);
+        const label = t(key, params);
+        expect(label.length, `${label}`).toBeLessThanOrEqual(ACTION_WIDTH);
       }
     }
-    setLang("en");
   });
 
   it("keeps the panel's own line inside the panel", () => {
-    for (const lang of LANGS) {
+    {
       for (const word of ["word.deal.paid", "word.deal.sold", "word.deal.split"] as const) {
-        const line = tIn(lang, "panel.deal", { deal: tIn(lang, word) });
-        expect(line.length, `${lang}: ${line}`).toBeLessThanOrEqual(PANEL_WIDTH);
+        const line = t("panel.deal", { deal: t(word) });
+        expect(line.length, `${line}`).toBeLessThanOrEqual(PANEL_WIDTH);
       }
     }
   });

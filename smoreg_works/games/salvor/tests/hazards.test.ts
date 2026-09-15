@@ -1,30 +1,10 @@
 import { describe, it, expect } from "vitest";
-import {
-  RoomGame,
-  Rng,
-  Ship,
-  hexLayout,
-  spawnMonsterIn,
-  type Entity,
-  type MonsterKind,
-  type RoomCommand,
-  type RoomGameConfig,
-  type Twist,
-} from "@jamrog/engine";
+import { RoomGame, Rng, Ship, spawnMonsterIn, type Entity, type MonsterKind, type RoomCommand, type RoomGameConfig, type Twist } from "@jamrog/engine";
 import { BOTS_ROOMS, seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { DERELICTS, derelictShip, stampClass, type DerelictSpec } from "../src/content/derelicts.js";
-import {
-  FROST_PENALTY,
-  HAZARDS,
-  HAZARD_IDS,
-  MINE_DAMAGE,
-  MINE_MACHINE_DAMAGE,
-  type HazardId,
-} from "../src/content/hazards.js";
+import { FROST_PENALTY, HAZARDS, HAZARD_IDS, MINE_DAMAGE, MINE_MACHINE_DAMAGE, type HazardId } from "../src/content/hazards.js";
 import { EN } from "../src/content/i18n/en.js";
-import { ES } from "../src/content/i18n/es.js";
-import { RU } from "../src/content/i18n/ru.js";
 import { MODULES, moduleName, type ModuleId } from "../src/content/modules.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import { TUTORIAL_SPEC } from "../src/content/tutorial.js";
@@ -34,10 +14,10 @@ import { hazardLine, placeHazards, signsGiven } from "../src/systems/hazards.js"
 import { doorHazard, hazardRecords, hazardsOf, roomHazard } from "../src/systems/hazardstate.js";
 import { canSeeDrone } from "../src/systems/sight.js";
 import { undock } from "../src/systems/voyage.js";
-import { LANGS, setLang, t, tIn } from "../src/i18n.js";
+import { t } from "../src/i18n.js";
 import { applyDerived, findSlot, rigOf } from "../src/twist/rig.js";
 import { ACTION_WIDTH, doorStands, roomActions } from "../src/ui/actions.js";
-import { initialState } from "../src/ui/appstate.js";
+
 import { dangerAhead, engage, isStop, makeExplorer, makeTraveller, type AutoResult } from "../src/ui/auto.js";
 import { panelBlocks } from "../src/ui/panel.js";
 import { stateOf, thingsOf } from "../src/ui/contents.js";
@@ -169,10 +149,10 @@ describe("the hazard table", () => {
     }
   });
 
-  it("has a red line and a word in three languages, and the line ends in the codex hook", () => {
+  it("has a red line and a word, and the line ends in the codex hook", () => {
     for (const id of HAZARD_IDS) {
       const kind = HAZARDS[id];
-      for (const table of [EN, ES, RU]) {
+      for (const table of [EN as Record<string, string | undefined>]) {
         expect(table[kind.tell], `${id} tell`).toMatch(/ \[i\]$/);
         expect(table[kind.word], `${id} word`).toBeTruthy();
       }
@@ -323,23 +303,21 @@ describe("a mine on a door", () => {
     // `Something hits your PLATING` read as an invisible machine on a live
     // run (docs/tasks/G83-anonymous-blows.md, 1): a blow nothing dealt is
     // signed by what owned it.
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       const game = gameOn(line("d2: trap=mine"));
       go(game, "d1");
       go(game, "d2");
       const hit = game.log.lines.find((l) => l.key === "log.hit.mine");
-      expect(hit, lang).toBeDefined();
+      expect(hit).toBeDefined();
       expect(hit!.text).toBe(
-        tIn(lang, "log.hit.mine", {
+        t("log.hit.mine", {
           module: moduleName("thrusters"),
           left: integrityOf(game, "thrusters"),
           max: MODULES.thrusters.integrity,
         }),
       );
-      expect(game.log.lines.some((l) => l.key === "log.hit.module"), `${lang}: signed by nobody`).toBe(false);
+      expect(game.log.lines.some((l) => l.key === "log.hit.module"), `signed by nobody`).toBe(false);
     }
-    setLang("en");
   });
 
   it("goes off under a machine that comes through first, and the drone walks in unhurt", () => {
@@ -756,17 +734,15 @@ describe("the placer", () => {
 describe("the red line", () => {
 
   it("says the stop in the words of the line, in every language", () => {
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       const game = gameOn(line("d2: trap=mine"));
       go(game, "d1");
       const said = alarms(game)[0]!.text;
-      expect(said).toBe(tIn(lang, "log.hazard.tell.mine", { door: "d2", room: tIn(lang, "room.hab" as never) }));
-      expect(stopOf(makeExplorer().step(game)).stop).toBe(tIn(lang, "stop.hazard.again", { what: said }));
+      expect(said).toBe(t("log.hazard.tell.mine", { door: "d2", room: t("room.hab" as never) }));
+      expect(stopOf(makeExplorer().step(game)).stop).toBe(t("stop.hazard.again", { what: said }));
       const rec = hazardRecords(game)[0]!;
       expect(hazardLine(game, rec, game.roomOf(game.player).id)).toBe(said);
     }
-    setLang("en");
   });
 });
 

@@ -1,14 +1,4 @@
-import {
-  type ActionOffer,
-  type Door,
-  type DoorId,
-  type Entity,
-  type RoomCommand,
-  type Room,
-  type RoomGame,
-  type RoomId,
-  type Ship,
-} from "@jamrog/engine";
+import { type ActionOffer, type Door, type DoorId, type Entity, type RoomCommand, type Room, type RoomGame, type RoomId } from "@jamrog/engine";
 import { moduleName } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
 import { isTug } from "../content/tug.js";

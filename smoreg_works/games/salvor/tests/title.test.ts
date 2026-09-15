@@ -3,30 +3,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { newGame } from "../src/game.js";
 import { TUTORIAL_SEED } from "../src/content/tutorial.js";
-import { LANGS, currentLang, setLang, DEFAULT_LANG, LANG_STORAGE_KEY, initLang } from "../src/i18n.js";
 import { appReducer, initialState, withSettings, type AppState } from "../src/ui/appstate.js";
 import { toIntent, type KeyLike } from "../src/ui/input.js";
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
-import {
-  BUILD_VERSION,
-  DEFAULT_TITLE,
-  SEED_DIGITS,
-  SOUND_STORAGE_KEY,
-  TITLE_PICKS,
-  TITLE_ROWS,
-  isSoundKey,
-  itemText,
-  rememberSound,
-  seedFromUrl,
-  seedOf,
-  seedTyped,
-  storedSound,
-  titleLines,
-  titleRowAt,
-  titleRowOfPick,
-  titleScreen,
-  type TitleSettings,
-} from "../src/ui/title.js";
+
+import { BUILD_VERSION, DEFAULT_TITLE, SEED_DIGITS, SOUND_STORAGE_KEY, TITLE_PICKS, TITLE_ROWS, isSoundKey, itemText, rememberSound, seedFromUrl, seedOf, seedTyped, storedSound, titleRowAt, titleRowOfPick, titleScreen, type TitleSettings } from "../src/ui/title.js";
 import { VIEWS, VIEW_STORAGE_KEY, initialView, isViewKey, nextView, rememberView } from "../src/ui/view.js";
 
 /**
@@ -84,7 +64,7 @@ describe("the start screen answers the five questions", () => {
 
   it("gives every row of the menu a key and something it does", () => {
     const items = titleScreen(DEFAULT_TITLE).items;
-    expect(items.map((i) => i.key)).toEqual(["1", "2", "3", "4", "L", "V", "S"]);
+    expect(items.map((i) => i.key)).toEqual(["1", "2", "3", "4", "V", "S"]);
     for (const item of items) {
       expect(item.label.length, item.key).toBeGreaterThan(0);
       // A row either answers with a value or picks off a ring. Never neither:
@@ -93,11 +73,9 @@ describe("the start screen answers the five questions", () => {
     }
   });
 
-  it("offers the three languages and the three views on the screen itself", () => {
+  it("offers the three views on the screen itself", () => {
     const screen = titleScreen({ ...DEFAULT_TITLE, view: "hex" });
-    const lang = screen.items.find((i) => i.key === "L")!;
     const view = screen.items.find((i) => i.key === "V")!;
-    expect(lang.options?.map((o) => o.text)).toEqual(["EN", "ES", "RU"]);
     expect(view.options).toHaveLength(VIEWS.length);
     expect(view.options?.filter((o) => o.on)).toHaveLength(1);
     // The honeycomb is on, so the honeycomb is the marked one.
@@ -169,15 +147,6 @@ describe("every row of the menu can be clicked", () => {
     expect(clicks[TITLE_ROWS.indexOf("sound")]!.effect).toEqual({ kind: "sound" });
   });
 
-  it("changes the language on the language row, without leaving the screen", () => {
-    setLang("en");
-    const next = appReducer(title(), { kind: "line", index: TITLE_ROWS.indexOf("lang") }, newGame(7));
-    expect(currentLang()).toBe("es");
-    expect(next.overlay).toBe("title");
-    expect(next.effect).toEqual({ kind: "language" });
-    setLang(DEFAULT_LANG);
-  });
-
   it("does nothing at all on a click that hit no row", () => {
     for (const index of [TITLE_ROWS.length, TITLE_ROWS.length + 3, 99]) {
       const next = appReducer(title(), { kind: "line", index }, newGame(7));
@@ -194,7 +163,6 @@ describe("every row of the menu can be clicked", () => {
       expect(game.inputs, String(index)).toEqual([]);
       expect(game.schedule.time, String(index)).toBe(0);
     }
-    setLang(DEFAULT_LANG);
   });
 
   it("leaves the digits to the four rows that wear one", () => {
@@ -203,7 +171,7 @@ describe("every row of the menu can be clicked", () => {
     expect(titleRowOfPick(0)).toBe("voyage");
     expect(titleRowOfPick(3)).toBe("seed");
     expect(titleRowOfPick(4)).toBeUndefined();
-    expect(titleRowAt(4)).toBe("lang");
+    expect(titleRowAt(4)).toBe("view");
     expect(key(title(), press("5", "Digit5")).overlay).toBe("none");
   });
 
@@ -265,11 +233,11 @@ describe("every key of the menu does what its row promises", () => {
     expect(key(down, press("Enter")).effect).toEqual({ kind: "training" });
     // Down to the help row and into the card, with no digit pressed at all.
     expect(keys(menu, press("ArrowDown"), press("ArrowDown"), press("Enter")).overlay).toBe("help");
-    // And the ring rows are reachable the same way: the language row is fifth.
-    const lang = keys(menu, ...Array(TITLE_ROWS.indexOf("lang")).fill(press("ArrowDown")));
-    expect(lang.cursor).toBe(TITLE_ROWS.indexOf("lang"));
-    expect(key(lang, press("Enter")).effect).toEqual({ kind: "language" });
-    expect(key(lang, press("Enter")).overlay).toBe("title");
+    // And the ring rows are reachable the same way: the view row is fifth.
+    const view = keys(menu, ...Array(TITLE_ROWS.indexOf("view")).fill(press("ArrowDown")));
+    expect(view.cursor).toBe(TITLE_ROWS.indexOf("view"));
+    expect(key(view, press("Enter")).effect).toEqual({ kind: "view" });
+    expect(key(view, press("Enter")).overlay).toBe("title");
   });
 
   it("wraps the highlight at both ends of the menu", () => {
@@ -328,16 +296,6 @@ describe("every key of the menu does what its row promises", () => {
     expect(key(title(), press("2", "Digit2")).effect).toEqual({ kind: "training" });
     expect(key(title(), press("2", "Digit2")).overlay).toBe("none");
     expect(key(title(), press("3", "Digit3")).overlay).toBe("help");
-  });
-
-  it("changes the language on `L` without leaving the screen", () => {
-    setLang("en");
-    const next = key(title(), press("L", "KeyL"));
-    expect(next.overlay).toBe("title");
-    expect(next.effect).toEqual({ kind: "language" });
-    expect(currentLang()).toBe("es");
-    expect(titleScreen(DEFAULT_TITLE).items.find((i) => i.key === "L")?.options?.[1]?.on).toBe(true);
-    setLang(DEFAULT_LANG);
   });
 
   it("leaves `V` and `S` to the shell, which is what makes them work here", () => {
@@ -476,16 +434,13 @@ describe("the seed is chosen on the screen, not in the address bar", () => {
 // ------------------------------------------------------------- what is remembered
 
 describe("the screen remembers settings and never remembers progress", () => {
-  it("brings the language, the view and the sound back next session", () => {
+  it("brings the view and the sound back next session", () => {
     const kept = store();
     rememberView("hex", kept);
     rememberSound(false, kept);
-    setLang("ru");
     expect(kept.getItem(VIEW_STORAGE_KEY)).toBe("hex");
-    expect(kept.getItem(LANG_STORAGE_KEY) ?? "ru").toBe("ru");
     expect(initialView("", kept)).toBe("hex");
     expect(storedSound(kept)).toBe(false);
-    setLang(DEFAULT_LANG);
   });
 
   it("lets the URL beat what was remembered, and does not write itself back", () => {
@@ -493,17 +448,15 @@ describe("the screen remembers settings and never remembers progress", () => {
     rememberView("hex", kept);
     expect(initialView("?view=ascii", kept)).toBe("ascii");
     expect(kept.getItem(VIEW_STORAGE_KEY)).toBe("hex");
-    expect(initLang("?lang=es")).toBe("es");
-    setLang(DEFAULT_LANG);
   });
 
   it("keeps nothing but settings: no seed, no run, no progress", () => {
     const kept = store();
     rememberView("web", kept);
     rememberSound(true, kept);
-    const written = [VIEW_STORAGE_KEY, SOUND_STORAGE_KEY, LANG_STORAGE_KEY];
+    const written = [VIEW_STORAGE_KEY, SOUND_STORAGE_KEY];
     // The jam forbids meta-progression outright (.claude/CLAUDE.md), so the
-    // whole of what a session may leave behind is named here: three settings.
+    // whole of what a session may leave behind is named here: two settings.
     expect(written.every((k) => k.startsWith("salvor."))).toBe(true);
     expect(kept.getItem("salvor.seed")).toBeNull();
     expect(kept.getItem("salvor.voyage")).toBeNull();
@@ -544,20 +497,4 @@ describe("the screen remembers settings and never remembers progress", () => {
     expect(key(title(), press("1", "Digit1")).seedText).toBeUndefined();
   });
 
-  it("puts every line of it through the table, in all three languages", () => {
-    const seen = new Map<string, string[]>();
-    for (const lang of LANGS) {
-      setLang(lang);
-      const lines = titleLines({ ...DEFAULT_TITLE, seed: 1 });
-      seen.set(lang, lines);
-      expect(lines.every((line) => line.length > 0)).toBe(true);
-    }
-    // Nothing but the name, the build line and the ring codes may read the same
-    // in two languages: anything else identical is a row nobody translated.
-    const en = seen.get("en")!;
-    const ru = seen.get("ru")!;
-    const same = en.filter((line, i) => line === ru[i]);
-    expect(same.every((line) => line.includes("SALVOR") || line.includes("EN"))).toBe(true);
-    setLang(DEFAULT_LANG);
-  });
 });

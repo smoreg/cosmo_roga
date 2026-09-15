@@ -1,26 +1,7 @@
 import { describe, it, expect } from "vitest";
-import {
-  DOOR_USE,
-  charterHelp,
-  HELP_ROWS,
-  helpFooter,
-  helpHeadings,
-  helpPages,
-  isChord,
-  keyHelp,
-  listHelp,
-  missingModuleLine,
-  ruleHelp,
-  shipHelp,
-  tugHelp,
-  toIntent,
-  urlHelp,
-  type KeyLike,
-} from "../src/ui/input.js";
-import { t } from "../src/i18n.js";
+import { DOOR_USE, isChord, keyHelp, listHelp, missingModuleLine, toIntent, type KeyLike } from "../src/ui/input.js";
+
 import { findSlot, makeStartingRig, type Rig } from "../src/twist/rig.js";
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
-import { DEFAULT_LANG, LANGS, setLang } from "../src/i18n.js";
 
 /**
  * The key table is the whole interface: every rule in the game is reached
@@ -183,14 +164,6 @@ describe("key mapping", () => {
     expect(toIntent(press("ArrowRight", "ArrowRight"), rig)).toEqual({ kind: "page", delta: 1 });
   });
 
-  it("gives both cases of l to the language ring, on every screen there is", () => {
-    // `l` was north-east on a grid this game does not have; it is the one key
-    // that has to work on the title and on the error card as well
-    // (`docs/tasks/G39-i18n.md`).
-    expect(toIntent(press("l", "KeyL"), rig)).toEqual({ kind: "language" });
-    expect(toIntent(press("L", "KeyL", { shiftKey: true }), rig)).toEqual({ kind: "language" });
-  });
-
   it("gives the arrows and enter to the list, and nothing else", () => {
     expect(toIntent(press("ArrowUp", "ArrowUp"), rig)).toEqual({ kind: "cursor", delta: -1 });
     expect(toIntent(press("ArrowDown", "ArrowDown"), rig)).toEqual({ kind: "cursor", delta: 1 });
@@ -239,12 +212,10 @@ describe("the cards fit their frames", () => {
 
   /** `PageUp` had no line on the card until it had a meaning (G79). */
   it("says which key opens the log's own past", () => {
-    for (const lang of LANGS) {
-      setLang(lang);
-      expect(keyHelp().join("\n"), lang).toContain("PgUp");
-      expect(keyHelp().join("\n"), lang).toContain("PgDn");
+    {
+      expect(keyHelp().join("\n")).toContain("PgUp");
+      expect(keyHelp().join("\n")).toContain("PgDn");
     }
-    setLang(DEFAULT_LANG);
   });
 
   /**

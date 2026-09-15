@@ -12,7 +12,6 @@ import {
 } from "@jamrog/engine";
 import { BOTS_ROOMS, seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
-import { LANGS, setLang } from "../src/i18n.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import { DOORS } from "../src/systems/doors.js";
 import { shipState } from "../src/systems/shipstate.js";
@@ -1114,17 +1113,15 @@ describe("a line of the list gives up the least it can to fit", () => {
 
 /**
  * The same, on the game rather than on a table: whatever the bots meet over
- * thirty voyages in three languages, no line of any list is over budget.
+ * thirty voyages, no line of any list is over budget.
  *
  * The table above is the shape of the answer and this is its coverage — a
- * machine named in some language nobody measured, a module bought at a price
- * nobody priced, is a red line here rather than a clipped row on a screenshot.
+ * machine nobody measured, a module bought at a price nobody priced, is a red line here rather than a clipped row on a screenshot.
  */
 describe("no line of any list is over budget in real play", () => {
-  it("over thirty careful voyages in three languages", () => {
+  it("over thirty careful voyages", () => {
     let lines = 0;
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       for (const seed of seedRange(1, 30)) {
         const game = newGame(seed);
         const bot = BOTS_ROOMS.careful!();
@@ -1133,9 +1130,9 @@ describe("no line of any list is over budget in real play", () => {
         for (let step = 0; step < 900 && !game.isOver() && idle < 12; step++) {
           const before = game.inputs.length;
           for (const a of roomActions(game)) {
-            expect(a.label.length, `${lang}: \u00ab${a.label}\u00bb`).toBeLessThanOrEqual(ACTION_WIDTH);
+            expect(a.label.length, `\u00ab${a.label}\u00bb`).toBeLessThanOrEqual(ACTION_WIDTH);
             if (a.extra !== undefined) {
-              expect(a.extra.length, `${lang}: \u00ab${a.extra}\u00bb`).toBeLessThanOrEqual(ACTION_WIDTH);
+              expect(a.extra.length, `\u00ab${a.extra}\u00bb`).toBeLessThanOrEqual(ACTION_WIDTH);
             }
             lines++;
           }
@@ -1144,7 +1141,6 @@ describe("no line of any list is over budget in real play", () => {
         }
       }
     }
-    setLang("en");
-    expect(lines, "the control: lists were drawn at all").toBeGreaterThan(50_000);
+    expect(lines, "the control: lists were drawn at all").toBeGreaterThan(16_000);
   }, 120_000);
 });

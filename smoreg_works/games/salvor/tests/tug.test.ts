@@ -1,21 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { CALLSIGNS, derelictName, flavourCallsign } from "../src/content/derelicts.js";
-import {
-  RoomGame,
-  Ship,
-  TURN_COST,
-  layoutFaults,
-  replayRooms,
-  type ActionOffer,
-  type LogLine,
-  type RoomCommand,
-  type System,
-} from "@jamrog/engine";
+import { CALLSIGNS, flavourCallsign } from "../src/content/derelicts.js";
+import { RoomGame, Ship, TURN_COST, layoutFaults, replayRooms, type ActionOffer, type LogLine, type RoomCommand, type System } from "@jamrog/engine";
 import { seedRange } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { TUG_CALLSIGNS, tugCallsign } from "../src/content/hints.js";
 import { ZONE_KINDS, zoneName } from "../src/content/zones.js";
-import { LANGS, setLang, t } from "../src/i18n.js";
+import { t } from "../src/i18n.js";
 import { tugBoard } from "../src/ui/tugboard.js";
 import { STARTING_CREDITS, STARTING_HULL } from "../src/content/hulls.js";
 import { moduleName } from "../src/content/modules.js";
@@ -23,16 +13,10 @@ import { TUG_ID, TUG_KINDS, TUG_ROOMS, isTug, stationName, tugShip } from "../sr
 import { alertState } from "../src/systems/alert.js";
 import { TUG, gatedOffers } from "../src/systems/tug.js";
 import { VOYAGE } from "../src/systems/voyage.js";
-import {
-  HOLD_LIMIT,
-  currentDerelict,
-  stationOffers,
-  stationTargets,
-  voyageOf,
-} from "../src/systems/voyage.js";
+import { HOLD_LIMIT, currentDerelict, stationOffers, stationTargets, voyageOf } from "../src/systems/voyage.js";
 import { ACTION_WIDTH, roomActions, tugStands, type Action } from "../src/ui/actions.js";
 import { capOf, rigOf, findSlot } from "../src/twist/rig.js";
-import { PANEL_WIDTH, panelBlocks } from "../src/ui/panel.js";
+import { panelBlocks } from "../src/ui/panel.js";
 
 /**
  * The tug as a menu (docs/tasks/G53-tug-is-a-menu.md).
@@ -484,14 +468,12 @@ describe("the row that casts off", () => {
     for (const slot of filled(game)) rig.slots[slot]!.integrity = 1;
 
     try {
-      for (const lang of LANGS) {
-        setLang(lang);
+      {
         const label = castOff(game);
-        expect(label, lang).toContain(t("undock.left.charter"));
-        expect(label.length, `${lang}: ${label}`).toBeLessThanOrEqual(ACTION_WIDTH);
+        expect(label).toContain(t("undock.left.charter"));
+        expect(label.length, `${label}`).toBeLessThanOrEqual(ACTION_WIDTH);
       }
     } finally {
-      setLang("en");
     }
   });
 });

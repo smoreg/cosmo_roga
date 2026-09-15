@@ -1,4 +1,4 @@
-import { LANGS, currentLang, t } from "../i18n.js";
+import { t } from "../i18n.js";
 import type { KeyLike } from "./input.js";
 import { VIEWS, type View, type ViewStore } from "./view.js";
 
@@ -42,7 +42,7 @@ export interface TitleSettings {
   readonly seed: number;
 }
 
-/** One of the rings a row picks from: the languages, the views. */
+/** One of the rings a row picks from: the views. */
 export interface TitleOption {
   readonly text: string;
   readonly on: boolean;
@@ -97,7 +97,7 @@ const PICK_KEYS = ["1", "2", "3", "4"] as const;
  * until G84's second pass the start screen had no `data-line` at all, so for
  * him the screen was legible and inert: rows he could read and not press.
  */
-export const TITLE_ROWS = ["voyage", "training", "help", "seed", "lang", "view", "sound"] as const;
+export const TITLE_ROWS = ["voyage", "training", "help", "seed", "view", "sound"] as const;
 
 export type TitleRowKind = (typeof TITLE_ROWS)[number];
 
@@ -111,8 +111,7 @@ export function titleRowOfPick(index: number): TitleRowKind | undefined {
   return index >= 0 && index <= TITLE_PICKS.seed ? TITLE_ROWS[index] : undefined;
 }
 
-/** The three rows a letter answers to. `L` and `V` already worked on every screen; `S` is new. */
-export const LANG_KEY = "L";
+/** The two rows a letter answers to. `V` already worked on every screen; `S` is new. */
 export const SOUND_KEY = "S";
 
 /** Digits a seed may have: `Math.random() * 0xffffffff >>> 0` never needs an eleventh. */
@@ -185,7 +184,6 @@ export function titleScreen(settings: TitleSettings, typing?: string): TitleScre
       { key: PICK_KEYS[1], label: t("title.menu.training"), value: t("title.menu.training.at") },
       { key: PICK_KEYS[2], label: t("title.menu.help"), value: t("title.menu.help.at") },
       { key: PICK_KEYS[3], label: t("title.menu.seed"), value: seedValue(settings.seed, typing) },
-      { key: LANG_KEY, label: t("title.menu.lang"), options: langOptions() },
       { key: VIEW_KEY_ROW, label: t("title.menu.view"), options: viewOptions(settings.view) },
       { key: SOUND_KEY, label: t("title.menu.sound"), value: t(settings.sound ? "title.sound.on" : "title.sound.off") },
     ],
@@ -250,18 +248,6 @@ export const DEFAULT_TITLE: TitleSettings = { view: "ascii", sound: true, seed: 
 function seedValue(seed: number, typing?: string): string {
   if (typing === undefined) return String(seed);
   return typing.length === 0 ? t("title.seed.empty") : `${typing}_`;
-}
-
-/**
- * The language ring, in codes nobody translates.
- *
- * A player looking for their own language is looking for the two letters they
- * already know, so the row never renames itself — the same rule the old title
- * card's `L  EN · ES · RU` kept (`ui/render.ts`, `langRow`).
- */
-function langOptions(): TitleOption[] {
-  const on = currentLang();
-  return LANGS.map((lang) => ({ text: lang.toUpperCase(), on: lang === on }));
 }
 
 /**

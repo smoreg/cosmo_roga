@@ -1,31 +1,21 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { RoomGame, type RoomGameConfig } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { CODEX, CODEX_IDS, alertCodexId, codexFor } from "../src/content/codex.js";
 import { HAZARD_IDS } from "../src/content/hazards.js";
 import { EN } from "../src/content/i18n/en.js";
-import { ES } from "../src/content/i18n/es.js";
-import { RU } from "../src/content/i18n/ru.js";
 import { MODULES, RELICS, type ModuleId } from "../src/content/modules.js";
 import { BLOOM_KIND, CRAWLER, ENFORCER, JAMMER, MONSTERS, SENTRY_TURRET } from "../src/content/monsters.js";
 import { STRAINS } from "../src/content/viruses.js";
-import { DEFAULT_LANG, LANGS, setLang, t, type Lang } from "../src/i18n.js";
+import { t } from "../src/i18n.js";
 import { MAX_LEVEL, alertState } from "../src/systems/alert.js";
-import {
-  alarmCodexId,
-  codexQueue,
-  codexUnread,
-  noticeCodex,
-  readCodex,
-  seenCodex,
-  unreadCodex,
-} from "../src/systems/codex.js";
+import { alarmCodexId, codexQueue, codexUnread, noticeCodex, readCodex, seenCodex, unreadCodex } from "../src/systems/codex.js";
 import { install, rigOf } from "../src/twist/rig.js";
 import { appReducer, codexSeen, codexView, initialState, type AppState } from "../src/ui/appstate.js";
 import { codexBadge } from "../src/ui/panel.js";
-import { CODEX_WIDTH, codexBody, codexFooter, codexHeading, helpPages, toIntent } from "../src/ui/input.js";
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
+import { CODEX_WIDTH, codexBody, helpPages, toIntent } from "../src/ui/input.js";
+
 import { PANEL_WIDTH } from "../src/ui/panel.js";
 
 /**
@@ -39,10 +29,6 @@ import { PANEL_WIDTH } from "../src/ui/panel.js";
  * pure functions over an `AppState`, which is how every other overlay in this
  * game is tested and why none of this needs a browser (`.claude/CLAUDE.md`).
  */
-
-const TABLES: Record<Lang, Record<string, string>> = { en: EN, es: ES, ru: RU };
-
-afterEach(() => setLang(DEFAULT_LANG));
 
 /** A hand-drawn hull, so nothing here depends on which seed drew what. */
 const CARGO = `
@@ -110,16 +96,16 @@ describe("every card the tables ask for exists", () => {
     }
   });
 
-  it("says all of it in three languages, with nothing left blank", () => {
+  it("says all of it, with nothing left blank", () => {
     for (const id of CODEX_IDS) {
       const entry = codexFor(id)!;
       const keys = [entry.title, entry.what, entry.wrong, entry.helps, entry.lore];
       if (entry.turn !== undefined) keys.push(entry.turn);
-      for (const lang of LANGS) {
+      {
         for (const key of keys) {
-          const row = TABLES[lang][key];
-          expect(row, `${lang}: ${key}`).toBeTypeOf("string");
-          expect(row!.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
+          const row = (EN as Record<string, string | undefined>)[key];
+          expect(row, `${key}`).toBeTypeOf("string");
+          expect(row!.trim().length, `${key}`).toBeGreaterThan(0);
         }
       }
     }
@@ -409,13 +395,12 @@ describe("the badge in the corner", () => {
 
 describe("the window fits, in all three languages", () => {
   it("wraps every card inside its own column", () => {
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       for (const id of CODEX_IDS) {
         const entry = codexFor(id)!;
         for (const fitted of [new Set<ModuleId>(), new Set<ModuleId>(entry.modules ?? [])]) {
           for (const line of codexBody(entry, fitted)) {
-            expect(line.length, `${lang}: ${id}: ${line}`).toBeLessThanOrEqual(CODEX_WIDTH);
+            expect(line.length, `${id}: ${line}`).toBeLessThanOrEqual(CODEX_WIDTH);
           }
         }
       }
@@ -425,11 +410,10 @@ describe("the window fits, in all three languages", () => {
   it("keeps a title short enough for the panel's own column", () => {
     // The titles are the list at the foot of the help card, and the narrowest
     // column any of them could ever be asked to sit in is the panel's.
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       for (const id of CODEX_IDS) {
         const title = t(codexFor(id)!.title);
-        expect(title.length, `${lang}: ${title}`).toBeLessThanOrEqual(PANEL_WIDTH);
+        expect(title.length, `${title}`).toBeLessThanOrEqual(PANEL_WIDTH);
       }
     }
   });

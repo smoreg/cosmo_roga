@@ -84,8 +84,6 @@ export type UiIntent =
    * nearer, which is what `PageUp` and `PageDown` mean everywhere else.
    */
   | { kind: "history"; delta: number }
-  /** `L`, on any screen: round the ring of languages. Never a turn. */
-  | { kind: "language" }
   /**
    * `Backspace`: rub out the last character of something being typed.
    *
@@ -272,9 +270,6 @@ export function toIntent(e: KeyLike, rig?: Rig): UiIntent {
   if (e.key === "ArrowRight") return { kind: "page", delta: 1 };
   if (e.key === "Enter") return { kind: "confirm" };
 
-  // `l` was a direction on a grid this game no longer has, so both cases of it
-  // are free for the one control that works on every screen there is.
-  if (e.key === "l" || e.key === "L") return { kind: "language" };
   if (e.key === "o") return { kind: "explore" };
   if (e.key === "Tab") return { kind: "fight", melee: e.shiftKey === true };
   if (e.key === "?") return { kind: "help" };

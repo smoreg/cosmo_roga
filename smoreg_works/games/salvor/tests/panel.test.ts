@@ -8,29 +8,14 @@ import { RELIC_MARK, RIG, addWreck, applyDerived, capOf, graft, install, rigOf, 
 import { MAX_ACTIONS, roomActions } from "../src/ui/actions.js";
 import { RELICS } from "../src/content/modules.js";
 import { codexFor } from "../src/content/codex.js";
-import { initialState } from "../src/ui/appstate.js";
-import {
-  NO_FLASH,
-  PANEL_HEIGHT,
-  PANEL_WIDTH,
-  DOOR_LINES,
-  ROOM_LINES,
-  contactTone,
-  contactsBlock,
-  flashSlots,
-  missionBlock,
-  panelBlocks,
-  panelColour,
-  rackIntegrity,
-  slotNumberOf,
-  trackFlash,
-} from "../src/ui/panel.js";
+
+import { NO_FLASH, PANEL_HEIGHT, PANEL_WIDTH, DOOR_LINES, ROOM_LINES, contactTone, contactsBlock, flashSlots, missionBlock, panelBlocks, panelColour, rackIntegrity, slotNumberOf, trackFlash } from "../src/ui/panel.js";
 import { shipState } from "../src/systems/shipstate.js";
 import { currentDerelict, derelictAboard, voyageOf } from "../src/systems/voyage.js";
 import { isTug } from "../src/content/tug.js";
 import { CALLSIGNS, flavourCallsign } from "../src/content/derelicts.js";
 import { roomName } from "../src/content/zones.js";
-import { DEFAULT_LANG, LANGS, setLang, t } from "../src/i18n.js";
+import { t } from "../src/i18n.js";
 import { OBJECTIVES, objectiveName } from "../src/content/objectives.js";
 
 /** A callsign too long for the heading's column, so the class has to stand in. */
@@ -276,8 +261,7 @@ describe("the blocks, in the doc's own order", () => {
     // the same ship (docs/tasks/G55-playtest-findings.md, 5).
     let rows = 0;
     let counted = 0;
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       for (let seed = 1; seed <= 200; seed++) {
         const game = newGame(seed);
         // Aboard the derelict, which is where the compartments have four doors
@@ -301,12 +285,11 @@ describe("the blocks, in the doc's own order", () => {
           for (const word of row.slice(head.length).split(" ").filter((w) => w.length > 0)) {
             if (/^\+\d+$/.test(word)) continue;
             counted++;
-            expect(here.has(word), `${lang} seed ${seed}: ${row}`).toBe(true);
+            expect(here.has(word), `seed ${seed}: ${row}`).toBe(true);
           }
         }
       }
     }
-    setLang("en");
     // A property nobody reached is a green test about nothing.
     expect(rows).toBeGreaterThan(0);
     expect(counted).toBeGreaterThan(0);
@@ -838,8 +821,7 @@ describe("the mission block", () => {
 
   it("says the three systems in no more than two rows, in every language", () => {
     const game = hullIn("r1");
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       for (const seen of [true, false]) {
         for (const id of ["r2", "r3", "r4"]) {
           game.ship.room(id).explored = seen;
@@ -847,14 +829,13 @@ describe("the mission block", () => {
         }
         game.refreshSight();
         const rows = missionBlock(game).slice(1).map((l) => l.text);
-        for (const row of rows) expect(row.length, `${lang} ${row}`).toBeLessThanOrEqual(PANEL_WIDTH);
+        for (const row of rows) expect(row.length, `${row}`).toBeLessThanOrEqual(PANEL_WIDTH);
         const names = OBJECTIVES.map(objectiveName);
         const wrap = rows.filter((row) => names.some((n) => row.includes(n)));
-        expect(wrap.length, `${lang} ${seen}`).toBeLessThanOrEqual(2);
-        for (const n of names) expect(wrap.join(" "), `${lang} ${n}`).toContain(n);
+        expect(wrap.length, `${seen}`).toBeLessThanOrEqual(2);
+        for (const n of names) expect(wrap.join(" "), `${n}`).toContain(n);
       }
     }
-    setLang(DEFAULT_LANG);
   });
 
   it("says the goal is out of reach when nothing in the rack raises anything", () => {
@@ -1245,13 +1226,11 @@ describe("a relic in the rack is marked", () => {
   });
 
   it("says what the mark means on the relic's own card, in all three languages", () => {
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       for (const id of RELICS) {
-        expect(t(codexFor(id)!.what as never), `${lang} ${id}`).toContain(RELIC_MARK);
+        expect(t(codexFor(id)!.what as never), `${id}`).toContain(RELIC_MARK);
       }
     }
-    setLang("en");
   });
 });
 
@@ -1352,11 +1331,9 @@ describe("the numbered list always has lines on it", () => {
     expect(actions.filter((a) => a.key === "")).toHaveLength(0);
     const more = panelBlocks(game, actions, 0).map((l) => l.text).find((r) => r.startsWith("… "));
     if (more !== undefined) expect(more).not.toContain("↑");
-    for (const lang of LANGS) {
-      setLang(lang);
+    {
       expect(t("panel.more", { n: 3 })).not.toContain("↑");
       expect(t("panel.more.arrows", { n: 3 })).toContain("↑");
     }
-    setLang("en");
   });
 });

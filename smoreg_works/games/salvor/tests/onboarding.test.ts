@@ -1,30 +1,15 @@
 import { describe, expect, it } from "vitest";
-import {
-  Rng,
-  RoomGame,
-  isAlive,
-  reachableWithKeys,
-  type RoomCommand,
-  type RoomGameConfig,
-  type RoomId,
-  type Ship,
-} from "@jamrog/engine";
-import { BOTS_ROOMS, roomPlay, runBotOn, seedRange, shipFromText } from "@jamrog/engine/testing";
+import { Rng, RoomGame, isAlive, reachableWithKeys, type RoomCommand, type RoomGameConfig, type RoomId, type Ship } from "@jamrog/engine";
+import { BOTS_ROOMS, seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
 import { TUTORIAL_ID, TUTORIAL_SEED, TUTORIAL_SPEC, TUTORIAL_STEPS } from "../src/content/tutorial.js";
-import {
-  HINT_LINE_KEYS,
-  ONBOARDING_HINTS,
-  saidHint,
-  soldLine,
-  tugOpening,
-} from "../src/content/hints.js";
+import { HINT_LINE_KEYS, ONBOARDING_HINTS, saidHint, soldLine, tugOpening } from "../src/content/hints.js";
 import { t } from "../src/i18n.js";
 import { CHEAPEST_HULL, STARTING_CREDITS } from "../src/content/hulls.js";
 import { moduleKind } from "../src/content/modules.js";
 import { STARTER_HULLS, classOfShip, flavourCallsign } from "../src/content/derelicts.js";
 import { OBJECTIVES } from "../src/content/objectives.js";
-import { TUG_ID, TUG_ROOMS, isTug } from "../src/content/tug.js";
+import { TUG_ID, isTug } from "../src/content/tug.js";
 import { GHOST_HINT_KEY } from "../src/systems/ghost.js";
 import { POPULATE, roomList, type Body, type Crate, type ShipSystem, type Wreck } from "../src/systems/populate.js";
 import { DOORS } from "../src/systems/doors.js";
@@ -255,10 +240,6 @@ describe("the first thing a player ever does", () => {
   });
 });
 
-function nameBeyond(game: RoomGame, door: number): string {
-  const here = game.roomOf(game.player).id;
-  return game.ship.roomAt(game.ship.other(game.ship.doorAt(door), here)).name;
-}
 
 // ------------------------------------------------------- the first derelict
 
