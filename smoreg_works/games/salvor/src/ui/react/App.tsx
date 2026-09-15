@@ -9,6 +9,7 @@ import { Screen } from "./Screen.js";
 import { BUILD_VERSION } from "../title.js";
 import { MENU_MUSIC, missionTrackFor, music } from "./audio.js";
 import { sfx } from "./sfx.js";
+import { forget, resume, suspended } from "./suspend.js";
 import {
   rememberMotion,
   rememberVolume,
@@ -34,6 +35,15 @@ export function App({ seed }: { seed: number }): ReactElement {
   const [started, setStarted] = useState(false);
   const [page, setPage] = useState<MenuPage>("root");
   const [game, setGame] = useState<SalvorGame | null>(null);
+  /*
+   * A run left in the store by a previous visit.
+   *
+   * Read once, before the first paint, so `Continue` is lit on arrival rather
+   * than a frame later. Replayed only when it is pressed: a voyage of a few
+   * hundred turns is a few milliseconds, but it is not worth spending on a
+   * player who came to start a new one.
+   */
+  const [saved, setSaved] = useState(() => suspended());
   const [running, setRunning] = useState(false);
   /* A voyage that exists but has not been handed over yet: the generating
      screen is up. Held rather than dropped and rebuilt, so what the player
@@ -121,6 +131,8 @@ export function App({ seed }: { seed: number }): ReactElement {
         onSettings={change}
         onMenu={() => setRunning(false)}
         onNewVoyage={() => {
+          forget();
+          setSaved(false);
           setGame(null);
           setRunning(false);
         }}
@@ -131,14 +143,30 @@ export function App({ seed }: { seed: number }): ReactElement {
   return (
     <Menu
       page={page}
-      canContinue={game !== null}
+      canContinue={game !== null || saved}
       settings={settings}
       foot={`build ${BUILD_VERSION}`}
       onPage={setPage}
-      onContinue={() => setRunning(true)}
+      onContinue={() => {
+        if (game !== null) {
+          setRunning(true);
+          return;
+        }
+        /* Nothing in memory: the run is in the store, and coming back to it is
+           playing it again from its own record. A save that will not replay is
+           a save that is gone — say so by simply not lighting the row. */
+        const back = resume();
+        setSaved(suspended());
+        if (back === null || back === undefined) return;
+        setGame(back);
+        setRunning(true);
+      }}
       onNewGame={() => {
         /* A fresh voyage. The page's seed where one was asked for, so a bug
            report reproduces; a new roll otherwise. */
+        /* A new voyage replaces whatever was being kept: there is one run. */
+        forget();
+        setSaved(false);
         setPending(newGame(game === null ? seed : (Math.random() * 0xffffffff) >>> 0));
       }}
       onSettings={change}

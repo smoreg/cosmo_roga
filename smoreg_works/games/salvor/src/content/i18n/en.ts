@@ -248,7 +248,7 @@ export const EN = {
   // went looking for the contracts menu that used to be here (G92 B1).
   "action.pick.berth": "hull & contract ▸",
   "action.pick.berthHere": "hull & contract here ▸",
-  "action.pick.jump": "hull & contract {price} CR ▸",
+  "action.pick.jump": "jump → next hull {price} CR ▸",
   "choice.head": "{hull} {rooms} · {cr} CR",
   "log.charter.none": "No contract on this hull: the tug is here for the sale alone.",
   "log.charter.hot": "{charter}: the hull is awake before the drone is aboard. Alert +{n}.",

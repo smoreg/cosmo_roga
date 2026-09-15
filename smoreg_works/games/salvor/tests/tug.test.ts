@@ -362,7 +362,7 @@ describe("a group's list stands while it has a target", () => {
 
     // Tied to a live hull: the row is the jump, priced, and grey.
     const held = t("why.jump.held", { hull: derelictName(currentDerelict(game).spec) });
-    expect(row().label).toBe(`hull & contract ${JUMP_PRICE} CR ▸`);
+    expect(row().label).toBe(`jump → next hull ${JUMP_PRICE} CR ▸`);
     expect(row().enabled).toBe(false);
     expect(row().why).toBe(held);
     // Grey, and still a way in: a player most needs to read what is out there
@@ -372,7 +372,7 @@ describe("a group's list stands while it has a target", () => {
 
     // Dealt with — here by the other tug taking it — and the row is open again.
     currentDerelict(game).rivalProgress = OBJECTIVE_COUNT;
-    expect(row().label).toBe(`hull & contract ${JUMP_PRICE} CR ▸`);
+    expect(row().label).toBe(`jump → next hull ${JUMP_PRICE} CR ▸`);
     expect(row().enabled).toBe(true);
     expect(row().why).toBeUndefined();
   });

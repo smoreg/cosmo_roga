@@ -9,6 +9,7 @@ import { LogStrip } from "./action/Log.js";
 import * as FX from "../fx/derelict-fx.js";
 import { FRAME_MS, motionNow } from "./settings.js";
 import { sfx, soundFor } from "./sfx.js";
+import { remember } from "./suspend.js";
 import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf, workingOf, alertModelOf, hullMovedDoor } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
@@ -84,7 +85,18 @@ export function Screen({
   const [level, setLevel] = useState<string | null>(null);
   /* Which drone the dock is pointing the rack at. Null is the one on the
      rails, which is the drone that actually exists. */
-  const again = useCallback(() => setTurn((n) => n + 1), []);
+  /*
+   * A turn has been spent: redraw, and write the run down.
+   *
+   * Every path that moves the game goes through here — it is what tells React
+   * the world changed — so it is also the one place that can promise the save
+   * is never behind the screen. A roguelike has no checkpoints, and the whole
+   * record is `(seed, inputs)`, so there is nothing to be clever about.
+   */
+  const again = useCallback(() => {
+    remember(game);
+    setTurn((n) => n + 1);
+  }, [game]);
 
   const home = isHome(game);
   const over = game.status !== "playing";

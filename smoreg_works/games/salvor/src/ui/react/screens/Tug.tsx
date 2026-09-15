@@ -223,7 +223,17 @@ function grouped(offers: readonly Offer[]): Array<{ title: string; offers: Offer
     if (offer.head !== undefined || out.length === 0) {
       out.push({ title: offer.head ?? "Orders", offers: [] });
     }
-    (out[out.length - 1] as { offers: Offer[] }).offers.push(offer);
+    /*
+     * The heading comes off the line once the group has taken it.
+     *
+     * A heading travels *on* the offer that opens its group, because the
+     * engine's list is one flat list with headings in it — which is right for
+     * a numbered terminal list and wrong here, where each group is already a
+     * panel with a title across the top. Left on, every group printed its own
+     * name twice: VOYAGE over VOYAGE, RACK over RACK.
+     */
+    const { head: _taken, ...line } = offer;
+    (out[out.length - 1] as { offers: Offer[] }).offers.push(line);
   }
   return out;
 }

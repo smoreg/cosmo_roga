@@ -17,6 +17,7 @@ const SCOUT = MONSTERS.find((m) => m.id === "scout")!;
 import * as FX from "../src/ui/fx/derelict-fx.js";
 import { DECK_INK } from "../src/ui/react/board/HexBoard.js";
 import { sfx, soundFor, swingOf } from "../src/ui/react/sfx.js";
+import { forget, remember, resume, suspended } from "../src/ui/react/suspend.js";
 import { DOORS } from "../src/systems/doors.js";
 import { RIG, findSlot, pulseWait, rigOf, PULSE_COOLDOWN } from "../src/twist/rig.js";
 import { commandsOf } from "../src/ui/react/model.js";
@@ -504,5 +505,74 @@ describe("the plating is drawn where it can be seen", () => {
     expect(ink.detected).toBeGreaterThan(ink.undetected!);
     /* Hull is not a floor. */
     expect(ink.wrecked).toBe(0);
+  });
+});
+
+describe("a run survives the tab closing", () => {
+  /** A localStorage that exists only for this test. */
+  function slate(): void {
+    const kept = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (k: string) => kept.get(k) ?? null,
+        setItem: (k: string, v: string) => kept.set(k, v),
+        removeItem: (k: string) => kept.delete(k),
+      },
+    });
+  }
+
+  /**
+   * What was wrong: there was no save at all. `Continue` was lit only while a
+   * game object was still in memory, so it was the button for a menu opened
+   * mid-sortie and nothing else — reload the page and the voyage was gone with
+   * no word said, which is the one thing permadeath must never be confused
+   * with.
+   */
+  it("comes back to the same ship, the same turn and the same rack", () => {
+    slate();
+    forget();
+    expect(suspended()).toBe(false);
+
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    for (let i = 0; i < 6; i++) game.playerCommand({ kind: "wait" });
+    remember(game);
+    expect(suspended()).toBe(true);
+
+    const back = resume();
+    expect(back, "the save would not replay").toBeDefined();
+    /* A run is (seed, inputs), so "the same run" is not a resemblance: it is
+       the same seed, the same commands and therefore the same everything. */
+    expect(back!.seed).toBe(game.seed);
+    expect(back!.inputs.length).toBe(game.inputs.length);
+    expect(back!.player.room).toBe(game.player.room);
+    expect(back!.player.hp).toBe(game.player.hp);
+    expect(back!.schedule.time).toBe(game.schedule.time);
+  });
+
+  it("keeps nothing once the run is over", () => {
+    slate();
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    game.playerCommand({ kind: "wait" });
+    remember(game);
+    expect(suspended()).toBe(true);
+
+    /* A finished run leaves the menu and nothing else — this is a suspend, not
+       meta-progression, and the difference is that it does not outlive the
+       run it belongs to. */
+    game.finish("dead", "Core breach.");
+    remember(game);
+    expect(suspended()).toBe(false);
+    expect(resume()).toBeUndefined();
+  });
+
+  it("throws away a save it cannot read rather than opening it", () => {
+    slate();
+    localStorage.setItem("derelict-rogue:run", "{not json");
+    expect(suspended()).toBe(false);
+    localStorage.setItem("derelict-rogue:run", JSON.stringify({ version: 1, seed: 1, inputs: [] }));
+    expect(suspended(), "a save from an older build is not this game").toBe(false);
   });
 });

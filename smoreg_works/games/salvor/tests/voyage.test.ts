@@ -1072,7 +1072,7 @@ describe("what a charter and a jump leave behind", () => {
     // The contract is named on the row as well as the hull: since G90 F there
     // is no other line that signs one, and the owner went looking for the
     // contracts menu that used to be there (G92 B1).
-    expect(jumpRowLabel(game)).toBe(`hull & contract ${JUMP_PRICE} CR ▸`);
+    expect(jumpRowLabel(game)).toBe(`jump → next hull ${JUMP_PRICE} CR ▸`);
     // The hulls themselves are named over their own lines of the list.
     expect(choiceHeads(game, "jump")[0]).toMatch(/^freighter \d+-\d+ · \d+ CR$/);
   });
@@ -1086,7 +1086,7 @@ describe("what a charter and a jump leave behind", () => {
     // The row used to price the sale a jump walked away from. There is no such
     // jump now: the row is the jump, and the greyed line says what holds it —
     // and the row names the contract it signs alongside the hull (G92 B1).
-    expect(jumpRowLabel(game)).toBe(`hull & contract ${JUMP_PRICE} CR ▸`);
+    expect(jumpRowLabel(game)).toBe(`jump → next hull ${JUMP_PRICE} CR ▸`);
 
     voyageOf(game).charters.push(salvageCharter(FREIGHTER));
     voyageOf(game).credits = 500;
