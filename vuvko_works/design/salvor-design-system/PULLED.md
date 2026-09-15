@@ -17,6 +17,35 @@ Only `Panel.jsx` was compared byte for byte this pass; the other three
 components and `styles.css` were not re-fetched, so a change confined to one of
 them would not have been noticed here.
 
+### The screens went up too
+
+The project is called *Screens as Built*, and after the integration its two
+reworked screens were no longer what had been built. Both now match the game:
+
+**`02-tug.html`** was rewritten. The tug is a decision and not a place, so
+there is no map: the middle carries the hull alongside and the orders, and the
+readout down the side carries the rack and the dock. The account sits under the
+tug's own name, and neither half has an alarm on it — the tug is the half of
+the game with no alarm and no corridors, and a gauge under its name reads as
+its own however it is labelled. Picking a drone in the dock points the rack
+above at that hull, on a press and never on a glance.
+
+**`04-hex.html`** kept its shape and gained four things: the alarm folded into
+the panel that names the hull, both money figures rather than one, an Orders
+list for everything the board cannot carry (which is where `leave` lives), and
+the reveal — `fresh` per room, worked out in an effect and never while
+rendering. Its log now sits above the drawers, because the log is the game
+still talking while the player is in a menu.
+
+### What has not caught up yet
+
+`_ds_bundle.js` and `_ds_manifest.json` are built by the app's own self-check,
+not by this push. The manifest still lists `derelict-fx.js` without `reveal`,
+which is how we know it has not run since. Until the project is next opened the
+screens there render with the pre-integration components — nothing breaks,
+since `window.FX` is the real module and already has `reveal`; the new
+behaviour is simply not on yet. Opening the project is what does it.
+
 Then, for the first time, this went the other way as well. `INTEGRATION.md` and
 the `reveal`/`linesOf` pair in `derelict-fx.js` were written from what the game
 integration found and pushed **up** into the project, so the next screen built

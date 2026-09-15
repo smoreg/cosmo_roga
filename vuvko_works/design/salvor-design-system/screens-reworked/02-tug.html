@@ -1,4 +1,4 @@
-<!-- @dsCard group="Screens — reworked" viewport="1366x768" name="02 · The tug" subtitle="Between sorties — the rack on the left, the action list on the right, no map at all" -->
+<!-- @dsCard group="Screens — reworked" viewport="1366x768" name="02 · The tug" subtitle="As built: orders in the middle, the dock and the rack down the side, no map at all" -->
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>SALVOR — the tug</title>
 <link rel="stylesheet" href="../styles.css">
@@ -10,11 +10,25 @@
 <style>html{overflow:hidden}body{margin:0;background:var(--sv-deep);color:var(--sv-fg);font-family:var(--sv-font-mono);overflow:hidden}#root{width:1366px;height:768px;overflow:hidden}</style>
 </head><body><div id="root"></div>
 <script type="text/babel">
-const {Panel,Tag,Rail,SegmentMeter,CorePips,CoreRack,Lever,ActionList,LogStrip}=window.SALVORScreensAsBuilt_2b77ba;
+const {Panel,Tag,Rail,CoreRack,LogStrip}=window.SALVORScreensAsBuilt_2b77ba;
 
-/* The tug's rack, patched between sorties: a burned slot stays empty, so the
-   only way back to six working systems is to buy one into the empty slot. */
-const SLOTS=[
+/* ── the tug, as the game actually draws it ───────────────────────────────────
+ *
+ * Home is a decision and not a place, so the honeycomb does not come back with
+ * the drone. What stands where it would have been is the decision — the hull
+ * alongside and the orders that can be given about it — and the readout down
+ * the side carries what is merely looked at.
+ *
+ * The rule that arrangement came from: each side has one job, on both halves of
+ * the game. The middle is the thing being done (the board aboard a hull, the
+ * orders at home); the right is the state (the rack, then the compartment or
+ * the dock). Nothing is drawn in both. See INTEGRATION.md.
+ */
+
+/* The rack of whichever drone is being looked at. A hull nobody has undocked in
+   has spent no integrity, so a preview's bays are all full — which is what
+   makes it readable as a preview rather than as the drone that exists. */
+const FLYING=[
   {name:"Cutter",value:11,max:11},
   {name:"Thrusters",value:4,max:12,tone:"bad"},
   {name:"Scanner",value:8,max:8},
@@ -22,100 +36,173 @@ const SLOTS=[
   {name:"Cell",value:8,max:8},
   {name:"Plating",value:9,max:16,tone:"warn"}
 ];
+const PREVIEW={
+  spark:[{name:"Cutter",value:11,max:11},{name:"Thrusters",value:12,max:12},{name:"Scanner",value:8,max:8},{name:"Plating",value:16,max:16},{name:"Cell",value:8,max:8},{empty:true},{empty:true}],
+  ghost:[{name:"Cutter",value:11,max:11},{name:"Thrusters",value:14,max:14},{name:"Scanner",value:10,max:10},{name:"Plating",value:16,max:16},{name:"Cell",value:8,max:8},{empty:true},{empty:true},{empty:true}]
+};
 
-const ACTIONS=[
-  {label:"repair THRUSTERS  4/12",note:"16 cr"},
-  {label:"repair PLATING  9/16",note:"14 cr"},
-  {label:"fit MANIPULATORS into slot 4",note:"40 cr",disabled:true},
-  {label:"mend core  1 pip",note:"60 cr",disabled:true},
-  {label:"sell scrap  3 crates",note:"+24 cr"},
-  {label:"launch sortie 2",note:"osprey ready"}
+const HULLS=[
+  {id:"scrapper",name:"Scrapper",trait:"cheap, and it goes back out",price:0,on:true,core:3,slots:6},
+  {id:"spark",name:"Spark",trait:"one more slot, and quicker on its feet",price:90,on:false,core:4,slots:7,speed:120},
+  {id:"ghost",name:"Ghost",trait:"quiet, roomy, and it costs the voyage",price:160,on:false,core:5,slots:8,speed:140}
+];
+
+/* One line per pressable thing, in the engine's own order, with what it costs
+   or why it cannot be spent. A refused line stays on the shelf wearing its
+   reason: a shelf that hides what cannot be afforded teaches nothing about the
+   price. `into` opens a group; `null` is the line back out of one. */
+const ORDERS=[
+  {label:"buy a hull",into:"BUY",enabled:true},
+  {head:"REPAIR",label:"repair a module",enabled:false,why:"nothing in the rack is damaged"},
+  {label:"graft a module",into:"GRAFT",enabled:true,note:"12 cr"},
+  {label:"clean a module",enabled:false,why:"nothing in the rack is infected"},
+  {head:"RIG",label:"stow a module",into:"STOW",enabled:true},
+  {label:"hold & shelf",into:"HOLD",enabled:true},
+  {label:"sell for good",into:"SELL",enabled:true,note:"+24 cr"},
+  {head:"CHARTERS",label:"take a charter",into:"CHARTER",enabled:true},
+  {head:"NEXT HULL",label:"jump → quarantine",enabled:false,why:"not enough credits",note:"30 cr"},
+  {label:"cast off — board closes",enabled:true}
 ];
 
 const LOG=[
   {tag:"tug",text:"Docked at the tug. Four systems standing, one slot empty."},
-  {tag:"core",text:"The feral drone hits you for 2.",tone:"bad"},
   {tag:"burn",text:"Your PLATING burns out. Nothing stands between the next hit and your core.",tone:"bad"},
   {tag:"burn",text:"A burned module is gone. Its slot is empty now.",tone:"warn"},
   {tag:"run",text:"Left the OSPREY with 25 CR and the terminal read.",tone:"warn"}
 ];
 
-const row=(k,v,tone)=><div style={{display:"flex",justifyContent:"space-between",gap:10,font:"var(--sv-body)"}} key={k}>
-  <span style={{color:"var(--sv-soft)"}}>{k}</span><span style={{color:tone||"var(--sv-ink)"}}>{v}</span></div>;
+const STENCIL={font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase"};
 
-const VARIANT="readout";
-
-function Screen(){
-  const [cursor,setCursor]=React.useState(0);
-  const [logOpen,setLogOpen]=React.useState(false);
+/* Every line of a panel resolves the way the record does — all at once, not
+   staggered. The tug is not news arriving, it is a readout already written,
+   and a readout that types itself out row by row is one you wait through. */
+function useLines(deps){
   const ref=React.useRef(null);
   React.useEffect(()=>{
-    const t=setInterval(()=>{
-      if(!window.FX||!ref.current)return;
-      clearInterval(t);
-      window.FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"),window.FX.PRESETS.list);
-    },60);
-    return ()=>clearInterval(t);
-  },[]);
+    if(!window.FX||!ref.current) return;
+    return window.FX.reveal(window.FX.linesOf(ref.current),window.FX.PRESETS.all);
+  },deps);
+  return ref;
+}
 
-  return <div ref={ref} style={{width:1366,height:768,display:"grid",gridTemplateColumns:"46px minmax(0,1fr) 520px",gridTemplateRows:"44px minmax(0,1fr) auto",background:"radial-gradient(ellipse 80% 70% at 36% 28%, var(--sv-deck) 0%, var(--sv-deep) 76%)",overflow:"hidden",userSelect:"none",boxSizing:"border-box"}}>
+function Figure({label,value,big}){
+  return <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+    <span style={{flex:1,...STENCIL,color:"var(--sv-soft)"}}>{label}</span>
+    <span style={{font:"var(--sv-display)",fontSize:big?30:20,letterSpacing:"var(--sv-display-track)",color:big?"var(--sv-amber)":"var(--sv-ink)"}}>{value}</span>
+  </div>;
+}
 
-    <div style={{gridColumn:"1 / -1",gridRow:1,display:"flex",alignItems:"center",gap:18,padding:"0 16px",background:"linear-gradient(180deg,var(--sv-plate) 0%,var(--sv-deck) 100%)",borderBottom:"1px solid var(--sv-line)"}}>
-      <div data-sc style={{font:"var(--sv-title)",letterSpacing:"var(--sv-title-track)",textTransform:"uppercase",color:"var(--sv-ink)"}}>Salvor · the tug</div>
-      <Tag tone="neutral">between sorties</Tag>
-      <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:20}}>
-        <div style={{display:"flex",alignItems:"center",gap:9,font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-soft)"}}>core <CorePips value={1} max={3} size={13}/></div>
-        <div style={{font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-soft)"}}>credits <span style={{color:"var(--sv-amber-hi)"}}>49</span></div>
+/* A press points the rack, and a glance leaves it alone. The rack sits directly
+   above this list, and pointing it on hover made it flicker through all three
+   on the way down to the one being reached for. */
+function Drones({hulls,held,onHold}){
+  return <div style={{display:"flex",flexDirection:"column",gap:2}}>
+    {hulls.map(h=>{
+      const open=held===h.id;
+      return <div key={h.id} onClick={()=>onHold(open?null:h.id)}
+        title={open?"put the rack back":h.on?"the drone on the rails":"show this one in the rack above"}
+        onMouseEnter={(e)=>{if(!open)e.currentTarget.style.background="color-mix(in oklab, var(--sv-amber) 7%, transparent)";}}
+        onMouseLeave={(e)=>{e.currentTarget.style.background="transparent";}}
+        style={{padding:"6px 8px",cursor:"pointer",background:open?"color-mix(in oklab, var(--sv-amber) 12%, transparent)":"transparent",borderLeft:"2px solid "+(h.on?"var(--sv-amber)":open?"var(--sv-rim)":"var(--sv-line)")}}>
+        <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+          <span style={{font:"var(--sv-title)",letterSpacing:"var(--sv-title-track)",textTransform:"uppercase",color:h.on?"var(--sv-amber)":"var(--sv-ink)"}}>{h.name}</span>
+          <span style={{marginLeft:"auto",...STENCIL,color:"var(--sv-soft)"}}>{h.on?"on the rails":h.price+" cr"}</span>
+        </div>
+        <div style={{font:"var(--sv-body)",color:"var(--sv-soft)"}}>{h.trait}</div>
+        {open?<div style={{marginTop:5,display:"flex",gap:6,flexWrap:"wrap"}}>
+          <Tag tone="amber">core {h.core}</Tag>
+          <Tag tone="neutral">{h.slots} slots</Tag>
+          {h.speed?<Tag tone="neutral">speed {h.speed}</Tag>:null}
+        </div>:null}
+      </div>;
+    })}
+  </div>;
+}
+
+function Orders({lines}){
+  const ref=useLines([lines.length]);
+  return <div ref={ref} style={{display:"flex",flexDirection:"column",gap:1}}>
+    {lines.map((o,i)=><div key={i}>
+      {o.head?<div style={{marginTop:9,marginBottom:2,...STENCIL,color:"var(--sv-amber)"}}>{o.head}</div>:null}
+      <div title={o.enabled?undefined:o.why}
+        onMouseEnter={(e)=>{if(o.enabled||o.into)e.currentTarget.style.background="color-mix(in oklab, var(--sv-amber) 14%, transparent)";}}
+        onMouseLeave={(e)=>{e.currentTarget.style.background="transparent";}}
+        style={{display:"flex",alignItems:"baseline",gap:10,padding:"6px 9px",cursor:o.enabled||o.into?"pointer":"not-allowed",opacity:o.enabled||o.into?1:.45}}>
+        <span style={{width:13,flex:"none",font:"var(--sv-stencil)",color:"var(--sv-amber)"}}>{o.into?"›":"·"}</span>
+        <span data-sc style={{font:"var(--sv-body)",color:"var(--sv-ink)"}}>{o.label}</span>
+        {o.note?<span data-sc style={{marginLeft:"auto",...STENCIL,color:"var(--sv-soft)"}}>{o.note}</span>:null}
+        {!o.enabled&&o.why?<span style={{marginLeft:o.note?8:"auto",...STENCIL,color:"var(--sv-bad)"}}>{o.why}</span>:null}
       </div>
+    </div>)}
+  </div>;
+}
+
+function Screen(){
+  const [logOpen,setLogOpen]=React.useState(false);
+  const [held,setHeld]=React.useState(null);
+  const [sound,setSound]=React.useState(true);
+  const mid=useLines([held]);
+  const dock=useLines([held]);
+  const slots=held&&PREVIEW[held]?PREVIEW[held]:FLYING;
+
+  return <div style={{width:1366,height:768,display:"grid",gridTemplateColumns:"46px minmax(0,1fr) 420px",gridTemplateRows:"minmax(0,1fr) auto",background:"var(--sv-deep)",overflow:"hidden",userSelect:"none",boxSizing:"border-box"}}>
+
+    {/* Three keys, and one of them is not a menu at all. Sound is what a player
+        reaches for mid-turn, and a menu to open, a page to find and a row to
+        press is three presses for a one-press thing. */}
+    <Rail style={{gridColumn:1,gridRow:1,zIndex:90}} items={[
+      {id:"sys",glyph:"≡",title:"menu"},
+      {id:"help",glyph:"?",title:"controls"},
+      {id:"sound",glyph:sound?"◀":"◁",title:sound?"sound on":"sound off"}
+    ]} onSelect={(id)=>{if(id==="sound")setSound(v=>!v);}}/>
+
+    <div ref={mid} style={{gridColumn:2,gridRow:1,minWidth:0,minHeight:0,overflowY:"auto",display:"flex",flexDirection:"column",gap:14,padding:18,background:"radial-gradient(ellipse 80% 70% at 36% 28%, var(--sv-deck) 0%, var(--sv-deep) 76%)"}}>
+
+      {/* The account is the tug's, so it sits under the tug's own name. What it
+          is tied to is the other half — and no alarm on either: the tug is the
+          half of the game with no alarm and no corridors, and a gauge under the
+          tug's name reads as the tug's however it is labelled. */}
+      <Panel variant="readout" title="Salt Drifter" stencil="tug" mount="none">
+        <div style={{display:"flex",gap:18,alignItems:"stretch"}}>
+          <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:3}}>
+            <Figure label="banked" value="49" big/>
+            <Figure label="carried" value="0"/>
+            <Figure label="keycards" value="0"/>
+            <Figure label="in the hold" value="1"/>
+            <Figure label="sortie" value="2"/>
+          </div>
+          <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:7,paddingLeft:18,borderLeft:"1px solid var(--sv-line)"}}>
+            <div style={{...STENCIL,color:"var(--sv-soft)"}}>alongside</div>
+            <div style={{font:"var(--sv-display)",fontSize:24,letterSpacing:"var(--sv-display-track)",color:"var(--sv-ink)"}}>the KESTREL</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              <Tag tone="warn">1/3 up</Tag>
+              <Tag tone="amber">150 cr</Tag>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel variant="readout" title="Orders" stencil="dock" mount="none" fill>
+        <Orders lines={ORDERS}/>
+      </Panel>
     </div>
 
-    <Rail items={[{id:"sys",glyph:"≡"},{id:"orders",glyph:"?"},{id:"log",glyph:"▤"},{id:"sound",glyph:"◁"}]} active="sys"
-      style={{gridColumn:1,gridRow:"2 / 4"}}/>
-
-    {/* No map on this screen: while the drone is home there is nothing to walk. */}
-    <div style={{gridColumn:2,gridRow:2,minWidth:0,minHeight:0,overflow:"auto",padding:"12px 20px 0",display:"flex",flexDirection:"column",gap:10}}>
-      <Panel variant={VARIANT} title="Rack" stencil="osprey" mount="left">
-        <CoreRack core={1} coreMax={3} slots={SLOTS}/>
-        <div data-sc style={{font:"var(--sv-body)",color:"var(--sv-warn)",marginTop:12,paddingTop:11,borderTop:"1px solid var(--sv-line)"}}>Slot 4 is empty — PLATING burned out on the OSPREY and the slot went with it. Repairs bring a standing system back up; only a fitting fills a slot.</div>
+    <div style={{gridColumn:3,gridRow:1,minHeight:0,overflowY:"auto",backgroundImage:"var(--sv-scan)",backgroundColor:"var(--sv-void)",borderLeft:"1px solid var(--sv-line)",padding:"10px 16px 0",display:"flex",flexDirection:"column",gap:8}}>
+      {/* Picking a drone below points this at that hull rather than unfolding a
+          summary under itself: two racks compared where the rack already is. */}
+      <Panel variant="readout" title="Rack" stencil={held?"preview":"drone"} mount="none">
+        <CoreRack core={held?(held==="ghost"?5:4):1} coreMax={held?(held==="ghost"?5:4):3} slots={slots}/>
       </Panel>
 
-      <Panel variant={VARIANT} title="Last sortie" stencil="osprey" mount="left" tone="neutral">
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2, minmax(0,1fr))",gap:"5px 34px"}}>
-          {row("compartments walked","7 of 12")}
-          {row("hostiles down","2")}
-          {row("crates out","3")}
-          {row("alert peaked","2 of 5","var(--sv-warn)")}
-          {row("credits taken","25 cr","var(--sv-amber-hi)")}
-          {row("goal","not met","var(--sv-soft)")}
-        </div>
-      </Panel>
-    </div>
-
-    <div style={{gridColumn:3,gridRow:2,minHeight:0,overflowY:"auto",backgroundImage:"var(--sv-scan)",backgroundColor:"var(--sv-void)",borderLeft:"1px solid var(--sv-line)",padding:"12px 20px 0",display:"flex",flexDirection:"column",gap:10}}>
-      <Panel variant={VARIANT} title="Yard" stencil="49 cr" mount="none" tone="amber">
-        <ActionList title="Actions" actions={ACTIONS} cursor={cursor} onPick={setCursor}/>
-      </Panel>
-
-      <Panel variant={VARIANT} title="Next hull" stencil="in reach" mount="none">
-        <div style={{display:"flex",flexDirection:"column",gap:5}}>
-          {row("name","the KESTREL")}
-          {row("class","hauler, stripped once")}
-          {row("compartments","14")}
-          {row("bounty","150 cr","var(--sv-amber-hi)")}
-          {row("goal","neutralize")}
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:14,paddingTop:12,borderTop:"1px solid var(--sv-line)"}}>
-          <SegmentMeter label="scanned" value={3} max={14} tone="warn" height={11}/>
-        </div>
-      </Panel>
-
-      <div style={{marginTop:"auto",display:"flex",justifyContent:"flex-end"}}>
-        <Lever label="Launch" hint="space" ready width={200} height={62}/>
+      <div ref={dock}>
+        <Panel variant="readout" title="Dock" stencil="drones" mount="none">
+          <Drones hulls={HULLS} held={held} onHold={setHeld}/>
+        </Panel>
       </div>
     </div>
 
     <LogStrip entries={LOG} expanded={logOpen} onToggle={()=>setLogOpen(!logOpen)}
-      style={{gridColumn:"1 / -1",gridRow:3}}/>
+      style={{gridColumn:"1 / -1",gridRow:2,zIndex:100}}/>
   </div>;
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<Screen/>);
