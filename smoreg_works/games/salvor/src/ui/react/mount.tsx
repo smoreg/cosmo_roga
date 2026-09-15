@@ -1,7 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { Screen } from "./Screen.js";
-import type { RoomGame } from "@jamrog/engine";
+import { App } from "./App.js";
 import "./styles.css";
 
 /**
@@ -11,11 +10,11 @@ import "./styles.css";
  * one part of the view no test covers and why it is kept short enough to read
  * in full.
  */
-export function mountReact(host: HTMLElement, game: RoomGame): () => void {
+export function mountReact(host: HTMLElement, seed: number): () => void {
   const root = createRoot(host);
   root.render(
     <StrictMode>
-      <Screen game={game} />
+      <App seed={seed} />
     </StrictMode>,
   );
   return () => root.unmount();

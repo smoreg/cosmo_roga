@@ -1,6 +1,5 @@
 import { t } from "../i18n.js";
 import type { KeyLike } from "./input.js";
-import { VIEWS, type View, type ViewStore } from "./view.js";
 
 /**
  * The first screen of the game, as data.
@@ -28,8 +27,6 @@ import { VIEWS, type View, type ViewStore } from "./view.js";
 
 /** What the menu names besides the run itself. Mirrored into `AppState` by the shell. */
 export interface TitleSettings {
-  /** Which of the three drawings is up. `V` cycles it; the row says which. */
-  readonly view: View;
   /** Whether the run will have sound. `S` flips it; the row says which. */
   readonly sound: boolean;
   /**
@@ -42,7 +39,7 @@ export interface TitleSettings {
   readonly seed: number;
 }
 
-/** One of the rings a row picks from: the views. */
+/** One of the rings a row picks from. */
 export interface TitleOption {
   readonly text: string;
   readonly on: boolean;
@@ -54,7 +51,7 @@ export interface TitleItem {
   readonly label: string;
   /** The plain answer, where the row has one: the seed, on or off. */
   readonly value?: string;
-  /** The ring, where the row cycles one: `EN · ES · RU`, the three views. */
+  /** The ring, where the row cycles one. */
   readonly options?: readonly TitleOption[];
 }
 
@@ -97,7 +94,7 @@ const PICK_KEYS = ["1", "2", "3", "4"] as const;
  * until G84's second pass the start screen had no `data-line` at all, so for
  * him the screen was legible and inert: rows he could read and not press.
  */
-export const TITLE_ROWS = ["voyage", "training", "help", "seed", "view", "sound"] as const;
+export const TITLE_ROWS = ["voyage", "training", "help", "seed", "sound"] as const;
 
 export type TitleRowKind = (typeof TITLE_ROWS)[number];
 
@@ -165,6 +162,12 @@ export function rememberSound(on: boolean, store?: ViewStore): void {
  * `tests/title.test.ts` reads the manifest off disk and asserts the two agree,
  * so it cannot drift silently.
  */
+/** The slice of `localStorage` the settings use, so a test can hand in its own. */
+export interface ViewStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
 export const BUILD_VERSION = "0.1.0";
 
 /**
@@ -184,12 +187,10 @@ export function titleScreen(settings: TitleSettings, typing?: string): TitleScre
       { key: PICK_KEYS[1], label: t("title.menu.training"), value: t("title.menu.training.at") },
       { key: PICK_KEYS[2], label: t("title.menu.help"), value: t("title.menu.help.at") },
       { key: PICK_KEYS[3], label: t("title.menu.seed"), value: seedValue(settings.seed, typing) },
-      { key: VIEW_KEY_ROW, label: t("title.menu.view"), options: viewOptions(settings.view) },
       { key: SOUND_KEY, label: t("title.menu.sound"), value: t(settings.sound ? "title.sound.on" : "title.sound.off") },
     ],
     hints: [
       typing === undefined ? t("title.start") : t("title.seed.typing", { seed: settings.seed }),
-      t("title.view.judges"),
     ],
     keysHead: t("title.keys.head"),
     keys: [t("title.keys.1"), t("title.keys.2")],
@@ -239,30 +240,13 @@ export const KEY_W = 4;
 export const LABEL_W = 22;
 const RING_SEP = " · ";
 
-/** The view row's key. `V` is owned by `ui/view.ts`; the menu only names it. */
-const VIEW_KEY_ROW = "V";
-
 /** What a session with nothing chosen would show. Only the width tests use it. */
-export const DEFAULT_TITLE: TitleSettings = { view: "ascii", sound: true, seed: 0 };
+export const DEFAULT_TITLE: TitleSettings = { sound: true, seed: 0 };
 
 function seedValue(seed: number, typing?: string): string {
   if (typing === undefined) return String(seed);
   return typing.length === 0 ? t("title.seed.empty") : `${typing}_`;
 }
-
-/**
- * The three drawings, named. The order is the order `V` walks them
- * (`ui/view.ts`, `VIEWS`), so the row reads as the cycle the key performs.
- */
-function viewOptions(view: View): TitleOption[] {
-  return VIEWS.map((v) => ({ text: t(VIEW_NAMES[v]), on: v === view }));
-}
-
-const VIEW_NAMES = {
-  ascii: "title.view.ascii",
-  web: "title.view.web",
-  hex: "title.view.hex",
-} as const;
 
 /**
  * The digits so far plus one more, or the same string when there is no room.

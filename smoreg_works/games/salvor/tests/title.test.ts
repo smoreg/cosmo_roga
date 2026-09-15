@@ -7,7 +7,6 @@ import { appReducer, initialState, withSettings, type AppState } from "../src/ui
 import { toIntent, type KeyLike } from "../src/ui/input.js";
 
 import { BUILD_VERSION, DEFAULT_TITLE, SEED_DIGITS, SOUND_STORAGE_KEY, TITLE_PICKS, TITLE_ROWS, isSoundKey, itemText, rememberSound, seedFromUrl, seedOf, seedTyped, storedSound, titleRowAt, titleRowOfPick, titleScreen, type TitleSettings } from "../src/ui/title.js";
-import { VIEWS, VIEW_STORAGE_KEY, initialView, isViewKey, nextView, rememberView } from "../src/ui/view.js";
 
 /**
  * The start screen (docs/tasks/G84-title-screen.md).
@@ -64,7 +63,7 @@ describe("the start screen answers the five questions", () => {
 
   it("gives every row of the menu a key and something it does", () => {
     const items = titleScreen(DEFAULT_TITLE).items;
-    expect(items.map((i) => i.key)).toEqual(["1", "2", "3", "4", "V", "S"]);
+    expect(items.map((i) => i.key)).toEqual(["1", "2", "3", "4", "S"]);
     for (const item of items) {
       expect(item.label.length, item.key).toBeGreaterThan(0);
       // A row either answers with a value or picks off a ring. Never neither:
@@ -73,20 +72,7 @@ describe("the start screen answers the five questions", () => {
     }
   });
 
-  it("offers the three views on the screen itself", () => {
-    const screen = titleScreen({ ...DEFAULT_TITLE, view: "hex" });
-    const view = screen.items.find((i) => i.key === "V")!;
-    expect(view.options).toHaveLength(VIEWS.length);
-    expect(view.options?.filter((o) => o.on)).toHaveLength(1);
-    // The honeycomb is on, so the honeycomb is the marked one.
-    expect(view.options?.at(-1)?.on).toBe(true);
-  });
 
-  it("says the jam judges expect ASCII, and opens in it", () => {
-    expect(titleScreen(DEFAULT_TITLE).hints.join(" ")).toContain("ASCII");
-    expect(DEFAULT_TITLE.view).toBe("ascii");
-    expect(initialView("", undefined)).toBe("ascii");
-  });
 
   it("names the jam, the author and the build at the foot", () => {
     const foot = titleScreen(DEFAULT_TITLE).foot;
@@ -143,7 +129,6 @@ describe("every row of the menu can be clicked", () => {
     expect(clicks[TITLE_ROWS.indexOf("training")]!.effect).toEqual({ kind: "training" });
     expect(clicks[TITLE_ROWS.indexOf("help")]!.overlay).toBe("help");
     expect(clicks[TITLE_ROWS.indexOf("seed")]!.seedText).toBe("");
-    expect(clicks[TITLE_ROWS.indexOf("view")]!.effect).toEqual({ kind: "view" });
     expect(clicks[TITLE_ROWS.indexOf("sound")]!.effect).toEqual({ kind: "sound" });
   });
 
@@ -171,7 +156,7 @@ describe("every row of the menu can be clicked", () => {
     expect(titleRowOfPick(0)).toBe("voyage");
     expect(titleRowOfPick(3)).toBe("seed");
     expect(titleRowOfPick(4)).toBeUndefined();
-    expect(titleRowAt(4)).toBe("view");
+    expect(titleRowAt(4)).toBe("sound");
     expect(key(title(), press("5", "Digit5")).overlay).toBe("none");
   });
 
@@ -233,11 +218,11 @@ describe("every key of the menu does what its row promises", () => {
     expect(key(down, press("Enter")).effect).toEqual({ kind: "training" });
     // Down to the help row and into the card, with no digit pressed at all.
     expect(keys(menu, press("ArrowDown"), press("ArrowDown"), press("Enter")).overlay).toBe("help");
-    // And the ring rows are reachable the same way: the view row is fifth.
-    const view = keys(menu, ...Array(TITLE_ROWS.indexOf("view")).fill(press("ArrowDown")));
-    expect(view.cursor).toBe(TITLE_ROWS.indexOf("view"));
-    expect(key(view, press("Enter")).effect).toEqual({ kind: "view" });
-    expect(key(view, press("Enter")).overlay).toBe("title");
+    // And the sound row is reachable the same way: it is the last of them.
+    const sound = keys(menu, ...Array(TITLE_ROWS.indexOf("sound")).fill(press("ArrowDown")));
+    expect(sound.cursor).toBe(TITLE_ROWS.indexOf("sound"));
+    expect(key(sound, press("Enter")).effect).toEqual({ kind: "sound" });
+    expect(key(sound, press("Enter")).overlay).toBe("title");
   });
 
   it("wraps the highlight at both ends of the menu", () => {
@@ -298,22 +283,14 @@ describe("every key of the menu does what its row promises", () => {
     expect(key(title(), press("3", "Digit3")).overlay).toBe("help");
   });
 
-  it("leaves `V` and `S` to the shell, which is what makes them work here", () => {
-    // Both are read before the key table, like the debug overlay: never a turn,
-    // never an overlay, and they have to work before a run has started.
-    expect(isViewKey(press("V"))).toBe(true);
+  it("leaves `S` to the shell, which is what makes it work here", () => {
+    // Read before the key table, like the debug overlay: never a turn, never
+    // an overlay, and it has to work before a run has started.
     expect(isSoundKey(press("S"))).toBe(true);
     expect(isSoundKey(press("s"))).toBe(false);
     expect(isSoundKey({ key: "S", ctrlKey: true })).toBe(false);
   });
 
-  it("cycles the view the way the row reads, left to right", () => {
-    let view = VIEWS[0]!;
-    for (const expected of [...VIEWS.slice(1), VIEWS[0]!]) {
-      view = nextView(view);
-      expect(view).toBe(expected);
-    }
-  });
 
   it("names the sound the way the row says it, both ways round", () => {
     const on = titleScreen({ ...DEFAULT_TITLE, sound: true }).items.find((i) => i.key === "S");
@@ -434,29 +411,19 @@ describe("the seed is chosen on the screen, not in the address bar", () => {
 // ------------------------------------------------------------- what is remembered
 
 describe("the screen remembers settings and never remembers progress", () => {
-  it("brings the view and the sound back next session", () => {
+  it("brings the sound back next session", () => {
     const kept = store();
-    rememberView("hex", kept);
     rememberSound(false, kept);
-    expect(kept.getItem(VIEW_STORAGE_KEY)).toBe("hex");
-    expect(initialView("", kept)).toBe("hex");
     expect(storedSound(kept)).toBe(false);
   });
 
-  it("lets the URL beat what was remembered, and does not write itself back", () => {
-    const kept = store();
-    rememberView("hex", kept);
-    expect(initialView("?view=ascii", kept)).toBe("ascii");
-    expect(kept.getItem(VIEW_STORAGE_KEY)).toBe("hex");
-  });
 
   it("keeps nothing but settings: no seed, no run, no progress", () => {
     const kept = store();
-    rememberView("web", kept);
     rememberSound(true, kept);
-    const written = [VIEW_STORAGE_KEY, SOUND_STORAGE_KEY];
+    const written = [SOUND_STORAGE_KEY];
     // The jam forbids meta-progression outright (.claude/CLAUDE.md), so the
-    // whole of what a session may leave behind is named here: two settings.
+    // whole of what a session may leave behind is named here: one setting.
     expect(written.every((k) => k.startsWith("salvor."))).toBe(true);
     expect(kept.getItem("salvor.seed")).toBeNull();
     expect(kept.getItem("salvor.voyage")).toBeNull();
@@ -478,7 +445,7 @@ describe("the screen remembers settings and never remembers progress", () => {
   });
 
   it("carries the settings across a new run, and the run itself never comes back", () => {
-    const chosen: TitleSettings = { view: "hex", sound: false, seed: 99 };
+    const chosen: TitleSettings = { sound: false, seed: 99 };
     const state = withSettings(title(), chosen);
     expect(state.settings).toEqual(chosen);
     // `shift+R` in a run: another ship, the same choices about the screen. (On
@@ -486,7 +453,6 @@ describe("the screen remembers settings and never remembers progress", () => {
     const again = appReducer({ ...state, overlay: "none" }, toIntent(press("R", "KeyR")), newGame(7));
     expect(again.effect).toEqual({ kind: "newRun" });
     expect(again.overlay).toBe("none");
-    expect(again.settings.view).toBe("hex");
     expect(again.settings.sound).toBe(false);
     expect(again.seedText).toBeUndefined();
   });

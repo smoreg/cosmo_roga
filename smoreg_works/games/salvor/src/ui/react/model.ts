@@ -5,6 +5,15 @@ import { moduleName } from "../../content/modules.js";
 import { roomActions } from "../actions.js";
 import { hostilesIn, rigOf } from "../../twist/rig.js";
 import { alertState } from "../../systems/alert.js";
+import { currentDerelict, voyageOf } from "../../systems/voyage.js";
+import { derelictName } from "../../content/derelicts.js";
+import { tugCallsign } from "../../content/hints.js";
+import { HULLS, hullName, hullTrait } from "../../content/hulls.js";
+import { OBJECTIVE_COUNT } from "../../content/objectives.js";
+import { isTug } from "../../content/tug.js";
+import { codexFor } from "../../content/codex.js";
+import { helpHeadings, helpPages } from "../input.js";
+import { t } from "../../i18n.js";
 import type { BoardDoor, BoardRoom, BoardThing, Knows, Route } from "./board/HexBoard.js";
 import type { RackSlot } from "./meters/Rack.js";
 import type { LogEntry } from "./action/Log.js";
@@ -242,4 +251,165 @@ export function logOf(game: RoomGame, keep = 14): LogEntry[] {
 /** How high the ship's alert has climbed, 0..5. */
 export function alertOf(game: RoomGame): number {
   return alertState(game).level;
+}
+
+// ------------------------------------------------------------------ the tug
+
+/**
+ * One pressable line, as the engine offered it.
+ *
+ * `roomActions` already decides what may be done, in what order, grouped under
+ * which heading and disabled for what reason. This carries the answer across
+ * unchanged and adds one thing the terminal did not need: `index`, so a click
+ * can find its way back to the command without the view holding a `RoomCommand`
+ * it might edit.
+ */
+export interface Offer {
+  index: number;
+  label: string;
+  enabled: boolean;
+  note?: string;
+  why?: string;
+  head?: string;
+  /** A line that opens a group, or `null` for the line back out of one. */
+  into?: string | null;
+}
+
+export function offersOf(game: RoomGame, level?: string): Offer[] {
+  return roomActions(game, level).map((action, index) => ({
+    index,
+    label: action.label,
+    enabled: action.enabled,
+    ...(action.extra === undefined ? {} : { note: action.extra }),
+    ...(action.why === undefined ? {} : { why: action.why }),
+    ...(action.head === undefined ? {} : { head: action.head }),
+    ...(action.step === undefined ? {} : { into: typeof action.step === "string" ? action.step : null }),
+  }));
+}
+
+export interface TugModel {
+  callsign: string;
+  /** The hull the tug is tied to, and how the last drone left it. */
+  derelict: { name: string; alert: number; online: number; of: number; sold: boolean; price: number };
+  account: { credits: number; loot: number; keys: number; sortie: number; hold: number };
+  /** The rack: three hulls, their prices, and which one is on the rails. */
+  hulls: Array<{ id: string; name: string; trait: string; price: number; on: boolean }>;
+}
+
+/**
+ * The tug, which is a decision and not a place.
+ *
+ * It was drawn as a map twice — four boxes in a line, then the derelict's own
+ * schematic — and both readings put a *where* on a screen whose whole subject is
+ * a *what next* (`ui/tugboard.ts`). So the honeycomb does not come home with
+ * the drone: what stands here is the account, the hull the tug is tied to, and
+ * the rack, each of them a thing that can be looked at and spent on.
+ */
+export function tugOf(game: RoomGame): TugModel {
+  const voyage = voyageOf(game);
+  const state = currentDerelict(game);
+  return {
+    callsign: tugCallsign(game.seed),
+    derelict: {
+      name: derelictName(state.spec),
+      alert: state.alert,
+      online: state.online.length,
+      of: OBJECTIVE_COUNT,
+      sold: state.sold,
+      price: state.spec.salePrice,
+    },
+    account: {
+      credits: voyage.credits,
+      loot: voyage.loot,
+      keys: voyage.keys,
+      sortie: voyage.sortie,
+      hold: voyage.hold.length,
+    },
+    hulls: HULLS.map((hull) => ({
+      id: hull.id,
+      name: hullName(hull),
+      trait: hullTrait(hull),
+      price: hull.price,
+      on: voyage.hull === hull.id,
+    })),
+  };
+}
+
+/** True while the drone is home, which is the one place with no honeycomb. */
+export function isHome(game: RoomGame): boolean {
+  return isTug(game);
+}
+
+// -------------------------------------------------------------- the record
+
+/** The whole log, newest first: what the history card pages through. */
+export function historyOf(game: RoomGame): LogEntry[] {
+  return logOf(game, game.log.lines.length);
+}
+
+/** How the run ended, and what it was worth. */
+export interface EndingModel {
+  won: boolean;
+  seed: number;
+  turns: number;
+  sorties: number;
+  credits: number;
+  hulls: number;
+}
+
+export function endingOf(game: RoomGame): EndingModel {
+  const voyage = voyageOf(game);
+  return {
+    won: game.status === "won",
+    seed: game.seed,
+    turns: game.schedule.time,
+    sorties: voyage.sortie,
+    credits: voyage.credits,
+    hulls: voyage.state.filter((s) => s.sold).length,
+  };
+}
+
+// ------------------------------------------------------------- the two cards
+
+/** The controls, in the pages the engine packs them into. */
+export function helpOf(game: RoomGame): { pages: string[][]; headings: ReadonlySet<string> } {
+  return { pages: helpPages(isTug(game)), headings: new Set(helpHeadings()) };
+}
+
+export interface CodexCard {
+  id: string;
+  title: string;
+  what: string;
+  wrong: string;
+  helps: string;
+  turn?: string;
+  lore: string;
+  /** Modules that answer this, and whether the drone is carrying one. */
+  answers: Array<{ name: string; fitted: boolean }>;
+}
+
+/**
+ * One card of the codex, with its words already read out of the table.
+ *
+ * The terminal asked `codexView`, which took the whole `AppState` because the
+ * terminal kept the queue in it. The card itself never needed the queue — it
+ * needs an id and the rack — so this asks for those two and the React side
+ * keeps its own place in the queue.
+ */
+export function codexOf(game: RoomGame, id: string): CodexCard | undefined {
+  const entry = codexFor(id);
+  if (entry === undefined) return undefined;
+  const rig = rigOf(game.player);
+  const fitted = new Set<string>();
+  for (const slot of rig?.slots ?? []) if (slot !== null) fitted.add(slot.kind);
+  return {
+    id: entry.id,
+    title: t(entry.title),
+    what: t(entry.what),
+    wrong: t(entry.wrong),
+    helps: t(entry.helps),
+    ...(entry.turn === undefined ? {} : { turn: t(entry.turn) }),
+    lore: t(entry.lore),
+    answers: (entry.modules ?? []).map((m) => ({ name: moduleName(m), fitted: fitted.has(m) })),
+  };
 }

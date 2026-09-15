@@ -118,7 +118,6 @@ export type AppEffect =
    * be told about — and the shell answers for them (`ui/app.ts`, `cycleView`
    * and `flipSound`). Never a turn.
    */
-  | { kind: "view" }
   | { kind: "sound" };
 
 /**
@@ -396,8 +395,6 @@ function titleRow(state: AppState, game: RoomGame, row: TitleRowKind): AppState 
       return { ...state, overlay: "help", helpPage: 0, titleHelp: true, effect: IDLE };
     case "seed":
       return { ...state, seedText: "", effect: IDLE };
-    case "view":
-      return { ...state, effect: { kind: "view" } };
     case "sound":
       return { ...state, effect: { kind: "sound" } };
   }
