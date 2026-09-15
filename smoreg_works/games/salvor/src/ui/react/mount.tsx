@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
+import { loadDeckIndex } from "./deckindex.js";
 import "./styles.css";
 
 /**
@@ -11,6 +12,9 @@ import "./styles.css";
  * in full.
  */
 export function mountReact(host: HTMLElement, seed: number): () => void {
+  /* The deck art, asked for once on the way in. A board that draws before it
+     arrives simply draws without it, so nothing waits on this. */
+  void loadDeckIndex();
   const root = createRoot(host);
   root.render(
     <StrictMode>

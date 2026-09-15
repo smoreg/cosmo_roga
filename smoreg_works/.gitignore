@@ -9,3 +9,9 @@ build/
 assets/audio/**/*.wav
 # Raw model output from `npm run sfx`; only the .ogg beside it ships.
 assets/audio/**/*.mp3
+
+# Baked deck art. Third-party (CC BY-NC) and eleven megabytes, so it is built
+# rather than carried — `node tools/deck/bake.mjs` in games/salvor, reading the
+# downscaled set from vuvko_works. A tree without it draws the flat board,
+# which is what this game had before the tiles and still a whole game.
+games/salvor/public/deck/

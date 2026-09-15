@@ -21,6 +21,8 @@ import { helpHeadings, helpPages } from "../input.js";
 import { t } from "../../i18n.js";
 import type { BoardDoor, BoardRoom, BoardThing, Knows, Route } from "./board/HexBoard.js";
 import { keelOf, wreckage } from "./hull.js";
+import { deckIndex } from "./deckindex.js";
+import { deckOf } from "./deck.js";
 import type { RackSlot } from "./meters/Rack.js";
 import type { LogEntry } from "./action/Log.js";
 
@@ -249,6 +251,13 @@ export function boardOf(game: RoomGame): BoardModel {
    * drawn or not.
    */
   const keel = keelOf(cells.values());
+  /* The deck each compartment wears, decided before the wreckage is added:
+     wreckage is hull and not a room, so it has no deck to pick. */
+  const decks = deckOf(game, deckIndex(), cells, keel);
+  for (const room of rooms) {
+    const deck = decks.get(room.id);
+    if (deck?.id !== undefined) room.deck = deck;
+  }
   for (const [i, cell] of wreckage(cells.values(), keel).entries()) {
     rooms.push({
       id: -1 - i,

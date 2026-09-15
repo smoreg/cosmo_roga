@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { linesOf, reveal } from "../reveal.js";
 import * as FX from "../../fx/derelict-fx.js";
+import { tileUrl } from "../deckindex.js";
 
 /**
  * The board: one hexagon per compartment, one drone, and no action list.
@@ -26,6 +27,13 @@ import * as FX from "../../fx/derelict-fx.js";
  */
 
 export type Knows = "undetected" | "detected" | "monitored" | "current" | "wrecked";
+
+/**
+ * How much bigger the file is than the deck in it: ten feet of bleed on every
+ * side of a hundred-foot section. Drawing the whole file leaves a tenth of the
+ * hexagon empty all the way round.
+ */
+const DECK_SCALE = 1.2;
 
 const STATE: Record<
   Knows,
@@ -123,6 +131,14 @@ export interface BoardRoom {
   r: number;
   things: readonly BoardThing[];
   props: readonly string[];
+  /**
+   * The deck this compartment wears, where the build has art for it.
+   *
+   * `flipped` is the far side of the keel: the same section, seen from the
+   * other side of the ship. A hull whose two halves wear different decks looks
+   * assembled; one whose halves mirror looks drawn.
+   */
+  deck?: { id?: string; flipped: boolean };
 }
 
 export interface BoardDoor {
@@ -636,6 +652,45 @@ function HexTile({
         </div>
       )}
       <div style={{ position: "absolute", inset: base, clipPath: HEX, background: fill }} />
+
+      {/* The deck itself, under everything the board says about it.
+
+          Scaled past its own bleed — the file is a hundred and twenty feet of
+          picture around a hundred feet of deck, and drawing the whole of it
+          leaves a tenth of the hexagon empty all the way round, which is what
+          made the first version of this look like coasters rather than a ship.
+          `scaleX(-1)` on the far side of the keel, so the two halves mirror.
+          Held well back in opacity: this is the floor, and a floor that
+          competes with what is standing on it is a floor nobody reads past. */}
+      {s.shows && room.deck?.id !== undefined ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: base,
+            clipPath: HEX,
+            overflow: "hidden",
+            pointerEvents: "none",
+          }}
+        >
+          <img
+            src={tileUrl(room.deck.id)}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: `${String(DECK_SCALE * 100)}%`,
+              height: `${String(DECK_SCALE * 100)}%`,
+              transform: `translate(-50%,-50%)${room.deck.flipped ? " scaleX(-1)" : ""}`,
+              opacity: room.knows === "current" ? 0.5 : 0.34,
+              filter: "grayscale(1) contrast(1.15)",
+              mixBlendMode: "luminosity",
+            }}
+          />
+        </div>
+      ) : null}
+
       <div style={{ position: "absolute", inset: base, clipPath: HEX, background: "var(--sv-scan)" }} />
       {ring === undefined ? null : (
         <>
