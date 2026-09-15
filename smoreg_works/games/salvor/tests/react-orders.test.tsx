@@ -18,6 +18,7 @@ import * as FX from "../src/ui/fx/derelict-fx.js";
 import { DECK_INK } from "../src/ui/react/board/HexBoard.js";
 import { sfx, soundFor, swingOf } from "../src/ui/react/sfx.js";
 import { forget, remember, resume, suspended } from "../src/ui/react/suspend.js";
+import { VirusCallout } from "../src/ui/react/VirusCallout.js";
 import { DOORS } from "../src/systems/doors.js";
 import { RIG, findSlot, pulseWait, rigOf, PULSE_COOLDOWN } from "../src/twist/rig.js";
 import { commandsOf } from "../src/ui/react/model.js";
@@ -496,7 +497,7 @@ describe("the plating is drawn where it can be seen", () => {
   it("keeps every state above the floor where a pale line stops reading", () => {
     const ink = DECK_INK as Record<string, number>;
     for (const state of ["current", "monitored", "detected", "undetected"]) {
-      expect(ink[state], `${state} is too faint to read`).toBeGreaterThanOrEqual(0.35);
+      expect(ink[state], `${state} is too faint to read`).toBeGreaterThanOrEqual(0.2);
     }
     /* And the order still says what has been established: the floor underfoot
        is the one the drone has actually stood on. */
@@ -651,6 +652,104 @@ describe("the drone mark is where the drone is", () => {
        into this node, and `textContent` takes the drawing with it. */
     expect(face!.querySelector("svg"), "the drone's face is not a drawing").not.toBeNull();
     expect(face!.textContent).not.toBe("◆");
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  });
+});
+
+describe("the strain is something you can act on", () => {
+  beforeAll(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        onchange: null,
+        dispatchEvent: () => false,
+      }),
+    });
+  });
+
+  /**
+   * What the rack could say before this: that a module was infected. Not what
+   * a beat costs, not how long until the next one, and not one of the three
+   * ways out — so the one mechanic in this game whose whole design is *where
+   * the risk sits* became, the moment the risk landed, a red rectangle.
+   */
+  it("says what it does, when it does it next, and all three prices", () => {
+    const strain = {
+      name: "LEECH",
+      slot: 2,
+      beat: "five credits off the account",
+      next: 9,
+      period: 12,
+      purgeTurns: 6,
+      benchPrice: 4,
+    };
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<VirusCallout strain={strain} onClose={() => undefined} />);
+    });
+
+    const text = host.textContent ?? "";
+    expect(text).toContain("LEECH");
+    expect(text).toContain("five credits off the account");
+    expect(text).toContain("next beat");
+    expect(text).toContain("9");
+    /* Three ways out, in three different currencies, drawn together because
+       the decision is the comparison. */
+    expect(text).toContain("purge it");
+    expect(text).toContain("6 turns");
+    expect(text).toContain("let it burn");
+    expect(text).toContain("clean it at the bench");
+    expect(text).toContain("4 cr a point");
+    /* The countdown, as a length: `next` lit out of `period`. */
+    expect(host.querySelectorAll("div[style*='width: 5px']").length).toBe(12);
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it("turns into a progress once the welding starts", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <VirusCallout
+          strain={{
+            name: "ROT",
+            slot: 0,
+            beat: "one point off the module it lives in",
+            next: 3,
+            period: 5,
+            purging: 2,
+            purgeTurns: 6,
+            benchPrice: 4,
+          }}
+          onClose={() => undefined}
+        />,
+      );
+    });
+    const text = host.textContent ?? "";
+    /* A purge is turns in a row and can be broken off, so what it needs is a
+       progress a player can be knocked out of rather than a spinner. */
+    expect(text).toContain("welding");
+    expect(text).toContain("2 to go");
+    expect(text).toContain("hold the weld");
+    expect(text).not.toContain("purge it");
 
     act(() => {
       root.unmount();

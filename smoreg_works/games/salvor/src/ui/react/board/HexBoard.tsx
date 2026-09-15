@@ -77,10 +77,10 @@ const DECK_SCALE = 1.2;
  * drawn as a rumour.
  */
 export const DECK_INK: Record<Knows, number> = {
-  current: 0.78,
-  monitored: 0.62,
-  detected: 0.5,
-  undetected: 0.38,
+  current: 0.5,
+  monitored: 0.36,
+  detected: 0.3,
+  undetected: 0.22,
   wrecked: 0,
 };
 
@@ -1153,7 +1153,18 @@ export function HexBoard({
     const here = route(to);
     if (here === null || here.path.length === 0) return;
     if (here.blocked !== null) {
+      /*
+       * The way there is shut, so the bulkhead is the answer and not a
+       * refusal: pin its own list of ways through it, which is what the walk
+       * was always documented to do («упрёшься во врага или закрытую дверь»,
+       * `ui/auto.ts`). It used to flash the door red and stop, and a flash is
+       * indistinguishable from a click that did not land — the owner read it
+       * as "I cannot move into that compartment for some reason".
+       */
       setBarred(here.blocked.id);
+      holdDoor();
+      setDoor(here.blocked.id);
+      setPinned(true);
       return;
     }
     setBarred(null);

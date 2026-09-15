@@ -191,14 +191,20 @@ export function CoreRack({
   slots,
   title = "Core",
   virus,
+  onStrain,
+  onSlotRef,
   style,
 }: {
   core?: number;
   coreMax?: number;
   slots: readonly RackSlot[];
   title?: string;
-  /** The strain aboard: which bay it is living in, and its next beat. */
-  virus?: { strain: string; slot: number; next: number; curing: boolean };
+  /** The strain aboard: which bay it is living in, and what it is called. */
+  virus?: { name: string; slot: number };
+  /** Told when a bay with a strain in it is pointed at. */
+  onStrain?: (slot: number) => void;
+  /** Where the bay is on screen, so a callout can be drawn against it. */
+  onSlotRef?: (slot: number, el: HTMLDivElement | null) => void;
   style?: CSSProperties;
 }): ReactElement {
   const rows = useRef<HTMLDivElement>(null);
@@ -286,40 +292,50 @@ export function CoreRack({
               empty
             </div>
           ) : (
-            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div
+              key={i}
+              ref={(el) => onSlotRef?.(i, el)}
+              onMouseEnter={virus?.slot === i ? () => onStrain?.(i) : undefined}
+              onClick={virus?.slot === i ? () => onStrain?.(i) : undefined}
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                cursor: virus?.slot === i ? "pointer" : "default",
+                /* The condition, kept on the row for as long as the strain is
+                   aboard: a frame the player can find again after dismissing
+                   what it points at. */
+                ...(virus?.slot === i
+                  ? { outline: "2px solid var(--sv-bad)", outlineOffset: 2 }
+                  : {}),
+              }}
+            >
               <SlashMeter
                 data-slot={String(i)}
                 label={slot.name}
                 value={slot.value ?? 0}
                 max={slot.max ?? 0}
                 tone={virus?.slot === i ? "bad" : (slot.tone ?? toneFor(slot.value ?? 0, slot.max ?? 0))}
+                style={{ flex: 1, minWidth: 0 }}
               />
-              {/*
-                The strain, on the bay it is living in.
-
-                Four strains, four different periods, and the rack said nothing
-                about any of them — so the only way to learn there was a clock
-                was to watch a number change on a turn you did not spend. It is
-                drawn under the module rather than beside it because which bay
-                it is in is the fact that decides what to do about it: burning
-                that module is one of the three ways out.
-              */}
+              {/* The strain's own name, at the end of the bay it is living in.
+                  Which bay decides what to do about it: burning that module is
+                  one of the three ways out. */}
               {virus?.slot !== i ? null : (
-                <div
+                <span
                   data-sc
                   style={{
-                    marginLeft: 88,
+                    flex: "none",
+                    marginLeft: 8,
                     font: "var(--sv-stencil)",
                     fontSize: 14,
-                    letterSpacing: ".12em",
+                    letterSpacing: ".14em",
                     textTransform: "uppercase",
                     color: "var(--sv-bad)",
                   }}
                 >
-                  {virus.curing
-                    ? `${virus.strain} · purging`
-                    : `${virus.strain} · ${String(virus.next)} to beat`}
-                </div>
+                  {virus.name}
+                </span>
               )}
             </div>
           ),

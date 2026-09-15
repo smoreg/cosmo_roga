@@ -4,7 +4,7 @@ import { machineName } from "../../content/monsters.js";
 import { moduleKind, moduleName } from "../../content/modules.js";
 import { roomActions } from "../actions.js";
 import { doorWays } from "../doorlist.js";
-import { findSlot, hostilesIn, pulseWait, rigOf, wrecksOn } from "../../twist/rig.js";
+import { findSlot, hostilesIn, pulseWait, rigOf, wrecksOn, type Rig } from "../../twist/rig.js";
 import { BUCKET_GLYPH, CONTENT_KEYS, ONLINE_GLYPH, bucketName } from "../contents.js";
 import { gaugeOf, alertState } from "../../systems/alert.js";
 import { shipState } from "../../systems/shipstate.js";
@@ -28,7 +28,7 @@ import { deckOf } from "./deck.js";
 import type { RackSlot } from "./meters/Rack.js";
 import type { LogEntry } from "./action/Log.js";
 import { jobNow, jobOn } from "../../systems/jobs.js";
-import { turnsToBeat, virusOf } from "../../systems/virus.js";
+import { BENCH_CURE_PRICE, cureTurns, harmLine, turnsToBeat, virusOf } from "../../systems/virus.js";
 import { strainName, strainOf } from "../../content/viruses.js";
 import { infectChance } from "../../systems/virus.js";
 import { wreckSource } from "../../twist/rig.js";
@@ -436,7 +436,7 @@ export function rackOf(game: RoomGame): {
    * number drop on a turn they did not spend. The engine has kept the clock
    * all along (`systems/virus.ts`, `turnsToBeat`); this turns it round.
    */
-  virus?: { strain: string; slot: number; next: number; curing: boolean };
+  virus?: Strain;
 } {
   const voyage = voyageOf(game);
   const kind = HULLS.find((h) => h.id === voyage.hull);
@@ -448,16 +448,7 @@ export function rackOf(game: RoomGame): {
       ? {}
       : { name: moduleName(slot.kind), value: slot.integrity, max: maxOf(slot) },
   );
-  const v = virusOf(game.player);
-  const sick =
-    v === undefined || rig.slots[v.slot] === null || rig.slots[v.slot] === undefined
-      ? undefined
-      : {
-          strain: strainName(strainOf(v.strain)),
-          slot: v.slot,
-          next: turnsToBeat(game, v),
-          curing: v.curing !== undefined,
-        };
+  const sick = strainOf_(game, rig);
   /* The core is the run: three pips, and the drone's own hp is how many are
      still lit. `CORE_MAX` rather than a field, because the entity carries no
      maximum and the rack's three boxes are a fact about the drone. */
@@ -504,6 +495,51 @@ export function hullMovedDoor(game: RoomGame): boolean {
     if (line.key === "log.alert.door" || line.key === "log.alert.lock") return true;
   }
   return false;
+}
+
+/**
+ * The strain aboard, as the rack's own red frame and the card behind it.
+ *
+ * Everything a player can act on, in one place: what it does, how long until
+ * it does it again, and the three prices for being rid of it. The period is
+ * turned round into a countdown here for the reason the objectives' turns are
+ * — a period is a fact about the strain and a countdown is a fact the player
+ * can act on, and only one of the two belongs on a screen.
+ */
+export interface Strain {
+  /** `LEECH`, `SPASM` — the strain, as the log and the codex name it. */
+  name: string;
+  /** Which bay it is living in: the frame goes round that row. */
+  slot: number;
+  /** What one beat costs, in a sentence. */
+  beat: string;
+  /** Turns until the next beat, and the period it counts down from. */
+  next: number;
+  period: number;
+  /** Turns of welding still to do, where a purge is running. */
+  purging?: number;
+  /** What a purge costs this drone — halved by a SPIKE in the rack. */
+  purgeTurns: number;
+  /** What the tug bench charges, per point. */
+  benchPrice: number;
+}
+
+function strainOf_(game: RoomGame, rig: Rig): Strain | undefined {
+  const v = virusOf(game.player);
+  if (v === undefined || rig.slots[v.slot] === null || rig.slots[v.slot] === undefined) {
+    return undefined;
+  }
+  const strain = strainOf(v.strain);
+  return {
+    name: strainName(strain),
+    slot: v.slot,
+    beat: harmLine(strain),
+    next: turnsToBeat(game, v),
+    period: strain.period,
+    ...(v.curing === undefined ? {} : { purging: v.curing.left }),
+    purgeTurns: cureTurns(rig),
+    benchPrice: BENCH_CURE_PRICE,
+  };
 }
 
 /** The gauge with its word and its way back down, as the dial draws it. */

@@ -9,6 +9,7 @@ import { LogStrip } from "./action/Log.js";
 import * as FX from "../fx/derelict-fx.js";
 import { FRAME_MS, motionNow } from "./settings.js";
 import { sfx, soundFor } from "./sfx.js";
+import { VirusCallout } from "./VirusCallout.js";
 import { remember } from "./suspend.js";
 import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf, workingOf, alertModelOf, hullMovedDoor } from "./model.js";
 import type { Offer } from "./model.js";
@@ -214,6 +215,10 @@ export function Screen({
    * output is a change in what the screen shows, and reached all at once it
    * reads as a redraw rather than as something going out from the drone.
    */
+  /* Whether the strain's own card is up. It opens itself the turn one is
+     caught — the rack going red is not enough to explain what just happened —
+     and the frame on the bay is how it is found again after a dismissal. */
+  const [strainOpen, setStrainOpen] = useState(false);
   const [held, setHeld] = useState<ReadonlySet<RoomId>>(NONE_HELD);
   /*
    * The sweep hangs on the scanner's stamp, not on the turn counter.
@@ -343,6 +348,19 @@ export function Screen({
   const route = useMemo(() => routeIn(game, board), [game, board]);
   const rack = useMemo(() => rackOf(game), [game, turn]);
   const log = useMemo(() => logOf(game), [game, turn]);
+
+  /* A strain that has just come aboard says so: the rack going red is not an
+     explanation, and this is the one event where the card is the message. */
+  const hadStrain = useRef<number | undefined>(undefined);
+  useEffect(
+    function caught() {
+      const now = rack.virus?.slot;
+      if (now !== undefined && now !== hadStrain.current) setStrainOpen(true);
+      hadStrain.current = now;
+    },
+    [rack.virus?.slot],
+  );
+
   const here = board.rooms.find((r) => r.id === board.drone);
 
   /**
@@ -651,7 +669,15 @@ export function Screen({
               </span>
             </div>
           </div>
-          <CoreRack core={rack.core} coreMax={rack.coreMax} slots={rack.slots} virus={rack.virus} />
+          <CoreRack
+                core={rack.core}
+                coreMax={rack.coreMax}
+                slots={rack.slots}
+                {...(rack.virus === undefined
+                  ? {}
+                  : { virus: { name: rack.virus.name, slot: rack.virus.slot } })}
+                onStrain={() => setStrainOpen(true)}
+              />
         </Panel>
 
         {home ? (
@@ -696,6 +722,34 @@ export function Screen({
           the card was, so a compartment card opened *underneath* the thing it
           was explaining. A card is modal: it belongs to the screen. Below the
           log alone, which is the one thing nothing covers. */}
+      {/* The strain, where the rack can point at it. Pinned to the right-hand
+          column's edge rather than floated over the board: what it is about is
+          a bay of the rack, and the two should be readable together. */}
+      {rack.virus === undefined || !strainOpen ? null : (
+        <div
+          style={{
+            gridColumn: 3,
+            gridRow: 1,
+            justifySelf: "start",
+            alignSelf: "start",
+            marginTop: 120,
+            marginLeft: -342,
+            zIndex: 60,
+            position: "relative",
+          }}
+        >
+          <VirusCallout
+            strain={rack.virus}
+            onPurge={() => {
+              sfx.click();
+              game.playerCommand({ kind: "act", verb: "cure", slot: rack.virus!.slot });
+              again();
+            }}
+            onClose={() => setStrainOpen(false)}
+          />
+        </div>
+      )}
+
       {/* A sheet is dismissed by a click anywhere that is not the sheet. On the
           main menu there is nowhere else — the menu *is* the screen — so only
           here does the scrim take a click.
