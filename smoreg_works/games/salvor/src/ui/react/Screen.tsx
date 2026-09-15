@@ -28,6 +28,7 @@ import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
 import { deckVersion, watchDeck } from "./deckindex.js";
 import { CodexCardView, EndingCard, HistoryCard } from "./screens/Cards.js";
+import { ThingIcon } from "./board/Icon.js";
 import { DockPreview, TugOrders } from "./screens/Tug.js";
 import { roomActions } from "../actions.js";
 import { codexQueue, readCodex } from "../../systems/codex.js";
@@ -565,16 +566,11 @@ function Manifest({
               cursor: can ? "pointer" : "default",
             }}
           >
-            <span
-              style={{
-                width: 14,
-                flex: "none",
-                font: "var(--sv-mono)",
-                color: thing.hostile === true ? "var(--sv-bad)" : "var(--sv-amber)",
-              }}
-            >
-              {thing.glyph}
-            </span>
+            {/* The same drawing as on the hexagon. The list used to print the
+                engine's own letter here, so a scout was a triangle on the board
+                and a `c` in the panel, and the catalogue had to be learned
+                twice for one set of things. */}
+            <ThingIcon thing={thing} size={13} style={{ alignSelf: "center" }} />
             <span style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>{thing.name}</span>
             {thing.work === undefined ? null : (
               <span

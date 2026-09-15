@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { linesOf, reveal } from "../reveal.js";
+import { ThingIcon } from "./Icon.js";
 import * as FX from "../../fx/derelict-fx.js";
 import { tileUrl } from "../deckindex.js";
 
@@ -54,12 +55,18 @@ const DECK_SCALE = 1.2;
  *
  * What the light still says is how much has been *established*: the floor the
  * drone is standing on is the one it has actually seen.
+ *
+ * No filter here any more. The tiles are baked as light ink on transparent —
+ * grey, inverted, sized for this board — because the source art is dark ink
+ * drawn for paper, and dark ink over a near-black deck is nothing at all.
+ * Doing it once at bake time costs nothing per frame and makes the asset
+ * honest about the interface it is for (`tools/deck/bake.mjs`).
  */
 const DECK_INK: Record<Knows, number> = {
-  current: 0.42,
-  monitored: 0.3,
-  detected: 0.26,
-  undetected: 0.2,
+  current: 0.5,
+  monitored: 0.36,
+  detected: 0.3,
+  undetected: 0.22,
   wrecked: 0,
 };
 
@@ -108,24 +115,6 @@ const PROP: Record<string, { c: string; dash: [number, number]; fill?: string }>
   alarmed: { c: "var(--sv-warn)", dash: [4, 3], fill: "var(--sv-amber-wash)" },
 };
 
-/**
- * What a thing is drawn as.
- *
- * Shapes, never letters — a letter has to be read and a shape is seen. The
- * engine speaks in glyphs, so this is the one place the two vocabularies meet,
- * and it falls back rather than failing: an unknown machine is still a machine
- * and an unknown object is still an object.
- */
-function shapeOf(thing: BoardThing): string | undefined {
-  if (thing.hostile === true) {
-    if (thing.glyph === "c") return "polygon(50% 0,100% 100%,0 100%)";
-    if (thing.glyph === "d") return "polygon(50% 0,100% 50%,50% 100%,0 50%)";
-    return "polygon(50% 0,100% 35%,82% 100%,18% 100%,0 35%)";
-  }
-  if (thing.glyph === "X") return undefined; // a crate is a square
-  if (thing.glyph === "+") return "polygon(0 0,100% 0,100% 72%,62% 72%,62% 100%,38% 100%,38% 72%,0 72%)";
-  return "circle(50%)";
-}
 
 export interface BoardThing {
   /** Stable enough to key a row and to name in a command. */
@@ -550,15 +539,7 @@ function HexTile({
         cursor: c.thing.verb === undefined ? "help" : "pointer",
       }}
     >
-      <div
-        style={{
-          width: px,
-          height: px,
-          flex: "none",
-          background: c.thing.hostile === true ? "var(--sv-bad)" : "var(--sv-amber)",
-          clipPath: shapeOf(c.thing),
-        }}
-      />
+      <ThingIcon thing={c.thing} size={px} />
       {c.n > 1 ? (
         <div
           style={{
@@ -735,7 +716,6 @@ function HexTile({
               height: `${String(DECK_SCALE * 100)}%`,
               transform: `translate(-50%,-50%)${room.deck.flipped ? " scaleX(-1)" : ""}`,
               opacity: DECK_INK[room.knows],
-              filter: "grayscale(1) contrast(1.2) brightness(1.1)",
             }}
           />
         </div>

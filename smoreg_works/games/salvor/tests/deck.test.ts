@@ -122,3 +122,48 @@ describe("what each compartment wears", () => {
     expect(deckOf(game, { ...index, tiles: [] }, cells, 0).size).toBe(0);
   });
 });
+
+describe("what the bake promises the board", () => {
+  it("says the tiles are grey, inverted and sized for this hexagon", () => {
+    /* The board draws these with no filter at all, so everything that makes
+       them legible on a near-black deck has to have happened at bake time.
+       These three flags are that contract written down. */
+    const said = index as unknown as { side: number; grey: boolean; inverted: boolean };
+    expect(said.side).toBe(288);
+    expect(said.grey).toBe(true);
+    /* The source is dark ink drawn for paper. Dark ink at a third opacity over
+       a near-black deck is nothing at all — which is exactly how it looked
+       before this was true. */
+    expect(said.inverted).toBe(true);
+  });
+
+  it("writes the pixels it said it would", () => {
+    /* Read straight off the VP8X header rather than trusting the index: a
+       re-bake that changed the size and not the json would put every deck
+       slightly out of focus and nothing would say so. */
+    const dir = join(import.meta.dirname, "..", "public", "deck", "t");
+    for (const tile of index.tiles.slice(0, 12)) {
+      const head = readFileSync(join(dir, `${tile.id}.webp`)).subarray(0, 30);
+      expect(head.subarray(0, 4).toString("latin1")).toBe("RIFF");
+      expect(head.subarray(12, 16).toString("latin1")).toBe("VP8X");
+      /* Canvas size is stored minus one, 24-bit little-endian. */
+      const w = head.readUIntLE(24, 3) + 1;
+      const h = head.readUIntLE(27, 3) + 1;
+      expect([w, h], tile.id).toEqual([288, 288]);
+      /* And the alpha flag is set, because the transparency *is* the drawing:
+         four fifths of one of these tiles is nothing, and a bake that flattened
+         it would ship a solid block. */
+      expect(head[20]! & 0x10, `${tile.id} has no alpha`).toBe(0x10);
+    }
+  });
+
+  it("is small enough to ship", () => {
+    const dir = join(import.meta.dirname, "..", "public", "deck", "t");
+    let bytes = 0;
+    for (const tile of index.tiles) bytes += readFileSync(join(dir, `${tile.id}.webp`)).length;
+    /* Eleven megabytes at full size and colour, three and a third at the size
+       this board draws. The jam ships as a zip, so this is a real budget and
+       not a preference. */
+    expect(bytes).toBeLessThan(5_000_000);
+  });
+});
