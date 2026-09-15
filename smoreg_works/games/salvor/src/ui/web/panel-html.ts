@@ -1,6 +1,8 @@
 import { t } from "../../i18n.js";
+import type { Key } from "../../content/i18n/keys.js";
 import type { Action } from "../actions.js";
 import { panelColour, slotNumberOf, type PanelLine } from "../panel.js";
+import type { KnownHazard } from "../schematic-input.js";
 import { THEME } from "../theme.js";
 import { esc } from "./schematic-svg.js";
 import { varOf } from "./styles.js";
@@ -52,14 +54,6 @@ const BAR_RUN = /[▮▯]+/g;
 const EXPOSED = "◀";
 
 /**
- * From this level the alert row leaves the counters and stands at the top of
- * the panel, above the rack: the ladder is shutting doors from three up
- * (`systems/alert.ts`, `DOOR_LEVEL`), and a row that changes the shape of the
- * page is read where a row in a stack of counters is not.
- */
-const LIFT_ALERT_FROM = 3;
-
-/**
  * The alert row, and how far up the gauge it is — read the way `listHeading`
  * reads its heading: the row opens with the word `panel.alert` opens with, in
  * whatever language the table is in, and the level is the filled cells of the
@@ -93,11 +87,10 @@ export function htmlOf(
   lit: ReadonlySet<number> = new Set(),
 ): string {
   const heading = listHeading();
-  // The alert, lifted out of the counters and put first once the ship is
-  // shutting doors. Taken out of the blocks before they are grouped, so the
-  // stack it stood in closes up behind it rather than keeping a hole.
-  const alarm = blocks.find((line) => (alertLevelOf(line.text) ?? 0) >= LIFT_ALERT_FROM);
-  const body = alarm === undefined ? blocks : blocks.filter((line) => line !== alarm);
+  // The alert is not the panel's on a page: it stands in the corner of the map
+  // as a ladder (`cornerHtml`). Taken out before the blocks are grouped, so the
+  // stack of counters it stood in closes up behind it rather than keeping a hole.
+  const body = blocks.filter((line) => alertLevelOf(line.text) === undefined);
   const groups = ordered(groupsOf(body), heading);
   const out = groups.map((group) => {
     const rows = group.map((line, j) => lineHtml(line, flash, lit, j === 0));
@@ -106,10 +99,6 @@ export function htmlOf(
     if (group.some((line) => line.text.trim() === heading)) rows.push(actionsHtml(actions, cursor));
     return `<section class="pb">${rows.join("")}</section>`;
   });
-  if (alarm !== undefined) {
-    const level = alertLevelOf(alarm.text) ?? 0;
-    out.unshift(`<section class="pb web-alarm is-l${level}">${lineHtml(alarm, flash, lit)}</section>`);
-  }
   // The key row, pinned to the corner of the panel — the owner's "подсказки по
   // хоткеям всегда снизу справа". Handed in rather than taken off the end of
   // the blocks: on a full panel the terminal leaves no blank row between it and
@@ -175,55 +164,79 @@ function groupsOf(blocks: readonly PanelLine[]): PanelLine[][] {
 }
 
 /**
- * The exposed slot, said a second time — as a badge in the bottom-left corner
- * of the map, out of the panel entirely.
- *
- * The one duplication on the screen. The artboards put it at the top of the
- * panel in 22px type; the owner played that and asked for the opposite —
- * "следующий удар мелким значком снизу слева" — which is the better call for
- * the reason the artboards themselves give: the rack row is already the single
- * loudest thing in the panel, and a second shout beside it was two shouts. A
- * small mark where the eye rests between turns says the same thing and costs
- * the panel nothing.
- *
- * The row is reprinted rather than picked apart — the module's name, its bar
- * and its integrity are already worded and already in the right language, and
- * a parser here would be a second place for them to be got wrong.
+ * The ten rungs of the alert, in order: the word the panel shows for each, and
+ * what the ship does on it, short. The words are the ladder's own
+ * (`systems/alert.ts`, `LADDER`); the second column exists only here.
  */
-export function exposeHtml(
-  blocks: readonly PanelLine[],
-  flash: ReadonlySet<number>,
-  lit: ReadonlySet<number>,
-): string {
-  const row = blocks.find((line) => line.text.includes(EXPOSED));
-  if (row === undefined) return "";
-  const slot = slotNumberOf(row.text);
-  const hit = slot !== undefined && flash.has(slot);
-  return [
-    `<div class="web-expose"><div class="expose${hit ? " hit" : ""}">`,
-    `<span class="lbl">${esc(t("panel.nextHit"))}</span>`,
-    `<div class="row">${bars(row.text.trim())}</div>`,
-    "</div></div>",
-  ].join("");
-}
+const RUNGS: ReadonlyArray<readonly [Key, Key]> = [
+  ["alert.noticed", "alert.does.noticed"],
+  ["alert.searching", "alert.does.searching"],
+  ["alert.post", "alert.does.post"],
+  ["alert.pickets", "alert.does.pickets"],
+  ["alert.hunting", "alert.does.hunting"],
+  ["alert.pack", "alert.does.pack"],
+  ["alert.hunter", "alert.does.hunter"],
+  ["alert.lockdown", "alert.does.lockdown"],
+  ["alert.scuttle", "alert.does.scuttle"],
+  ["alert.detonation", "alert.does.detonation"],
+];
 
 /**
- * `[i] 2` in the top-left corner of the map, where the terminal puts it.
+ * The top-left corner of the map: the codex chip, the alert as a ladder, and
+ * the hazards the drone knows are aboard (docs/tasks/G89-festival.md, A3).
  *
- * A sibling of `web-expose` rather than something inside the schematic: both
- * are marks laid over the map at opposite corners, and the grid places them by
- * the same two properties. The look is written inline because the sheet
- * (`ui/web/styles.ts`) belongs to another task in this wave — everything it
- * uses is an existing custom property, so the badge changes colour with the
- * rest of the page and nothing has to be kept in step in two files.
+ * The alert used to be a counter in the panel's stack and, from three up, a
+ * framed row lifted over the rack. As a ladder it answers the question the row
+ * could not — what comes next, and what it will do — while the row itself
+ * heads it word for word, gauge, countdown and all, so the corner and the
+ * terminal still say one thing. Passed rungs go dim, the one the ship is on
+ * takes the gauge's colour, and the rest wait in between.
  *
- * Empty when there is nothing unread: the corner goes back to being map.
+ * Every word is handed in or looked up: the row out of `panelBlocks`, the
+ * badge out of `codexBadge`, the hazards out of `hazardsAboard`. Empty when all
+ * three are — which is the tug.
  */
-export function codexHtml(badge: string | undefined): string {
-  if (badge === undefined) return "";
-  const place = `style="grid-column:1;grid-row:2;align-self:start;justify-self:start;margin:8px 0 0 12px;z-index:2;pointer-events:none"`;
-  const chip = `style="border:1px solid var(--accent);background:var(--amber-wash);border-radius:2px;padding:2px 8px;color:var(--accent);font-size:12px;font-weight:600;letter-spacing:.06em"`;
-  return `<div class="web-codex" ${place}><div ${chip}>${esc(badge)}</div></div>`;
+export function cornerHtml(
+  badge: string | undefined,
+  blocks: readonly PanelLine[],
+  hazards: readonly KnownHazard[],
+): string {
+  const chip = badge === undefined ? "" : `<div class="web-codex">${esc(badge)}</div>`;
+  const row = blocks.find((line) => alertLevelOf(line.text) !== undefined);
+  const level = row === undefined ? 0 : (alertLevelOf(row.text) ?? 0);
+  const ladder =
+    row === undefined
+      ? []
+      : [
+          `<div class="rung-head">${bars(row.text.trim())}</div>`,
+          ...RUNGS.map(([word, does], i) => {
+            const at = i + 1;
+            const state = at < level ? "is-past" : at === level ? "is-now" : "is-next";
+            return [
+              `<div class="rung ${state}">`,
+              `<i>${at <= level ? "▮" : "▯"}</i>`,
+              `<span class="w">${esc(t(word))}</span>`,
+              `<span class="do">${esc(t(does))}</span>`,
+              "</div>",
+            ].join("");
+          }),
+        ];
+  const aboard = hazards.map((h) =>
+    [
+      `<div class="hz hz-${h.id}">`,
+      `<i>${esc(h.glyph)}</i>`,
+      `<span class="w">${esc(h.where)}</span>`,
+      `<span class="do">${esc(h.name)}</span>`,
+      "</div>",
+    ].join(""),
+  );
+  if (chip.length === 0 && ladder.length === 0 && aboard.length === 0) return "";
+  const hazardRows = aboard.length === 0 ? "" : `<div class="hz-list">${aboard.join("")}</div>`;
+  const box =
+    ladder.length === 0 && aboard.length === 0
+      ? ""
+      : `<div class="web-ladder is-l${level}">${ladder.join("")}${hazardRows}</div>`;
+  return `<div class="web-corner">${chip}${box}</div>`;
 }
 
 /**
@@ -248,15 +261,45 @@ export function lineHtml(
   const colour = varOf(panelColour(line, flash, lit));
   const classes = ["pl"];
   if (first && line.fg === THEME.accent) classes.push("h");
-  if (slot !== undefined) classes.push("slot");
+  if (slot !== undefined) classes.push("slot", ...slotTone(line));
   if (line.text.includes(EXPOSED)) classes.push("is-exposed");
   if (hit) classes.push("hit");
-  // The alert row carries its level as a class, so the sheet can colour the
-  // ladder: nothing below three, amber at three and four, red and blinking at
-  // the top (`styles.ts`, `.web-alert`).
-  const alert = alertLevelOf(line.text);
-  if (alert !== undefined) classes.push("web-alert", `is-l${alert}`);
-  return `<div class="${classes.join(" ")}" style="color:${colour}">${bars(line.text)}</div>`;
+  // A line that stands for a key is pressed by clicking it (`mount.ts`).
+  const press = line.press === undefined ? "" : ` data-key="${esc(line.press)}"`;
+  if (press.length > 0) classes.push("is-press");
+  return `<div class="${classes.join(" ")}"${press} style="color:${colour}">${toned(line, lit)}</div>`;
+}
+
+/**
+ * The line's text with its own coloured run, when it has one and is not
+ * flashing: a contact's hit points in the colour of what is left (G90 D1).
+ */
+function toned(line: PanelLine, lit: ReadonlySet<number>): string {
+  const tone = line.tone;
+  if (tone === undefined || (line.id !== undefined && lit.has(line.id))) return bars(line.text);
+  const { text } = line;
+  return [
+    bars(text.slice(0, tone.from)),
+    `<span style="color:${varOf(tone.fg)}">${bars(text.slice(tone.from, tone.to))}</span>`,
+    bars(text.slice(tone.to)),
+  ].join("");
+}
+
+/**
+ * How worn a rack row is, as the class its bar is coloured by: nothing while
+ * three quarters or more is left, `is-worn` below that, `is-low` on the last
+ * point or the last quarter — the same quarter `contactTone` turns a machine
+ * red at, so red means one thing on both halves of the panel. A burned slot has
+ * no bar and gets its hatching instead.
+ */
+function slotTone(line: PanelLine): string[] {
+  if (line.fg === THEME.burned) return ["is-burned"];
+  const run = /[▮▯]+/.exec(line.text)?.[0] ?? "";
+  const on = [...run].filter((ch) => ch === "▮").length;
+  const total = [...run].length;
+  if (total === 0 || on === total) return [];
+  if (on <= 1 || on / total <= 0.25) return ["is-low"];
+  return on / total < 0.75 ? ["is-worn"] : [];
 }
 
 /**

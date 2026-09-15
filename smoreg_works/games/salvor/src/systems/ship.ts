@@ -50,14 +50,15 @@ import { credit, derelictAboard } from "./voyage.js";
 // --------------------------------------------------------------- the numbers
 
 /**
- * Steps of alert a system costs when it comes up (design-doc.md's `+2`).
+ * Steps of alert a system costs when it comes up: design-doc.md's `+2` on a
+ * five-rung ladder, which is four on the ten-rung one (G90 A).
  *
  * Steps and not points: each one of them is a rung of the ship's ladder
- * (`systems/alert.ts`), so the second system is what brings the hunter. The
- * third is the exception — it is the switch that turns the ladder off
+ * (`systems/alert.ts`), so a loud hull meets the hunter on its second system.
+ * The third is the exception — it is the switch that turns the ladder off
  * (`standDown`), and it costs nothing: "обезвреживание вырубает этот процесс".
  */
-const ALERT_PER_SYSTEM = 2;
+const ALERT_PER_SYSTEM = 4;
 
 /** Integrity the reactor takes out of the CELL that brought it up. */
 const CELL_COST = 1;

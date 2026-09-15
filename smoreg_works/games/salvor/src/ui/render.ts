@@ -22,7 +22,7 @@ import {
   titleScreen,
   type TitleScreen,
 } from "./title.js";
-import { HISTORY_ROWS, historyPages, logFades, logText, type LogFade } from "./logline.js";
+import { HISTORY_ROWS, blastLineOf, historyPages, logFades, logText, type LogFade } from "./logline.js";
 import {
   NO_FLASH,
   PANEL_WIDTH,
@@ -38,7 +38,8 @@ import { schematic, type SchematicLine } from "./schematic.js";
 import { BANNER_WIDTH, bannerLine, schematicInputOf } from "./schematic-input.js";
 import { LAYOUT, SCREEN_HEIGHT, SCREEN_WIDTH, THEME } from "./theme.js";
 import { tugBoard } from "./tugboard.js";
-import { aimedAt, codexSeen, codexView, listOf, type AppState, type Overlay } from "./appstate.js";
+import { aimedAt, codexSeen, codexView, lessonRows, listOf, type AppState, type Overlay } from "./appstate.js";
+import { virusCard } from "./viruscard.js";
 
 /**
  * The only file in the game that talks to a display.
@@ -249,13 +250,37 @@ const BLOCK_LETTERS: Record<string, readonly string[] | undefined> = {
  * one sortie coming home; winning is the father's tug under tow, the end of the
  * voyage, and it now says that. `why` is the sentence neither of them had.
  */
-export function endingBanners(): Partial<Record<Overlay, { title: string; fg: string; why?: string }>> {
+export function endingBanners(game?: RoomGame): Partial<Record<Overlay, { title: string; fg: string; why?: string }>> {
+  // A hull that blew itself up under the drone ends the sortie — or, on the last
+  // hull, the voyage — and neither card was about that: the voyage said the
+  // account was empty and the sortie said only DRONE LOST. The line the voyage
+  // wrote for it is already the reason, in the player's language.
+  const blown = game === undefined ? undefined : blownLine(game);
+  const boom = blown === undefined ? undefined : { title: t("end.blown"), fg: THEME.bad, why: blown };
   return {
-    dead: { title: t("end.dead"), fg: THEME.bad, why: t("end.dead.why") },
-    lost: { title: t("end.lost"), fg: THEME.bad },
+    dead: boom ?? { title: t("end.dead"), fg: THEME.bad, why: t("end.dead.why") },
+    lost: boom ?? { title: t("end.lost"), fg: THEME.bad },
     won: { title: t("end.won"), fg: THEME.good, why: t("end.won.why") },
     sold: { title: t("end.sold"), fg: THEME.good },
   };
+}
+
+/** Log keys the voyage writes when a detonation takes the hull (`systems/voyage.ts`). */
+const BLOWN_KEYS: ReadonlySet<string> = new Set(["log.voyage.blown", "log.voyage.blownLast"]);
+
+/** How far back the card looks for it: the lines of the turn that raised the card. */
+const BLOWN_LOOKBACK = 12;
+
+/** The detonation line of the turn just played, if that is what ended it. */
+function blownLine(game: RoomGame): string | undefined {
+  const lines = game.log.tail(BLOWN_LOOKBACK);
+  const last = lines[lines.length - 1];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (last !== undefined && line.turn !== last.turn) break;
+    if (line.key !== undefined && BLOWN_KEYS.has(line.key)) return logText(line);
+  }
+  return undefined;
 }
 
 /** The one line under a run that is over, and under the error card. */
@@ -372,11 +397,12 @@ export class Renderer {
     if (isTug(game)) this.drawBoard(game);
     else this.drawSchematic(game, state, lit);
     this.drawPanel(game, state, lit);
-    this.drawLog(game);
+    this.drawLog(game, state);
     if (overlay === "help") this.drawHelp(game, state.helpPage);
     if (overlay === "codex") this.drawCodex(game, state);
+    if (overlay === "virus") this.drawVirus(game);
     if (overlay === "history") this.drawHistory(game, state.logPage);
-    const ending = endingBanners()[overlay];
+    const ending = endingBanners(game)[overlay];
     if (ending) this.drawBanner(ending.title, ending.why, runSummary(game), ending.fg, endHint(overlay));
   }
 
@@ -458,14 +484,34 @@ export class Renderer {
     lines.forEach((line, y) => {
       if (y >= LAYOUT.mapHeight) return;
       this.putLine(PANEL_X, y, line.text, panelColour(line, this.flash.slots, lit.ids));
+      // A contact's hit points in the colour of what is left, over its red name.
+      const tone = line.tone;
+      if (tone !== undefined && !(line.id !== undefined && lit.ids.has(line.id))) {
+        this.putLine(PANEL_X + tone.from, y, line.text.slice(tone.from, tone.to), tone.fg);
+      }
     });
   }
 
-  private drawLog(game: RoomGame): void {
-    const y0 = LAYOUT.mapHeight + 1;
-    for (let x = 0; x < SCREEN_WIDTH; x++) this.display.draw(x, LAYOUT.mapHeight, "─", THEME.fgDim, null);
+  private drawLog(game: RoomGame, state: AppState): void {
+    let y0 = LAYOUT.mapHeight + 1;
+    // On the turn something blows up, the rule under the map goes heavy and
+    // red: the terminal's half of the web view's flash (`.web-map.is-boom`),
+    // with no motion in it, so nothing is lost for a reader who asked for less.
+    const blast = blastLineOf(game) !== undefined;
+    for (let x = 0; x < SCREEN_WIDTH; x++) {
+      this.display.draw(x, LAYOUT.mapHeight, blast ? "═" : "─", blast ? THEME.bad : THEME.fgDim, null);
+    }
 
-    const lines = game.log.tail(LAYOUT.logHeight);
+    // The lesson's window, on the rows above the log (G90 E3): the head in
+    // the accent, the instruction in the reading colour, and the log's tail
+    // on whatever rows are left under them. Nothing in a run without one.
+    const lesson = lessonRows(game, state);
+    lesson.forEach((row, i) => {
+      this.putLine(1, y0 + i, clamp(row, SCREEN_WIDTH - 2), i === 0 ? THEME.accent : THEME.fg);
+    });
+    y0 += lesson.length;
+
+    const lines = game.log.tail(LAYOUT.logHeight - lesson.length);
     // Which lines are still bright is a question about turns, not about how
     // many lines happen to be on the screen (`ui/logline.ts`, `logFades`).
     const fades = logFades(lines);
@@ -576,6 +622,24 @@ export class Renderer {
     this.putLine(x0 + 2, y0 + 1, clamp(heading, inner), THEME.accent);
     this.putLine(x0 + 2, y0 + h - 2, clamp(footer, inner), THEME.fgDim);
     body.forEach((line, i) => {
+      this.putLine(x0 + 2, y0 + 3 + i, clamp(line, inner), THEME.fg);
+    });
+  }
+
+  /**
+   * The virus window, in the `i` card's frame and colours: every line of it was
+   * decided in `ui/viruscard.ts`, so this only draws.
+   */
+  private drawVirus(game: RoomGame): void {
+    const card = virusCard(game);
+    if (card === undefined) return;
+    const { width: w, height: h, inner } = codexBox(card.heading, card.body, card.footer);
+    const x0 = (SCREEN_WIDTH - w) >> 1;
+    const y0 = (SCREEN_HEIGHT - h) >> 1;
+    this.box(x0, y0, w, h);
+    this.putLine(x0 + 2, y0 + 1, clamp(card.heading, inner), THEME.bad);
+    this.putLine(x0 + 2, y0 + h - 2, clamp(card.footer, inner), THEME.fgDim);
+    card.body.forEach((line, i) => {
       this.putLine(x0 + 2, y0 + 3 + i, clamp(line, inner), THEME.fg);
     });
   }
@@ -695,17 +759,29 @@ export function latestAlarm(lines: readonly LogLine[]): number {
  * what it does differently.
  */
 export function runSummary(game: RoomGame): string {
-  const burned = rigOf(game.player)?.burnedCount ?? 0;
+  return t("end.summary", runFigures(game));
+}
+
+/**
+ * The five numbers of that line, before they are worded: the graphic view's end
+ * card sets each one large under a caption of its own (G89 B, 3).
+ */
+export type RunFigures = { cr: number; sold: number; rooms: number; turns: number; kills: number; burned: number };
+
+export function runFigures(game: RoomGame): RunFigures {
   // Credits first, because it is the number the run is scored on and the one
   // the card was missing: the owner sold a hull, read `14 compartments · 120
   // turns · 10 machines · 8 modules burned` and asked "п прибыли сколько?".
   // Banked only — what the drone is still carrying is not earned until it is
   // out, which is the whole of the `hint.payout` rule.
-  return t("end.summary", {
+  return {
     cr: voyageRecord(game)?.credits ?? 0,
+    // Whether the voyage sold a hull is what the owner could not read off the
+    // card (G90 D6): the credits say how much, this says what for.
+    sold: voyageRecord(game)?.state.filter((s) => s.sold).length ?? 0,
     rooms: voyageProgress(game),
     turns: game.schedule.time,
     kills: game.kills,
-    burned,
-  });
+    burned: rigOf(game.player)?.burnedCount ?? 0,
+  };
 }

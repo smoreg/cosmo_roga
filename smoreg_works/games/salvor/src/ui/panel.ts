@@ -20,12 +20,13 @@ import { dangerWord } from "../systems/contacts.js";
 import { roomList, type ShipSystem } from "../systems/populate.js";
 import { objectiveHere, systemsAboard } from "../systems/ship.js";
 import { shipState } from "../systems/shipstate.js";
-import { virusOf } from "../systems/virus.js";
-import { charterDone, derelictAboard, voyageRecord, type DerelictState } from "../systems/voyage.js";
+import { VIRUS, virusOf } from "../systems/virus.js";
+import { charterDone, charterTag, charterVoided, derelictAboard, voyageRecord, type DerelictState } from "../systems/voyage.js";
 import { doorStateWord } from "../content/words.js";
 import { hostilesIn, rigOf } from "../twist/rig.js";
 import { clipName, omittedActions, UNKNOWN_ROOM, type Action } from "./actions.js";
 import { blowsLastTurn, strikersNear } from "./strikers.js";
+import { VIRUS_KEY } from "./input.js";
 import { debugBlock } from "./debug.js";
 import { thingsIn, tag } from "./schematic-input.js";
 import { LAYOUT, THEME } from "./theme.js";
@@ -107,6 +108,19 @@ export interface PanelLine {
    * ways and a glyph that a pack of crawlers shares.
    */
   id?: number;
+  /**
+   * A run of the line in a colour of its own: the hit points of a contact,
+   * coloured by how much of the machine is left while its name stays red
+   * (G90 D1). Columns into `text`, end exclusive; both views paint it over the
+   * line's own colour, and a flashing line is one colour whole.
+   */
+  tone?: { from: number; to: number; fg: string };
+  /**
+   * The key a click on this line presses, on the one line that has one: the
+   * virus line is `v` (G90). The terminal prints the key at the head of the
+   * line; the page turns the line into something to click (`ui/web/mount.ts`).
+   */
+  press?: string;
 }
 
 /** What the panel remembers between frames. */
@@ -311,6 +325,8 @@ function headBlocks(
       const infected = sick !== undefined && slotNumberOf(line.text) === sick;
       const text = clip(infected ? `${line.text} !` : line.text);
       if (infected) out.push({ text, fg: THEME.bad });
+      // The virus line opens its window: `v`, or a click on it (G90).
+      else if (sys === VIRUS) out.push({ text, fg: line.fg ?? THEME.bad, press: VIRUS_KEY });
       else out.push(line.fg === undefined ? { text } : { text, fg: line.fg });
     }
   }
@@ -542,23 +558,27 @@ function charterBlock(game: RoomGame): PanelLine[] {
   const out: PanelLine[] = [{ text: clip(t("panel.charters")), fg: THEME.accent }];
   for (const charter of signed) {
     const done = charterDone(game, charter);
+    // A clause that broke says so here too, aboard, where it broke — the tug's
+    // list and the log line alone left a dead contract reading as live.
+    const voided = !done && charterVoided(game, charter);
     out.push({
-      text: clip(charterLine(charter, done, state.banked + voyage.loot, state.spec)),
-      fg: done ? THEME.fgDim : THEME.fg,
+      text: clip(charterLine(charter, done, voided, state.banked + voyage.loot, state.spec)),
+      fg: done ? THEME.fgDim : voided ? THEME.bad : THEME.fg,
     });
   }
   return out;
 }
 
-/** `· SALVAGE 12/20 CR`, `· RETRIEVE · MED BAY`, `✓ UPLOAD`. */
+/** `· SALVAGE 12/20 CR`, `· RETRIEVE+QUIET · MED BAY`, `✓ UPLOAD`, `✗ SALVAGE+1 TRIP`. */
 function charterLine(
   charter: Charter,
   done: boolean,
+  voided: boolean,
   loot: number,
   spec: Parameters<typeof salvageTarget>[0],
 ): string {
-  const parts = { mark: done ? "✓" : "·", name: tId("charter.name", charter.id, charter.id) };
-  if (done) return t("panel.charter.plain", parts);
+  const parts = { mark: done ? "✓" : voided ? "✗" : "·", name: charterTag(charter) };
+  if (done || voided) return t("panel.charter.plain", parts);
   if (charter.id === "salvage") {
     const need = salvageTarget(spec);
     return t("panel.charter.loot", { ...parts, have: Math.min(loot, need), need });
@@ -617,11 +637,13 @@ export function contactsBlock(game: RoomGame, allow = CONTACT_LINES): PanelLine[
 
   const rows = (group: typeof shown, inRoom: boolean): PanelLine[] =>
     group.flatMap(({ machine, door }) => {
-      const line: PanelLine = {
-        text: contactLine(machine, inRoom ? undefined : (door?.label ?? "→")),
-        fg: contactTone(machine.hp, machine.hpMax),
-        id: machine.id,
-      };
+      const text = contactLine(machine, inRoom ? undefined : (door?.label ?? "→"));
+      // The machine is red whatever is left of it — the owner's rule for every
+      // enemy on the screen — and only its hit points say how much that is.
+      const hp = ` ${machine.hp}/${machine.hpMax}`;
+      const at = text.indexOf(hp);
+      const line: PanelLine = { text, fg: THEME.bad, id: machine.id };
+      if (at >= 0) line.tone = { from: at + 1, to: at + hp.length, fg: contactTone(machine.hp, machine.hpMax) };
       // What it did to the drone on the turn just gone, on a line of its own:
       // `E enforcer 10/10 hunter` is already twenty-three of the panel's columns.
       const blow = blows.find((b) => b.subject.includes(machineName(machine.name).toLowerCase()));
@@ -801,9 +823,10 @@ function fitList(
     .map((a) => {
       const at = actions.indexOf(a);
       // The highlight beats both the pressable colour and the greyed one: a
-      // line the cursor is on is the line `Enter` will do, whether or not it
-      // will do anything (docs/tasks/G40-tug-clarity.md, 8).
-      const fg = at === cursor ? THEME.accent : a.enabled ? THEME.fg : THEME.fgDim;
+      // line the cursor is on is the line `Enter` will do (docs/tasks/G40-tug-clarity.md, 8).
+      // It only rests on a greyed line when the list has nothing else, and
+      // then it is dim rather than amber: nothing is waiting on a decision (G90 D5).
+      const fg = at === cursor ? (a.enabled ? THEME.accent : THEME.soft) : a.enabled ? THEME.fg : THEME.fgDim;
       const rows: PanelLine[] = [];
       // The group this line opens, on a row of its own above it. A property of
       // the line rather than a line of its own, so the ten keys, the cursor and
@@ -1137,7 +1160,8 @@ export function panelColour(
 ): string {
   const slot = slotNumberOf(line.text);
   if (slot !== undefined && flash.has(slot)) return THEME.bad;
-  if (line.id !== undefined && lit.has(line.id)) return THEME.bad;
+  // A machine's line is red already, so its flash is the bright ink instead.
+  if (line.id !== undefined && lit.has(line.id)) return line.fg === THEME.bad ? THEME.bright : THEME.bad;
   if (line.fg !== undefined) return line.fg;
   if (line.text.includes("◀")) return THEME.accent;
   if (line.text.includes("burned")) return THEME.burned;

@@ -262,11 +262,12 @@ const SCENARIOS: Scenario[] = [
   { name: "loss", seed: 1, config: "shipped", play: (g, s) => playCareful(g, s, 1200) },
   { name: "rival", seed: 7, config: "shipped", play: playRival },
   // The first seed on which the scripted driver neutralises a generated
-  // freighter without help. It was 12, then 3, and is 5 since the hulls moved
-  // onto the lattice — the driver walks by the shortest route it can see, so
-  // every change to the shape of a hull moves which seeds it can finish.
+  // freighter without help. It was 12, then 3, then 5 when the hulls moved
+  // onto the lattice, and is 11 since G90 B made the starting hulls bigger —
+  // the driver walks by the shortest route it can see, so every change to the
+  // shape of a hull moves which seeds it can finish.
   // `SCAN=1` finds the next one; do that rather than lower the assertion.
-  { name: "sale", seed: 5, config: "one-hull", play: playSale },
+  { name: "sale", seed: 11, config: "one-hull", play: playSale },
 ];
 
 // -------------------------------------------------------------- the outcome

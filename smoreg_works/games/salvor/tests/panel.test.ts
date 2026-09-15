@@ -605,10 +605,12 @@ describe("the contacts block", () => {
     // No `HERE`: the rule over the block already said it, and the five columns
     // it cost are the ones the danger word is written in.
     expect(block[1]!.text).toBe("S security unit 8/8 melee");
-    // The rule above it is the red one. The line itself says how much of the
-    // machine is left, and this one has not been touched (G79).
+    // The rule above it is red, and so is the machine's own line (G90 D1): only
+    // its hit points say how much of it is left, and this one is whole (G79).
     expect(block[0]!.fg).toBe(THEME.bad);
-    expect(block[1]!.fg).toBe(THEME.hpFull);
+    expect(block[1]!.fg).toBe(THEME.bad);
+    expect(block[1]!.tone).toEqual({ from: 16, to: 19, fg: THEME.hpFull });
+    expect(block[1]!.text.slice(16, 19)).toBe("8/8");
     expect(block).toHaveLength(2);
   });
 
@@ -622,7 +624,8 @@ describe("the contacts block", () => {
     // A door away is what the amber rule over the block says. The line says
     // what the fight would cost, and this scout is whole.
     expect(block[0]!.fg).toBe(THEME.warn);
-    expect(block[1]!.fg).toBe(THEME.hpFull);
+    expect(block[1]!.fg).toBe(THEME.bad);
+    expect(block[1]!.tone?.fg).toBe(THEME.hpFull);
   });
 
   /**
@@ -652,12 +655,13 @@ describe("the contacts block", () => {
     const game = gameIn();
     const machine = put(game, "r2", "security-unit");
     const whole = contactsBlock(game);
-    expect(whole[1]!.fg).toBe(THEME.hpFull);
+    expect(whole[1]!.tone?.fg).toBe(THEME.hpFull);
 
     machine.hp = 2;
     const hurt = contactsBlock(game);
     expect(hurt[1]!.text).toBe("S security unit 2/8 melee");
-    expect(hurt[1]!.fg).toBe(THEME.hpLow);
+    expect(hurt[1]!.tone?.fg).toBe(THEME.hpLow);
+    expect(hurt[1]!.fg).toBe(THEME.bad);
     // The rule over the block still says which group it is: that is the half
     // the colour change did not take (G47).
     expect(hurt[0]!.fg).toBe(THEME.bad);
@@ -804,7 +808,7 @@ describe("the mission block", () => {
 
   it("stands above the rack and names the three systems in full", () => {
     const out = lines(hullIn("r1"));
-    const goal = out.findIndex((l) => l.startsWith("GOAL  NEUTRALIZE"));
+    const goal = out.findIndex((l) => l.startsWith("GOAL: START 3 → SELL"));
     expect(goal).toBeGreaterThan(0);
     // Each un-raised system carries the compartment it stands in, once that
     // compartment has been seen: every system is drawn with the same `+` on the
@@ -886,7 +890,7 @@ describe("the mission block", () => {
     // (docs/tasks/G88-polish-by-map.md, B4): six rows, the block's whole budget.
     const block = missionBlock(game).map((l) => l.text);
     expect(block).toEqual([
-      "NOTHING ABOARD RAISES IT",
+      "NEED A TOOL: < HOME FOR IT",
       "ENGINE: CUTTER/WELDER",
       "REACTOR: CELL",
       "TERMINAL: SPIKE/keycard",
@@ -895,12 +899,12 @@ describe("the mission block", () => {
     ]);
     expect(missionBlock(game)[0]!.fg).toBe(THEME.bad);
     // Short of rows it keeps the heading and the first system, never the price.
-    expect(missionBlock(game, 2).map((l) => l.text)).toEqual(["NOTHING ABOARD RAISES IT", "ENGINE: CUTTER/WELDER"]);
+    expect(missionBlock(game, 2).map((l) => l.text)).toEqual(["NEED A TOOL: < HOME FOR IT", "ENGINE: CUTTER/WELDER"]);
 
     // One tool back and it is a goal again.
     install(rigOf(game.player)!, "cell", 8);
     applyDerived(game.player);
-    expect(missionBlock(game)[0]!.text).toMatch(/^GOAL {2}NEUTRALIZE/);
+    expect(missionBlock(game)[0]!.text).toMatch(/^GOAL: START 3 → SELL/);
   });
 
   it("keeps calling it a goal while one system is still within reach", () => {
@@ -911,7 +915,7 @@ describe("the mission block", () => {
     rig.slots.fill(null);
     install(rig, "cell", 8);
     applyDerived(game.player);
-    expect(missionBlock(game)[0]!.text).toMatch(/^GOAL {2}NEUTRALIZE/);
+    expect(missionBlock(game)[0]!.text).toMatch(/^GOAL: START 3 → SELL/);
   });
 
   it("says what is in this compartment even with nothing in the rack for it", () => {
@@ -948,7 +952,7 @@ describe("the mission block", () => {
     const game = hullIn("r2", [tall]);
     const out = lines(game);
 
-    expect(out.some((l) => l.startsWith("GOAL  NEUTRALIZE"))).toBe(true);
+    expect(out.some((l) => l.startsWith("GOAL: START 3 → SELL"))).toBe(true);
     expect(out).toContain("+ ENGINE CUTTER, 3 turns");
     expect(out).not.toContain("·ENGINE ·CORE ·TERMINAL");
   });
@@ -971,11 +975,11 @@ describe("the mission block", () => {
 
     shipState(game).online.push("terminal");
     const out = panelBlocks(game, roomActions(game));
-    const done = out.findIndex((l) => l.text === `ALL THREE ONLINE  +${price} CR`);
+    const done = out.findIndex((l) => l.text === `ALL 3 STARTED  +${price} CR`);
     expect(done).toBeGreaterThan(0);
     // And the key that leaves, on the row under it: `<` walks to the airlock
     // from anywhere aboard (G48), so the instruction is one keystroke long.
-    expect(out[done + 1]!.text).toBe("< out through the airlock");
+    expect(out[done + 1]!.text).toBe("< out the airlock to sell");
     expect(out[done]!.fg).toBe(THEME.good);
     expect(out[done + 1]!.fg).toBe(THEME.good);
     // The row of marks has served its purpose and gone.
@@ -985,7 +989,7 @@ describe("the mission block", () => {
   it("says the hull is taken once it is under tow", () => {
     const game = hullIn("r2");
     derelictAboard(game)!.sold = true;
-    expect(lines(game)).toContain("HULL TAKEN  under tow");
+    expect(lines(game)).toContain("HULL SOLD  under tow");
   });
 
   it("is one line on the tug: what the hull tied up outside is worth", () => {
@@ -994,7 +998,7 @@ describe("the mission block", () => {
     const game = newGame(4);
     const block = missionBlock(game);
     expect(block).toHaveLength(1);
-    expect(block[0]!.text).toBe(`GOAL  NEUTRALIZE  ${currentDerelict(game).spec.salePrice} CR`);
+    expect(block[0]!.text).toBe(`GOAL: START 3 → SELL ${currentDerelict(game).spec.salePrice} CR`);
   });
 
   /**
@@ -1005,13 +1009,11 @@ describe("the mission block", () => {
   it("prices the hull and counts the salvage a charter still wants", () => {
     const game = newGame(11);
     const voyage = voyageOf(game);
-    // The salvage run off the board, which is the second line of it: the first
-    // is `NEUTRALIZE`, and that one is the goal rather than an errand. The board
-    // is one row of the tug's list with its own list under it since G53, and
-    // there is no compartment to walk to for either.
-    const board = roomActions(game, "charter").filter((a) => a.cmd.kind === "act" && a.cmd.verb === "charter");
-    expect(board.length, "the board offers the goal and one small job").toBe(2);
-    expect(game.playerCommand(board[1]!.cmd).ok).toBe(true);
+    // The salvage run, off the first stop's list: the first line of the hull
+    // the voyage opened tied to (G90 F). The goal is not a line of it.
+    const board = roomActions(game, "jump").filter((a) => a.cmd.kind === "act" && a.cmd.verb === "berth");
+    expect(board[0]!.label, "the first line is the salvage run").toMatch(/^SALVAGE /);
+    expect(game.playerCommand(board[0]!.cmd).ok).toBe(true);
     expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
 
     // The block itself rather than the whole panel: the compartment behind the
@@ -1020,7 +1022,7 @@ describe("the mission block", () => {
     // back to. What is being tested here is what the block says.
     const block = missionBlock(game).map((l) => l.text);
     // The hull's own price, off the itinerary — the number the goal is for.
-    expect(block[0]).toBe(`GOAL  NEUTRALIZE  ${voyage.derelicts[0]!.salePrice} CR`);
+    expect(block[0]).toBe(`GOAL: START 3 → SELL ${voyage.derelicts[0]!.salePrice} CR`);
     expect(block).toContain("CHARTERS");
     expect(block).toContain("· SALVAGE 0/20 CR");
 
@@ -1045,7 +1047,7 @@ describe("the mission block", () => {
 
     const block = missionBlock(game).map((l) => l.text);
     expect(block.some((l) => l.startsWith("GOAL"))).toBe(true);
-    expect(block.some((l) => l.includes("NEUTRALIZE") && !l.startsWith("GOAL"))).toBe(false);
+    expect(block.some((l) => l.includes("START 3") && !l.startsWith("GOAL"))).toBe(false);
   });
 });
 
@@ -1096,7 +1098,7 @@ describe("the panel at home", () => {
     expect(home).toBeGreaterThan(0);
   });
 
-  it("prints the whole tug as four headed groups of ten numbered rows", () => {
+  it("prints the whole tug as three headed groups of nine numbered rows", () => {
     // The screen the owner asked for after two live runs: everything the tug
     // does at once, grouped by verb, one row per verb whatever it could be
     // aimed at, and a reason on every row that cannot be pressed
@@ -1112,14 +1114,15 @@ describe("the panel at home", () => {
       " 4 clean a module",
     ]);
     expect(out).toContain("RIG");
-    expect(out).toContain("CHARTERS");
+    // The charter group is gone: contracts are lines of the jump list (G90 F).
+    expect(out).not.toContain("CHARTERS");
     expect(out).toContain("NEXT HULL");
     // Casting off is last, and the two headings that stood over a single row
     // each are gone (docs/tug-menu-audit.md, П7).
     expect(out).not.toContain("DRONE");
     expect(out).not.toContain("SELL");
-    expect(out).toContain(" 0 cast off — board closes");
-    expect(out.filter((l) => /^[▸ ]\d /.test(l))).toHaveLength(10);
+    expect(out).toContain(" 9 cast off — board closes");
+    expect(out.filter((l) => /^[▸ ]\d /.test(l))).toHaveLength(9);
 
     // No compartment block, no doors and no second way out: the tug is not a
     // place any more (docs/tasks/G54-two-ships-confusion.md).
@@ -1151,19 +1154,21 @@ describe("the highlighted line", () => {
 
   it("marks a line nobody can press, because Enter still has to answer for it", () => {
     const game = gameIn();
-    // Nothing in the rack and no keycard: the fixture's locked bulkhead is then
-    // the one line on the list that cannot be pressed.
+    // Nothing in the rack and no keycard: one level down into the fixture's
+    // locked bulkhead, the module ways are the lines that cannot be pressed
+    // (the chassis always can, G90 B).
     rigOf(game.player)!.slots.fill(null);
     applyDerived(game.player);
     game.refreshSight();
-    // The map is where a bulkhead is a line now, so that is the list drawn.
-    const list = roomActions(game, undefined, true);
+    const list = roomActions(game, game.ship.door("d3").id, true);
     const shut = list.findIndex((a) => !a.enabled);
     expect(shut).toBeGreaterThanOrEqual(0);
 
     const out = panelBlocks(game, list, shut).filter((l) => /^[▸ ]\d /.test(l.text));
     expect(out[shut]!.text.startsWith("▸")).toBe(true);
-    expect(out[shut]!.fg).toBe(THEME.accent);
+    // Dim rather than amber (G90 D5): the reducer only leaves it on a greyed
+    // line when nothing on the list can be pressed, and then nothing waits.
+    expect(out[shut]!.fg).toBe(THEME.soft);
   });
 
   it("marks nothing at all when nothing is pointing at the list", () => {
@@ -1302,13 +1307,17 @@ describe("a relic in the rack is marked", () => {
  * a blank row belongs to the layout and a numbered line is the interface.
  */
 describe("the numbered list always has lines on it", () => {
-  /** The turns the playability sweep named, shortest first. */
+  /**
+   * The turns the playability sweep named, shortest first. Seed 3's turn was
+   * 119; on the ten-rung ladder (G90 A) that voyage is over by 116, so its
+   * entry stands on the last busy compartment turn the same run still has.
+   */
   const CAUGHT: Array<[number, number]> = [
     [4, 20],
     [5, 19],
     [44, 89],
     [2, 70],
-    [3, 119],
+    [3, 100],
     [1, 123],
   ];
 
@@ -1331,6 +1340,9 @@ describe("the numbered list always has lines on it", () => {
   it("on every turn the sweep caught it empty, whatever the cursor is on", () => {
     for (const [seed, steps] of CAUGHT) {
       const game = playTo(seed, steps);
+      // The pairs were caught on older hulls; a voyage that now ends sooner
+      // has no list to draw, and nothing to catch.
+      if (game.isOver()) continue;
       for (let cursor = 0; cursor < 5; cursor++) {
         const actions = roomActions(game, undefined, false, cursor);
         expect(actions.length, `seed ${seed} step ${steps}: nothing to do`).toBeGreaterThan(0);
@@ -1341,9 +1353,12 @@ describe("the numbered list always has lines on it", () => {
   });
 
   it("names the door being shot through on the turn that hid it", () => {
-    const game = playTo(4, 20);
+    // Seed 4, ten careful steps in: a machine in sight through d2 and the
+    // `close` row on the list for it (the pair moved with the larger starting
+    // hulls and the crowd rules of G90 B; it was seed 4 at twenty steps and d7).
+    const game = playTo(4, 10);
     const rows = listed(panelBlocks(game, roomActions(game), 0));
-    expect(rows.some((r) => r.includes("close d7"))).toBe(true);
+    expect(rows.some((r) => r.includes("close d2"))).toBe(true);
   });
 
   it("over 200 careful voyages, on every turn aboard", () => {

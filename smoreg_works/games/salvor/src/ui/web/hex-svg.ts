@@ -155,6 +155,10 @@ export function hexSvgOf(
     ...input.rooms.map((room) => hex(room, at.get(room.id), tiles)),
     ...corridors.map((door) => tag(door, at)),
     ...stacked(links, at, named),
+    // Where the drone is, last of everything on the deck: over the hazard's
+    // floor, the target's dashes, the tiles and any chip that strays onto the
+    // cell, so one amber mark is never covered by anything the map draws.
+    ...input.rooms.map((room) => (room.state === "current" ? droneMark(at.get(room.id)) : "")),
     banner.length > 0 ? text(box.x + 14, box.y + 26, banner, "banner") : "",
     input.shipLine.length > 0
       ? text(box.x + 14, box.y + box.h - 12, input.shipLine, "ship-line")
@@ -227,15 +231,15 @@ export function hexCorners(c: Point): Point[] {
   return corners(c);
 }
 
-function corners(c: Point): Point[] {
-  const half = INRADIUS;
+function corners(c: Point, r = R): Point[] {
+  const half = (Math.sqrt(3) / 2) * r;
   return [
-    { x: c.x, y: c.y - R },
-    { x: c.x + half, y: c.y - R / 2 },
-    { x: c.x + half, y: c.y + R / 2 },
-    { x: c.x, y: c.y + R },
-    { x: c.x - half, y: c.y + R / 2 },
-    { x: c.x - half, y: c.y - R / 2 },
+    { x: c.x, y: c.y - r },
+    { x: c.x + half, y: c.y - r / 2 },
+    { x: c.x + half, y: c.y + r / 2 },
+    { x: c.x, y: c.y + r },
+    { x: c.x - half, y: c.y + r / 2 },
+    { x: c.x - half, y: c.y - r / 2 },
   ];
 }
 
@@ -248,30 +252,63 @@ function hex(room: SchematicRoom, c: Point | undefined, tiles: boolean): string 
     .map((p) => `${round(p.x)},${round(p.y)}`)
     .join(" ");
   const body = [
+    // What a pointer resting on the cell says: the name, the number and the
+    // words of whatever the glyph row stands for — the same `things` the panel
+    // names, so a hover never knows more than the drone does.
+    `<title>${esc(tooltip(room, unknown))}</title>`,
     room.state === "current"
       ? `<polygon class="room-halo" points="${points}"/>`
       : "",
     `<polygon class="room-box" points="${points}"/>`,
+    // Machines in sight in there: a red ring outside the outline, over whatever
+    // state the compartment is in — the outline itself stays the state's.
+    !unknown && (room.hostiles ?? 0) > 0 ? ring(c) : "",
+    // A known hazard takes the one channel no state uses — the floor — and a
+    // rim along the two upper edges, the side nearest the reader (3b). The
+    // outline is left to the state, and red is left to the machines.
+    room.hazard === undefined ? "" : rim(c),
     // What the compartment is for, over its name. Never on an unknown one:
     // that is precisely the fact the drone has not found out, and a reactor
     // drawn on a dashed cell would say otherwise.
     tiles && !unknown ? zoneTile(room, c.x - ZONE_SIZE / 2, c.y + ZONE_TOP, ZONE_SIZE) : "",
+    // Its name over the compartment's, where the pictogram would otherwise go:
+    // with tiles on, the tint and the tile say it between them.
+    room.hazard === undefined || tiles ? "" : text(c.x, c.y - HAZARD_WORD, room.hazard.word, "hz-word", "middle"),
     text(c.x, c.y - 4, unknown ? UNKNOWN : room.name, "room-name", "middle"),
     text(c.x, c.y + 12, room.label, "room-id", "middle"),
   ];
   // Glyphs on an unknown hexagon are a known hazard's mark and nothing else
   // (`ui/schematic-input.ts`, `marksOf`).
   if (room.glyphs.length > 0) {
-    body.push(tiles ? tileRowIn(room, c) : text(c.x, c.y + 26, room.glyphs, "glyph", "middle"));
+    body.push(tiles ? tileRowIn(room, c) : glyphRow(room, c, unknown));
   }
   if ((room.hostiles ?? 0) > 0) body.push(threat(c, room.hostiles ?? 0));
+  if (room.charge !== undefined) body.push(fuse(c, room.charge));
+  const fused = room.charge === undefined ? "" : ["", "is-fused"].join(" ");
   const aimed = room.target === true ? " is-goal" : "";
   const hot = room.alarm === true || room.threat === true ? " is-alarmed" : "";
+  const hazard = room.hazard === undefined ? "" : ["", `hz-${room.hazard.id}`].join(" ");
   return [
-    `<g class="room is-${room.state}${aimed}${hot}" data-room="${room.id}">`,
+    `<g class="room is-${room.state}${aimed}${hot}${hazard}${fused}" data-room="${room.id}">`,
     body.filter((s) => s.length > 0).join(""),
     "</g>",
   ].join("");
+}
+
+/** `MESS r6 · frost: engines slow here · scrap THRUSTERS 2/8`. */
+function tooltip(room: SchematicRoom, unknown: boolean): string {
+  const head = `${unknown ? UNKNOWN : room.name} ${room.label}`;
+  return [head, ...(room.things ?? []).map((thing) => thing.name)].join(" · ");
+}
+
+/** Where the hazard's word sits, above the centre: clear of the name and of the cap. */
+const HAZARD_WORD = 24;
+
+/** The rim of a hazard: the upper-left and upper-right edges, over the outline. */
+function rim(c: Point): string {
+  const [top, right, , , , left] = corners(c);
+  const points = [left!, top!, right!].map((p) => `${round(p.x)},${round(p.y)}`).join(" ");
+  return `<polyline class="hz-rim" points="${points}"/>`;
 }
 
 /**
@@ -293,17 +330,84 @@ function tileRowIn(room: SchematicRoom, c: Point): string {
 }
 
 /**
- * Machines in there: a red cap on the hexagon's own top point, with the count.
- * A digit rather than a word — this file has no table to look one up in — and an
- * addition to whatever state the hexagon is in, never a replacement for it.
+ * Machines in there: a red skull on the hexagon's own top point, with the count
+ * inside it. A digit rather than a word — this file has no table to look one up
+ * in — and an addition to whatever state the hexagon is in, never a replacement
+ * for it. A skull rather than the plate it was: a red square read as one more
+ * door tag («счётчик врагов в красном черепе вместо квадрата», the owner).
  */
 function threat(c: Point, columns: number): string {
   const machines = Math.ceil(columns / 2);
+  const x = round(c.x);
+  const y = round(c.y - R);
+  return [
+    `<g class="threat" transform="translate(${x},${y})">`,
+    `<polygon class="threat-skull" points="${SKULL}"/>`,
+    ...[-3, 0, 3].map((dx) => `<line class="threat-teeth" x1="${dx}" y1="8" x2="${dx}" y2="11"/>`),
+    `<text class="threat-count" x="0" y="3" text-anchor="middle">${machines}</text>`,
+    "</g>",
+  ].join("");
+}
+
+/**
+ * The skull, centred on the point it sits on: a cranium ten units round, the
+ * cheeks, and a jaw under them. The count is written where the eyes would be.
+ */
+const SKULL = [
+  [-10, -1], [-9, -6], [-6, -10], [0, -12], [6, -10], [9, -6], [10, -1], [10, 4], [7, 7],
+  [6, 7], [6, 12], [-6, 12], [-6, 7], [-7, 7], [-10, 4],
+].map(([x, y]) => `${x},${y}`).join(" ");
+
+/** The ring round a compartment with machines in sight: outside the outline, in red. */
+function ring(c: Point): string {
+  const points = corners(c, R + 6)
+    .map((p) => `${round(p.x)},${round(p.y)}`)
+    .join(" ");
+  return `<polygon class="room-ring" points="${points}"/>`;
+}
+
+/**
+ * The glyph row with the machines at its head painted red. `hostiles` counts
+ * terminal columns, the machines' glyphs and the spaces between them, which is
+ * exactly the length of the string to lift out (`ui/schematic-input.ts`,
+ * `hostileWidth`). Never on an unknown cell: its only glyph is a hazard's mark.
+ */
+function glyphRow(room: SchematicRoom, c: Point, unknown: boolean): string {
+  const width = unknown ? 0 : Math.min(room.hostiles ?? 0, room.glyphs.length);
+  if (width === 0) return text(c.x, c.y + 26, room.glyphs, "glyph", "middle");
+  const head = `<tspan class="glyph hostile">${esc(room.glyphs.slice(0, width))}</tspan>`;
+  return `<text class="glyph" x="${round(c.x)}" y="${round(c.y + 26)}" text-anchor="middle">${head}${esc(room.glyphs.slice(width))}</text>`;
+}
+
+/**
+ * The drone, on the compartment it stands in: an amber disc on the cell's
+ * bottom point. The halo says "here" to an eye already looking; this is what
+ * finds the cell for one that is not («иногда тяжело увидеть, где дрон»).
+ */
+function droneMark(c: Point | undefined): string {
+  if (c === undefined) return "";
+  const x = round(c.x);
+  const y = round(c.y + R);
+  return [
+    `<g class="drone-mark" transform="translate(${x},${y})">`,
+    `<circle class="drone-disc" cx="0" cy="0" r="9"/>`,
+    `<polygon class="drone-core" points="-4,0 0,-4 4,0 0,4"/>`,
+    "</g>",
+  ].join("");
+}
+
+/**
+ * The charge the ship set in here: the turns left, red, on the hexagon's
+ * lower point — the one place neither the cap, the name nor the glyph row
+ * uses (`systems/alert.ts`, the scuttle). A digit, for the same reason the
+ * cap is one.
+ */
+function fuse(c: Point, left: number): string {
   const w = 20;
   return [
-    `<rect class="threat-cap" x="${round(c.x - w / 2)}" y="${round(c.y - R - 7)}"`,
+    `<rect class="fuse-cap" x="${round(c.x - w / 2)}" y="${round(c.y + R - 9)}"`,
     ` width="${w}" height="14" rx="2"/>`,
-    text(c.x, c.y - R + 4, String(machines), "threat-count", "middle"),
+    text(c.x, c.y + R + 2, String(left), "fuse-count", "middle"),
   ].join("");
 }
 
@@ -321,10 +425,14 @@ function corridor(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
   const ends = trimmed(door, at);
   if (!ends) return "";
   const [from, to] = ends;
+  // `data-door` on both strokes: a click on the corridor is a click on its door
+  // (`mount.ts`), and `is-route` is the door on the way to where the drone is
+  // aiming (`SchematicDoor.route`).
+  const route = door.route === true ? " is-route" : "";
   return [
-    `<line class="hall-wall is-${door.state}"`,
+    `<line class="hall-wall is-${door.state}" data-door="${door.id}"`,
     ` x1="${round(from.x)}" y1="${round(from.y)}" x2="${round(to.x)}" y2="${round(to.y)}"/>`,
-    `<line class="door-wire is-${door.state}${door.target === true ? " is-goal" : ""}"`,
+    `<line class="door-wire is-${door.state}${door.target === true ? " is-goal" : ""}${route}" data-door="${door.id}"`,
     ` x1="${round(from.x)}" y1="${round(from.y)}" x2="${round(to.x)}" y2="${round(to.y)}"/>`,
   ].join("");
 }
@@ -354,7 +462,11 @@ function tag(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
   const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
   const w = door.label.length * TAG_CHAR_W + 8;
   return [
-    `<g class="door is-${door.state}${door.target === true ? " is-goal" : ""}">`,
+    `<g class="door is-${door.state}${door.target === true ? " is-goal" : ""}${trapClass(door)}" data-door="${door.id}">`,
+    // A known trap: a chevron over the label, and the label on the warning
+    // colour (3b). Not amber — a locked door is amber, and a mined one must not
+    // differ from it by the dash alone.
+    door.trap === undefined ? "" : chevron(mid),
     `<rect class="door-tag" x="${round(mid.x - w / 2)}" y="${round(mid.y - TAG_H / 2)}"`,
     ` width="${w}" height="${TAG_H}" rx="2"/>`,
     text(mid.x, mid.y + 4, door.label, "door-label", "middle"),
@@ -378,7 +490,7 @@ function duct(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
   const b = at.get(door.b);
   if (!a || !b) return "";
   return [
-    `<line class="duct is-${door.state}"`,
+    `<line class="duct is-${door.state}${door.route === true ? " is-route" : ""}"`,
     ` x1="${round(a.x)}" y1="${round(a.y)}" x2="${round(b.x)}" y2="${round(b.y)}"/>`,
   ].join("");
 }
@@ -441,12 +553,29 @@ function chip(from: Point, to: Point, door: SchematicDoor, far: string, rank: nu
   const label = far.length > 0 ? `${door.label} → ${far}` : door.label;
   const w = label.length * TAG_CHAR_W + 8;
   return [
-    `<g class="door link is-${door.state}${door.target === true ? " is-goal" : ""}">`,
+    `<g class="door link is-${door.state}${door.target === true ? " is-goal" : ""}${trapClass(door)}" data-door="${door.id}">`,
     `<rect class="door-tag" x="${round(x - w / 2)}" y="${round(y - TAG_H / 2)}"`,
     ` width="${w}" height="${TAG_H}" rx="2"/>`,
     text(x, y + 4, label, "door-label", "middle"),
     "</g>",
   ].join("");
+}
+
+/** `has-trap hz-mine`, on a door the drone knows is trapped. */
+function trapClass(door: SchematicDoor): string {
+  return door.trap === undefined ? "" : ["", "has-trap", `hz-${door.trap}`].join(" ");
+}
+
+/** The mark over a trapped door's label: a chevron pointing up off the plate. */
+function chevron(mid: Point): string {
+  const top = mid.y - TAG_H / 2 - 12;
+  const foot = mid.y - TAG_H / 2 - 3;
+  const points = [
+    [mid.x - 10, foot],
+    [mid.x, top],
+    [mid.x + 10, foot],
+  ].map(([x, y]) => `${round(x!)},${round(y!)}`);
+  return `<polyline class="trap-mark" points="${points.join(" ")}"/>`;
 }
 
 // -------------------------------------------------------------------- bits

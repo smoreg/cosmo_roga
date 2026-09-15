@@ -8,7 +8,8 @@ import { MONSTERS } from "../src/content/monsters.js";
 import { currentDerelict, undock } from "../src/systems/voyage.js";
 import { addWreck, applyDerived, findSlot, rigOf } from "../src/twist/rig.js";
 import { schematic } from "../src/ui/schematic.js";
-import { BANNER_WIDTH, bannerLine, schematicInputOf, thingsIn } from "../src/ui/schematic-input.js";
+import { BANNER_WIDTH, bannerLine, hazardsAboard, schematicInputOf, thingsIn } from "../src/ui/schematic-input.js";
+import { t } from "../src/i18n.js";
 import { LAYOUT } from "../src/ui/theme.js";
 import { hexSvgOf } from "../src/ui/web/hex-svg.js";
 import { svgOf } from "../src/ui/web/schematic-svg.js";
@@ -401,5 +402,43 @@ describe("a system already up", () => {
     systems[0]!.online = true;
     expect(glyphs(), "a system already up is a tick").toContain("✓");
     expect(glyphs()).not.toContain("+");
+  });
+});
+
+/**
+ * The corner of the graphic view lists the hazards aboard (G89 A3): only the
+ * ones the drone knows of, each with its glyph, its compartment and the word
+ * the compartment block uses — the same test the glyph on the map passes.
+ */
+describe("the hazards the drone knows are aboard", () => {
+  const HAZARDS = `
+    TUG -a1- r1
+    r1 -d1- r2
+    r2 -d2- r3
+    r3 -d3- r4
+    r1: docking explored
+    r2: cargo
+    r3: hab hazard=frost
+    r4: storage
+    d3: trap=mine
+  `;
+
+  function hazardGame(): RoomGame {
+    return new RoomGame({ ...config(), firstShip: () => shipFromText(HAZARDS).ship, seed: 7 });
+  }
+
+  it("lists nothing the drone has not been told about", () => {
+    expect(hazardsAboard(hazardGame())).toEqual([]);
+  });
+
+  it("lists a known one with its glyph, where it is and its word, compartments before doors", () => {
+    const game = hazardGame();
+    game.ship.room("r3").scanned = true;
+    expect(hazardsAboard(game)).toEqual([
+      { id: "frost", glyph: "❄", name: t("word.hazard.frost"), where: "r3" },
+      { id: "mine", glyph: "^", name: t("word.hazard.mine", { door: "d3" }), where: "" },
+    ]);
+    // And the glyph on the map says the same two things.
+    expect(schematicInputOf(game).rooms.find((r) => r.label === "r3")!.glyphs).toContain("❄");
   });
 });

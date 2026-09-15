@@ -334,10 +334,10 @@ describe("a system coming online", () => {
     expect(loot(game)).toBe(purse);
   });
 
-  it("wakes the ship by two, through the alert the game actually runs", () => {
+  it("wakes the ship by four rungs, through the alert the game actually runs", () => {
     // The whole system list this time, ALERT included. The keycard job is the
-    // one that makes no noise at all (`TERMINAL.jobs`), so the two steps on the
-    // gauge are the system coming up and nothing else.
+    // one that makes no noise at all (`TERMINAL.jobs`), so the four steps on
+    // the gauge are the system coming up and nothing else.
     const game = new RoomGame({
       ...GAME_CONFIG,
       seed: 5,
@@ -351,7 +351,8 @@ describe("a system coming online", () => {
     standIn(game, "r4");
     expect(game.playerCommand({ kind: "act", verb: "work", target: systemIn(game, "r4").id }).ok).toBe(true);
 
-    expect(alertState(game).level).toBe(before + 2);
+    // Four rungs of the ten-rung ladder: design-doc.md's +2 of five (G90 A).
+    expect(alertState(game).level).toBe(before + 4);
   });
 
   /**
@@ -368,10 +369,10 @@ describe("a system coming online", () => {
 
     raiseIn(game, "r2", 3);
     raiseIn(game, "r3", 2);
-    expect(lines(game).some((l) => l.startsWith("All three online"))).toBe(false);
+    expect(lines(game).some((l) => l.startsWith("All three started"))).toBe(false);
 
     raiseIn(game, "r4", 1);
-    const said = lines(game).filter((l) => l.startsWith("All three online"));
+    const said = lines(game).filter((l) => l.startsWith("All three started"));
     expect(said).toHaveLength(1);
     // The sum is the hull's own price, and the sentence says where to take it.
     expect(said[0]).toContain(`+${currentDerelict(game).spec.salePrice} CR`);

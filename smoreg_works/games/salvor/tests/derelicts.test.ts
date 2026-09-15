@@ -33,6 +33,7 @@ import {
   derelictSpec,
   derelictsForVoyage,
   flavourLine,
+  stopsForVoyage,
   isStarterHull,
   rollFlavour,
   specOfShip,
@@ -146,15 +147,15 @@ describe("the catalogue of hulls", () => {
   it("is the size, the alert and the price of the table, hull by hull", () => {
     const table: Array<[DerelictSpec, [number, number], number, number]> = [
       // spec              rooms      alert  sale
-      [FREIGHTER, [12, 14], 0, 200],
+      [FREIGHTER, [13, 15], 0, 200],
       // The four hulls a voyage can open on instead. None of them starts a
       // sortie with the alert already up: a starting hull is where the rules
       // are learned, and a gauge at one before the drone has done anything is
       // the ship answering a move the player has not made yet.
-      [BARGE, [9, 11], 0, 180],
-      [FERRY, [8, 10], 0, 200],
-      [PROBE, [7, 8], 0, 150],
-      [TENDER, [9, 11], 0, 220],
+      [BARGE, [11, 13], 0, 180],
+      [FERRY, [11, 12], 0, 200],
+      [PROBE, [11, 12], 0, 150],
+      [TENDER, [11, 13], 0, 220],
       [LABORATORY, [14, 17], 0, 250],
       [MILITARY, [16, 19], 1, 300],
       [SMUGGLER, [14, 17], 0, 270],
@@ -405,6 +406,39 @@ describe("the derelicts of one voyage", () => {
     const b = derelictsForVoyage(new Rng(9)).map((d) => d.id);
     expect(a).toEqual(b);
   });
+  /**
+   * The choice at every stop (G90 F): two or three hulls of that stop's own
+   * classes, the first being the one the itinerary above draws, and the
+   * father's tug alone at the end.
+   */
+  it("offers two or three hulls a stop, the old draw first and the father's tug last", () => {
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const rng = new Rng(seed);
+      const stops = stopsForVoyage(rng);
+      const where = `seed ${seed}`;
+      expect(stops, where).toHaveLength(3);
+      expect(stops.map((s) => s[0]), where).toEqual(derelictsForVoyage(new Rng(seed)));
+      for (const [i, pool] of [STARTER_HULLS, MIDDLE_HULLS].entries()) {
+        expect(stops[i]!.length, where).toBeGreaterThanOrEqual(2);
+        expect(stops[i]!.length, where).toBeLessThanOrEqual(3);
+        expect(new Set(stops[i]).size, where).toBe(stops[i]!.length);
+        for (const hull of stops[i]!) expect(pool, where).toContain(hull);
+      }
+      expect(stops[2], where).toEqual([FATHERS_TUG]);
+      // And asking for the choice costs the run's rng nothing the old draw did not.
+      const old = new Rng(seed);
+      derelictsForVoyage(old);
+      expect(rng.state, where).toBe(old.state);
+    }
+  });
+
+  it("offers the same hulls at every stop from the same seed", () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const a = stopsForVoyage(new Rng(seed)).map((s) => s.map((d) => d.id));
+      const b = stopsForVoyage(new Rng(seed)).map((s) => s.map((d) => d.id));
+      expect(a, `seed ${seed}`).toEqual(b);
+    }
+  });
 });
 
 // ------------------------------------------------------- the starting hulls
@@ -518,7 +552,7 @@ describe("what a starting hull promises", () => {
   it("keeps the probe small enough to strip in one sortie", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const ship = shipOf(PROBE, seed);
-      expect(ship.size, `probe seed ${seed}`).toBeLessThanOrEqual(8);
+      expect(ship.size, `probe seed ${seed}`).toBeLessThanOrEqual(PROBE.rooms[1]);
       expect(ship.doors.filter((d) => d.state === "sealed"), `probe seed ${seed}`).toHaveLength(0);
     }
   });

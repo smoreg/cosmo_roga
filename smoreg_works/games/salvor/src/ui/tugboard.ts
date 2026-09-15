@@ -1,10 +1,11 @@
 import type { RoomGame } from "@jamrog/engine";
-import { derelictName, flavourCallsign } from "../content/derelicts.js";
+import { CLAUSES } from "../content/charters.js";
+import { derelictName, flavourCallsign, type DerelictSpec } from "../content/derelicts.js";
 import { tugCallsign } from "../content/hints.js";
 import { HULLS, hullName, hullTrait } from "../content/hulls.js";
 import { OBJECTIVE_COUNT } from "../content/objectives.js";
-import { t } from "../i18n.js";
-import { currentDerelict, voyageOf } from "../systems/voyage.js";
+import { t, tId } from "../i18n.js";
+import { HOT_STEPS, QUIET_AT, currentDerelict, nextStop, voyageOf } from "../systems/voyage.js";
 
 /**
  * What stands where the schematic does while the drone is home.
@@ -63,8 +64,38 @@ export function tugBoard(game: RoomGame): string[] {
     );
   }
 
+  // Where the tug can fly from here, and what each hull is: its size, what it
+  // sells for, how many machines and which hazards it carries. The list under
+  // the jump row says what each contract pays; this is the rest of the line
+  // there is no room for in twenty-five columns (G90 F, 3).
+  const next = nextStop(game);
+  if (next !== undefined && next.hulls.length > 0) {
+    const of = voyage.derelicts.length;
+    out.push("", next.stop !== voyage.current
+      ? t("board.next", { n: next.stop + 1, of })
+      : next.stop === 0 ? t("board.first", { of }) : t("board.here", { n: next.stop + 1, of }));
+    for (const { spec } of next.hulls) out.push(` ${candidateLine(spec)}`);
+    for (const clause of CLAUSES) {
+      if (!next.hulls.some((h) => h.charters.some((c) => c.clause === clause))) continue;
+      out.push(` ${tId("board.clause", clause, "", { n: clause === "hot" ? HOT_STEPS : QUIET_AT })}`);
+    }
+  }
+
   out.push("", t("board.mode"));
   return out;
+}
+
+/** One hull a jump can fly to, and what makes it dangerous. */
+function candidateLine(spec: DerelictSpec): string {
+  const dangers = [...new Set(spec.hazards ?? [])].map((h) => tId("board.danger", h, h));
+  if (spec.rival) dangers.push(t("board.danger.rival"));
+  return t("board.candidate", {
+    hull: derelictName(spec),
+    rooms: `${spec.rooms[0]}-${spec.rooms[1]}`,
+    cr: spec.salePrice,
+    machines: `${spec.machines[0]}-${spec.machines[1]}`,
+    danger: dangers.length === 0 ? t("board.danger.none") : dangers.join(", "),
+  });
 }
 
 /** Drones lost over the whole voyage, off the record every hull keeps. */

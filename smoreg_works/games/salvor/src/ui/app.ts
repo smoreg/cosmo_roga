@@ -1,5 +1,4 @@
-import type { RoomCommand, RoomGame } from "@jamrog/engine";
-import { startTraining } from "../content/hints.js";
+import type { LogLine, RoomCommand, RoomGame } from "@jamrog/engine";
 import { TUTORIAL_SEED } from "../content/tutorial.js";
 import { newGame } from "../game.js";
 import { initLang } from "../i18n.js";
@@ -18,6 +17,7 @@ import {
   appReducer,
   crashSummary,
   crashed,
+  hovered,
   initialState,
   syncStatus,
   stoppedAt,
@@ -39,7 +39,8 @@ import {
   trackPulse,
   type Pulse,
 } from "./pulse.js";
-import { SalvorSfx, linesSince, sfxFor } from "./sfx.js";
+import { SalvorSfx, linesAfter, sfxFor } from "./sfx.js";
+import { UiSound, blipFor, type Turn } from "./uisound.js";
 import { initialView, isViewKey, nextView, rememberView, type View, type ViewStore } from "./view.js";
 import { WebRenderer } from "./web/index.js";
 
@@ -91,9 +92,13 @@ export class App {
   private walkTimer: number | undefined;
   private readonly music: SalvorMusic;
   private readonly sfx: SalvorSfx;
-  /** Log lines already turned into sound. Silent until the first key press. */
-  private heard = 0;
+  /** The newest log line already turned into sound (`linesAfter`). Silent until the first key press. */
+  private heard: LogLine | undefined;
   private audible = false;
+  /** The interface's blips (`ui/uisound.ts`), on the same switch as the music and the effects. */
+  private readonly ui: UiSound;
+  /** A game effect played since the press being answered began: the blip stays out of its way. */
+  private sounded = false;
   /**
    * The appearance pulse, and the timer redrawing it on the beat.
    *
@@ -123,14 +128,13 @@ export class App {
     // like any other, which is the whole reason the flag lives in the URL.
     const params = new URLSearchParams(window.location.search);
     const training = params.get("training") === "1";
-    // A tutorial is only a tutorial if it is the same ship twice, and the seed
-    // is the whole of that: the training hull is drawn by the ordinary
-    // generator, so what makes it repeatable is the run's own number
-    // (`content/tutorial.ts`). A seed named in the URL still wins — a training
-    // run has to be as reportable as any other — but only a seed the game can
-    // actually fly: `?training=1&seed=abc` is a link to a tutorial, and it used
-    // to hand back a random ship, a different one on every reload
-    // (`ui/title.ts`, `seedFromUrl`).
+    // The lesson's hull is the same hand-built ship on any seed
+    // (`content/tutorial.ts`); the seed decides the voyage behind it, and one
+    // fixed seed keeps a training run one reportable thing. A seed named in
+    // the URL still wins — a training run has to be as reportable as any
+    // other — but only a seed the game can actually fly: `?training=1&seed=abc`
+    // is a link to the lesson, and it used to hand back a random voyage, a
+    // different one on every reload (`ui/title.ts`, `seedFromUrl`).
     const asked = seedFromUrl(window.location.search);
     this.game = newGame(training && asked === undefined ? TUTORIAL_SEED : seed, training);
     // `?debug=1`: the owner's overlay, on from the first frame — linkable and
@@ -150,6 +154,7 @@ export class App {
     this.sound = params.has("sound") ? soundEnabled(window.location.search) : storedSound(this.store) ?? true;
     this.music = new SalvorMusic(this.sound);
     this.sfx = new SalvorSfx(this.sound);
+    this.ui = new UiSound(this.sound);
     this.state = initialState({ view: this.view, sound: this.sound, seed: this.game.seed });
     window.addEventListener("keydown", (e) => this.guard(() => this.onKey(e)));
     // Whatever the guards miss — a listener we do not own, a rejected promise —
@@ -184,8 +189,8 @@ export class App {
   private onKey(e: KeyboardEvent): void {
     if (isChord(e)) return;
     // The view key costs nothing and means nothing to the game: no turn, no
-    // sound, and it works on the title card so both screens can be looked at
-    // before the run starts.
+    // game sound (a blip once sound is awake), and it works on the title card
+    // so both screens can be looked at before the run starts.
     if (isViewKey(e)) {
       e.preventDefault();
       this.switchView();
@@ -221,12 +226,19 @@ export class App {
    * press are the same command and there is no second set of rules for the mouse.
    */
   private apply(intent: UiIntent, e?: KeyboardEvent): void {
+    const before = this.state;
     const next = appReducer(this.state, intent, this.game);
     if (next.effect.kind === "pass") return;
     e?.preventDefault();
     this.state = next;
-    this.run(next.effect);
+    this.sounded = false;
+    const turn = this.run(next.effect);
     this.redraw();
+    // Last, so it knows whether the game already answered this press. Only
+    // here: a press or a click, never a step of the walk's timer.
+    if (this.audible) {
+      this.ui.play(blipFor({ before, after: this.state, effect: next.effect, turn, sounded: this.sounded }));
+    }
   }
 
   /** A row of the list clicked in the page: its position, never its digit. */
@@ -234,6 +246,14 @@ export class App {
     this.guard(() => {
       this.wakeSound();
       this.apply({ kind: "line", index });
+    });
+  }
+
+  /** A panel line that stands for a key, clicked: that key, pressed (the virus line is `v`). */
+  private onPress(key: string): void {
+    this.guard(() => {
+      this.wakeSound();
+      this.apply(toIntent({ key }, rigOf(this.game.player)));
     });
   }
 
@@ -245,19 +265,49 @@ export class App {
     });
   }
 
-  /** The other screen, and the setting remembering it. Nothing about the run moves. */
-  private switchView(): void {
+  /** A door's corridor or tag clicked on the honeycomb: its row of the list (G90 D3). */
+  private onDoor(door: number): void {
     this.guard(() => {
-      this.cycleView();
-      this.redraw();
+      this.wakeSound();
+      this.apply({ kind: "door", id: door });
     });
   }
 
-  /** Sound on or off, and the setting remembering it. Never a turn, on any screen. */
+  /**
+   * The pointer over a compartment, or off one: the map aims there and draws
+   * the way (G90 D4). A frame and nothing else — no sound, no turn, no pulse.
+   */
+  private onHover(room: number | undefined): void {
+    this.guard(() => {
+      const next = hovered(this.state, room);
+      if (next === this.state) return;
+      this.state = next;
+      this.paint();
+    });
+  }
+
+  /** The other screen, and the setting remembering it. Nothing about the run moves. */
+  private switchView(): void {
+    this.guard(() => {
+      // The terminal has no pointer to aim with: a stale aim must not follow it there.
+      this.state = hovered(this.state, undefined);
+      this.cycleView();
+      this.redraw();
+      // Only once sound is awake: `V` is read before `wakeSound`, so the title's
+      // first key stays silent whichever key it is.
+      if (this.audible) this.ui.play("toggle");
+    });
+  }
+
+  /**
+   * Sound on or off, and the setting remembering it. Never a turn, on any screen.
+   * The blip after the switch: turning it on says so, turning it off is silence.
+   */
   private toggleSound(): void {
     this.guard(() => {
       this.flipSound();
       this.redraw();
+      this.ui.play("toggle");
     });
   }
 
@@ -279,6 +329,7 @@ export class App {
     rememberSound(this.sound, this.store);
     this.music.setEnabled(this.sound);
     this.sfx.setEnabled(this.sound);
+    this.ui.setEnabled(this.sound);
     this.syncSettings();
   }
 
@@ -302,26 +353,28 @@ export class App {
     });
   }
 
-  /** The one place a state transition becomes something the browser can see. */
-  private run(effect: AppEffect): void {
+  /**
+   * The one place a state transition becomes something the browser can see.
+   *
+   * What it answers is whether the run moved, for the blip (`ui/uisound.ts`): a
+   * turn spent, a turn asked for and refused — by the rules, or by a walk that
+   * stopped before its first step — or nothing asked of the run at all.
+   */
+  private run(effect: AppEffect): Turn {
     switch (effect.kind) {
       case "log":
         this.game.log.add(effect.text, this.game.schedule.time, "warn");
-        break;
+        return "refused";
       case "command":
-        this.spend(effect.cmd);
-        break;
+        return this.spend(effect.cmd) ? "spent" : "refused";
       case "explore":
         this.explorer = makeExplorer(effect.through);
-        this.walk();
-        break;
+        return this.walk() ? "spent" : "refused";
       case "travel":
         this.explorer = makeTraveller(effect.to, effect.through);
-        this.walk();
-        break;
+        return this.walk() ? "spent" : "refused";
       case "fight":
-        this.follow(engage(this.game, effect.melee ? "melee" : "best"));
-        break;
+        return this.follow(engage(this.game, effect.melee ? "melee" : "best")) ? "spent" : "refused";
       case "stopAuto":
         this.stopWalk();
         break;
@@ -345,27 +398,30 @@ export class App {
       case "pass":
         break;
     }
+    return "none";
   }
 
   /**
-   * One step of an explore run, and the timer that asks for the next.
+   * One step of an explore run, and the timer that asks for the next. True when
+   * the step was taken.
    *
    * Every step is an ordinary player command — the walk has no privileges the
    * keyboard does not — so a refused one ends it rather than being retried: a
    * loop that cannot move must not spin against the sim forty times a second.
    */
-  private walk(): void {
+  private walk(): boolean {
     this.walkTimer = undefined;
-    if (!this.state.exploring || !this.explorer) return;
+    if (!this.state.exploring || !this.explorer) return false;
 
     const result = this.explorer.step(this.game);
-    if (!this.follow(result)) return;
+    if (!this.follow(result)) return false;
     this.redraw();
     if (this.game.isOver()) {
       this.endWalk();
-      return;
+      return true;
     }
     this.walkTimer = window.setTimeout(() => this.guard(() => this.walk()), AUTO_DELAY_MS);
+    return true;
   }
 
   /**
@@ -408,12 +464,12 @@ export class App {
   }
 
   /**
-   * The second line of the title menu: a fresh run with the training prompts on.
+   * The second line of the title menu: remember the first drone.
    *
-   * A new run and not a mode, because that is what it is — the same game, the
-   * same rules and the same generator, with every one-shot line the game knows
-   * how to say switched on from the first turn instead of waiting for the thing
-   * it explains to happen. It goes into the URL beside the seed, so a training
+   * A new run and not a mode, because that is what it is — the same game and
+   * the same rules, opening aboard a hull built to be learned on, with a window
+   * over the map saying what to do next (`content/tutorial.ts`,
+   * `systems/tutorial.ts`). It goes into the URL beside the seed, so a training
    * run can be linked, reloaded and bug-reported like any other.
    */
   private training(): void {
@@ -431,11 +487,15 @@ export class App {
     // is where the run begins rather than something that turned up in it.
     this.stopPulse();
     this.pulse = NO_PULSE;
-    // The tutorial is one hull and always the same one; everything else is a
-    // fresh draw. The seed still goes into the URL either way, so the two are
-    // reported and replayed by exactly the same route.
+    // The lesson is one hull and always the same one, and the voyage behind
+    // it is one fixed draw; everything else is a fresh draw. The seed still
+    // goes into the URL either way, so the two are reported and replayed by
+    // exactly the same route.
     const seed = training ? TUTORIAL_SEED : chosen ?? (Math.random() * 0xffffffff) >>> 0;
     this.game = newGame(seed, training);
+    // The old run's lines are not in this log, so what was heard is this one's
+    // opening: its first sound is the drone's first move, as on the first run.
+    this.heard = lastLine(this.game);
     // The menu's seed row names the run that exists, so it moves with it: a
     // seed typed on the title is read back off the game rather than off what
     // was typed, which is what makes a clamped ten-digit number honest.
@@ -461,7 +521,7 @@ export class App {
   private wakeSound(): void {
     if (this.audible || this.state.crash !== undefined) return;
     this.audible = true;
-    this.heard = this.game.log.lines.length;
+    this.heard = lastLine(this.game);
     this.music.begin(this.game);
   }
 
@@ -477,9 +537,10 @@ export class App {
     try {
       if (this.audible) {
         this.music.update(this.game);
-        const lines = this.game.log.lines;
-        this.sfx.play(sfxFor(linesSince(lines, this.heard)));
-        this.heard = lines.length;
+        const effects = sfxFor(linesAfter(this.game.log.lines, this.heard));
+        if (effects.length > 0) this.sounded = true;
+        this.sfx.play(effects);
+        this.heard = lastLine(this.game);
       }
       // After the music, because the flash is scheduled against the track's own
       // playhead, and before the paint, because this frame is the first one it
@@ -596,6 +657,9 @@ export class App {
         this.mount,
         (index) => this.onLine(index),
         (room) => this.onRoom(room),
+        (door) => this.onDoor(door),
+        (room) => this.onHover(room),
+        (key) => this.onPress(key),
       );
     }
     return this.web;
@@ -662,6 +726,11 @@ function prefersReducedMotion(): boolean {
   } catch {
     return false;
   }
+}
+
+/** The newest line of a run's log: where the ear has got to (`ui/sfx.ts`, `linesAfter`). */
+function lastLine(game: RoomGame): LogLine | undefined {
+  return game.log.lines[game.log.lines.length - 1];
 }
 
 function viewStore(): ViewStore | undefined {

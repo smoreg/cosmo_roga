@@ -37,23 +37,29 @@ import { canSeeDrone } from "./sight.js";
  * come back through the airlock. Time pushes it up and so does noise; standing
  * quiet — or standing in cover — pushes it back down.
  *
- * What the gauge *does* is a ladder (`LADDER` below), one rung per level, and
- * every rung is climbed once on the way up: the ship notices, then posts a
- * machine where you have walked, then sends one after you and starts shutting
- * doors, then sends its hunter, and at the top it locks the doors and begins
- * venting its own compartments one by one until you leave or it has nothing
- * left to vent. Neutralising the ship — all three systems up — switches the
- * whole process off (`standDown`, called from `systems/ship.ts`).
+ * What the gauge *does* is a ladder of ten rungs (`LADDER` below), and every
+ * rung is climbed once on the way up: the ship notices, listens, posts
+ * machines where you have walked, sends one after you and starts shutting
+ * doors, sends its hunter, locks the doors and hardens what it wakes, then
+ * starts blowing its own compartments up on a visible fuse — and at the very
+ * top it blows itself up, drone and all (docs/tasks/G90-smoreg-wave.md, A).
+ * Neutralising the ship — all three systems up — switches the whole process
+ * off (`standDown`, called from `systems/ship.ts`).
  *
  * A system, not the twist: it hooks the same turn cycle but knows nothing about
  * modules, and the rig knows nothing about it.
  */
 
-/** Top of the gauge. Every number below is design-doc.md's. */
-export const MAX_LEVEL = 5;
-/** Turns aboard between time-driven raises. The run's first derelict is the one learned on (`isFirstShip`). */
-const PERIOD_FIRST_SHIP = 80;
-export const PERIOD = 40;
+/** Top of the gauge. */
+export const MAX_LEVEL = 10;
+/**
+ * Turns aboard between time-driven raises. Half what the five-rung ladder ran
+ * on: the ladder is twice as tall and the sorties that reached its old top
+ * should reach the charges (`CHARGE_LEVEL`) on the new one. The run's first
+ * derelict is the one learned on (`isFirstShip`), and keeps the slow clock.
+ */
+const PERIOD_FIRST_SHIP = 40;
+export const PERIOD = 20;
 /**
  * A compartment this loud anywhere aboard raises the alert. The engine rates a
  * fight at 9 and a step through a door at 3 (`rooms/game.ts`), so fighting is
@@ -62,86 +68,77 @@ export const PERIOD = 40;
  */
 const NOISE_THRESHOLD = 8;
 /** ...but no more often than this, or one fight would fill the gauge. */
-const NOISE_COOLDOWN = 10;
+const NOISE_COOLDOWN = 5;
 
 /** A turn is quiet when the drone's own compartment is under this. */
 const DRONE_HEARD_AT = 5;
 /** Quiet turns that talk the ship down one level — in the open, and in cover. */
-const QUIET_TURNS = 15;
-const QUIET_TURNS_HIDDEN = 8;
+const QUIET_TURNS = 8;
+const QUIET_TURNS_HIDDEN = 4;
 
 /** Nothing is ever woken this close to the drone: two doors is the ambush line. */
 const MIN_SPAWN_DOORS = 2;
 /**
- * The level at which the ship sends its hunter.
- *
- * design-doc.md, "Тревога", says three, and three is a number that reads well
- * next to a five-step gauge. It does not survive being multiplied by the other
- * rule the document has: "Обезвредить корабль" puts +2 on the gauge for every
- * system brought online, so a derelict that starts calm is at three the moment
- * the *second* system comes up — and a drone that has raised one system and is
- * standing in the reactor with a CELL half spent is not a drone that beats a
- * hunter. Measured over 600 seeds by G33: no bot and no scripted driver ever
- * brought a third system online, on a generated hull *or* on a hull with the
- * machines taken out of it altogether. `NEUTRALIZE` was not hard, it was
- * unreachable, and with it the sale, the 120 CR, and the rest of the itinerary.
- *
- * Four gives the drone the first two systems and sends the hunter for the
- * third, which is the shape the document actually describes — the ship notices,
- * and then it comes looking. Noise still gets there on its own: a fight is +1
- * every ten turns, so a loud sortie meets the ENFORCER without touching a
- * system at all.
+ * The level at which the ship sends its hunter: the seventh rung, which on the
+ * ten-rung ladder is where the fourth of five stood. Raising a system costs
+ * `ALERT_PER_SYSTEM` rungs (`systems/ship.ts`), so a calm hull meets the
+ * ENFORCER on its second system only if it has been loud as well.
  */
-export const HUNTER_LEVEL = 4;
-/** At the top of the gauge the hunter is replaced this often. */
+export const HUNTER_LEVEL = 7;
+/** From `LOCK_LEVEL` the hunter is replaced this often. */
 const HUNTER_PERIOD = 15;
 /** How often a machine that walked the ship alone left a closed door open behind it. */
 const TRAIL_CHANCE = 0.5;
 
 /** From this level the ship shuts one door behind the drone every `DOOR_PERIOD` turns. */
-const DOOR_LEVEL = 3;
+const DOOR_LEVEL = 5;
 export const DOOR_PERIOD = 10;
 /** From this level the door it shuts is locked rather than closed. */
-const LOCK_LEVEL = MAX_LEVEL;
+export const LOCK_LEVEL = 8;
 
 /**
- * The scuttle: at the top of the gauge the ship counts `SCUTTLE_WARN` turns
- * down on the panel — the last warning — and then vents one compartment every
- * `SCUTTLE_PERIOD` turns, farthest from the drone first. Fifteen and twelve
- * rather than twelve and ten: a bot that never reads the countdown dies in a
- * vented compartment on a quarter of the sorties it happens in at the shorter
- * clock, and on an eighth at this one — and a scuttle is a warning, not an
- * execution.
+ * The charges: from `CHARGE_LEVEL` the ship sets a charge in one of its own
+ * compartments every `CHARGE_PERIOD` turns, and each one blows `FUSE_TURNS`
+ * turns after it is set, counting down on the panel, on the map and in the
+ * log. What is in the compartment when it goes is gone; the drone, if it
+ * stayed, takes `BLAST_DAMAGE` through the rack.
  */
-export const SCUTTLE_WARN = 15;
-export const SCUTTLE_PERIOD = 12;
-/** What a turn spent standing in a vented compartment costs the rack. */
-const VENT_DAMAGE = 1;
+export const CHARGE_LEVEL = 9;
+export const CHARGE_PERIOD = 8;
+export const FUSE_TURNS = 5;
+export const BLAST_DAMAGE = 6;
+
+/**
+ * The detonation: `ARM_TURNS` after the charges start the ship arms itself —
+ * the top rung, which no provocation reaches (`raiseAlert`) — and the top of
+ * the gauge starts a `DETONATION_TURNS` countdown; at zero the hull is gone
+ * with everything aboard it, the drone included, and the voyage moves on
+ * without it (`systems/voyage.ts`, `loseDrone`). Two periods of charges
+ * before the arming rather than one: measured over 200 careful voyages, one
+ * period left the jam's three wins with nothing under them.
+ */
+export const ARM_TURNS = 2 * PERIOD;
+export const DETONATION_TURNS = 3;
 
 /**
  * From this level every machine the ladder wakes is tougher: `hp` and `hpMax`
- * both gain `level − STRONGER_FROM + 1`, so the level-4 hunter carries one
- * point more and whatever the top of the gauge sends carries two. Number and
- * strength are the two axes the owner named, and this is the second one.
+ * both gain `level − STRONGER_FROM + 1`. Number and strength are the two axes
+ * the owner named, and this is the second one.
  */
-const STRONGER_FROM = 4;
+const STRONGER_FROM = LOCK_LEVEL;
 
 /**
- * How far the gauge falls while nobody is aboard: two steps for a drone that
- * cycled out through the airlock, three for a drone the ship took apart — a
+ * How far the gauge falls while nobody is aboard: four steps for a drone that
+ * cycled out through the airlock, six for a drone the ship took apart — a
  * dead drone is a ship that has stopped hearing anything — never below the
- * floor its raised systems hold it at. The muster that meets the next drone is
- * sized by the level *before* the drop (`shipAnswers`), which is where "по
- * возвращению там будет прилично дронов" lives.
- *
- * The owner asked for one and two. Measured over 200 careful voyages with the
- * rest of the ladder in place: at one and two the gauge reaches the top on
- * 48 % of sorties and the voyage is won 3 times, which is the jam's line with
- * no margin under it; at two and three it is 33 % and 8 wins. What the extra
- * step buys is a second sortie that starts under the hunter instead of on it.
+ * floor its raised systems hold it at. Twice the two and three of the
+ * five-rung ladder, for the same reason the clocks are half. The muster that
+ * meets the next drone is sized by the level *before* the drop
+ * (`shipAnswers`), which is where "по возвращению там будет прилично дронов"
+ * lives.
  */
-const LEAVE_DROP = 2;
-const DEATH_DROP = 3;
+const LEAVE_DROP = 4;
+const DEATH_DROP = 6;
 
 /**
  * Colours come from `content/palette.ts`, not `ui/theme.ts`: rules never
@@ -149,11 +146,15 @@ const DEATH_DROP = 3;
  */
 const WARN_FG = PALETTE.warn;
 const BAD_FG = PALETTE.bad;
-/** The gauge turns warn at this level and bad at MAX_LEVEL. */
-const WARN_LEVEL = 3;
+/** The gauge turns warn at this level and bad from `CHARGE_LEVEL`. */
+const WARN_LEVEL = DOOR_LEVEL;
 
-/** Set on a vented compartment; the engine reads exactly this string (`rooms/noise.ts`). */
-const VENTED = "vented";
+/**
+ * Set on a compartment a charge has blown. The UI reads exactly this string
+ * (`ui/schematic-input.ts`), and its doors are sealed with it, so nothing
+ * walks in bare-handed and every path the game computes goes round it.
+ */
+export const BLOWN = "blown";
 
 // ------------------------------------------------------------------ the ladder
 
@@ -175,28 +176,38 @@ interface Rung {
 }
 
 /**
- * Data, not a state machine. Level 1 buys nothing but the word; the doors
- * start shutting at `DOOR_LEVEL` and locking at `LOCK_LEVEL`, and the scuttle
- * starts at `MAX_LEVEL` — those three are clocks rather than one-off answers,
- * so they live in `afterPlayerTurn` and not here.
- *
- * One machine at two and one at three, and neither on the run's first
- * derelict. The owner asked for one and two; measured, every machine woken
- * inside a sortie is a machine outside the hull's budget, and the careful bot
- * — which never reads the panel — pays for each one in hulls sold: two sent at
- * three is 14 hulls of 32 and 4 wins in 200, one is 15 and 8. On the first
- * derelict, the tutorial, even one posted machine took the voyage from 16
- * hulls sold to 6, so there the ladder is the word, the doors and the hunter.
+ * Data, not a state machine. The first two rungs buy nothing but the word;
+ * the doors start shutting at `DOOR_LEVEL`, locking at `LOCK_LEVEL`, the
+ * charges at `CHARGE_LEVEL` and the detonation at `MAX_LEVEL` — those are
+ * clocks rather than one-off answers, so they live in `afterPlayerTurn` and
+ * not here. None of the woken machines come on the run's first derelict
+ * (`climb`): there the ladder is the word, the doors and the hunter.
  */
 const LADDER: Readonly<Record<number, Rung>> = {
-  1: { word: "alert.noticed", posted: 0, sent: 0, hunter: 1 >= HUNTER_LEVEL },
-  2: { word: "alert.searching", posted: 1, sent: 0, hunter: 2 >= HUNTER_LEVEL },
-  3: { word: "alert.hunting", posted: 0, sent: 1, hunter: 3 >= HUNTER_LEVEL },
-  4: { word: "alert.hunter", posted: 0, sent: 0, hunter: 4 >= HUNTER_LEVEL },
-  5: { word: "alert.scuttle", posted: 0, sent: 0, hunter: 5 >= HUNTER_LEVEL },
+  1: { word: "alert.noticed", posted: 0, sent: 0, hunter: false },
+  2: { word: "alert.searching", posted: 0, sent: 0, hunter: false },
+  3: { word: "alert.post", posted: 1, sent: 0, hunter: false },
+  4: { word: "alert.pickets", posted: 1, sent: 0, hunter: false },
+  5: { word: "alert.hunting", posted: 0, sent: 1, hunter: false },
+  6: { word: "alert.pack", posted: 0, sent: 1, hunter: false },
+  7: { word: "alert.hunter", posted: 0, sent: 0, hunter: true },
+  8: { word: "alert.lockdown", posted: 0, sent: 0, hunter: true },
+  9: { word: "alert.scuttle", posted: 0, sent: 0, hunter: true },
+  10: { word: "alert.detonation", posted: 0, sent: 0, hunter: true },
 };
 
+/** The rung's word, for the corner of the map and the tug's board. */
+export function alertWord(level: number): Key | undefined {
+  return LADDER[level]?.word;
+}
+
 // ------------------------------------------------------------------- the state
+
+/** A charge set in a compartment: where, and the `turnsAboard` it blows at. */
+export interface Fuse {
+  room: RoomId;
+  at: number;
+}
 
 export interface AlertState {
   /** 0..MAX_LEVEL. Each step up is a rung of the ladder. */
@@ -213,21 +224,26 @@ export interface AlertState {
   rolls: number;
   /** `turnsAboard` of the last door the ship shut on the drone. */
   lastDoor: number;
-  /** `turnsAboard` at which the scuttle countdown started; −1 while it is not running. */
-  scuttleFrom: number;
+  /** `turnsAboard` of the last charge set. */
+  lastCharge: number;
+  /** Charges set and not yet blown. */
+  fuses: Fuse[];
+  /** `turnsAboard` at which the ship arms itself (rung ten); −1 while it is not counting. */
+  armAt: number;
+  /** `turnsAboard` at which the ship blows up; −1 while the countdown is not running. */
+  detonateAt: number;
+  /** The ship blew up. Read by the voyage to take the hull off the itinerary. */
+  detonated: boolean;
   /** Neutralised: the gauge is off, and nothing below moves it again. */
   frozen: boolean;
-  /** A drone died aboard since the last entry: the next entry drops two levels, not one. */
+  /** A drone died aboard since the last entry: the next entry drops further. */
   lostDrone: boolean;
-  /** Sorties during which the gauge reached the top, and the visit it last did. */
+  /** Sorties during which the gauge reached the charges, and the visit it last did. */
   peaks: number;
   peakVisit: number;
-  /** Compartments vented over the ship's life, the sorties it happened in, and the last such visit. */
-  vents: number;
-  ventSorties: number;
-  ventVisit: number;
-  /** Drones that died standing in a vented compartment. */
-  ventDeaths: number;
+  /** Compartments blown over the ship's life, and drones a blast killed. */
+  blasts: number;
+  blastDeaths: number;
 }
 
 /**
@@ -262,24 +278,30 @@ function isState(raw: unknown): raw is AlertState {
 }
 
 /**
- * A record written by the build before the ladder has the six numbers above
- * and none of the rest. It is still that ship's gauge; the missing fields are
- * filled with what a fresh record would hold rather than thrown away with the
- * level, so a save from the day before loads with the same ship in it.
+ * A record written by an earlier build has the six numbers above and not all
+ * of the rest. It is still that ship's gauge; the missing fields are filled
+ * with what a fresh record would hold rather than thrown away with the level,
+ * so a save from the day before loads with the same ship in it. A level off
+ * the five-rung ladder is clamped, not scaled: an old save's ship is at most
+ * five of ten, which is calmer than it was, and nobody loads a save to be
+ * blown up by it.
  */
 function complete(st: AlertState): AlertState {
   const s = st as Partial<AlertState> & AlertState;
   const fresh = freshState();
   if (typeof s.lastDoor !== "number") s.lastDoor = fresh.lastDoor;
-  if (typeof s.scuttleFrom !== "number") s.scuttleFrom = fresh.scuttleFrom;
+  if (typeof s.lastCharge !== "number") s.lastCharge = fresh.lastCharge;
+  if (!Array.isArray(s.fuses)) s.fuses = fresh.fuses;
+  if (typeof s.armAt !== "number") s.armAt = fresh.armAt;
+  if (typeof s.detonateAt !== "number") s.detonateAt = fresh.detonateAt;
+  if (typeof s.detonated !== "boolean") s.detonated = fresh.detonated;
   if (typeof s.frozen !== "boolean") s.frozen = fresh.frozen;
   if (typeof s.lostDrone !== "boolean") s.lostDrone = fresh.lostDrone;
   if (typeof s.peaks !== "number") s.peaks = fresh.peaks;
   if (typeof s.peakVisit !== "number") s.peakVisit = fresh.peakVisit;
-  if (typeof s.vents !== "number") s.vents = fresh.vents;
-  if (typeof s.ventSorties !== "number") s.ventSorties = fresh.ventSorties;
-  if (typeof s.ventVisit !== "number") s.ventVisit = fresh.ventVisit;
-  if (typeof s.ventDeaths !== "number") s.ventDeaths = fresh.ventDeaths;
+  if (typeof s.blasts !== "number") s.blasts = fresh.blasts;
+  if (typeof s.blastDeaths !== "number") s.blastDeaths = fresh.blastDeaths;
+  s.level = Math.min(MAX_LEVEL, Math.max(0, s.level));
   return s;
 }
 
@@ -293,15 +315,17 @@ function freshState(): AlertState {
     lastHunter: -HUNTER_PERIOD,
     rolls: 0,
     lastDoor: 0,
-    scuttleFrom: -1,
+    lastCharge: 0,
+    fuses: [],
+    armAt: -1,
+    detonateAt: -1,
+    detonated: false,
     frozen: false,
     lostDrone: false,
     peaks: 0,
     peakVisit: 0,
-    vents: 0,
-    ventSorties: 0,
-    ventVisit: 0,
-    ventDeaths: 0,
+    blasts: 0,
+    blastDeaths: 0,
   };
 }
 
@@ -330,17 +354,26 @@ function alertRng(game: RoomGame): Rng {
  *
  * Every level climbed is a rung of `LADDER` executed exactly once, on the way
  * up and never on the way down or on a raise at the top: a ship already at
- * five that is provoked again answers with nothing new — its clocks (the
- * hunter, the doors, the scuttle) are already running. Nothing at all moves a
- * neutralised ship (`standDown`).
+ * the top that is provoked again answers with nothing new — its clocks are
+ * already running. Nothing at all moves a neutralised ship (`standDown`).
+ *
+ * The top rung is time's alone. A provoked raise — noise, a system brought
+ * up, a mine — stops at `CHARGE_LEVEL`: a ship that has started blowing its
+ * own compartments up has stopped listening, and what ends it is the clock,
+ * `ARM_TURNS` on. So the charges are always two full periods of visible
+ * warning before the countdown, and a drone that brings a system up on a
+ * scuttling ship is not blown up for its trouble. Only the clock passes
+ * `byTime`; measured, the alternative took the drone off two of every three
+ * sorties that reached the charges.
  */
-export function raiseAlert(game: RoomGame, steps = 1): void {
+export function raiseAlert(game: RoomGame, steps = 1, byTime = false): void {
   const st = alertState(game);
   if (neutralised(game, st)) return;
+  const top = byTime ? MAX_LEVEL : CHARGE_LEVEL;
   for (let i = 0; i < steps; i++) {
     // The ship just noticed something: whatever silence had been banked is gone.
     st.quietTurns = 0;
-    if (st.level >= MAX_LEVEL) continue;
+    if (st.level >= top) continue;
     st.level++;
     climb(game, st, st.level);
   }
@@ -358,17 +391,28 @@ function climb(game: RoomGame, st: AlertState, level: number): void {
     "log.alert.up",
   );
 
-  // The two clocks that start on a rung rather than on a turn: the doors start
-  // shutting `DOOR_PERIOD` turns from now, and the scuttle starts counting.
+  // The clocks that start on a rung rather than on a turn: the doors start
+  // shutting `DOOR_PERIOD` turns from now, the first charge is set at once and
+  // the next one `CHARGE_PERIOD` turns on, and the detonation starts counting.
   if (level === DOOR_LEVEL) st.lastDoor = st.turnsAboard;
-  if (level === MAX_LEVEL) {
-    st.scuttleFrom = st.turnsAboard;
+  if (level === CHARGE_LEVEL) {
     const visit = game.currentShip.visits;
     if (st.peakVisit !== visit) {
       st.peakVisit = visit;
       st.peaks++;
     }
-    game.log.add(t("log.alert.scuttle", { n: SCUTTLE_WARN }), game.schedule.time, "bad", "log.alert.scuttle");
+    st.lastCharge = st.turnsAboard;
+    st.armAt = st.turnsAboard + ARM_TURNS;
+    setCharge(game, st);
+  }
+  if (level === MAX_LEVEL) {
+    st.detonateAt = st.turnsAboard + DETONATION_TURNS;
+    game.log.add(
+      t("log.alert.detonation", { n: DETONATION_TURNS }),
+      game.schedule.time,
+      "bad",
+      "log.alert.detonation",
+    );
   }
 
   // The first hull wakes nothing extra: its ladder is doors and the hunter —
@@ -458,11 +502,12 @@ function dispatchTo(game: RoomGame, kind: MonsterKind, room: RoomId): Entity {
 /**
  * Where the ship puts something it has just woken: far enough to be a clock,
  * and by choice somewhere the drone has already walked, so what arrives comes
- * down a corridor it recognises instead of out of unexplored ship.
+ * down a corridor it recognises instead of out of unexplored ship. Never a
+ * compartment that has been blown: there is nothing left in it to stand on.
  */
 function pickSpawnRoom(game: RoomGame, rng: Rng, breacher: boolean): RoomId | undefined {
   const rooms = roomsAtLeast(game.ship, game.roomOf(game.player).id, MIN_SPAWN_DOORS, breacher).filter(
-    (r) => !crowded(game, r),
+    (r) => !crowded(game, r) && !isBlown(game.ship.roomAt(r)),
   );
   if (rooms.length === 0) return undefined;
   const explored = rooms.filter((r) => game.ship.roomAt(r).explored);
@@ -566,7 +611,7 @@ function quietTurn(game: RoomGame): boolean {
   );
 }
 
-/** Level 5: everything aboard is told where you were. */
+/** From `LOCK_LEVEL`: everything aboard is told where you were. */
 function pointEveryoneAtTheDrone(game: RoomGame): void {
   const here = game.roomOf(game.player).id;
   for (const e of game.entities) {
@@ -634,62 +679,144 @@ function bareWayHome(ship: Ship, here: RoomId): boolean {
   return Number.isFinite(map.at(here));
 }
 
-// ---------------------------------------------------------------- the scuttle
+// ---------------------------------------------------------------- the charges
+
+/** A compartment a charge has already blown. */
+export function isBlown(room: Room): boolean {
+  return room.hazard === BLOWN;
+}
+
+/** Turns until the charge in `room` blows, when one is set there. Read by the map. */
+export function fuseIn(game: RoomGame, room: RoomId): number | undefined {
+  if (isTug(game)) return undefined;
+  const st = alertState(game);
+  const fuse = st.fuses.find((f) => f.room === room);
+  return fuse === undefined ? undefined : Math.max(0, fuse.at - st.turnsAboard);
+}
 
 /**
- * The ship vents one compartment: the one farthest from the drone among those
- * it has walked and that lie at least two doors away, so the venting is read
- * off the schematic as a thing coming closer rather than felt as a blow.
+ * The ship sets a charge in one of its own compartments.
  *
- * Never the airlock compartment and never the one the drone is in — a vented
- * compartment is still a compartment and still walkable, so the way home is
- * never the thing that goes (`tests/deadends.test.ts`). What was in it is gone:
- * the machines die, the scrap and the crates are blown out with the air, and
- * whatever cover there was is torn loose. A drone that walks in afterwards
- * pays for every turn it stands there (`bleed`).
+ * Never the drone's compartment and never the airlock's; never one holding
+ * anything the drone came for — a system not yet raised, a module, a crate,
+ * a charter's package, a body not yet searched (the keycard on it is the only
+ * kind the ship has); and never one whose loss would cut the drone off from
+ * the airlock or from any of those, whether it walks bare-handed or with a
+ * cutter (`cutsOff`). The explosions are the ship closing in, not the ship
+ * ending the run for the drone: what they take is time and room to move.
+ *
+ * Preferably a compartment the drone has walked: the fuse is a countdown the
+ * player is meant to see, and a compartment on the far side of the hull is
+ * not one they are looking at.
  */
-function vent(game: RoomGame, st: AlertState): void {
+function setCharge(game: RoomGame, st: AlertState): void {
   const ship = game.ship;
   const here = game.roomOf(game.player).id;
-  const map = RoomDistance.from(ship, [here], walkFilter(ship, true));
+  const armed = new Set(st.fuses.map((f) => f.room));
   const candidates = ship.rooms.filter(
     (r) =>
       r.id !== here &&
       r.id !== ship.entry &&
-      r.explored &&
-      r.hazard !== VENTED &&
-      Number.isFinite(map.at(r.id)) &&
-      map.at(r.id) >= MIN_SPAWN_DOORS,
+      !isBlown(r) &&
+      !armed.has(r.id) &&
+      !worthKeeping(r) &&
+      !cutsOff(ship, here, r.id, armed),
   );
   if (candidates.length === 0) return;
 
-  const farthest = Math.max(...candidates.map((r) => map.at(r.id)));
-  const pool = candidates.filter((r) => map.at(r.id) === farthest);
-  const room = pool.length === 1 ? pool[0]! : alertRng(game).pick(pool);
-  blowOut(game, room);
+  const explored = candidates.filter((r) => r.explored);
+  const room = alertRng(game).pick(explored.length > 0 ? explored : candidates);
+  st.fuses.push({ room: room.id, at: st.turnsAboard + FUSE_TURNS });
+  st.lastCharge = st.turnsAboard;
+  game.log.add(
+    t("log.alert.charge", { room: roomName(room), n: FUSE_TURNS }),
+    game.schedule.time,
+    "bad",
+    "log.alert.charge",
+  );
+}
 
-  st.vents++;
-  const visit = game.currentShip.visits;
-  if (st.ventVisit !== visit) {
-    st.ventVisit = visit;
-    st.ventSorties++;
-  }
-  game.log.add(t("log.alert.vent", { room: roomName(room) }), game.schedule.time, "bad", "log.alert.vent");
+/** Does the compartment hold something the drone came for? */
+function worthKeeping(room: Room): boolean {
+  const data = room.data as Record<string, unknown>;
+  const list = (key: string): unknown[] => (Array.isArray(data[key]) ? (data[key] as unknown[]) : []);
+  if (list("systems").some((s) => (s as { online?: unknown }).online !== true)) return true;
+  if (list("wrecks").length > 0 || list("crates").length > 0 || list("items").length > 0) return true;
+  return list("bodies").some((b) => (b as { searched?: unknown }).searched !== true);
 }
 
 /**
- * The compartment, opened to space.
+ * Would blowing `room` cut the drone off from something it can reach now?
+ *
+ * The targets are the airlock and every compartment worth keeping; "reach" is
+ * asked twice, for a drone with nothing in its hands and for one with a
+ * cutter, and a target that is reachable one way and stops being so is a
+ * cut. "Now" is the ship as it stands — a compartment whose charge is still
+ * burning is still a compartment, and a route through it still a route —
+ * and "after" is the ship with this compartment and every charged one gone,
+ * so two charges cannot do together what neither may do alone. Asked when a
+ * charge is set and again when it blows (`blast`), because the blasts in
+ * between seal doors and change the map: on seed 43 the ARMORY's charge was
+ * safe when set and the only way to the REACTOR by the time it went off.
+ * `RoomDistance`, not a walk of its own.
+ */
+function cutsOff(ship: Ship, here: RoomId, room: RoomId, armed: ReadonlySet<RoomId>): boolean {
+  const targets = [ship.entry, ...ship.rooms.filter((r) => worthKeeping(r) && !isBlown(r)).map((r) => r.id)];
+  const gone = new Set([...armed, room]);
+  const blocks = (d: Door) => gone.has(d.a) || gone.has(d.b);
+  for (const walker of [{ isPlayer: true }, { isPlayer: true, breacher: true }]) {
+    const walk = (d: Door) => ship.passable(d, walker);
+    const before = RoomDistance.from(ship, [here], walk);
+    const after = RoomDistance.from(ship, [here], (d) => walk(d) && !blocks(d));
+    for (const target of targets) {
+      if (Number.isFinite(before.at(target)) && !Number.isFinite(after.at(target))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The fuses burn down: every charge says how long it has left, and one at
+ * zero goes off. True when a blast killed the drone — the death hook has
+ * moved the operator home by then, and the caller must not touch the ship it
+ * was reading.
+ */
+function tickFuses(game: RoomGame, st: AlertState): boolean {
+  for (const fuse of [...st.fuses]) {
+    const left = fuse.at - st.turnsAboard;
+    const room = game.ship.roomAt(fuse.room);
+    if (left > 0) {
+      game.log.add(t("log.alert.fuse", { room: roomName(room), n: left }), game.schedule.time, "bad", "log.alert.fuse");
+      continue;
+    }
+    st.fuses = st.fuses.filter((f) => f !== fuse);
+    if (blast(game, st, room)) return true;
+  }
+  return false;
+}
+
+/**
+ * The compartment goes up.
  *
  * The machines in it die through the game's own death hook, so every system
  * that keeps a record of one — the rival's drone, a ghost, a bloom — hears
- * about it; what those hooks drop on the deck goes out with the air a line
- * later, along with everything that was already lying there. Bodies stay:
- * a keycard on a corpse is the only kind the ship has, and a vent that ate
- * it would be a lock nothing opens.
+ * about it; what those hooks drop on the deck goes with the blast a line
+ * later, along with everything that was already lying there. The doors are
+ * sealed behind it, so bare-handed nothing walks in and every path goes
+ * round — unless that would wall the drone in: a drone that stayed for the
+ * blast, or one that walked past the fuse into the compartments beyond it,
+ * gets the doors blown out instead (`cutsOff`, asked again from where it
+ * stands now), because the charges take time and room, never the way home.
+ * What the drone takes goes through the rack (`BLAST_DAMAGE`), and true
+ * means it did not survive.
  */
-function blowOut(game: RoomGame, room: Room): void {
-  room.hazard = VENTED;
-  room.cover = false;
+function blast(game: RoomGame, st: AlertState, room: Room): boolean {
+  const inside = game.player.room === room.id;
+  const here = game.player.room ?? game.ship.entry;
+  const pending = new Set(st.fuses.filter((f) => f.room !== room.id).map((f) => f.room));
+  st.blasts++;
+  game.log.add(t("log.alert.blast", { room: roomName(room) }), game.schedule.time, "bad", "log.alert.blast");
+
   for (const e of [...game.entities]) {
     if (e.id === game.player.id || e.room !== room.id || !isAlive(e)) continue;
     e.hp = 0;
@@ -697,67 +824,88 @@ function blowOut(game: RoomGame, room: Room): void {
     game.onDeath(e);
   }
   game.reapDead();
+  room.hazard = BLOWN;
+  room.cover = false;
   const data = room.data as Record<string, unknown[] | undefined>;
-  if (Array.isArray(data.wrecks)) data.wrecks.length = 0;
-  if (Array.isArray(data.crates)) data.crates.length = 0;
-}
-
-/**
- * A turn standing in a vented compartment: one point into the rack, through
- * the same path a blow takes, so the exposed module is what wears and the
- * PLATING is what saves the core. Whichever system routes the hit says what
- * it hit; this only speaks when the point went past the rack to the core,
- * because then nobody else has.
- *
- * True when the drone did not survive it — the death hook has moved the
- * operator home by the time this returns, and the caller must not touch the
- * ship it was reading.
- */
-function bleed(game: RoomGame): boolean {
-  const room = game.roomOf(game.player);
-  if (room.hazard !== VENTED) return false;
-
-  const res = blamedOn("log.hit.vent", () => dealDamage(game, game.player, VENT_DAMAGE));
-  if (res.toHp > 0) {
-    game.log.add(
-      t("log.alert.vacuum", { room: roomName(room), n: res.toHp }),
-      game.schedule.time,
-      "bad",
-      "log.alert.vacuum",
-    );
+  // A raised system stays on the record: the SHIP system counts it from its
+  // own pocket, and a wrecked compartment does not un-raise what it held.
+  for (const key of ["wrecks", "crates", "items", "bodies"]) {
+    if (Array.isArray(data[key])) data[key]!.length = 0;
   }
+  const seal = !inside && !cutsOff(game.ship, here, room.id, pending);
+  for (const door of game.ship.doorsOf(room.id)) {
+    if (door.state === "airlock") continue;
+    door.state = seal ? "sealed" : "broken";
+  }
+
+  if (!inside) return false;
+  blamedOn("log.hit.blast", () => dealDamage(game, game.player, BLAST_DAMAGE));
   if (isAlive(game.player)) return false;
+  st.blastDeaths++;
   game.onDeath(game.player);
   return true;
 }
 
-/** Turns until the scuttle does something next — the number on the panel. */
-function scuttleCountdown(st: AlertState): number {
-  const elapsed = st.turnsAboard - st.scuttleFrom;
-  if (elapsed < SCUTTLE_WARN) return SCUTTLE_WARN - elapsed;
-  const since = (elapsed - SCUTTLE_WARN) % SCUTTLE_PERIOD;
-  return since === 0 ? SCUTTLE_PERIOD : SCUTTLE_PERIOD - since;
+/**
+ * The top of the gauge, at zero: the hull is gone. Everything aboard dies
+ * through the death hook — the machines first, so their systems hear of it,
+ * then the drone, which is what moves the operator home and takes the hull
+ * off the itinerary (`systems/voyage.ts`, `loseDrone` reads `detonated`).
+ * Always true: the caller is standing on a ship that no longer exists.
+ */
+function detonate(game: RoomGame, st: AlertState): boolean {
+  st.detonated = true;
+  st.detonateAt = -1;
+  st.fuses = [];
+  game.log.add(t("log.alert.boom"), game.schedule.time, "bad", "log.alert.boom");
+  for (const e of [...game.entities]) {
+    if (e.id === game.player.id || !isAlive(e)) continue;
+    e.hp = 0;
+    e.alive = false;
+    game.onDeath(e);
+  }
+  game.reapDead();
+  for (const room of game.ship.rooms) {
+    room.hazard = BLOWN;
+    room.cover = false;
+  }
+  game.player.hp = 0;
+  game.player.alive = false;
+  game.onDeath(game.player);
+  return true;
 }
 
-function scuttleDue(st: AlertState): boolean {
-  const elapsed = st.turnsAboard - st.scuttleFrom;
-  return elapsed >= SCUTTLE_WARN && (elapsed - SCUTTLE_WARN) % SCUTTLE_PERIOD === 0;
+/** Turns until the ship blows — the number on the panel — or nothing while it is not counting. */
+export function detonationIn(game: RoomGame): number | undefined {
+  if (isTug(game)) return undefined;
+  const st = alertState(game);
+  if (st.detonateAt < 0 || st.level < MAX_LEVEL) return undefined;
+  return Math.max(0, st.detonateAt - st.turnsAboard);
+}
+
+/** Did this stored hull blow itself up? The one underfoot unless another is named. */
+export function detonated(game: RoomGame, id = game.shipId): boolean {
+  const raw = game.ships.get(id)?.data.alert;
+  return isState(raw) && (raw as Partial<AlertState>).detonated === true;
 }
 
 // ------------------------------------------------------------- neutralised
 
 /**
  * The ship is neutralised: the gauge stops, and with it every clock it runs —
- * no more raises, no doors, no scuttle, no hunter replaced. Called by
- * `systems/ship.ts` the turn the third system comes up. What is already awake
- * stays awake; the ship stops *answering*, it does not surrender.
+ * no more raises, no doors, no charges, no countdown, no hunter replaced.
+ * Called by `systems/ship.ts` the turn the third system comes up. What is
+ * already awake stays awake; the ship stops *answering*, it does not
+ * surrender.
  */
 export function standDown(game: RoomGame): void {
   if (isTug(game)) return;
   const st = alertState(game);
   if (st.frozen) return;
   st.frozen = true;
-  st.scuttleFrom = -1;
+  st.fuses = [];
+  st.armAt = -1;
+  st.detonateAt = -1;
   game.log.add(t("log.alert.down"), game.schedule.time, "good", "log.alert.down");
 }
 
@@ -775,23 +923,24 @@ function neutralised(game: RoomGame, st: AlertState): boolean {
 
 /**
  * What the ship did while nobody was watching (design-doc.md, "Персистентный
- * дереликт"): it calmed down — one step for a drone that left through the
- * airlock, two for one it killed, never below the floor its raised systems
- * hold it at — it mustered machines into the compartments you already walked,
- * and those machines left a trail of doors they did not bother to close.
+ * дереликт"): it calmed down — four steps for a drone that left through the
+ * airlock, six for one it killed, never below the floor its raised systems
+ * hold it at — its charges went off, it mustered machines into the
+ * compartments you already walked, and those machines left a trail of doors
+ * they did not bother to close.
  *
  * The muster is sized by how alarmed the ship was when the drone left, not by
- * what it settled to — leaving at 5/5 is what makes coming back expensive,
+ * what it settled to — leaving at the top is what makes coming back expensive,
  * and reading the settled level instead would make the gauge free to fill.
+ * `2 + alert` on the ten-rung ladder is the `2 + 2 × alert` the document asks
+ * of the five-rung one, rung for rung.
  *
  * It is sized *down* by what is already aboard, which is the half that was
- * missing. `2 + 2 × alert` is what the document asks a muster to bring; nothing
- * ever said a hull may hold ten times its own complement, and nothing took the
- * last muster off again. G33 measured the end of that: four hundred entries
- * into one freighter left about four hundred and twenty machines standing in
- * it. A real voyage makes two or three trips, so it never showed up as a
- * playable defect — but the rule it comes from is "the ship musters what it can
- * spare", and a ship cannot spare what it does not have.
+ * missing. Nothing ever said a hull may hold ten times its own complement,
+ * and nothing took the last muster off again. G33 measured the end of that:
+ * four hundred entries into one freighter left about four hundred and twenty
+ * machines standing in it. The rule is "the ship musters what it can spare",
+ * and a ship cannot spare what it does not have.
  *
  * Every roll comes off `alertRng`, so what the ship did in your absence is the
  * same on a replay whatever the run spent its own randomness on in between.
@@ -803,12 +952,19 @@ function shipAnswers(game: RoomGame): void {
   st.level = Math.max(onlineSystems(game), alarmed - (st.lostDrone ? DEATH_DROP : LEAVE_DROP));
   st.lostDrone = false;
   st.quietTurns = 0;
-  st.scuttleFrom = -1;
+  st.armAt = -1;
+  st.detonateAt = -1;
+  // The charges that were burning when the drone left are disarmed, like the
+  // countdown: they were the ship's answer to a drone that is no longer
+  // aboard, and a hull is the same place the second time
+  // (`tests/persistence.test.ts` — what a sortie left lying about is there
+  // when the next one walks in, doors and bodies included).
+  st.fuses = [];
 
   const rng = alertRng(game);
   const entry = game.ship.entry;
   const rooms = roomsAtLeast(game.ship, entry, MIN_SPAWN_DOORS, false).filter(
-    (r) => game.ship.roomAt(r).explored,
+    (r) => game.ship.roomAt(r).explored && !isBlown(game.ship.roomAt(r)),
   );
   if (rooms.length === 0) return;
 
@@ -817,7 +973,7 @@ function shipAnswers(game: RoomGame): void {
   const room = musterRoom(game);
   let placed = 0;
 
-  for (let i = 0; i < Math.min(2 + 2 * alarmed, room); i++) {
+  for (let i = 0; i < Math.min(2 + alarmed, room); i++) {
     // Never a fourth into a compartment that holds three: the muster spreads
     // down the corridors the drone walked, and stops when they are all full.
     const open = rooms.filter((r) => !crowded(game, r));
@@ -910,16 +1066,14 @@ export const ALERT: System<RoomGame> = {
 
   /**
    * A drone the ship took apart: remembered on the ship, so that the next entry
-   * finds it two steps calmer rather than one (`shipAnswers`). Both ways a
-   * drone dies aboard come through here — a machine's blow through the engine,
-   * the vacuum through `bleed` — and both go on to `systems/voyage.ts`, which is
-   * later in the list and moves the operator home.
+   * finds it calmer rather than one step so (`shipAnswers`). Every way a drone
+   * dies aboard comes through here — a machine's blow through the engine, a
+   * blast or the detonation through this file — and all go on to
+   * `systems/voyage.ts`, which is later in the list and moves the operator home.
    */
   onDeath(game, victim) {
     if (victim.id !== game.player.id || isTug(game)) return;
-    const st = alertState(game);
-    st.lostDrone = true;
-    if (game.roomOf(victim).hazard === VENTED) st.ventDeaths++;
+    alertState(game).lostDrone = true;
   },
 
   afterPlayerTurn(game) {
@@ -929,14 +1083,13 @@ export const ALERT: System<RoomGame> = {
     stampPosts(game);
     const st = alertState(game);
     st.turnsAboard++;
-
-    // The vacuum is not the alert's to switch off: a vented compartment stays
-    // vented on a neutralised ship, and standing in it still costs.
-    if (bleed(game)) return;
     if (neutralised(game, st)) return;
 
+    // The clock climbs the ladder up to the charges; the arming has its own
+    // countdown, started on the ninth rung.
     const period = isFirstShip(game) ? PERIOD_FIRST_SHIP : PERIOD;
-    if (st.turnsAboard % period === 0) raiseAlert(game);
+    if (st.level < CHARGE_LEVEL && st.turnsAboard % period === 0) raiseAlert(game, 1, true);
+    if (st.level === CHARGE_LEVEL && st.armAt >= 0 && st.turnsAboard >= st.armAt) raiseAlert(game, 1, true);
 
     if (loudAnywhere(game) && st.turnsAboard - st.lastNoiseBump >= NOISE_COOLDOWN) {
       st.lastNoiseBump = st.turnsAboard;
@@ -945,18 +1098,22 @@ export const ALERT: System<RoomGame> = {
 
     if (st.level >= DOOR_LEVEL && st.turnsAboard - st.lastDoor >= DOOR_PERIOD) shutADoor(game, st);
 
-    // At the top of the gauge the hunt never lapses: a hunter that died is
-    // replaced, everything aboard is told where you are, and the ship starts
-    // taking itself apart from the far end.
-    if (st.level >= MAX_LEVEL) {
-      // The vent first: a hunter woken this turn is woken into the ship as
-      // it is after the venting, not into the compartment about to be blown.
-      if (st.scuttleFrom >= 0 && scuttleDue(st)) vent(game, st);
-      if (st.turnsAboard - st.lastHunter >= HUNTER_PERIOD) {
-        st.lastHunter = st.turnsAboard;
-        if (!hunterAboard(game) && !isTutorialHull(game)) sendEnforcer(game, st.level);
-        pointEveryoneAtTheDrone(game);
-      }
+    // From the lockdown the hunt never lapses: a hunter that died is replaced,
+    // and everything aboard is told where you are.
+    if (st.level >= LOCK_LEVEL && st.turnsAboard - st.lastHunter >= HUNTER_PERIOD) {
+      st.lastHunter = st.turnsAboard;
+      if (!hunterAboard(game) && !isTutorialHull(game)) sendEnforcer(game, st.level);
+      pointEveryoneAtTheDrone(game);
+    }
+
+    // A charge set is a charge that goes off, whatever the gauge does after:
+    // the fuses burn first, then the next one is set into the ship as it is
+    // after the blast, and the detonation is the last thing the turn does.
+    if (tickFuses(game, st)) return;
+    if (st.level >= CHARGE_LEVEL && st.turnsAboard - st.lastCharge >= CHARGE_PERIOD) setCharge(game, st);
+    if (st.level >= MAX_LEVEL && st.detonateAt >= 0 && st.turnsAboard >= st.detonateAt) {
+      detonate(game, st);
+      return;
     }
 
     st.quietTurns = quietTurn(game) ? st.quietTurns + 1 : 0;
@@ -965,8 +1122,10 @@ export const ALERT: System<RoomGame> = {
       st.quietTurns = 0;
       st.level--;
       // Off the top: the countdown stops, and starts again only from a fresh
-      // climb to the top.
-      if (st.level < MAX_LEVEL) st.scuttleFrom = -1;
+      // climb; off the charges, so does the arming. What is already set keeps
+      // burning.
+      if (st.level < MAX_LEVEL) st.detonateAt = -1;
+      if (st.level < CHARGE_LEVEL) st.armAt = -1;
       game.log.add(t("log.alert.calm"), game.schedule.time, "good", "log.alert.calm");
     }
   },
@@ -984,16 +1143,22 @@ export const ALERT: System<RoomGame> = {
     // The word after the bar is the whole of the ladder made visible: what the
     // ship is doing about you, in one word, and at the top how long you have.
     const off = neutralised(game, st);
+    const boom = detonationIn(game);
     let text: string;
     if (off) text = t("panel.alertOff", { gauge });
-    else if (level >= MAX_LEVEL && st.scuttleFrom >= 0) {
-      text = t("panel.alertScuttle", { gauge, n: scuttleCountdown(st) });
-    } else if (level > 0) text = t("panel.alertStage", { gauge, stage: t(LADDER[level]!.word) });
+    else if (boom !== undefined) text = t("panel.alertBoom", { gauge, n: boom });
+    else if (level > 0) text = t("panel.alertStage", { gauge, stage: t(LADDER[level]!.word) });
     else text = t("panel.alert", { gauge });
 
-    const fg = off ? undefined : level >= MAX_LEVEL ? BAD_FG : level >= WARN_LEVEL ? WARN_FG : undefined;
+    const fg = off ? undefined : level >= CHARGE_LEVEL ? BAD_FG : level >= WARN_LEVEL ? WARN_FG : undefined;
     const lines = [fg ? { text, fg } : { text }];
     if (hunterAboard(game)) lines.push({ text: t("panel.hunter"), fg: BAD_FG });
+    // Every fuse burning, nearest to zero first: the compartment's short id,
+    // which is what the map is labelled with, and the turns left.
+    for (const fuse of [...st.fuses].sort((a, b) => a.at - b.at)) {
+      const n = Math.max(0, fuse.at - st.turnsAboard);
+      lines.push({ text: t("panel.fuse", { room: game.ship.roomAt(fuse.room).label, n }), fg: BAD_FG });
+    }
     return lines;
   },
 };
@@ -1005,18 +1170,18 @@ export const ALERT: System<RoomGame> = {
  *
  * The first *derelict*, not the first ship in the store: a run starts on the
  * tug (`GAME_CONFIG.firstShipId`), so the store's first id is home, and read
- * that way no derelict was ever the first one — every hull ran on the forty-turn
+ * that way no derelict was ever the first one — every hull ran on the fast
  * clock and the tutorial pace existed only in the fixture tests.
  *
  * And in a training run, the hull *after* the training one as well. The
  * training hull stands in front of the itinerary (`systems/voyage.ts`) and
  * read as the first derelict it took the slow clock and the clean deck with
- * it: the first real hull of a training run met the forty-turn clock, the
- * full ladder and its class's hazards — everything the same hull is spared
- * in an ordinary run. Measured over 200 careful training voyages: 6 wins
- * against 15 once that hull counts as first too, and the first real hull
- * sold on 19 voyages against 64. The training hull keeps its own slow clock;
- * it is where the ladder is read for the first time.
+ * it: the first real hull of a training run met the fast clock, the full
+ * ladder and its class's hazards — everything the same hull is spared in an
+ * ordinary run. Measured over 200 careful training voyages: 6 wins against
+ * 15 once that hull counts as first too, and the first real hull sold on 19
+ * voyages against 64. The training hull keeps its own slow clock; it is
+ * where the ladder is read for the first time.
  */
 export function isFirstShip(game: RoomGame): boolean {
   const ids = game.ships.ids().filter((id) => id !== TUG_ID);

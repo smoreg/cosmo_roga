@@ -5,13 +5,8 @@
   "inputs": [
     {
       "kind": "act",
-      "verb": "charter",
-      "target": 2200
-    },
-    {
-      "kind": "act",
-      "verb": "charter",
-      "target": 2200
+      "verb": "berth",
+      "target": 2300
     },
     {
       "kind": "act",
@@ -29,27 +24,35 @@
     {
       "kind": "act",
       "verb": "salvage",
-      "target": 1016
+      "target": 1021
     },
     {
-      "kind": "act",
-      "verb": "search",
-      "target": 1001
+      "kind": "attack",
+      "target": 4
     },
     {
       "kind": "attack",
       "target": 3
     },
     {
-      "kind": "act",
-      "verb": "swap",
-      "target": 1017,
-      "slot": 5
+      "kind": "attack",
+      "target": 4
     },
     {
       "kind": "act",
       "verb": "swap",
-      "target": 1018,
+      "target": 1022,
+      "slot": 5
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1023
+    },
+    {
+      "kind": "act",
+      "verb": "swap",
+      "target": 1024,
       "slot": 0
     },
     {
@@ -58,12 +61,98 @@
     },
     {
       "kind": "act",
-      "verb": "salvage",
+      "verb": "take",
+      "target": 1001
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1002
+    },
+    {
+      "kind": "act",
+      "verb": "take",
       "target": 1003
     },
     {
       "kind": "go",
-      "door": 4
+      "door": 2
+    },
+    {
+      "kind": "go",
+      "door": 3
+    },
+    {
+      "kind": "go",
+      "door": 5
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1012
+    },
+    {
+      "kind": "act",
+      "verb": "take",
+      "target": 1011
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "go",
+      "door": 14
+    },
+    {
+      "kind": "go",
+      "door": 9
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "go",
+      "door": 9
+    },
+    {
+      "kind": "go",
+      "door": 8
+    },
+    {
+      "kind": "go",
+      "door": 2
+    },
+    {
+      "kind": "go",
+      "door": 11
+    },
+    {
+      "kind": "act",
+      "verb": "search",
+      "target": 1008
+    },
+    {
+      "kind": "act",
+      "verb": "search",
+      "target": 1009
     },
     {
       "kind": "act",
@@ -84,53 +173,52 @@
     },
     {
       "kind": "go",
-      "door": 5
+      "door": 12
+    },
+    {
+      "kind": "act",
+      "verb": "search",
+      "target": 1016
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
+    },
+    {
+      "kind": "go",
+      "door": 10
     },
     {
       "kind": "act",
       "verb": "salvage",
-      "target": 1011
+      "target": 1019
     },
     {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "go",
-      "door": 6
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1020
     },
     {
       "kind": "act",
       "verb": "work",
-      "target": 1012
+      "target": 1018
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1018
     },
     {
       "kind": "go",
-      "door": 6
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "go",
-      "door": 5
+      "door": 10
     },
     {
       "kind": "hide"
@@ -150,27 +238,24 @@
     },
     {
       "kind": "act",
-      "verb": "salvage",
+      "verb": "take",
       "target": 1013
     },
     {
-      "kind": "act",
-      "verb": "work",
-      "target": 1015
+      "kind": "hide"
     },
     {
-      "kind": "act",
-      "verb": "work",
-      "target": 1015
+      "kind": "hide"
     },
     {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1014
+      "kind": "hide"
+    },
+    {
+      "kind": "hide"
     },
     {
       "kind": "go",
-      "door": 7
+      "door": 6
     },
     {
       "kind": "hide"
@@ -186,65 +271,7 @@
     },
     {
       "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "go",
-      "door": 3
-    },
-    {
-      "kind": "act",
-      "verb": "take",
-      "target": 1007
-    },
-    {
-      "kind": "act",
-      "verb": "take",
-      "target": 1008
-    },
-    {
-      "kind": "act",
-      "verb": "take",
-      "target": 1009
-    },
-    {
-      "kind": "go",
-      "door": 8
-    },
-    {
-      "kind": "act",
-      "verb": "search",
-      "target": 1004
-    },
-    {
-      "kind": "act",
-      "verb": "search",
-      "target": 1005
-    },
-    {
-      "kind": "act",
-      "verb": "take",
-      "target": 1006
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "go",
-      "door": 8
-    },
-    {
-      "kind": "go",
-      "door": 3
+      "door": 11
     },
     {
       "kind": "go",
@@ -262,14 +289,6 @@
       "door": 1
     },
     {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "attack",
-      "target": 4
-    },
-    {
       "kind": "attack",
       "target": 5
     },
@@ -283,142 +302,51 @@
     },
     {
       "kind": "attack",
-      "target": 6
+      "target": 7
     },
     {
       "kind": "attack",
-      "target": 6
+      "target": 7
     },
     {
-      "kind": "act",
-      "verb": "carry",
-      "target": 1019
-    },
-    {
-      "kind": "act",
-      "verb": "carry",
-      "target": 1020
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1022
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
+      "kind": "attack",
+      "target": 7
     },
     {
       "kind": "go",
-      "door": 5
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
+      "door": 2
     },
     {
       "kind": "go",
-      "door": 6
+      "door": 2
     },
     {
       "kind": "go",
-      "door": 6
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
+      "door": 2
     },
     {
       "kind": "go",
-      "door": 5
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
+      "door": 2
     },
     {
       "kind": "go",
-      "door": 7
+      "door": 2
     },
     {
       "kind": "go",
-      "door": 7
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
+      "door": 2
     },
     {
       "kind": "go",
-      "door": 4
+      "door": 2
     },
     {
       "kind": "go",
-      "door": 3
+      "door": 2
     },
     {
-      "kind": "go",
-      "door": 8
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "go",
-      "door": 8
-    },
-    {
-      "kind": "go",
-      "door": 3
+      "kind": "attack",
+      "target": 7
     },
     {
       "kind": "go",
@@ -430,22 +358,27 @@
     {
       "kind": "act",
       "verb": "repair",
-      "slot": 1
-    },
-    {
-      "kind": "act",
-      "verb": "repair",
       "slot": 3
     },
     {
       "kind": "act",
+      "verb": "repair",
+      "slot": 4
+    },
+    {
+      "kind": "act",
       "verb": "graft",
-      "slot": 1
+      "slot": 3
     },
     {
       "kind": "act",
       "verb": "stow",
-      "slot": 1
+      "slot": 2
+    },
+    {
+      "kind": "act",
+      "verb": "order",
+      "target": 2202
     },
     {
       "kind": "act",
@@ -465,544 +398,32 @@
     {
       "kind": "act",
       "verb": "sell",
-      "slot": 2
+      "slot": 3
     },
     {
       "kind": "act",
-      "verb": "undock"
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "attack",
-      "target": 7
-    },
-    {
-      "kind": "attack",
-      "target": 7
+      "verb": "order",
+      "target": 2201
     },
     {
       "kind": "act",
-      "verb": "buy",
-      "target": 2000
-    },
-    {
-      "kind": "act",
-      "verb": "jump"
-    },
-    {
-      "kind": "act",
-      "verb": "charter",
-      "target": 2200
-    },
-    {
-      "kind": "act",
-      "verb": "charter",
-      "target": 2200
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "act",
-      "verb": "jump"
-    },
-    {
-      "kind": "act",
-      "verb": "charter",
-      "target": 2200
-    },
-    {
-      "kind": "act",
-      "verb": "charter",
-      "target": 2200
-    },
-    {
-      "kind": "act",
-      "verb": "charter",
-      "target": 2200
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "go",
-      "door": 3
-    },
-    {
-      "kind": "act",
-      "verb": "undock"
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "attack",
-      "target": 13
-    },
-    {
-      "kind": "attack",
-      "target": 13
-    },
-    {
-      "kind": "act",
-      "verb": "carry",
-      "target": 1000
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1034
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1002
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1001
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1001
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1001
-    },
-    {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "attack",
-      "target": 10
-    },
-    {
-      "kind": "attack",
-      "target": 10
-    },
-    {
-      "kind": "attack",
-      "target": 10
-    },
-    {
-      "kind": "attack",
-      "target": 11
-    },
-    {
-      "kind": "attack",
-      "target": 11
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1035
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1036
-    },
-    {
-      "kind": "act",
-      "verb": "search",
-      "target": 1004
-    },
-    {
-      "kind": "act",
-      "verb": "search",
-      "target": 1005
-    },
-    {
-      "kind": "act",
-      "verb": "take",
-      "target": 1003
-    },
-    {
-      "kind": "go",
-      "door": 6
-    },
-    {
-      "kind": "act",
-      "verb": "take",
-      "target": 1007
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "go",
-      "door": 10
-    },
-    {
-      "kind": "act",
-      "verb": "search",
-      "target": 1011
-    },
-    {
-      "kind": "act",
-      "verb": "search",
-      "target": 1012
-    },
-    {
-      "kind": "act",
-      "verb": "search",
-      "target": 1013
-    },
-    {
-      "kind": "go",
-      "door": 11
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1014
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1015
-    },
-    {
-      "kind": "go",
-      "door": 11
-    },
-    {
-      "kind": "go",
-      "door": 13
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1018
-    },
-    {
-      "kind": "act",
-      "verb": "carry",
-      "target": 1019
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "go",
-      "door": 13
-    },
-    {
-      "kind": "attack",
-      "target": 16
-    },
-    {
-      "kind": "go",
-      "door": 10
-    },
-    {
-      "kind": "go",
-      "door": 6
-    },
-    {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "leave"
-    },
-    {
-      "kind": "act",
-      "verb": "undock"
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "attack",
-      "target": 16
-    },
-    {
-      "kind": "attack",
-      "target": 16
-    },
-    {
-      "kind": "attack",
-      "target": 16
-    },
-    {
-      "kind": "attack",
-      "target": 18
-    },
-    {
-      "kind": "attack",
-      "target": 18
-    },
-    {
-      "kind": "attack",
-      "target": 18
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1037
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1038
-    },
-    {
-      "kind": "act",
-      "verb": "shoot"
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "attack",
-      "target": 17
-    },
-    {
-      "kind": "act",
-      "verb": "salvage",
-      "target": 1039
-    },
-    {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "attack",
-      "target": 19
-    },
-    {
-      "kind": "attack",
-      "target": 19
-    },
-    {
-      "kind": "attack",
-      "target": 19
-    },
-    {
-      "kind": "attack",
-      "target": 19
-    },
-    {
-      "kind": "attack",
-      "target": 19
-    },
-    {
-      "kind": "attack",
-      "target": 19
-    },
-    {
-      "kind": "go",
-      "door": 6
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "go",
-      "door": 10
-    },
-    {
-      "kind": "go",
-      "door": 11
-    },
-    {
-      "kind": "go",
-      "door": 11
-    },
-    {
-      "kind": "go",
-      "door": 13
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "go",
-      "door": 13
-    },
-    {
-      "kind": "go",
-      "door": 10
-    },
-    {
-      "kind": "attack",
-      "target": 12
-    },
-    {
-      "kind": "attack",
-      "target": 12
-    },
-    {
-      "kind": "go",
-      "door": 6
-    },
-    {
-      "kind": "act",
-      "verb": "buy",
-      "target": 2000
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "go",
-      "door": 3
-    },
-    {
-      "kind": "act",
-      "verb": "undock"
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "attack",
-      "target": 23
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "attack",
-      "target": 20
-    },
-    {
-      "kind": "attack",
-      "target": 20
-    },
-    {
-      "kind": "attack",
-      "target": 20
-    },
-    {
-      "kind": "attack",
-      "target": 22
-    },
-    {
-      "kind": "attack",
-      "target": 22
-    },
-    {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "attack",
-      "target": 21
-    },
-    {
-      "kind": "go",
-      "door": 6
-    },
-    {
-      "kind": "attack",
-      "target": 12
-    },
-    {
-      "kind": "attack",
-      "target": 14
-    },
-    {
-      "kind": "attack",
-      "target": 14
-    },
-    {
-      "kind": "go",
-      "door": 6
-    },
-    {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "leave"
-    },
-    {
-      "kind": "act",
-      "verb": "repair",
+      "verb": "sell",
       "slot": 4
     },
     {
       "kind": "act",
-      "verb": "repair",
-      "slot": 3
+      "verb": "sell",
+      "slot": 5
+    },
+    {
+      "kind": "act",
+      "verb": "jump",
+      "target": 2350
+    },
+    {
+      "kind": "act",
+      "verb": "jump",
+      "target": 2400
     },
     {
       "kind": "go",
@@ -1021,87 +442,30 @@
       "verb": "undock"
     },
     {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "attack",
-      "target": 27
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "attack",
-      "target": 25
-    },
-    {
-      "kind": "attack",
-      "target": 25
-    },
-    {
-      "kind": "attack",
-      "target": 25
-    },
-    {
-      "kind": "attack",
-      "target": 25
-    },
-    {
-      "kind": "attack",
-      "target": 25
-    },
-    {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "leave"
-    },
-    {
-      "kind": "go",
-      "door": 1
-    },
-    {
-      "kind": "go",
-      "door": 2
-    },
-    {
-      "kind": "go",
-      "door": 3
+      "kind": "act",
+      "verb": "search",
+      "target": 1000
     },
     {
       "kind": "act",
-      "verb": "undock"
+      "verb": "key",
+      "target": 1
     },
     {
-      "kind": "go",
-      "door": 1
+      "kind": "attack",
+      "target": 8
     }
   ],
   "expect": {
     "status": "dead",
-    "sortie": 8,
+    "sortie": 3,
     "ships": 3,
-    "credits": 10,
-    "deaths": 3,
+    "credits": 14,
+    "deaths": 1,
     "sold": 0,
     "charters": 0,
-    "kills": 19,
-    "turns": 304,
+    "kills": 6,
+    "turns": 127,
     "rig": {
       "slots": [
         null,
@@ -1124,6 +488,6 @@
       ]
     }
   },
-  "fingerprint": "07f64afc",
-  "codeSha": "5ec1c4ad5123e700649c9ca533d064798ba301ad"
+  "fingerprint": "547f53ba",
+  "codeSha": "7340f2cae9c43c47b710e37461f2dd9bad184d00"
 }

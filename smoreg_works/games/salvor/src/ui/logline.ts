@@ -1,4 +1,4 @@
-import type { LogLine } from "@jamrog/engine";
+import type { LogLine, RoomGame } from "@jamrog/engine";
 import type { Key } from "../content/i18n/keys.js";
 import { machineName } from "../content/monsters.js";
 import { doorStateWord } from "../content/words.js";
@@ -201,4 +201,22 @@ export function historyPages(lines: readonly LogLine[], rows: number): string[][
     pages.push(text.slice(Math.max(0, end - size), end));
   }
   return pages;
+}
+
+/** The lines that mean something exploded: a compartment, or the ship. */
+const BLAST_KEYS: ReadonlySet<string> = new Set(["log.alert.blast", "log.alert.boom"]);
+
+/**
+ * The line of something exploding on the turn just gone, if one did. Read off
+ * the log's tail rather than off a frame counter: the detonation moves the
+ * operator home in the same turn, and the tug's clock is not the derelict's,
+ * so "this turn" is whatever turn the newest line was written on. The line
+ * itself, so the shell can play the flash once per blast and not once per
+ * redraw (`ui/web/mount.ts`, `boomed`).
+ */
+export function blastLineOf(game: RoomGame): LogLine | undefined {
+  const tail = game.log.tail(8);
+  const newest = tail[tail.length - 1];
+  if (newest === undefined) return undefined;
+  return tail.find((line) => line.key !== undefined && BLAST_KEYS.has(line.key) && line.turn === newest.turn);
 }

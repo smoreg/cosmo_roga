@@ -17,6 +17,7 @@ import {
 import { FREIGHTER, derelictSpec } from "../content/derelicts.js";
 import { DEFUSE_NOISE, DEFUSE_TURNS } from "../content/hazards.js";
 import { hint } from "../content/hints.js";
+import type { Key } from "../content/i18n/keys.js";
 import { moduleBurnLine, moduleName, type ModuleId } from "../content/modules.js";
 import { verbWord } from "../content/words.js";
 import { t } from "../i18n.js";
@@ -62,6 +63,16 @@ const SEARCH_NOISE = 2;
 /** Turns of welding a door takes. Cutting is the engine's `BREACH_TURNS`. */
 const WELD_TURNS = 2;
 
+/**
+ * Ramming a bulkhead with the chassis: no module, no key, and nothing that
+ * burns — only eight turns in a row, every one of them loud enough to be heard
+ * across the deck, with the THRUSTERS under every blow that lands meanwhile
+ * (`twist/rig.ts`, `VERB_MODULE`). The owner's word for it (G90): a drone is
+ * never walled in by a lock or a weld, it is only made to pay for the way out.
+ */
+const RAM_TURNS = 8;
+const RAM_NOISE = 12;
+
 /** Integrity a lock takes out of the CELL that powers it open. */
 const CELL_COST = 1;
 
@@ -69,7 +80,7 @@ const CELL_COST = 1;
 const BODY_CREDITS = 3;
 
 /** The verbs this system owns. Everything else falls through to the next one. */
-type DoorVerb = "key" | "power" | "spike" | "cut" | "weld" | "close" | "defuse";
+type DoorVerb = "key" | "power" | "spike" | "cut" | "weld" | "close" | "defuse" | "ram";
 
 /**
  * The four ways through a lock, in the order the action list offers them, which
@@ -89,8 +100,13 @@ type DoorVerb = "key" | "power" | "spike" | "cut" | "weld" | "close" | "defuse";
  * ship hears. `power` before `cut` and not the other way round is measured too,
  * and it is not close — a SCRAPPER carries both, and putting the torch first
  * costs it seven wins in 200 against nine.
+ *
+ * The ram is behind even the card: it is always there, so it is what is left
+ * when everything else is spent — and a bot reading the list takes the first
+ * way it can, which must never be the eight loudest turns of the sortie while
+ * a quieter one is in the rack.
  */
-const LOCKED_METHODS: readonly DoorVerb[] = ["power", "spike", "cut", "key"];
+const LOCKED_METHODS: readonly DoorVerb[] = ["power", "spike", "cut", "key", "ram"];
 
 /** Which module each method spends, for the line that says why it is greyed. */
 const METHOD_MODULE: Readonly<Partial<Record<DoorVerb, ModuleId>>> = {
@@ -114,19 +130,27 @@ const DONE = (): Outcome => ({ ok: true, cost: TURN_COST });
  * back starts the cut again.
  */
 interface Work {
-  verb: "cut" | "weld" | "defuse";
+  verb: "cut" | "weld" | "defuse" | "ram";
   door: DoorId;
   left: number;
   /** Index in `game.inputs` of the command that did this turn of the job. */
   turn: number;
 }
 
+/** The line for a job dropped where it stood, by job. */
+const BREAK_LINE: Readonly<Record<Work["verb"], Key>> = {
+  cut: "log.work.break.cut",
+  weld: "log.work.break.weld",
+  defuse: "log.work.break.defuse",
+  ram: "log.work.break.ram",
+};
+
 /** Defensive: `room.data` round-trips through a save, so nothing in it is trusted. */
 function workOf(room: Room): Work | undefined {
   const raw = room.data.work;
   if (typeof raw !== "object" || raw === null) return undefined;
   const w = raw as Partial<Work>;
-  if (w.verb !== "cut" && w.verb !== "weld" && w.verb !== "defuse") return undefined;
+  if (w.verb !== "cut" && w.verb !== "weld" && w.verb !== "defuse" && w.verb !== "ram") return undefined;
   if (typeof w.door !== "number" || typeof w.left !== "number" || typeof w.turn !== "number") {
     return undefined;
   }
@@ -361,6 +385,37 @@ function cutOpen(game: RoomGame, room: Room, door: Door): Outcome {
 }
 
 /**
+ * The chassis: eight turns in a row, twelve noise each, and a hole that stays.
+ *
+ * The one way through a lock or a weld that asks for nothing the drone might
+ * have lost, which is exactly why it costs the most of anything on the list:
+ * eight turns is longer than the cutter and the spike put together, and twelve
+ * is louder than anything else a drone does. The blows that land meanwhile go
+ * into the THRUSTERS doing the ramming, the way a step's do.
+ */
+function ramOpen(game: RoomGame, room: Room, door: Door): Outcome {
+  if (door.state !== "locked" && door.state !== "sealed") {
+    return FAIL(t("why.door.noRam", { door: door.label }));
+  }
+
+  const left = advance(game, room, "ram", door, RAM_TURNS);
+  game.makeNoise(room.id, RAM_NOISE);
+  if (left > 0) {
+    game.log.add(
+      t("log.door.ram.on", { door: door.label, left }),
+      game.schedule.time,
+      "warn",
+      "log.door.ram.on",
+    );
+    return DONE();
+  }
+
+  door.state = "broken";
+  game.log.add(t("log.door.ram.done", { door: door.label }), game.schedule.time, "good", "log.door.ram.done");
+  return DONE();
+}
+
+/**
  * With this door welded shut, can the drone still walk to the airlock?
  *
  * Two words in that sentence are the whole rule, and G14's first version of
@@ -546,6 +601,7 @@ function doorOffers(game: RoomGame, rig: Rig | undefined, door: Door): Array<Act
     weld: carries(rig, "welder"),
     defuse: carries(rig, "welder"),
     close: true,
+    ram: true,
   };
 
   // The mine first, whatever else the door is: it is the thing that goes off
@@ -559,8 +615,12 @@ function doorOffers(game: RoomGame, rig: Rig | undefined, door: Door): Array<Act
   switch (door.state) {
     case "locked":
       return [...mine, ...LOCKED_METHODS.map((verb) => offer(verb, door, has[verb], missing(verb)))];
+    // A weld has two answers now, and the torch stays ahead of the chassis
+    // for the same reason the card does on a lock: three loud turns are
+    // cheaper than eight louder ones, and the first enabled line is the one
+    // that gets taken.
     case "sealed":
-      return has.cut ? [offer("cut", door, true)] : [];
+      return has.cut ? [offer("cut", door, true), offer("ram", door, true)] : [offer("ram", door, true)];
     case "open":
       return has.weld
         ? [...mine, offer("close", door, true), weldOffer(game, door)]
@@ -611,6 +671,8 @@ export const DOORS: System<RoomGame> = {
         return defuseMine(game, room, door);
       case "close":
         return closeDoor(game, door);
+      case "ram":
+        return ramOpen(game, room, door);
     }
   },
 
@@ -630,16 +692,7 @@ export const DOORS: System<RoomGame> = {
     const work = workOf(room);
     if (!work || work.turn === game.inputs.length - 1) return;
     delete room.data.work;
-    game.log.add(
-      work.verb === "cut"
-        ? t("log.work.break.cut")
-        : work.verb === "defuse"
-          ? t("log.work.break.defuse")
-          : t("log.work.break.weld"),
-      game.schedule.time,
-      "warn",
-      "log.work.break",
-    );
+    game.log.add(t(BREAK_LINE[work.verb]), game.schedule.time, "warn", "log.work.break");
   },
 
   offerActions(game) {
@@ -672,6 +725,6 @@ export const DOORS: System<RoomGame> = {
 function isDoorVerb(verb: string): verb is DoorVerb {
   return (
     verb === "key" || verb === "power" || verb === "spike" ||
-    verb === "cut" || verb === "weld" || verb === "close" || verb === "defuse"
+    verb === "cut" || verb === "weld" || verb === "close" || verb === "defuse" || verb === "ram"
   );
 }

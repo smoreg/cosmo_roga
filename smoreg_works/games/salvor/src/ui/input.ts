@@ -1,4 +1,4 @@
-import type { RoomCommand, RoomId } from "@jamrog/engine";
+import type { DoorId, RoomCommand, RoomId } from "@jamrog/engine";
 import type { Key } from "../content/i18n/keys.js";
 import type { CodexEntry } from "../content/codex.js";
 import { moduleName, type ModuleId } from "../content/modules.js";
@@ -80,6 +80,11 @@ export type UiIntent =
    */
   | { kind: "codex" }
   /**
+   * `v`, or a click on the panel's virus line: the window saying which strain
+   * is aboard, what it does and how to be rid of it (G90). Never a turn.
+   */
+  | { kind: "virus" }
+  /**
    * The message log as a card. `delta` is `1` for further back and `-1` for
    * nearer, which is what `PageUp` and `PageDown` mean everywhere else.
    */
@@ -109,6 +114,11 @@ export type UiIntent =
    * walk there, step there, or open the bulkhead in the way.
    */
   | { kind: "room"; id: RoomId }
+  /**
+   * A door on the honeycomb, clicked: its corridor or its tag. Takes the list
+   * to that door's own row (`ui/appstate.ts`, `doorClicked`), never a turn.
+   */
+  | { kind: "door"; id: DoorId }
   /** One turn of closing in. `melee` never fires the emitter: shift+tab. */
   | { kind: "fight"; melee: boolean }
   | { kind: "none" };
@@ -150,6 +160,13 @@ export function isChord(e: KeyLike): boolean {
  * `UiIntent["kind"]` is exhaustive with no default, so a member added there
  * for one DOM-only toggle would demand a case in a file this task does not own.
  */
+/**
+ * The virus window's key. Exported because the panel's virus line carries it:
+ * the terminal prints it at the head of the line and the page presses it when
+ * the line is clicked (`ui/panel.ts`, `ui/web/mount.ts`).
+ */
+export const VIRUS_KEY = "v";
+
 export function isDebugKey(e: KeyLike): boolean {
   return e.key === "`";
 }
@@ -283,6 +300,9 @@ export function toIntent(e: KeyLike, rig?: Rig): UiIntent {
   // press opens the card the badge in the corner is counting, the arrows page
   // through the rest, and `esc` — or the same key again — puts it away.
   if (e.key === "i") return { kind: "codex" };
+  // `v` for the virus window, and it was free: off the rose, not a module
+  // letter, and not `V` — the view key the shell reads before this (G90).
+  if (e.key === VIRUS_KEY) return { kind: "virus" };
   // `PageUp` into the log's own past, `PageDown` back towards now. Both keys
   // were dead, the log keeps two hundred lines and the screen shows seven of
   // them, and the view that starts is the one with no scrollbar at all
@@ -354,6 +374,7 @@ const KEY_ROWS = [
   ["module.cutter", "help.key.cutter"],
   ["help.name.keycard", "help.key.keycard"],
   ["help.name.codex", "help.key.codex"],
+  ["help.name.virus", "help.key.virus"],
   ["help.name.log", "help.key.log"],
   ["help.name.help", "help.key.help"],
 ] as const satisfies ReadonlyArray<readonly [Key, Key]>;

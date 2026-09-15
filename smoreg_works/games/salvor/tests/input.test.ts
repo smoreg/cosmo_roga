@@ -217,7 +217,7 @@ describe("key mapping", () => {
     const help = [...keyHelp(), ...ruleHelp()].join("\n");
     const keys = [
       "1-9", "0", ".", "h", "m", "d", "shift+D", "<", "o", "tab",
-      "s", "e", "w", "p", "K", "f", "c", "?", "shift+R",
+      "s", "e", "w", "p", "K", "f", "c", "?", "shift+R", "v",
     ];
     for (const token of [...keys, "up/down", "enter", "L"]) {
       expect(help, token).toContain(token);
@@ -298,7 +298,7 @@ describe("the cards fit their frames", () => {
     // BENCH, HELM are gone from the screen and from this card with them).
     const tug = helpBody(true).slice(0, tugHelp().length).join(" ");
     expect(tug).toContain("tug");
-    for (const verb of ["buy", "stow", "sell", "charter", "cast off"]) expect(tug, verb).toContain(verb);
+    for (const verb of ["buy", "stow", "sell", "pick a hull", "cast off"]) expect(tug, verb).toContain(verb);
     for (const station of ["DOCK", "HOLD", "BENCH", "HELM"]) expect(tug, station).not.toContain(station);
 
     const ship = helpBody(false).slice(0, shipHelp().length).join(" ");
@@ -321,7 +321,7 @@ describe("the cards fit their frames", () => {
     expect(card).toContain("ACTIONS");
     expect(card).toContain("CHARTERS");
     expect(card).toContain("SALVAGE");
-    expect(card).toContain("NEUTRALIZE");
+    expect(card).toContain("START 3");
     // Each block leads with the heading the renderer sets in the bright colour.
     // The last block is the run's own: what this voyage has already shown you
     // (G72), and it is on the card only when there is something in it — hence

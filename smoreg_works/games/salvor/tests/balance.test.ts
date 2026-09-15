@@ -25,8 +25,15 @@ import { OBJECTIVE_COUNT } from "../src/content/objectives.js";
  * went wrong.
  */
 
-/** Long enough for the whole itinerary at the length the design document wants. */
-const MAX_STEPS = 1500;
+/**
+ * Long enough for the whole itinerary at the length the design document wants.
+ * 3000 rather than 1500 since G90 A and B: a careful bot that cycles the last
+ * hull sortie after sortie now runs the account dry at about 2100 steps (seed
+ * 18; 2536 on seed 14 with the larger starting hulls) instead of losing the
+ * drone to the old scuttle first — the voyage still ends, it just takes
+ * longer to.
+ */
+const MAX_STEPS = 3000;
 
 const SEEDS = seedRange(1, 32);
 

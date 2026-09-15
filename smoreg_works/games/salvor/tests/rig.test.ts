@@ -333,14 +333,14 @@ describe("damage routing", () => {
 
   it("signs a blow nothing dealt by whatever owned it, and by 'Something' only when nothing did", () => {
     const game = gameOn(PAIR);
-    const hits = () => game.log.lines.filter((l) => l.key === "log.hit.vent" || l.key === "log.hit.module");
-    blamedOn("log.hit.vent", () => RIG.onDamage!(game, game.player, 1, undefined));
-    expect(hits().map((l) => l.key)).toEqual(["log.hit.vent"]);
+    const hits = () => game.log.lines.filter((l) => l.key === "log.hit.blast" || l.key === "log.hit.module");
+    blamedOn("log.hit.blast", () => RIG.onDamage!(game, game.player, 1, undefined));
+    expect(hits().map((l) => l.key)).toEqual(["log.hit.blast"]);
     expect(hits()[0]!.text.startsWith("Something")).toBe(false);
 
     // The cause lasts exactly as long as the blow it was named for.
     RIG.onDamage!(game, game.player, 1, undefined);
-    expect(hits().map((l) => l.key)).toEqual(["log.hit.vent", "log.hit.module"]);
+    expect(hits().map((l) => l.key)).toEqual(["log.hit.blast", "log.hit.module"]);
     expect(hits()[1]!.text.startsWith("Something")).toBe(true);
   });
 

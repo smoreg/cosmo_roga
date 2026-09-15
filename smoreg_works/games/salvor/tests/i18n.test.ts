@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RoomGame,
   replayRooms,
@@ -27,8 +27,10 @@ import { doorStateWord, verbWord } from "../src/content/words.js";
 import {
   DEFAULT_LANG,
   LANGS,
+  LANG_STORAGE_KEY,
   currentLang,
   cycleLang,
+  initLang,
   resolveLang,
   setLang,
   t,
@@ -46,7 +48,7 @@ import { DEFAULT_TITLE, titleLines, titleScreen } from "../src/ui/title.js";
 import { ENGINE_KEYS, logText } from "../src/ui/logline.js";
 import { BOX_PAD_X, helpBody, helpBox, titleBox } from "../src/ui/render.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
-import { MAX_LEVEL, SCUTTLE_WARN } from "../src/systems/alert.js";
+import { DETONATION_TURNS, HUNTER_LEVEL, MAX_LEVEL } from "../src/systems/alert.js";
 
 /**
  * Three languages, one table, and the four things that can go wrong with that.
@@ -225,6 +227,47 @@ describe("choosing a language", () => {
     expect(resolveLang("?seed=4", "ru")).toBe("ru");
     expect(resolveLang("", null)).toBe("en");
     expect(resolveLang("?lang=klingon", null)).toBe("en");
+  });
+
+  /**
+   * The first run a jam voter sees (docs/tasks/G89-festival.md, C1): a Russian
+   * or Spanish browser, nothing in storage, no `?lang=` — English. The boot path
+   * is driven the way `ui/app.ts` drives it, with the browser's own language
+   * set to the one that must not win and a store that has never been written.
+   */
+  it("boots in English whatever the browser speaks, until the player picks", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("navigator", { language: "ru-RU", languages: ["ru-RU", "ru", "es"] });
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
+    try {
+      setLang("ru");
+      store.clear();
+      expect(initLang("")).toBe("en");
+      expect(currentLang()).toBe("en");
+      expect(t("title.menu.training")).toBe(EN["title.menu.training"]);
+      // A store that holds something that is not a language is no preference.
+      store.set(LANG_STORAGE_KEY, "ru-RU");
+      expect(initLang("?seed=7")).toBe("en");
+      // The player's own choice, and only that, survives a reload.
+      cycleLang();
+      cycleLang();
+      expect(initLang("")).toBe("ru");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("leaves the choice to the player: no file but the table sets a language", () => {
+    // `setLang` is called from `i18n.ts` alone, and nothing reads the browser's
+    // language at all — so no path can switch a session to Russian on its own.
+    for (const file of sources(SRC)) {
+      if (file.endsWith(join("src", "i18n.ts"))) continue;
+      const src = readFileSync(file, "utf8");
+      expect(src, file).not.toMatch(/\bsetLang\(|navigator\.language|\.languages\b/);
+    }
   });
 
   it("gives `?lang=es` and pressing the key the same screen", () => {
@@ -669,7 +712,9 @@ describe("the widths hold in all three languages", () => {
         expect(label.length, `${lang}: ${label}`).toBeLessThanOrEqual(ACTION_WIDTH);
       }
       for (const text of [
-        tIn(lang, "panel.alertScuttle", { gauge: "▮".repeat(MAX_LEVEL), n: SCUTTLE_WARN }),
+        tIn(lang, "panel.alertBoom", { gauge: "▮".repeat(MAX_LEVEL), n: DETONATION_TURNS }),
+        tIn(lang, "panel.alertStage", { gauge: "▮".repeat(MAX_LEVEL), stage: tIn(lang, "alert.detonation") }),
+        tIn(lang, "panel.fuse", { room: "r12", n: 5 }),
         tIn(lang, "panel.goal.bare"),
         tIn(lang, "panel.keys", { n: 9 }),
         `   ${tIn(lang, "panel.contact.hit", { module: widest })}`,
@@ -723,7 +768,7 @@ describe("pressing the key changes the words and nothing else", () => {
 
   it("leaves the commands and the run alone: same seed, same voyage, any language", () => {
     const script: RoomCommand[] = [
-      { kind: "act", verb: "charter", target: 2200 },
+      { kind: "act", verb: "berth", target: 2300 },
       { kind: "act", verb: "undock" },
       { kind: "wait" },
       { kind: "wait" },
@@ -898,7 +943,7 @@ describe("one word, one thing", () => {
     }
   });
 
-  it("gives the fourth rung of the alert the machine's own name", () => {
+  it("gives the hunter's rung of the alert the machine's own name", () => {
     for (const lang of LANGS) {
       setLang(lang);
       const machine = machineName(ENFORCER.id).toUpperCase();
@@ -906,7 +951,7 @@ describe("one word, one thing", () => {
       // The panel's presence line and the codex card the player goes looking
       // for both carry it, which is what makes the card findable at all.
       expect(t("panel.hunter"), lang).toContain(machine);
-      expect(t("codex.alert-4.title"), lang).toContain(machine);
+      expect(t(`codex.alert-${HUNTER_LEVEL}.title` as Key), lang).toContain(machine);
     }
   });
 });

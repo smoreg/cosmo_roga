@@ -19,7 +19,7 @@ import { t, tId } from "../i18n.js";
 import { roomList, type RoomItem, type ShipSystem } from "../systems/populate.js";
 import { shipState } from "../systems/shipstate.js";
 import { gatedOffers } from "../systems/tug.js";
-import { pickLabel, stationTargets, voyageRecord } from "../systems/voyage.js";
+import { choiceHeads, jumpRowLabel, pickLabel, stationTargets, voyageRecord } from "../systems/voyage.js";
 import { hostilesIn, wreckAt } from "../twist/rig.js";
 import { dangerAhead, passableForPlayer, travelRoute } from "./auto.js";
 import { BUCKET_GLYPH } from "./schematic-input.js";
@@ -197,6 +197,10 @@ const DOOR_VERBS: Record<string, string> = {
   // door, listed with the ways through it and reached by number only — `w`
   // is the weld, and one letter cannot mean two turns.
   defuse: "",
+  // The chassis through a lock or a weld (`systems/doors.ts`, `ram`): no
+  // module, so no letter — the letters name the catalogue — and reached by
+  // number, last of the ways through the door it is offered on.
+  ram: "",
 };
 
 /**
@@ -380,8 +384,11 @@ const TUG_ROWS: readonly TugRow[] = [
   // explains both at once.
   { verb: "fit", also: "order", nest: true, empty: "why.hold.shelf" },
   { verb: "sell", nest: true, empty: "why.rig.empty" },
-  { head: "tug.group.voyage", verb: "charter", nest: true, empty: "why.charter.gone" },
-  { head: "tug.group.jump", verb: "jump", label: "action.dead.jump", empty: "why.jump.last" },
+  // Where to fly, and for which contract, is one list: a line is a hull and the
+  // job signed with it (G90 F). The first stop's hulls ride on the same row
+  // until one of them is chosen, which is why the row carries both verbs and
+  // only ever has lines of one of them.
+  { head: "tug.group.jump", verb: "jump", also: "berth", nest: true, empty: "why.jump.last" },
   { verb: "undock", label: "action.dead.undock", empty: "why.tug.noDrone" },
 ];
 
@@ -458,7 +465,9 @@ function tugRow(
   offers: ReadonlyArray<ActionOffer<RoomCommand>>,
   own: ReadonlyArray<ActionOffer<RoomCommand>>,
 ): Action {
-  const label = (row.label === undefined ? pickLabel(row.verb) : t(row.label)) ?? row.verb;
+  const label = row.verb === "jump"
+    ? offers.length === 0 ? t("action.dead.jump") : jumpRowLabel(game)
+    : (row.label === undefined ? pickLabel(row.verb) : t(row.label)) ?? row.verb;
   if (offers.length === 0) {
     const line = raw(label, tugDead(row.verb), false);
     line.why = t(noDrone(game) ? "why.tug.noDrone" : row.empty);
@@ -514,7 +523,16 @@ function tugPicks(game: RoomGame, verb: string): Action[] | undefined {
   if (!row || row.nest !== true) return undefined;
   const offers = rowTargets(game, row).all;
   if (offers.length === 0) return undefined;
-  return [...offers.map(fromOffer), backToRoom()];
+  // A stop's list prints each hull over its own contracts.
+  const heads = [...choiceHeads(game, row.verb), ...(row.also === undefined ? [] : choiceHeads(game, row.also))];
+  return [
+    ...offers.map((o, i) => {
+      const line = fromOffer(o);
+      const head = heads[i];
+      return head === undefined ? line : { ...line, head };
+    }),
+    backToRoom(),
+  ];
 }
 
 /** Is that verb's own list still standing? The level falls away when it is not. */
@@ -801,7 +819,7 @@ function fitted(a: Action): Action {
  * order of what a player can do without:
  *
  * 1. the price in brackets at the end goes to the row below (`Action.extra`),
- *    which is where `purge EMITTER (welder, 2 turns)` keeps its two turns;
+ *    which is where `purge EMITTER (by hand, 6 turns)` keeps its six turns;
  * 2. then the name gives up words from its end, because `attack maintenance
  *    4/4` is still the same machine and still on four hit points;
  * 3. then the name itself is cut, and says so with `…` — never the figures.
@@ -1059,9 +1077,13 @@ export function doorMenu(door: Door, label: string, ways: readonly DoorWay[]): A
  * this game teaches by showing it next to the door that needs it.
  */
 function doorMethods(game: RoomGame, id: DoorId): Action[] | undefined {
-  const { doors, forDoors } = situation(game);
+  const { here, doors, forDoors } = situation(game);
   const door = doors.find((d) => d.id === id);
   if (!door || door.state === "airlock") return undefined;
+  // Every way through points at the compartment beyond, so the map lights it
+  // while the list is open (`ui/appstate.ts`, `aimedAt`); the way back does not.
+  const beyond = game.ship.other(door, here);
+  const aimed = (line: Action): Action => ({ ...line, leadsTo: beyond });
   if (game.ship.passable(door, { isPlayer: true })) {
     // A door the drone could simply walk through is a question only when the
     // drone has been told what is on the other side of it (`ui/auto.ts`,
@@ -1070,11 +1092,11 @@ function doorMethods(game: RoomGame, id: DoorId): Action[] | undefined {
     // a door short hands the decision over (docs/tasks/G71-hazard-framework.md).
     if (dangerAhead(game, door) === undefined) return undefined;
     const through: DoorWay = { verb: "go", letter: "", cmd: { kind: "go", door: door.id }, enabled: true };
-    return [methodAction(through), ...waysOf(forDoors, id).map(methodAction), backAction(door)];
+    return [aimed(methodAction(through)), ...waysOf(forDoors, id).map((w) => aimed(methodAction(w))), backAction(door)];
   }
   const ways = waysOf(forDoors, id);
   if (ways.length === 0) return undefined;
-  return [...ways.map(methodAction), backAction(door)];
+  return [...ways.map((w) => aimed(methodAction(w))), backAction(door)];
 }
 
 /** Is that bulkhead still one of this compartment's, and still a question? */

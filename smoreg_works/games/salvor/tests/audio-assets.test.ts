@@ -26,8 +26,10 @@ const TRACK = "main";
 
 /**
  * Every one-shot. The first three are rendered from music/src/stingers; the ten
- * after them come out of ElevenLabs. `SfxId` in src/ui/sfx.ts is this list, and
- * the build fails outright if one is missing — an id there is a static import.
+ * after them come out of ElevenLabs; the last two are synthesised by
+ * music/scripts/synth-sfx.sh with sox. `SfxId` in src/ui/sfx.ts is this list,
+ * and the build fails outright if one is missing — an id there is a static
+ * import.
  */
 const ONE_SHOTS = [
   "system",
@@ -43,6 +45,9 @@ const ONE_SHOTS = [
   "door",
   "emitter",
   "machine",
+  "explode",
+  "fuse",
+  "purge",
 ];
 
 /** games/salvor/music/README.md, "Правила экспорта". */

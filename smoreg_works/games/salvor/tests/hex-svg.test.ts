@@ -8,6 +8,8 @@ import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { DERELICTS, buildDerelict } from "../src/content/derelicts.js";
 import { schematicInputOf } from "../src/ui/schematic-input.js";
 import { hexSvgOf } from "../src/ui/web/hex-svg.js";
+import { WEB_CSS } from "../src/ui/web/styles.js";
+import { t } from "../src/i18n.js";
 
 /**
  * The honeycomb drawing. What the layout guarantees is tested in the engine
@@ -146,12 +148,101 @@ describe("the honeycomb drawing", () => {
     expect(new Set(at).size).toBe(at.length);
   });
 
+  it("says in a tooltip what each hexagon is and what is in it, and no more than the drone knows", () => {
+    const game = gameIn();
+    const input = schematicInputOf(game);
+    const svg = hexSvgOf(input, hexLayout(game.ship));
+    expect(count(svg, "<title>")).toBe(game.ship.rooms.length);
+    for (const room of input.rooms) {
+      const head = room.state === "unknown" ? `···· ${room.label}` : `${room.name} ${room.label}`;
+      const words = (room.things ?? []).map((thing) => thing.name);
+      expect(svg, room.label).toContain(`<title>${[head, ...words].join(" · ")}</title>`);
+    }
+    // r5 is unknown: its tooltip is its number, never its name.
+    expect(svg).not.toContain("<title>REACTOR");
+  });
+
   it("closes every tag it opens", () => {
     const svg = svgOfGame(gameIn());
     expect(count(svg, "<svg")).toBe(1);
     expect(count(svg, "</svg>")).toBe(1);
     expect(count(svg, "<g ")).toBe(count(svg, "</g>"));
     expect(count(svg, "<text")).toBe(count(svg, "</text>"));
+  });
+});
+
+// ------------------------------------------------------------ and its hazards
+
+/**
+ * Artboard 3b: a known hazard takes the floor of its hexagon and a rim along
+ * the two upper edges, with the codex's word for it over the name; a known trap
+ * puts a chevron over its door's label. Nothing of it before the drone knows.
+ */
+describe("the honeycomb's hazards", () => {
+  const HAZARDS_SHIP = `
+    TUG -a1- r1
+    r1 -d1- r2
+    r2 -d2- r3
+    r3 -d3- r4
+    r1: docking explored
+    r2: cargo
+    r3: hab hazard=smoke
+    r4: engineering hazard=frost
+    d3: trap=mine
+  `;
+
+  function hazardGame(): RoomGame {
+    const config: Omit<RoomGameConfig, "seed"> = {
+      ...GAME_CONFIG,
+      content: { ...SALVOR, monsterChance: () => 0 },
+      firstShip: () => shipFromText(HAZARDS_SHIP).ship,
+      firstShipId: "1",
+    };
+    return new RoomGame({ ...config, seed: 7 });
+  }
+
+  it("draws nothing of a hazard the drone has not been told about", () => {
+    const game = hazardGame();
+    const svg = svgOfGame(game);
+    expect(svg).not.toContain("hz-");
+    expect(svg).not.toContain("trap-mark");
+  });
+
+  it("tints the floor, rims the two upper edges and names it — and still shows what is inside", () => {
+    const game = hazardGame();
+    // A pulse is how a hazard gets known without a sign (`hazardKnown`).
+    game.ship.room("r3").scanned = true;
+    game.ship.room("r4").scanned = true;
+    const input = schematicInputOf(game);
+    expect(input.rooms.find((r) => r.label === "r3")!.hazard).toEqual({ id: "smoke", word: t("codex.smoke.title") });
+    expect(input.rooms.find((r) => r.label === "r4")!.hazard).toEqual({ id: "frost", word: t("codex.frost.title") });
+    expect(input.doors.find((d) => d.label === "d3")!.trap).toBe("mine");
+    expect(input.doors.find((d) => d.label === "d2")!.trap).toBeUndefined();
+
+    const svg = hexSvgOf(input, hexLayout(game.ship));
+    expect(svg).toMatch(/<g class="room is-scanned hz-smoke" data-room="\d+">/);
+    expect(svg).toMatch(/<g class="room is-scanned hz-frost" data-room="\d+">/);
+    expect(count(svg, '<polyline class="hz-rim"')).toBe(2);
+    for (const [, points] of svg.matchAll(/class="hz-rim" points="([^"]+)"/g)) {
+      expect(points!.split(" ")).toHaveLength(3);
+    }
+    expect(svg).toContain(`>${t("codex.smoke.title")}</text>`);
+    expect(svg).toContain(`>${t("codex.frost.title")}</text>`);
+    // The smoke is not a blindfold on the map: the glyph row is still drawn.
+    const smoke = input.rooms.find((r) => r.label === "r3")!;
+    expect(smoke.glyphs).toContain("≈");
+    expect(svg).toContain(`>${smoke.glyphs}</text>`);
+
+    // The mine: a chevron over the label, and the plate on the warning colour.
+    expect(count(svg, '<polyline class="trap-mark"')).toBe(1);
+    expect(svg).toMatch(/<g class="door is-\w+ has-trap hz-mine" data-door="\d+">/);
+  });
+
+  it("gives the tint the one floor no state uses, and leaves red to the machines", () => {
+    expect(WEB_CSS).toContain(".hexmap .room.hz-frost:not(.is-alarmed) .room-box{fill:#101c22;");
+    expect(WEB_CSS).toContain(".hexmap .room.hz-smoke:not(.is-alarmed) .room-box{fill:#1a1a18;");
+    expect(WEB_CSS).toMatch(/\.hexmap \.trap-mark\{[^}]*stroke:var\(--warn\)/);
+    expect(WEB_CSS).toMatch(/\.hexmap \.door\.has-trap \.door-tag\{fill:var\(--warn\)/);
   });
 });
 
@@ -185,6 +276,10 @@ describe("the honeycomb without a hull", () => {
     // this very call, written down before `hexSvgOf` learned its fourth
     // argument. If this fails, the bare honeycomb has changed — which may be
     // right, but has to be on purpose, and then the file is re-recorded.
+    // Re-recorded on 14.09 (G89 A8) for one change only: a `<title>` as the
+    // first child of every hexagon's group, the tooltip under a pointer.
+    // And again on 14.09 (G90 D2, D3) for two: the drone's amber mark after
+    // everything else on the deck, and `data-door` on every corridor and tag.
     const config: Omit<RoomGameConfig, "seed"> = {
       ...GAME_CONFIG,
       content: { ...SALVOR, monsterChance: () => 0 },

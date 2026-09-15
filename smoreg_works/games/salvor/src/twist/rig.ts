@@ -320,15 +320,14 @@ export function graft(rig: Rig, slot: number): RepairResult | undefined {
  */
 const VERB_MODULE: Record<string, ModuleId> = {
   close: "thrusters",
+  // Ramming a bulkhead is the chassis at work, and the chassis is the
+  // THRUSTERS: eight turns of it, every one with the drive under the blow.
+  ram: "thrusters",
   weld: "welder",
   cut: "cutter",
   spike: "spike",
   power: "cell",
   shoot: "emitter",
-  // Burning a virus out is welding, and it exposes the welder like any other
-  // welding does (`systems/virus.ts`). Without the row the purge would expose
-  // the PLATING, which is the one thing a drone standing still is not risking.
-  cure: "welder",
 };
 
 /**
@@ -371,6 +370,10 @@ function actExposure(game: RoomGame, rig: Rig, cmd: Extract<RoomCommand, { kind:
   }
   // A swap is the drone picking a crate up with its hands, like a carry.
   if (cmd.verb === "swap") return findSlotAs(rig, "plating");
+  // A purge is hands-on work, unless a SPIKE is doing it for half the turns —
+  // then the SPIKE is what is plugged in and what a blow lands on
+  // (`systems/virus.ts`, G90).
+  if (cmd.verb === "cure") return findSlotAs(rig, "spike") ?? findSlotAs(rig, "plating");
   return findSlotAs(rig, VERB_MODULE[cmd.verb] ?? "plating");
 }
 
@@ -1067,8 +1070,12 @@ export function hackTargetAt(game: RoomGame, target: number): HackTarget | undef
   return undefined;
 }
 
-/** Asked of every blow at the drone: does this one land at all? */
-export type DamageVeto = (game: RoomGame, source: Entity | undefined) => boolean;
+/**
+ * Asked of every blow at the drone: does this one land at all? `amount` is
+ * what would reach the rack, for a rule that sends the blow somewhere else
+ * (`systems/crowd.ts`, the stray shot) rather than only waving it off.
+ */
+export type DamageVeto = (game: RoomGame, source: Entity | undefined, amount: number) => boolean;
 
 const DAMAGE_VETOES: DamageVeto[] = [];
 
@@ -1087,8 +1094,8 @@ export function registerDamageVeto(veto: DamageVeto): void {
 }
 
 /** Does anything say this blow does not land? First refusal is enough. */
-function vetoed(game: RoomGame, source: Entity | undefined): boolean {
-  return DAMAGE_VETOES.some((veto) => veto(game, source));
+function vetoed(game: RoomGame, source: Entity | undefined, amount: number): boolean {
+  return DAMAGE_VETOES.some((veto) => veto(game, source, amount));
 }
 
 /**
@@ -1362,7 +1369,7 @@ export const RIG: Twist<RoomGame> = {
     if (victim.id !== game.player.id) return amount;
     // Before anything is routed, logged or burned: a blow somebody vetoed is a
     // blow that did not happen (`registerDamageVeto`).
-    if (vetoed(game, source)) return 0;
+    if (vetoed(game, source, amount)) return 0;
 
     const rig = rigOf(game.player);
     if (!rig) return amount;

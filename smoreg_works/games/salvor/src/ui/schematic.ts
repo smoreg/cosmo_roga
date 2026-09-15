@@ -105,6 +105,20 @@ export interface SchematicRoom {
    * pulse cannot reflow the drawing under the reader's eye.
    */
   alarm?: boolean;
+  /**
+   * The hazard filling the compartment, once the drone knows of it: the id the
+   * honeycomb tints the floor by, and the codex's own short name for it, written
+   * over the compartment's name. Decided by the same test that puts the hazard's
+   * glyph among `things` (`ui/schematic-input.ts`, `knownHazard`), so the tint
+   * and the glyph cannot disagree. Absent in a hand-written fixture.
+   */
+  hazard?: { id: string; word: string };
+  /**
+   * Turns left on the charge the ship set in here (`systems/alert.ts`,
+   * `fuseIn`): a red number on the box in every view. Absent when there is
+   * none, which is what a fixture says.
+   */
+  charge?: number;
 }
 
 export interface SchematicDoor {
@@ -128,6 +142,15 @@ export interface SchematicDoor {
    * list points at is, so the line and the map say the same thing at once.
    */
   target?: true;
+  /** The trap on the door, once the drone knows of it: its hazard id (`mine`). */
+  trap?: string;
+  /**
+   * A door on the way to the compartment the drone is aiming at — the
+   * highlighted line of the list, or the box under the pointer — in the order
+   * a walk would take it (`ui/appstate.ts`, `mapAim`). The honeycomb draws it
+   * as an amber line; the terminal leaves it to the target's own outline.
+   */
+  route?: true;
 }
 
 /** The colour a door's label is written in: its state's, or the accent when a line has just named it. */
@@ -814,6 +837,14 @@ function drawBox(sheet: Sheet, p: Placed, ports: ReadonlySet<string>, marks: Mar
   // one colour of the room's own state (docs/tasks/G40-tug-clarity.md, 7).
   const hostiles = unknown ? 0 : Math.min(room.hostiles ?? 0, INNER);
   if (hostiles > 0) sheet.write(y + 2, x + 1, rows[1]!.slice(0, hostiles), THEME.bad);
+
+  // The fuse: the turns left, red, on the right end of the top bar — the one
+  // row with no word on it, so the name stays whole and the number reads as
+  // the cap on the hexagon does.
+  if (room.charge !== undefined && !unknown) {
+    const left = String(room.charge);
+    sheet.write(y, x + BOX_W - 2 - left.length, `[${left}]`, THEME.bad);
+  }
 }
 
 /**

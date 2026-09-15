@@ -99,10 +99,11 @@ function strandedAboard(game: RoomGame): boolean {
       case "closed":
       case "broken":
         return true;
+      // A lock or a weld is eight turns of the chassis whatever the rack holds
+      // (G90 B, `systems/doors.ts`, `ram`): the tools only make it cheaper.
       case "locked":
-        return keys > 0 || carries(rig, "cell") || carries(rig, "spike") || carries(rig, "cutter");
       case "sealed":
-        return carries(rig, "cutter");
+        return true;
       default:
         // The airlock is `leave`, not a door to walk through.
         return false;
@@ -178,6 +179,11 @@ function offerLike(game: RoomGame, head: string): ActionOffer<RoomCommand> | und
   return gatedOffers(game).find((o) => o.label.startsWith(head));
 }
 
+/** The first line of the jump list: a hull of the next stop and its first contract. */
+function jumpOffer(game: RoomGame): ActionOffer<RoomCommand> | undefined {
+  return gatedOffers(game).find((o) => o.cmd.kind === "act" && o.cmd.verb === "jump");
+}
+
 /** The line the door system puts on the list for one verb on one bulkhead. */
 function doorOffer(game: RoomGame, label: string, verb: string): ActionOffer<RoomCommand> | undefined {
   const door = game.ship.door(label).id;
@@ -200,15 +206,19 @@ const POCKET = `
 `;
 
 describe("a compartment nothing can reach", () => {
-  it("is a dead end for a rack with no cutter, and an errand for one with", () => {
+  it("is an errand and never a dead end: the chassis rams a weld the rack cannot cut", () => {
+    // Before G90 B a drone here with no cutter waited out the harness. Now the
+    // weld is eight turns of the ram away, and the detector says so — and it is
+    // true, not merely declared: the offer is on the list and the door goes.
     const walled = gameOn(POCKET);
     drop(walled, "cutter");
     standIn(walled, "r2");
-    expect(strandedAboard(walled)).toBe(true);
-    // And it really is stuck: the world moves, and nothing about it changes.
-    for (let i = 0; i < 60; i++) expect(walled.playerCommand({ kind: "wait" }).ok).toBe(true);
-    expect(walled.status).toBe("playing");
-    expect(strandedAboard(walled)).toBe(true);
+    expect(strandedAboard(walled)).toBe(false);
+    expect(doorOffer(walled, "d1", "ram")?.enabled).toBe(true);
+    for (let i = 0; i < 8; i++) {
+      expect(walled.playerCommand({ kind: "act", verb: "ram", target: walled.ship.door("d1").id }).ok).toBe(true);
+    }
+    expect(walled.ship.door("d1").state).toBe("broken");
 
     const cutter = gameOn(POCKET);
     standIn(cutter, "r2");
@@ -237,8 +247,10 @@ describe("a compartment nothing can reach", () => {
     standIn(game, "r2");
     // A SCRAPPER carries the CELL, and a CELL opens a lock from either side.
     expect(strandedAboard(game)).toBe(false);
+    // And with the CELL gone the lock is still eight turns of the chassis.
     drop(game, "cell");
-    expect(strandedAboard(game)).toBe(true);
+    expect(strandedAboard(game)).toBe(false);
+    expect(doorOffer(game, "d1", "ram")?.enabled).toBe(true);
   });
 
   it("is not something the welder can talk itself into", () => {
@@ -417,19 +429,19 @@ describe("the tug tied to a hull under tow", () => {
 
     // And the sentence says what to do rather than lying about the balance:
     // there is money, it is simply spoken for.
-    expect(repair(game, 0).reason).toBe("The 30 CR jump comes first.");
+    expect(repair(game, 0).reason).toBe(`The ${JUMP_PRICE} CR jump comes first.`);
   });
 
   it("says the same thing on the greyed line as on the key", () => {
-    const game = towed(33);
+    const game = towed(JUMP_PRICE + 3);
     standIn(game, BENCH);
     const bench = offerLike(game, "repair");
     expect(bench?.enabled).toBe(false);
-    expect(bench?.why).toBe("The 30 CR jump comes first.");
+    expect(bench?.why).toBe(`The ${JUMP_PRICE} CR jump comes first.`);
 
     // The jump itself is never the line that is held back.
     standIn(game, HELM);
-    expect(offerLike(game, "jump")?.enabled).toBe(true);
+    expect(jumpOffer(game)?.enabled).toBe(true);
   });
 
   it("refuses a hull the account cannot both buy and fly away from", () => {
@@ -459,7 +471,7 @@ describe("the tug tied to a hull under tow", () => {
     if (game.isOver()) return;
     expect(voyageOf(game).credits).toBeGreaterThanOrEqual(JUMP_PRICE);
     standIn(game, HELM);
-    expect(offerLike(game, "jump")?.enabled).toBe(true);
+    expect(jumpOffer(game)?.enabled).toBe(true);
   });
 
   it("still ends the run when the account is under the cheapest hull", () => {
@@ -488,7 +500,7 @@ function spendable(game: RoomGame): ActionOffer<RoomCommand> | undefined {
         o.cmd.kind === "act" &&
         o.cmd.verb !== "jump" &&
         o.cmd.verb !== "undock" &&
-        o.cmd.verb !== "charter",
+        o.cmd.verb !== "berth",
     );
     if (offer) return offer;
   }

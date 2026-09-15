@@ -6,7 +6,8 @@
 |---|---|---|---|
 | `audio/music/main.ogg` — трек `Dead Compartment` | Kirill Semenchenko (smoreg), владелец проекта | написан им в **Suno** (генеративная модель), исходник `main.mp3` не коммитится; в репозиторий кладётся только вырезанная петля | как у репозитория |
 | `audio/sfx/{system,dead,sold}.ogg` | этот проект | паттерны Strudel `games/salvor/music/src/stingers/`, рендер `music/scripts/render.mjs` | как у репозитория |
-| `audio/sfx/*.ogg` (остальные 10) | ElevenLabs Sound Effects, сгенерировано для этого проекта | text-to-sound-effects API, промпты — в `music/scripts/sfx.mjs` | по условиям ElevenLabs на сгенерированное аудио |
+| `audio/sfx/*.ogg` (следующие 10) | ElevenLabs Sound Effects, сгенерировано для этого проекта | text-to-sound-effects API, промпты — в `music/scripts/sfx.mjs` | по условиям ElevenLabs на сгенерированное аудио |
+| `audio/sfx/{explode,fuse,purge}.ogg` | этот проект | синтез `sox` (шум, синус, фильтры) скриптом `games/salvor/music/scripts/synth-sfx.sh`, без моделей и сети | как у репозитория |
 | `games/salvor/assets/tiles/*` и `games/salvor/src/tiles/sprites.ts` | этот проект | маски `#`/`.` в `games/salvor/tools/tiles/sprites.mjs`, рендер `npm run tiles -w games/salvor`; маски текстом — `tiles.txt` | как у репозитория |
 
 Чужого файла — сэмпла, трека, шрифта, спрайта — в сборке нет: всё аудио либо

@@ -5,10 +5,13 @@ import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import { keyed, roomActions, type Action } from "../src/ui/actions.js";
 import { panelBlocks, type PanelLine } from "../src/ui/panel.js";
-import { t } from "../src/i18n.js";
+import { LANGS, setLang, t } from "../src/i18n.js";
 import { THEME } from "../src/ui/theme.js";
-import { exposeHtml, htmlOf, lineHtml } from "../src/ui/web/panel-html.js";
+import type { Key } from "../src/content/i18n/keys.js";
+import { cornerHtml, htmlOf, lineHtml } from "../src/ui/web/panel-html.js";
+import { MAX_LEVEL } from "../src/systems/alert.js";
 import { screenHtml } from "../src/ui/web/screen.js";
+import { TOKENS, WEB_CSS } from "../src/ui/web/styles.js";
 import { initialState } from "../src/ui/appstate.js";
 import { HISTORY_ROWS } from "../src/ui/logline.js";
 
@@ -135,8 +138,14 @@ describe("the HTML panel", () => {
     const html = htmlOf(blocks, [], [], 0);
     // A blank row is not a line here, it is the parting between two blocks —
     // the panel draws it as a rule and the page gets its height back.
-    const said = blocks.filter((line) => line.text.trim().length > 0);
+    // Bar one: the alert row, which stands in the corner of the map instead
+    // (G89 A3) — and is drawn there word for word.
+    const alert = t("panel.alert", { gauge: "" }).trim();
+    const said = blocks.filter((line) => line.text.trim().length > 0 && !line.text.startsWith(alert));
     expect(count(html, '<div class="pl')).toBe(said.length);
+    expect(html).not.toContain(alert);
+    const row = blocks.find((line) => line.text.startsWith(alert))!;
+    expect(cornerHtml(undefined, blocks, [])).toContain(row.text.split("▯")[0]!.split("▮")[0]!);
     for (const line of said) {
       if (!/[▮▯&<>"]/.test(line.text)) expect(html, line.text).toContain(line.text);
     }
@@ -161,21 +170,38 @@ describe("the HTML panel", () => {
     expect(html).not.toContain('<section class="pb"></section>');
   });
 
-  it("says the exposed slot a second time, as a mark of its own", () => {
+  it("says the exposed slot once, in the rack, and puts no badge for it on the map", () => {
     const rack: PanelLine[] = [
       { text: "1 CUTTER   ▮▮▯" },
       { text: "2 THRUSTERS ▮▮▮  ◀", fg: THEME.accent },
     ];
-    // Once as its own row in the rack, once in the corner of the map: the one
-    // duplication on the screen, and the reason it is here is that the question
-    // this view is judged on is what the next blow lands in.
     expect(count(htmlOf(rack, [], [], -1), "THRUSTERS")).toBe(1);
     expect(count(htmlOf(rack, [], [], -1), "is-exposed")).toBe(1);
-    const mark = exposeHtml(rack, new Set(), new Set());
-    expect(mark).toContain("THRUSTERS");
-    expect(mark).toContain(t("panel.nextHit"));
-    // Nothing exposed, nothing said twice.
-    expect(exposeHtml([{ text: "1 CUTTER   ▮▮▯" }], new Set(), new Set())).toBe("");
+    // "удар куда и так подсвечено": the corner mark that repeated the row is
+    // gone, and so is its rule in the sheet (G89 A4).
+    const page = screenHtml(gameIn(), { ...initialState(), overlay: "none" }, new Set());
+    expect(page).not.toContain("expose\"");
+    expect(WEB_CSS).not.toContain(".web-expose");
+  });
+
+  it("colours a rack row's bar by how much of the module is left", () => {
+    const tone = (text: string, fg: string = THEME.fg) => lineHtml({ text, fg });
+    // Whole, or three quarters and more: the row's own light ink.
+    expect(tone("1 CUTTER   ▮▮▮▮")).toContain('class="pl slot"');
+    expect(tone("1 CUTTER   ▮▮▮▯")).toContain('class="pl slot"');
+    // Under three quarters: the warning colour.
+    expect(tone("1 CUTTER   ▮▮▯▯")).toContain('class="pl slot is-worn"');
+    // The last point, or the last quarter: red, with a red edge.
+    expect(tone("1 CUTTER   ▮▯▯")).toContain('class="pl slot is-low"');
+    expect(tone("1 PLATING  ▮▮▯▯▯▯▯▯")).toContain('class="pl slot is-low"');
+    // A burned slot has no bar to colour, and is hatched instead.
+    expect(tone(`6 ${t("panel.slot.burned")}`, THEME.burned)).toContain('class="pl slot is-burned"');
+    // And nothing that is not a rack row takes a tone off its bar.
+    expect(lineHtml({ text: "RIVAL ▮▯▯" })).toContain('class="pl"');
+    for (const rule of [".pl.slot.is-worn .bar .on", ".pl.slot.is-low .bar .on", ".pl.slot.is-low{", ".pl.slot.is-burned{"]) {
+      expect(WEB_CSS, rule).toContain(rule);
+    }
+    expect(WEB_CSS).toMatch(/\.pl\.slot\.is-burned\{[^}]*repeating-linear-gradient/);
   });
 
   it("turns the rack's own glyphs into a bar with a spent half", () => {
@@ -211,11 +237,11 @@ describe("the HTML panel", () => {
     const html = htmlOf(blocksOf(game), [], [], 0);
 
     expect(html).toContain("══ ENEMY IN HERE: 1 ");
-    expect(html).toContain("S security unit 8/8 melee");
-    // The rule is the loud half and stays red; the line under it now carries
-    // how much of the machine is left, and this one is untouched (G79, and
+    // The rule and the machine's own line are both red (G90 D1); only the hit
+    // points carry how much of it is left, and this one is untouched (G79, and
     // `contactTone` in ui/panel.ts).
-    expect(count(html, "color:var(--bad)")).toBe(1);
+    expect(html).toContain('style="color:var(--bad)">S security unit <span style="color:var(--good)">8/8</span> melee</div>');
+    expect(count(html, "color:var(--bad)")).toBe(2);
     expect(count(html, "color:var(--good)")).toBe(1);
   });
 
@@ -249,6 +275,154 @@ describe("the HTML panel", () => {
  * What is checked here is the wiring — that the page carries the three states
  * as classes the stylesheet has rules for, and not the old count of three.
  */
+/**
+ * The top-left corner of the map (G89 A3): the codex chip, the alert as a
+ * ladder of ten rungs (G90 A), and the hazards the drone knows are aboard.
+ */
+describe("the corner of the map", () => {
+  const gauge = (level: number) => "▮".repeat(level) + "▯".repeat(MAX_LEVEL - level);
+  const row = (level: number): PanelLine => ({
+    text: level === 0 ? t("panel.alert", { gauge: gauge(0) }) : t("panel.alertStage", { gauge: gauge(level), stage: "X" }),
+  });
+
+  it("draws the alert as ten rungs: the passed ones dim, the current one lit, the rest waiting", () => {
+    const html = cornerHtml(undefined, [{ text: "1 CUTTER ▮▮" }, row(5)], []);
+    expect(html).toContain('<div class="web-ladder is-l5">');
+    expect(count(html, '<div class="rung ')).toBe(MAX_LEVEL);
+    expect(count(html, '<div class="rung is-past">')).toBe(4);
+    expect(count(html, '<div class="rung is-now">')).toBe(1);
+    expect(count(html, '<div class="rung is-next">')).toBe(5);
+    // The rung the ship is on carries its own word and what it does.
+    const now = html.slice(html.indexOf("is-now"));
+    expect(now).toContain(t("alert.hunting"));
+    expect(now).toContain(t("alert.does.hunting"));
+    // Headed by the panel's own row, gauge and all.
+    expect(html).toContain('<div class="rung-head">');
+    expect(html).toContain('<span class="bar">');
+  });
+
+  it("names every rung in the language that is on, inside its two columns", () => {
+    const words = [
+      "alert.noticed", "alert.searching", "alert.post", "alert.pickets", "alert.hunting",
+      "alert.pack", "alert.hunter", "alert.lockdown", "alert.scuttle", "alert.detonation",
+    ] as const;
+    const does = words.map((w) => w.replace("alert.", "alert.does.") as Key);
+    try {
+      for (const lang of LANGS) {
+        setLang(lang);
+        const html = cornerHtml(undefined, [row(MAX_LEVEL)], []);
+        for (const key of [...words, ...does]) expect(html, `${lang} ${key}`).toContain(t(key));
+        // 76 px of 10 px type for the word, and a short phrase beside it.
+        for (const key of words) expect(t(key).length, `${lang} ${key}`).toBeLessThanOrEqual(12);
+        for (const key of does) expect(t(key).length, `${lang} ${key}`).toBeLessThanOrEqual(22);
+      }
+    } finally {
+      setLang("en");
+    }
+  });
+
+  it("is red and blinking from the charges up, and the blink yields to reduced motion", () => {
+    expect(cornerHtml(undefined, [row(9)], [])).toContain("web-ladder is-l9");
+    expect(cornerHtml(undefined, [row(10)], [])).toContain("web-ladder is-l10");
+    expect(WEB_CSS).toMatch(/\.web-ladder\.is-l10 \.rung-head\{[^}]*animation/);
+    expect(WEB_CSS).toMatch(/prefers-reduced-motion: reduce\)\{\.web-ladder\.is-l9 \.rung-head,\.web-ladder\.is-l10 \.rung-head\{animation:none/);
+  });
+
+  it("lists the hazards it is handed, and keeps the codex chip in the same corner", () => {
+    const hazards = [
+      { id: "frost", glyph: "❄", name: t("word.hazard.frost"), where: "r6" },
+      { id: "mine", glyph: "^", name: t("word.hazard.mine", { door: "d5" }), where: "" },
+    ];
+    const html = cornerHtml(t("codex.badge", { n: 2 }), [row(1)], hazards);
+    expect(html.indexOf('class="web-codex"')).toBeLessThan(html.indexOf('class="web-ladder'));
+    expect(count(html, '<div class="hz ')).toBe(2);
+    expect(html).toContain('<div class="hz hz-frost"><i>❄</i><span class="w">r6</span>');
+    expect(html).toContain(t("word.hazard.mine", { door: "d5" }));
+    // Nothing to say, nothing drawn: the corner goes back to being map.
+    expect(cornerHtml(undefined, [], [])).toBe("");
+  });
+
+  it("puts the alert row in the corner on a real screen and takes it off the panel", () => {
+    const game = gameIn();
+    const html = screenHtml(game, { ...initialState(), overlay: "none" }, new Set());
+    const corner = html.indexOf('<div class="web-corner">');
+    const panel = html.indexOf('<div class="web-panel">');
+    const alert = t("panel.alert", { gauge: "" }).trim();
+    expect(corner).toBeGreaterThanOrEqual(0);
+    expect(html.indexOf(alert)).toBeGreaterThan(corner);
+    expect(html.slice(panel)).not.toContain(alert);
+  });
+});
+
+/** Artboard 3a: the grid, the strip, the action rows and what a press feels like. */
+describe("the screen by artboard 3a", () => {
+  const playing = { ...initialState(), overlay: "none" as const };
+
+  it("lays out the strip, the map over the log, and the panel down the whole right side", () => {
+    expect(WEB_CSS).toContain("grid-template-rows:38px 1fr 132px;");
+    expect(WEB_CSS).toMatch(/grid-template-columns:1fr clamp\(3\d0px, \d+vw, 4\d0px\);/);
+    expect(WEB_CSS).toMatch(/\.web-panel\{grid-column:2; grid-row:2 \/ span 2;/);
+    expect(WEB_CSS).toMatch(/\.web-log\{grid-column:1; grid-row:3;/);
+    // The newest line on the floor of the box, and the key row on the floor of the panel.
+    expect(WEB_CSS).toContain(".web-log > div:first-child{margin-top:auto;}");
+    expect(WEB_CSS).toMatch(/\.pb\.foot\{[^}]*position:sticky; bottom:0;/);
+  });
+
+  it("names the hull large, its class small, and the turn with the seed at the right", () => {
+    const game = gameIn("r2", 4242);
+    const before = screenHtml(game, playing, new Set());
+    // A fixture hull has no callsign: the strip falls back to the panel's heading.
+    expect(before).not.toContain('class="cls"');
+    game.currentShip.data.name = "KESTREL";
+    game.currentShip.data.type = "freighter";
+    const html = screenHtml(game, playing, new Set());
+    expect(html).toContain('<span class="ship">KESTREL</span>');
+    expect(html).toMatch(/<span class="cls">[^<]+ · [^<]+<\/span>/);
+    expect(html).toContain(`<span class="turn">${t("panel.turn", { n: game.schedule.time })} · ${t("title.menu.seed")} 4242</span>`);
+  });
+
+  it("puts the key, the label and the price on one row, and keeps a dead line's reason readable", () => {
+    expect(WEB_CSS).toMatch(/\.act\{[^}]*grid-template-columns:26px minmax\(0,1fr\) auto;/);
+    expect(WEB_CSS).toMatch(/\.act \.extra\{grid-column:3;/);
+    // The cursor mark sits in the key's own cell now, not hung off the row.
+    expect(WEB_CSS).not.toMatch(/\.act \.cursor\{[^}]*position:absolute/);
+    // Contrast of the words on a line that cannot be pressed, against the panel.
+    for (const rule of [/\.act\.is-off\{color:var\(--([\w-]+)\)/, /\.act\.is-off \.extra\{color:var\(--([\w-]+)\)/]) {
+      const token = rule.exec(WEB_CSS)?.[1];
+      expect(token, String(rule)).toBeDefined();
+      expect(contrast(TOKENS[token!]!, TOKENS["panel-bg"]!), token).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("gives buttons a visible focus and a press, and compartments a pointer and a hover", () => {
+    expect(WEB_CSS).toContain(".act:focus-visible{");
+    expect(WEB_CSS).toContain(".act:active{");
+    expect(WEB_CSS).toContain(".schematic .room{cursor:pointer;}");
+    expect(WEB_CSS).toMatch(/\.schematic \.room:not\(\.is-current\):hover \.room-box\{/);
+  });
+
+  it("reddens and shakes the map on the frame a blow landed, and only then", () => {
+    const game = gameIn();
+    expect(screenHtml(game, playing, new Set())).toContain('<div class="web-map">');
+    expect(screenHtml(game, playing, new Set([0]))).toContain('<div class="web-map is-hit">');
+    expect(WEB_CSS).toMatch(/\.web-map\.is-hit\{[^}]*box-shadow[^}]*animation/);
+    expect(WEB_CSS).toContain("@media (prefers-reduced-motion: reduce){.web-map.is-hit{animation:none;}}");
+  });
+});
+
+/** WCAG contrast ratio of two `#rrggbb` colours. */
+function contrast(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const [r, g, bl] = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * bl!;
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
 describe("the log on the page", () => {
   const playing = { ...initialState(), overlay: "none" as const };
 
@@ -328,11 +502,11 @@ describe("the page and the terminal draw the same line", () => {
     ]);
     const line = priced[0]!;
     expect(line.label).toBe("purge THRUSTERS");
-    expect(line.extra).toBe("(welder, 2 turns)");
+    expect(line.extra).toBe("(by hand, 2 turns)");
 
     const html = htmlOf(blocksOf(game), [], priced, 0);
-    expect(html).toContain('<span class="extra">(welder, 2 turns)</span>');
+    expect(html).toContain('<span class="extra">(by hand, 2 turns)</span>');
     const rows = panelBlocks(game, priced, 0).map((l) => l.text);
-    expect(rows).toContain("   (welder, 2 turns)");
+    expect(rows).toContain("   (by hand, 2 turns)");
   });
 });

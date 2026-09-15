@@ -15,11 +15,11 @@ import {
 import { moduleName, type ModuleId } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
 import { isTug } from "../content/tug.js";
-import { doorStateWord } from "../content/words.js";
+import { doorStateWord, verbWord } from "../content/words.js";
 import { roomName } from "../content/zones.js";
 import { t, tId } from "../i18n.js";
 import { entityLabel } from "../names.js";
-import { alertState } from "../systems/alert.js";
+import { alertState, fuseIn } from "../systems/alert.js";
 import { keysHeld } from "../systems/doors.js";
 import { hazardLine, signsGiven } from "../systems/hazards.js";
 import { doorHazard, hazardKnown, hazardRecords, roomHazard } from "../systems/hazardstate.js";
@@ -116,7 +116,7 @@ export function dangerAhead(game: RoomGame, door: Door): string | undefined {
  * because the distance maps a walk plans by are built from the far end, and
  * a door has to be a wall to them from both sides.
  */
-function safeForPlayer(game: RoomGame, through?: DoorId): DoorFilter {
+export function safeForPlayer(game: RoomGame, through?: DoorId): DoorFilter {
   const ship = game.ship;
   const here = game.roomOf(game.player).id;
   const records = hazardRecords(game);
@@ -361,8 +361,9 @@ function gateStop(game: RoomGame, door: Door): { stop: string } {
 /**
  * What opens that bulkhead, in the order the door's own list offers it
  * (`systems/doors.ts`, `LOCKED_METHODS`), and which of it this rack holds
- * right now. A lock has four answers and a welded seam has one; anything else
- * a drone simply walks through and has no answers at all.
+ * right now. A lock has five answers and a welded seam has two, and the last
+ * of either is the chassis itself, which is always aboard; anything else a
+ * drone simply walks through and has no answers at all.
  *
  * The same question `systems/doors.ts` answers for the compartment the drone
  * is standing in, asked about a door several compartments off — which is what
@@ -374,13 +375,17 @@ function toolsFor(game: RoomGame, door: Door): { all: string[]; held: string[] }
   const carries = (kind: ModuleId): boolean => rig !== undefined && findSlotAs(rig, kind) !== null;
   const tools: Array<[string, boolean]> =
     door.state === "sealed"
-      ? [[moduleName("cutter"), carries("cutter")]]
+      ? [
+          [moduleName("cutter"), carries("cutter")],
+          [verbWord("ram"), true],
+        ]
       : door.state === "locked"
         ? [
             [moduleName("cell"), carries("cell")],
             [moduleName("spike"), carries("spike")],
             [moduleName("cutter"), carries("cutter")],
             [t("word.keycard"), keysHeld(game.player) > 0],
+            [verbWord("ram"), true],
           ]
         : [];
   return {
@@ -647,15 +652,15 @@ export function engage(game: RoomGame, mode: "best" | "melee" = "best"): AutoRes
 }
 
 /**
- * What is hitting the drone when no machine is: the vacuum of a compartment
- * the ship has vented, which costs a point a turn for as long as the drone
- * stands in it (`systems/alert.ts`, `bleed`). `Tab` used to answer "No target
- * in sight" to a drone the ship itself was taking apart, and the owner read
- * an invisible machine into it (docs/tasks/G83-anonymous-blows.md, 1): the
- * honest answer is what is doing the hitting, and what to do about it.
+ * What is about to hit the drone when no machine is: the charge the ship set
+ * in the compartment it is standing in (`systems/alert.ts`, the scuttle).
+ * `Tab` used to answer "No target in sight" to a drone the ship itself was
+ * taking apart, and the owner read an invisible machine into it
+ * (docs/tasks/G83-anonymous-blows.md, 1): the honest answer is what is doing
+ * the hitting, and what to do about it.
  */
 function hazardHitting(game: RoomGame): string | undefined {
-  return game.roomOf(game.player).hazard === "vented" ? t("why.fight.hazard") : undefined;
+  return fuseIn(game, game.roomOf(game.player).id) !== undefined ? t("why.fight.hazard") : undefined;
 }
 
 // ------------------------------------------------------------------ the ship

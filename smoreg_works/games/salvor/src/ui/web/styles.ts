@@ -8,9 +8,9 @@ import { THEME } from "../theme.js";
  * one-file diff `theme.ts` promises, and this file only decides weights, sizes
  * and what a state looks like.
  *
- * The shape is the owner's artboards (`docs/tasks/G61-web-design.md`): a strip
- * naming the ship, the schematic under it, the panel down the right, the log
- * along the bottom. Two rules from the artboards' own token sheet are load
+ * The shape is the owner's artboards (`docs/tasks/G61-web-design.md`, and 3a of
+ * G89): a strip naming the ship, the schematic under it with the log beneath,
+ * and the panel down the whole right-hand side. Two rules from the artboards' own token sheet are load
  * bearing rather than decorative, and everything below obeys them —
  *
  *   1. amber means one thing only: *here a decision is required*. The exposed
@@ -70,11 +70,12 @@ export const WEB_CSS = `
   --amber-wash:#1a140a;
   --red-wash:#1c1113;
   position:fixed; inset:0; display:grid;
-  grid-template-columns:1fr clamp(340px, 31vw, 460px);
-  /* Three fixed-ish bands so the whole screen lands inside a 1366x768 laptop
-     without a scrollbar — the artboards were drawn 1240 tall, and the itch
-     viewport is 764 (docs/itch-page.md). The schematic takes what is left. */
-  grid-template-rows:38px 1fr auto;
+  /* Artboard 3a: the strip, the map over the log on the left, and the panel
+     down the whole right-hand side. Around 400 wide for the panel (396 on a
+     1366 laptop), and three bands that land inside the itch viewport's 764
+     without a scrollbar (docs/itch-page.md). The map takes what is left. */
+  grid-template-columns:1fr clamp(360px, 29vw, 440px);
+  grid-template-rows:38px 1fr 132px;
   background:var(--bg); color:var(--fg);
   font-family:var(--mono); font-size:13px; line-height:1.45; overflow:hidden;
 }
@@ -88,19 +89,30 @@ export const WEB_CSS = `
   white-space:nowrap; overflow:hidden;}
 .web-head .ship{color:var(--bright); font-weight:600; letter-spacing:.1em;
   overflow:hidden; text-overflow:ellipsis;}
-.web-head .turn{margin-left:auto; color:var(--soft); font-size:11px; letter-spacing:.1em;
-  font-variant-numeric:tabular-nums;}
+/* The hull's class and the sortie, small beside the name; the turn and the
+   seed pushed to the right edge, in capitals as the artboard sets them. */
+.web-head .cls{color:var(--soft); font-size:11px; letter-spacing:.1em;
+  overflow:hidden; text-overflow:ellipsis;}
+.web-head .turn{margin-left:auto; flex-shrink:0; color:var(--soft); font-size:11px;
+  letter-spacing:.1em; text-transform:uppercase; font-variant-numeric:tabular-nums;}
 
 /* ------------------------------------------------------------- the schematic */
 .web-map{grid-column:1; grid-row:2; min-width:0; min-height:0; padding:10px 4px 4px 12px;
   background:radial-gradient(120% 90% at 30% 20%, #0f1519 0%, var(--bg) 70%);}
 .schematic{width:100%; height:100%; display:block;}
+/* The frame the drone took a blow on (screen.ts, flash): the map's edge goes
+   red, and the map shakes once. The edge is a colour and stays for anyone; the
+   shake is motion and does not. */
+.web-map.is-hit{box-shadow:inset 0 0 0 2px var(--bad); animation:salvor-shake .28s linear 1;}
+@keyframes salvor-shake{0%,100%{transform:none;} 25%{transform:translateX(-3px);}
+  50%{transform:translateX(3px);} 75%{transform:translateX(-2px);}}
+@media (prefers-reduced-motion: reduce){.web-map.is-hit{animation:none;}}
+/* A compartment is pressable — a click does what its line of the move list
+   does (mount.ts) — so it looks it: the pointer, and the outline lit under it.
+   Not on the one underfoot, whose amber frame is the thing it must keep. */
+.schematic .room{cursor:pointer;}
+.schematic .room:not(.is-current):hover .room-box{stroke:var(--bright); stroke-width:2.5;}
 
-/* The tug's board stands where the schematic does while the drone is home: no
-   boxes, no doors, nothing to walk (docs/tasks/G54-two-ships-confusion.md). */
-.web-board{margin:0; font-family:var(--mono); font-size:15px; line-height:1.5;
-  color:var(--fg); white-space:pre; overflow:auto;}
-.web-board::first-line{color:var(--accent);}
 .schematic text{font-family:var(--mono); fill:var(--fg);}
 
 .room-box{fill:#0d1216; fill-opacity:.85; stroke:var(--bulkhead); stroke-width:1;}
@@ -148,6 +160,11 @@ export const WEB_CSS = `
 .room.is-current .glyph{fill:var(--bright);}
 .room.is-current .tile{color:var(--bright);}
 .room.is-current .zone-tile{color:var(--airlock);}
+/* A machine is red in every state of the compartment it stands in — the one
+   underfoot included, whose bright ink used to paint it white exactly where it
+   mattered most (G90 D1). Four classes deep, so no state rule above outranks it. */
+.schematic .room .glyph.hostile{fill:var(--bad); font-weight:700;}
+.schematic .room .tile.hostile{color:var(--bad);}
 
 /* Machines in there, said on the box rather than only in one small glyph: a red
    cap over the top edge with the count on it. An addition to the compartment's
@@ -155,6 +172,11 @@ export const WEB_CSS = `
    "меня бьют, я не понимаю откуда" (docs/tasks/G55-playtest-findings.md). */
 .threat-cap{fill:var(--bad); opacity:.9;}
 .threat-count{font-size:11px; font-weight:700; fill:var(--bg);}
+/* On the honeycomb the cap is a skull (hex-svg.ts, threat) and the compartment
+   gets a red ring outside its outline: the count, and where it is, at a glance. */
+.threat-skull{fill:var(--bad); stroke:var(--bg); stroke-width:1.2;}
+.threat-teeth{fill:none; stroke:var(--bg); stroke-width:1.2;}
+.hexmap .room-ring{fill:none; stroke:var(--bad); stroke-width:2.5; opacity:.9;}
 
 /* A machine has just come into sight in there. Last in the block so it beats
    every state above it, and colour only: the stroke width and the halo are left
@@ -224,7 +246,12 @@ export const WEB_CSS = `
    the box view gives it would sink into the plating. The compartment hue is
    what the honeycomb already paints an outline with, so it costs no new signal. */
 .hexmap .zone-tile{color:var(--zone);}
-.hexmap .room.is-current .room-halo{fill:none; stroke:var(--accent); stroke-width:7; opacity:.12;}
+.hexmap .room.is-current .room-halo{fill:none; stroke:var(--accent); stroke-width:11; opacity:.3;}
+/* The drone's own mark on the cell underfoot, drawn after everything else on
+   the deck. It takes no clicks: the compartment under it is still pressable. */
+.hexmap .drone-mark{pointer-events:none;}
+.hexmap .drone-disc{fill:var(--accent); stroke:var(--bg); stroke-width:2;}
+.hexmap .drone-core{fill:var(--bg);}
 .hexmap .hall-wall{stroke:var(--bulkhead); stroke-width:11; stroke-linecap:butt;}
 .hexmap .hall-wall.is-airlock{stroke:var(--airlock);}
 .hexmap .door-wire{stroke-width:3;}
@@ -240,6 +267,12 @@ export const WEB_CSS = `
 .hexmap .duct{stroke:var(--zone); stroke-width:1; stroke-dasharray:2 6; opacity:.4;}
 .hexmap .duct.is-sealed{stroke:var(--bulkhead);}
 .hexmap .duct.is-locked{stroke:var(--accent); opacity:.3;}
+/* The way to where the drone is aiming — the highlighted line, or the box under
+   the pointer (appstate.ts, mapAim): its doors in solid amber, the destination
+   in the dashes it already wears (G90 D4). And a door is pressable (mount.ts). */
+.hexmap .door-wire.is-route{stroke:var(--accent); stroke-width:4; stroke-dasharray:none; opacity:1;}
+.hexmap .duct.is-route{stroke:var(--accent); stroke-width:2; opacity:.85;}
+.hexmap [data-door]{cursor:pointer;}
 
 /* An unexplored hexagon is a shape and an id, and nothing else worth reading —
    most of a hull is unexplored, and at full weight the dashes were the loudest
@@ -281,6 +314,23 @@ export const WEB_CSS = `
    frames that have a hull at all, so ?hull=0 looks exactly as it did. */
 .hexmap .hull-art ~ .room.is-unknown .room-box{fill-opacity:.55;}
 
+/* A hazard the drone knows of (artboard 3b). The outline is spoken for by the
+   state and red by the machines, so a hazard takes the floor — the one channel
+   no state uses — and a rim along the two upper edges. A box with a machine
+   flashing in it keeps its red wash over any floor. Frost is the cold steel,
+   smoke the grey ink; the word over the name is the codex card's. */
+.hexmap .room.hz-frost:not(.is-alarmed) .room-box{fill:#101c22; fill-opacity:.95;}
+.hexmap .room.hz-smoke:not(.is-alarmed) .room-box{fill:#1a1a18; fill-opacity:.95;}
+.hexmap .hz-rim{fill:none; stroke-width:3; stroke-linejoin:round;}
+.hexmap .hz-word{font-size:10px; font-weight:700; letter-spacing:.1em;}
+.hexmap .hz-frost .hz-rim{stroke:var(--zone);} .hexmap .hz-frost .hz-word{fill:var(--zone);}
+.hexmap .hz-smoke .hz-rim{stroke:var(--soft);} .hexmap .hz-smoke .hz-word{fill:var(--soft);}
+/* A trapped door: a chevron over its label and the label on the warning colour.
+   Not amber, which a locked door already wears. */
+.hexmap .trap-mark{fill:none; stroke:var(--warn); stroke-width:2.4; stroke-linejoin:round;}
+.hexmap .door.has-trap .door-tag{fill:var(--warn); fill-opacity:1;}
+.hexmap .door.has-trap .door-label{fill:var(--bg); font-weight:700;}
+
 .tug-box{fill:#0d1216; stroke:var(--fg); stroke-width:1.5;}
 .tug-name{font-size:18px; fill:var(--fg);}
 .hull{stroke:var(--hull); stroke-width:2.5; opacity:.8;}
@@ -288,7 +338,12 @@ export const WEB_CSS = `
 .ship-line{font-size:11px; fill:var(--soft);}
 
 /* ------------------------------------------------------------------ the panel */
-.web-panel{grid-column:2; grid-row:2; min-height:0; overflow-y:auto; padding:10px 12px 16px;
+/* Full height on the right, strip to foot (3a): the log is the map's, not the
+   panel's. No bottom padding, because the key row is stuck to that edge — and
+   a scroll padding of its height, so the cursor row mount.ts scrolls into view
+   stops above the key row instead of under it. */
+.web-panel{grid-column:2; grid-row:2 / span 2; min-height:0; overflow-y:auto; padding:10px 12px 0;
+  scroll-padding-bottom:56px;
   background:var(--panel-bg); border-left:1px solid var(--line);
   display:flex; flex-direction:column; gap:9px;}
 
@@ -298,9 +353,11 @@ export const WEB_CSS = `
 .pb{display:flex; flex-direction:column; gap:1px;}
 .pb + .pb{border-top:1px solid var(--line); padding-top:8px;}
 .pl{white-space:pre; min-height:1.45em;}
+.pl.is-press{cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;}
 .pl.h{letter-spacing:.2em; font-size:10px; color:var(--soft);}
 .pl.hit{color:var(--bad); animation:salvor-hit .45s steps(2,end) 2;}
 @keyframes salvor-hit{0%,100%{opacity:1;} 50%{opacity:.25;}}
+@media (prefers-reduced-motion: reduce){.pl.hit{animation:none;}}
 .bar{letter-spacing:.5px;}
 .bar .off{color:var(--line);}
 
@@ -309,70 +366,98 @@ export const WEB_CSS = `
    is loud has the whole panel to itself. */
 .pl.slot{padding:3px 7px; background:#0c1115; border:1px solid var(--line);
   border-left:2px solid var(--line);}
+/* Wear, by share (panel-html.ts, slotTone): whole or nearly is the row's own
+   light ink, under three quarters the warning colour, the last point or quarter
+   red with a red left edge. A burned slot is hatched (1h): nothing there to bar. */
+.pl.slot.is-worn .bar .on{color:var(--warn);}
+.pl.slot.is-low .bar .on{color:var(--bad);}
+.pl.slot.is-low{border-left-color:var(--bad);}
+.pl.slot.is-burned{border-color:var(--burned);
+  background:repeating-linear-gradient(135deg, var(--red-wash) 0 6px, #0c1115 6px 12px);}
 .pl.slot.is-exposed{background:var(--amber-wash); border-color:var(--accent);
   border-left-width:4px; box-shadow:0 0 0 3px rgba(224,164,88,.10); font-weight:600;}
 .pl.slot.hit{border-color:var(--bad); border-left-color:var(--bad);}
 
-/* The ship's alert, coloured by the rung it is on (panel-html.ts puts the
-   level on the row as a class). Nothing below three: a counter. Three and four
-   are the ship shutting doors and sending its hunter — amber, the terminal's
-   own warn colour rather than the accent, so the one rule about amber (a
-   decision is required *here*) keeps its word. Five is the scuttle countdown:
-   red, and blinking, because it is the one number on the screen that is a
-   deadline. The blink is a CSS animation and not a beat redraw (ui/pulse.ts)
-   because it has to run while the player is thinking, not only on turns —
-   and it is switched off for anyone who asked their system for less motion. */
-.web-alert.is-l3,.web-alert.is-l4{color:var(--warn) !important; font-weight:600;}
-.web-alert.is-l5{color:var(--bad) !important; font-weight:700;
-  animation:salvor-alert .9s steps(2,end) infinite;}
+/* The top-left corner of the map (panel-html.ts, cornerHtml): the codex chip,
+   then the alert as a ladder of five rungs and the hazards the drone knows are
+   aboard. In the map's own grid cell, so it can never
+   cover the panel, and it takes no clicks — a compartment under it is still
+   pressable. Three and four take the gauge's warning colour, five the red and a
+   blink on the head row, because that row is the one deadline on the screen;
+   the blink is off for anyone who asked their system for less motion. */
+.web-corner{grid-column:1; grid-row:2; align-self:start; justify-self:start; z-index:2;
+  margin:10px 0 0 12px; pointer-events:none;
+  display:flex; flex-direction:column; align-items:flex-start; gap:6px;}
+/* At home there is no alert and nothing aboard, and the dock's own head is
+   where the corner would sit: the codex stays one key away on i. */
+.web-map:has(.dock) ~ .web-corner{display:none;}
+.web-codex{border:1px solid var(--accent); background:var(--amber-wash); border-radius:2px;
+  padding:2px 8px; color:var(--accent); font-size:12px; font-weight:600; letter-spacing:.06em;}
+.web-ladder{display:flex; flex-direction:column; gap:1px; min-width:176px; padding:5px 8px;
+  border:1px solid var(--line); border-radius:2px; background:rgba(10,13,16,.88);
+  font-size:10px; line-height:1.35;}
+.web-ladder.is-l5,.web-ladder.is-l6,.web-ladder.is-l7,.web-ladder.is-l8{border-color:var(--warn);}
+.web-ladder.is-l9,.web-ladder.is-l10{border-color:var(--bad); background:var(--red-wash);}
+.rung-head{font-size:12px; font-weight:600; letter-spacing:.04em; color:var(--soft);
+  white-space:pre; margin-bottom:2px;}
+.web-ladder.is-l5 .rung-head,.web-ladder.is-l6 .rung-head,.web-ladder.is-l7 .rung-head,
+.web-ladder.is-l8 .rung-head{color:var(--warn);}
+.web-ladder.is-l9 .rung-head,
+.web-ladder.is-l10 .rung-head{color:var(--bad); animation:salvor-alert .9s steps(2,end) infinite;}
 @keyframes salvor-alert{0%,100%{opacity:1;} 50%{opacity:.35;}}
-@media (prefers-reduced-motion: reduce){.web-alert.is-l5{animation:none;}}
-
-/* The same row lifted above the rack from three up: framed, on a wash of its
-   own colour, so the shape of the panel changes the moment the ship starts
-   answering — which is what the owner asked for in "уровень алерта должен
-   отображаться более очевидно". */
-.pb.web-alarm{border:1px solid var(--warn); background:var(--amber-wash); border-radius:2px;
-  padding:4px 8px; letter-spacing:.06em;}
-.pb.web-alarm.is-l5{border-color:var(--bad); background:var(--red-wash);}
-.pb.web-alarm + .pb{border-top:none; padding-top:0;}
-
-/* The exposed slot said twice: once as its own row in the rack, once as a small
-   mark in the bottom-left corner of the map, which is where the owner asked for
-   it — "следующий удар мелким значком снизу слева". It sits in the map cell of
-   the grid rather than over it, so it can never cover a compartment box. */
-.web-expose{grid-column:1; grid-row:2; align-self:end; justify-self:start;
-  margin:0 0 8px 12px; z-index:2; pointer-events:none;}
-.expose{border:1px solid var(--accent); background:var(--amber-wash); border-radius:2px;
-  padding:3px 8px; display:flex; align-items:baseline; gap:8px;}
-.expose .lbl{font-size:9px; letter-spacing:.16em; color:var(--airlock);}
-.expose .row{font-size:12px; font-weight:600; letter-spacing:.04em; color:var(--accent);
-  line-height:1.2; white-space:pre;}
+@media (prefers-reduced-motion: reduce){.web-ladder.is-l9 .rung-head,.web-ladder.is-l10 .rung-head{animation:none;}}
+.rung,.hz{display:grid; grid-template-columns:12px 76px auto; gap:6px; align-items:baseline;
+  white-space:nowrap;}
+.rung i,.hz i{font-style:normal; font-size:11px;}
+.rung .do,.hz .do{font-size:9px;}
+.rung.is-past{color:var(--fg-dim);}
+.rung.is-next{color:var(--soft);}
+.rung.is-now{color:var(--bright); font-weight:600;}
+.web-ladder.is-l5 .rung.is-now,.web-ladder.is-l6 .rung.is-now,.web-ladder.is-l7 .rung.is-now,
+.web-ladder.is-l8 .rung.is-now{color:var(--warn);}
+.web-ladder.is-l9 .rung.is-now,.web-ladder.is-l10 .rung.is-now{color:var(--bad);}
+.hz-list{display:flex; flex-direction:column; gap:1px; margin-top:3px; padding-top:4px;
+  border-top:1px solid var(--line);}
+.hz{color:var(--soft);}
+.hz.hz-frost i{color:var(--zone);} .hz.hz-mine i{color:var(--warn);}
 
 .acts{display:flex; flex-direction:column; gap:1px;}
-/* position:relative because the cursor mark is absolute inside it. Without it
-   the mark hangs off the root element instead of its own row, and lands in the
-   log at the foot of the screen — which is exactly where the owner found it. */
-.act{position:relative; display:grid; grid-template-columns:18px 1fr; gap:7px; align-items:baseline;
+.acts .pl.h{margin-top:4px;}
+/* Three columns on one line (3a): the key with the cursor mark in front of it,
+   the label, and the price or the ways through at the right. The label may
+   wrap; the other two never do. */
+.act{display:grid; grid-template-columns:26px minmax(0,1fr) auto; gap:8px; align-items:baseline;
   width:100%; text-align:left; padding:3px 6px; border:1px solid transparent; border-radius:2px;
   background:none; color:var(--fg); font:inherit; cursor:pointer;}
 .act:hover{background:#18222a; border-color:#26333c;}
-.act .key{color:var(--soft); text-align:right; font-variant-numeric:tabular-nums;}
+.act:active{background:#1f2a33; transform:translateY(1px);}
+.act:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+.act .key{color:var(--soft); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;}
 .act .label{white-space:pre-wrap;}
-.act .extra{grid-column:2; color:var(--soft); font-size:11px;}
-.act.is-off{color:var(--fg-dim);} .act.is-off .key{color:var(--fg-dim);}
-.act.is-off .extra{color:var(--fg-dim);}
+.act .extra{grid-column:3; color:var(--soft); font-size:11px; white-space:nowrap; text-align:right;}
+/* A line that cannot be pressed says why in its own words, so the words stay
+   readable — the soft ink, over 3:1 on the panel — and only the key goes dark. */
+.act.is-off{color:var(--soft);} .act.is-off .key{color:var(--fg-dim);}
+.act.is-off .extra{color:var(--soft);}
 .act.is-cursor{background:var(--amber-wash); border-color:var(--accent); color:var(--accent);}
 .act.is-cursor .key{color:var(--accent);}
 .act.is-cursor .label{font-weight:700;}
-.act .cursor{position:absolute; margin-left:-13px; color:var(--accent);}
+.act .cursor{color:var(--accent);}
+/* A greyed row does not answer the pointer as if it would press (G90 D5), and a
+   cursor with nothing pressable to rest on is dim rather than amber: amber says
+   a decision is waiting, and on a list of refusals none is. */
+.act.is-off:hover,.act.is-off:active{background:none; border-color:transparent; transform:none;}
+.act.is-cursor.is-off{background:none; border-color:var(--line); color:var(--soft);}
+.act.is-cursor.is-off .key,.act.is-cursor.is-off .cursor{color:var(--fg-dim);}
+.act.is-cursor.is-off .label{font-weight:400;}
 
 /* The keys, pinned to the bottom right corner of the panel in every state —
    "подсказки по хоткеям всегда снизу справа" (docs/tasks/G48-travel-to-a-room.md).
    panelBlocks already puts them on its last rows; margin-top:auto is what
    keeps them at the corner when the panel is taller than its content. */
-.pb.foot{margin-top:auto; border-top:1px solid var(--line); padding-top:7px;
-  color:var(--soft); font-size:11px;}
+.pb.foot{margin-top:auto; position:sticky; bottom:0; background:var(--panel-bg);
+  border-top:1px solid var(--line); padding:7px 0 8px; color:var(--soft); font-size:11px;
+  text-align:right;}
 
 /* -------------------------------------------------------------------- the log */
 /* Seven lines and the newest of them at the bottom, which is what the terminal
@@ -380,10 +465,16 @@ export const WEB_CSS = `
    mount.ts pins the box to its own bottom after every frame, because innerHTML
    reopens it at the top otherwise — and the top of a log is the part already
    read. */
-.web-log{grid-column:1 / -1; grid-row:3; height:124px; overflow-y:auto;
-  padding:6px 14px; border-top:1px solid var(--line); background:#0c1013; font-size:12px;
+.web-log{grid-column:1; grid-row:3; min-height:0; overflow-y:auto;
+  display:flex; flex-direction:column;
+  padding:5px 14px; border-top:1px solid var(--line); background:#0c1013; font-size:12px;
   line-height:1.4;}
 .web-log div{white-space:pre-wrap;}
+/* Under the map only, and a short tail sits on the floor of the box, next to
+   the map, rather than hanging from its ceiling: the newest line is always the
+   bottom one. An auto margin rather than justify-content, which would put the
+   overflow out of reach of the scrollbar. */
+.web-log > div:first-child{margin-top:auto;}
 .web-log .plain{color:var(--fg);} .web-log .good{color:var(--good);}
 .web-log .bad{color:var(--bad);} .web-log .warn{color:var(--warn);}
 /* Age, in three steps and by turn rather than by line count: this turn keeps
@@ -398,7 +489,8 @@ export const WEB_CSS = `
    whole row — the same two rules the terminal draws it by, so a player who
    reads only the bottom of the screen cannot miss it in either view. */
 .web-log .alarm{color:var(--bad); font-weight:600;}
-.web-log .alarm.live{background:var(--bad); color:var(--bright); margin:0 -14px; padding:1px 14px;}
+.web-log .alarm.live{background:var(--bad); color:var(--bright); margin-left:-14px; margin-right:-14px;
+  padding:1px 14px;}
 
 /* ---------------------------------------------------------------- the overlays */
 .web-over{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
@@ -414,35 +506,153 @@ export const WEB_CSS = `
 .card .hint{color:var(--fg-dim); margin-top:14px;}
 .card.good{border-top-color:var(--good);} .card.good .h{color:var(--good);}
 .card.bad{border-top-color:var(--bad);} .card.bad .h{color:var(--bad);}
+/* The help card's key column (artboard 1g): the key a row is about, in the
+   colour of a key to press, so the card reads down its keys. */
+.card .keys .press{color:var(--accent);}
+
+/* A run that is over, or a hull or a drone that is (artboard 1f): the word
+   large, the reason under it, the run's numbers in a row between two rules,
+   each one big under a small caption, and what to press last. */
+.card .end .h{font-size:34px; font-weight:600; letter-spacing:.06em; line-height:1.1;
+  margin-bottom:14px;}
+.card .end .sub{font-size:14px; margin:0 0 14px;}
+.end-figures{display:flex; flex-wrap:wrap; gap:12px 24px; padding:12px 0;
+  border-top:1px solid var(--line); border-bottom:1px solid var(--line);}
+.end-figure{display:flex; flex-direction:column; gap:3px;}
+.end-caption{font-size:10px; letter-spacing:.14em; color:var(--fg-dim);}
+.end-value{font-size:18px; color:var(--bright); font-variant-numeric:tabular-nums;}
 
 /* ------------------------------------------------------------ the start screen
-   G84. The terminal spends rows on the name because rows are all a grid has;
-   here it is a type size, and the menu is a real three-column grid so the keys
-   line up without a padded string. Amber stays what rule 1 above says it is —
-   the key you are being asked to press — so the ring rows mark what they are
-   *on* with the bright token and leave the rest dim, exactly as the terminal does. */
-.card.title{max-width:min(760px,94vw); text-align:center;}
-.card.title .head, .card.title .hint, .card.title .keys{text-align:center;}
-.title-name{color:var(--accent); font-size:44px; font-weight:600; letter-spacing:.22em;
-  line-height:1.1; margin-bottom:10px;}
-.title-tag{color:var(--fg); font-size:15px; margin-bottom:6px;}
-.title-menu{display:inline-grid; grid-template-columns:auto auto auto; gap:2px 14px;
-  text-align:left; margin:10px 0 4px;}
-/* The row generates no box of its own, so the pointer and the hover live on
-   its three cells. Amber is spoken for (rule 1), so a row under the cursor
-   brightens its own ground rather than borrowing the signal colour. */
-.title-row{display:contents;}
-.title-row > span{cursor:pointer; padding:1px 4px; margin:-1px -4px;}
-.title-row:hover > span{background:var(--line);}
+   G84, redrawn to artboard 1a in G89: not a card over the board but the whole
+   screen, over a sky with ships in it. The name large on the left, the line
+   saying what the game is, the menu as framed rows with the key in a chip, the
+   build bottom left and the controls bottom right. Amber is what rule 1 above
+   says it is — the row the arrows are on, the one Enter does — so a row under
+   the mouse only lifts its ground, and the rings mark what they are on in bright. */
+.web-over.is-title{background:none; padding:0; align-items:stretch; justify-content:stretch;}
+.card.title{max-width:none; max-height:none; width:100%; height:100%; display:flex;
+  flex-direction:column; gap:20px; padding:32px clamp(24px, 9vw, 120px); border:0; border-radius:0;
+  background:none; text-align:left;}
+.card.title .hint{margin-top:0; font-size:12px;}
+.title-main{margin:auto 0; display:flex; flex-direction:column; gap:10px; max-width:640px;}
+.title-name{color:var(--bright); font-size:clamp(44px, 6vw, 76px); font-weight:600;
+  letter-spacing:.22em; line-height:1;}
+.title-tag{color:var(--soft); font-size:15px; line-height:1.55; max-width:480px; margin:4px 0 20px;}
+.title-menu{display:flex; flex-direction:column; gap:2px; width:min(600px, 100%); margin-bottom:10px;}
+.title-row{display:grid; grid-template-columns:auto auto minmax(0,1fr); align-items:center; gap:12px;
+  padding:8px 12px; background:var(--panel-bg); border:1px solid var(--line); border-radius:2px;
+  cursor:pointer;}
+.title-row:hover{background:#151a1f;}
 .title-row:hover .title-label{color:var(--bright);}
-/* And the same ground under the row the arrows have walked to, which is the row
-   Enter does (ui/appstate.ts, the title branch). */
-.title-row.is-cursor > span{background:var(--line);}
+.title-row.is-cursor{background:#151a1f; border-color:var(--accent);}
 .title-row.is-cursor .title-label{color:var(--bright); font-weight:700;}
-.title-key{color:var(--accent); font-weight:600;}
-.title-label{color:var(--fg);}
-.title-value{color:var(--soft);}
+.title-key{min-width:2.2em; text-align:center; font-size:12px; color:var(--fg); padding:1px 6px;
+  border:1px solid var(--fg-dim); border-radius:2px;}
+.title-row.is-cursor .title-key{color:var(--bg); background:var(--accent); border-color:var(--accent);}
+.title-label{color:var(--fg); font-size:14px; letter-spacing:.1em;}
+.title-value{justify-self:end; text-align:right; color:var(--fg-dim); font-size:11px;}
 .title-on{color:var(--bright); font-weight:600;}
 .title-off{color:var(--fg-dim);}
-.title-foot{color:var(--fg-dim); font-size:11px; margin-top:16px;}
+.title-bottom{display:flex; justify-content:space-between; align-items:flex-end; gap:12px 32px;
+  flex-wrap:wrap; font-size:11px; letter-spacing:.08em; color:var(--fg-dim);}
+.title-keys{text-align:right;}
+.card.title .title-keys .head{margin-top:0;}
+.card.title .title-keys .keys{color:var(--soft); white-space:pre;}
+
+/* The sky behind it (ui/web/sky.ts): a layer mount.ts builds once and only
+   shows or hides, so the drift runs on through every frame of the menu. Stars
+   and hulls in the hull drawing's own tokens; a far ship is dimmer. The drift
+   is along each ship's own keel, and off for anyone who asked for less motion. */
+.web-sky{position:absolute; inset:0; overflow:hidden; pointer-events:none;}
+.web-sky .sky{width:100%; height:100%; display:block;}
+.web-frame{display:contents;}
+.sky-star{fill:var(--zone);}
+.sky-skin{fill:var(--panel-bg); stroke:var(--hull-rim); stroke-width:2.2; stroke-linejoin:miter;}
+.sky-cells{fill:none; stroke:var(--zone); stroke-width:1; opacity:.28;}
+.sky-pod{fill:var(--hull-plate); stroke:var(--zone); stroke-width:1.4;}
+.sky-bell{fill:var(--hull-deep); stroke:var(--zone); stroke-width:1.1;}
+.sky-ship.is-far{opacity:.55;}
+.sky-ship.is-far .sky-skin{stroke:var(--fg-dim); stroke-width:1.4;}
+.sky-ship.is-far .sky-cells{opacity:.16;}
+.sky-drift{animation:salvor-drift 40s ease-in-out infinite alternate;}
+@keyframes salvor-drift{from{transform:translate(-22px,0);} to{transform:translate(22px,0);}}
+@media (prefers-reduced-motion: reduce){.sky-drift{animation:none;}}
+
+/* ----------------------------------------------------------------- the dock
+   The tug's board where the schematic goes (ui/web/dock-html.ts, artboard 3c):
+   the strip naming the tug and what it is tied to, over a bulkhead-brown rule
+   with the mode line to its right; the hull on the tether in a frame, its edge
+   taking the alert's colour from three up; the rack as rows with an edge of
+   their own, the drone's in amber, because the hull on the rails is the one
+   the list's buy lines are measured against; and the credits at the foot. */
+.dock{height:100%; overflow-y:auto; padding:4px 12px 8px 2px; display:flex; flex-direction:column;
+  gap:16px;}
+.dock-head{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 16px; padding-bottom:10px;
+  border-bottom:3px solid var(--bulkhead);}
+.dock-tug{color:var(--bright); font-weight:600; letter-spacing:.1em;}
+.dock-mode{margin-left:auto; color:var(--soft); font-size:11px; letter-spacing:.06em;}
+.dock-hull{display:flex; flex-direction:column; gap:4px; padding:12px 16px; background:var(--panel-bg);
+  border:1px solid var(--line); border-left:3px solid var(--line);}
+.dock-hull.is-l5,.dock-hull.is-l6,.dock-hull.is-l7,.dock-hull.is-l8{border-left-color:var(--warn);}
+.dock-hull.is-l9,.dock-hull.is-l10{border-left-color:var(--bad);}
+.dock-name{color:var(--bright); font-weight:600; letter-spacing:.06em;}
+.dock-worth{color:var(--fg);} .dock-worth.is-sold{color:var(--good);}
+.dock-line{color:var(--soft); font-size:12px;}
+.dock-rack{display:flex; flex-direction:column; gap:4px;}
+.dock-rack-head{font-size:10px; letter-spacing:.22em; color:var(--soft); margin-bottom:2px;}
+.dock-row{display:grid; grid-template-columns:12ch 9ch minmax(0,1fr); gap:12px; align-items:baseline;
+  padding:7px 10px; background:#0c1115; border:1px solid var(--line); border-left:3px solid var(--bulkhead);
+  border-radius:2px;}
+.dock-row > span:first-child{color:var(--fg); font-weight:600;}
+.dock-row > span{color:var(--soft);}
+.dock-row.is-yours{background:var(--amber-wash); border-color:var(--accent);}
+.dock-row.is-yours > span:first-child{color:var(--bright);}
+.dock-row.is-yours > span:last-child{grid-column:2 / -1; color:var(--accent);}
+.dock-cash{margin-top:auto; padding-top:10px; border-top:1px solid var(--line); color:var(--bright);
+  font-size:15px; letter-spacing:.06em;}
+
+/* The charges and the detonation (docs/tasks/G90-smoreg-wave.md, A). A fuse
+   is a red number on the hexagon's lower point and the cell blinks with it; a
+   blown compartment keeps a dark red floor and a dashed outline; the frame a
+   compartment or the whole ship goes up on flashes white and shakes the map.
+   All of it stands still for anyone who asked their system for less motion. */
+.hexmap .fuse-cap{fill:var(--bad); opacity:.95;}
+.hexmap .fuse-count{fill:#fff; font-size:11px; font-weight:700;}
+.hexmap .room.is-fused .room-box{animation:salvor-fuse .8s steps(2,end) infinite;}
+@keyframes salvor-fuse{0%,100%{stroke:var(--bad);} 50%{fill:var(--red-wash);}}
+.hexmap .room.hz-blown .room-box{fill:#1c0e0c; fill-opacity:.95; stroke:var(--bad); stroke-dasharray:3 3;}
+.hexmap .hz-blown .hz-rim{stroke:var(--bad);} .hexmap .hz-blown .hz-word{fill:var(--bad);}
+.web-map.is-boom{animation:salvor-boom 1s ease-out 1;}
+@keyframes salvor-boom{
+  0%{box-shadow:inset 0 0 0 999px #fff; transform:none;}
+  12%{box-shadow:inset 0 0 0 999px #f0a860; transform:translate(-7px,4px);}
+  30%{box-shadow:inset 0 0 0 999px rgba(217,106,106,.6); transform:translate(6px,-5px);}
+  55%{box-shadow:inset 0 0 0 999px rgba(217,106,106,.25); transform:translate(-3px,2px);}
+  100%{box-shadow:none; transform:none;}}
+@media (prefers-reduced-motion: reduce){
+  .hexmap .room.is-fused .room-box{animation:none; stroke:var(--bad);}
+  .web-map.is-boom{animation:none; box-shadow:inset 0 0 0 3px var(--bad);}}
+
+/* ------------------------------------------------------------- the lesson
+   G90 E: the training run's window, over the map's bottom-left corner — the
+   top-left is the alert's (.web-corner). In the map's own grid cell, like the
+   corner, so it can never cover the panel or the log, and it takes no clicks.
+   The head row is the step, the key in the accent and the fold hint dim; the
+   instruction reads in the ordinary ink under it. A step just closed puts a
+   green tick in front of the head for one turn; folded (Esc) it is the head
+   alone; over, the closing line takes the good colour's edge. */
+.web-lesson{grid-column:1; grid-row:2; align-self:end; justify-self:start; z-index:2;
+  margin:0 0 10px 12px; pointer-events:none; max-width:min(560px, calc(100% - 24px));
+  padding:7px 10px 8px; border:1px solid var(--accent); border-left-width:3px; border-radius:2px;
+  background:rgba(10,13,16,.92); font-size:12px; line-height:1.4;}
+.web-lesson .lh{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px;
+  font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--soft);}
+.web-lesson .lh .n{color:var(--accent); font-weight:600;}
+.web-lesson .lh .k{color:var(--bright); text-transform:none; letter-spacing:.02em;}
+.web-lesson .lh .f{margin-left:auto; color:var(--fg-dim); text-transform:none; letter-spacing:0;}
+.web-lesson .lh .ok{color:var(--good); font-weight:600;}
+.web-lesson .li{margin-top:4px; color:var(--fg); white-space:pre-wrap;}
+.web-lesson.is-done{border-color:var(--good);}
+.web-lesson.is-over{border-color:var(--good);} .web-lesson.is-over .lh .n{color:var(--good);}
+.web-lesson.is-folded{padding-bottom:6px;}
 `;

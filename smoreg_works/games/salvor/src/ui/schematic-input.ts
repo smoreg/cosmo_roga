@@ -5,9 +5,10 @@ import { moduleKind, moduleName } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
 import { roomName } from "../content/zones.js";
 import { t } from "../i18n.js";
-import { hazardKind } from "../content/hazards.js";
+import { codexFor } from "../content/codex.js";
+import { hazardKind, type HazardKind } from "../content/hazards.js";
 import { isTug } from "../content/tug.js";
-import { alertState } from "../systems/alert.js";
+import { BLOWN, alertState, fuseIn, isBlown } from "../systems/alert.js";
 import { doorHazard, hazardKnown, hazardsOf, roomHazard, signsFresh, type HazardRecord } from "../systems/hazardstate.js";
 import { hostilesIn, wrecksOn } from "../twist/rig.js";
 import { strikersNear } from "./strikers.js";
@@ -89,6 +90,7 @@ export function schematicInputOf(
   game: RoomGame,
   alarm: ReadonlySet<RoomId> = NO_ALARM,
   target?: RoomId,
+  route: ReadonlySet<number> = NO_DOORS,
 ): SchematicInput {
   const docked = dockedHull(game);
   const input = docked ? remoteInput(docked.ship, docked.data) : aboardInput(game, alarm);
@@ -96,6 +98,11 @@ export function schematicInputOf(
   return {
     ...input,
     rooms: input.rooms.map((room) => (room.id === target ? { ...room, target: true as const } : room)),
+    // Only aboard: the tug's picture of the hull ahead is memory, with nobody
+    // on it to walk anywhere.
+    doors: docked || route.size === 0
+      ? input.doors
+      : input.doors.map((door) => (route.has(door.id) ? { ...door, route: true as const } : door)),
   };
 }
 
@@ -130,15 +137,20 @@ function aboardInput(game: RoomGame, alarm: ReadonlySet<RoomId>): SchematicInput
   // ЦЕХ, там дым» finds d19 and the box on the map without looking for them
   // (docs/tasks/G83-anonymous-blows.md, 7).
   const named = signsNamed(game, here);
+  const records = hazardsOf(data);
   const rooms = game.ship.rooms.map((room) => {
     const state = stateOf(game, room, here);
-    const drawn = box(room, state, thingsOf(game, room, state, data), hostileWidth(game, room, state));
+    const boxed = box(room, state, thingsOf(game, room, state, data), hostileWidth(game, room, state));
+    // The charge burning in there, as turns left: the number every view draws
+    // in red (`systems/alert.ts`, `fuseIn`).
+    const fuse = fuseIn(game, room.id);
+    const drawn = fuse === undefined ? boxed : { ...boxed, charge: fuse };
     const lit = alarm.has(room.id) ? { ...drawn, alarm: true as const } : drawn;
     const hit = struck.has(room.id) ? { ...lit, threat: true as const } : lit;
-    return named.rooms.has(room.id) ? { ...hit, target: true as const } : hit;
+    return tinted(game.ship, records, named.rooms.has(room.id) ? { ...hit, target: true as const } : hit);
   });
   const line = isTug(game) ? tugLine(game) : shipLine(game.ship, game.currentShip.data, rooms);
-  return frame(game.ship, rooms, line, named.doors);
+  return frame(game.ship, rooms, line, named.doors, records);
 }
 
 /**
@@ -169,11 +181,13 @@ function signsNamed(game: RoomGame, here: RoomId | undefined): { rooms: Set<Room
 
 /** A hull nobody is aboard: what it was left like, and nothing more. */
 function remoteInput(ship: Ship, data: Record<string, unknown>): SchematicInput {
+  const records = hazardsOf(data);
   const rooms = ship.rooms.map((room) => {
     const state: RoomState = room.explored ? "explored" : room.scanned ? "scanned" : "unknown";
-    return box(room, state, state === "unknown" ? marksOf(ship, room, data) : remembered(ship, room, state, data));
+    const things = state === "unknown" ? marksOf(ship, room, data) : remembered(ship, room, state, data);
+    return tinted(ship, records, box(room, state, things));
   });
-  return frame(ship, rooms, shipLine(ship, data, rooms));
+  return frame(ship, rooms, shipLine(ship, data, rooms), NO_DOORS, records);
 }
 
 /**
@@ -264,8 +278,18 @@ function dockedHull(game: RoomGame): { ship: Ship; data: Record<string, unknown>
   return stored ? { ship: stored.ship, data: stored.data } : undefined;
 }
 
-/** The geometry every drawing shares: the wires between the boxes, and the caption. `lit` doors are the ones a red line has just named. */
-function frame(ship: Ship, rooms: SchematicRoom[], caption: string, lit: ReadonlySet<number> = NO_DOORS): SchematicInput {
+/**
+ * The geometry every drawing shares: the wires between the boxes, and the
+ * caption. `lit` doors are the ones a red line has just named; `records` is
+ * what the drone knows of the hull's hazards, for the traps on its doors.
+ */
+function frame(
+  ship: Ship,
+  rooms: SchematicRoom[],
+  caption: string,
+  lit: ReadonlySet<number> = NO_DOORS,
+  records: readonly HazardRecord[] = [],
+): SchematicInput {
   const ports = portMap(ship);
   const doors: SchematicDoor[] = ship.doors
     .filter((d) => d.a !== d.b)
@@ -279,7 +303,9 @@ function frame(ship: Ship, rooms: SchematicRoom[], caption: string, lit: Readonl
         portA: ports.get(portKey(d.a, d.id)) ?? 0,
         portB: ports.get(portKey(d.b, d.id)) ?? 0,
       };
-      return lit.has(d.id) ? { ...door, target: true as const } : door;
+      const trap = knownTrap(ship, records, d.id);
+      const trapped = trap === undefined ? door : { ...door, trap: trap.id };
+      return lit.has(d.id) ? { ...trapped, target: true as const } : trapped;
     });
 
   const airlock = ship.airlock();
@@ -339,13 +365,15 @@ export function thingsIn(game: RoomGame, room: RoomId): RoomThing[] {
 }
 
 /**
- * A compartment the ship has opened to space (`systems/alert.ts`, the
- * scuttle). Drawn among the compartment's things rather than as a state of the
- * box, because this one list is what every view and the panel's own block
- * read: one glyph here is the `~` in the ASCII box, in the SVG box and in the
- * hexagon, and the line `~ no atmosphere` under the compartment's name — the
+ * A compartment a charge has blown open (`systems/alert.ts`, the scuttle).
+ * Drawn among the compartment's things rather than as a state of the box,
+ * because this one list is what every view and the panel's own block read:
+ * one glyph here is the `~` in the ASCII box, in the SVG box and in the
+ * hexagon, and the line `~ blown open` under the compartment's name — the
  * rule that a property of a compartment either shows everywhere or does not
- * exist (docs/tasks/G43-fire.md).
+ * exist (docs/tasks/G43-fire.md). The glyph and its tile are the ones the
+ * vented compartment had before G90: what the mark says is "nothing here,
+ * and no air", which is still true.
  */
 export const VENTED_GLYPH = "~";
 
@@ -356,7 +384,7 @@ export const VENTED_GLYPH = "~";
  */
 function thingsOn(ship: Ship, room: RoomId, pocket: Record<string, unknown>): RoomThing[] {
   const out: RoomThing[] = [];
-  if (ship.roomAt(room).hazard === "vented") out.push({ glyph: VENTED_GLYPH, name: t("word.vented") });
+  if (ship.roomAt(room).hazard === BLOWN) out.push({ glyph: VENTED_GLYPH, name: t("word.blown") });
   out.push(...hazardThings(ship, room, hazardsOf(pocket)));
   out.push(...wrecksOn(ship, room).map((w): RoomThing => {
     const kind = moduleKind(w.kind);
@@ -390,17 +418,71 @@ function thingsOn(ship: Ship, room: RoomId, pocket: Record<string, unknown>): Ro
 function hazardThings(ship: Ship, room: RoomId, records: readonly HazardRecord[]): RoomThing[] {
   if (records.length === 0) return [];
   const out: RoomThing[] = [];
-  const own = roomHazard(ship, records, room);
-  const kind = own === undefined ? undefined : hazardKind(own.id);
-  if (own && kind && hazardKnown(ship, own)) out.push({ glyph: kind.glyph, name: t(kind.word) });
+  const kind = knownHazard(ship, records, room);
+  if (kind) out.push({ glyph: kind.glyph, name: t(kind.word) });
   for (const door of ship.doorsOf(room)) {
-    const trap = doorHazard(ship, records, door.id);
-    const trapKind = trap === undefined ? undefined : hazardKind(trap.id);
-    if (trap && trapKind && hazardKnown(ship, trap)) {
-      out.push({ glyph: trapKind.glyph, name: t(trapKind.word, { door: door.label }) });
-    }
+    const trap = knownTrap(ship, records, door.id);
+    if (trap) out.push({ glyph: trap.glyph, name: t(trap.word, { door: door.label }) });
   }
   return out;
+}
+
+/** The hazard filling a compartment, when the ship still carries it and the drone knows. */
+function knownHazard(ship: Ship, records: readonly HazardRecord[], room: RoomId): HazardKind | undefined {
+  const rec = roomHazard(ship, records, room);
+  const kind = rec === undefined ? undefined : hazardKind(rec.id);
+  return rec && kind && hazardKnown(ship, rec) ? kind : undefined;
+}
+
+/** The trap on a door, on the same terms. */
+function knownTrap(ship: Ship, records: readonly HazardRecord[], door: number): HazardKind | undefined {
+  const rec = doorHazard(ship, records, door);
+  const kind = rec === undefined ? undefined : hazardKind(rec.id);
+  return rec && kind && hazardKnown(ship, rec) ? kind : undefined;
+}
+
+/**
+ * The compartment with its hazard on it, for the drawing that tints a floor
+ * (`ui/web/hex-svg.ts`). The word is the codex card's own name for the hazard —
+ * `FROST`, not the sentence under the compartment's name, which is written for
+ * a panel row and not for the inside of a hexagon.
+ */
+function tinted(ship: Ship, records: readonly HazardRecord[], room: SchematicRoom): SchematicRoom {
+  // A blown compartment is a hazard the ship wrote over whatever was there
+  // (`systems/alert.ts`, `blast`), so it takes the floor the same way.
+  if (isBlown(ship.roomAt(room.id))) return { ...room, hazard: { id: BLOWN, word: t("word.blown") } };
+  const kind = records.length === 0 ? undefined : knownHazard(ship, records, room.id);
+  if (kind === undefined) return room;
+  return { ...room, hazard: { id: kind.id, word: t(codexFor(kind.id)?.title ?? kind.word) } };
+}
+
+/**
+ * Every hazard aboard the drone knows of, for the corner of the graphic view:
+ * the glyph, the compartment it fills (a trap's word already names its door),
+ * and the word the compartment block uses for it. Compartments first, then
+ * doors, each in the ship's own order. Nothing at home: the tug has no hazards,
+ * and it is not the hull the drone is about to walk into.
+ */
+export function hazardsAboard(game: RoomGame): KnownHazard[] {
+  const records = hazardsOf(game.currentShip.data);
+  if (records.length === 0 || isTug(game)) return [];
+  const ship = game.ship;
+  const out: KnownHazard[] = [];
+  for (const room of ship.rooms) {
+    const kind = knownHazard(ship, records, room.id);
+    if (kind) out.push({ id: kind.id, glyph: kind.glyph, name: t(kind.word), where: room.label });
+  }
+  for (const door of ship.doors) {
+    const kind = door.a === door.b ? undefined : knownTrap(ship, records, door.id);
+    if (kind) out.push({ id: kind.id, glyph: kind.glyph, name: t(kind.word, { door: door.label }), where: "" });
+  }
+  return out;
+}
+
+/** One row of `hazardsAboard`: a thing with the hazard's id and where it is. */
+export interface KnownHazard extends RoomThing {
+  id: string;
+  where: string;
 }
 
 /** Machines standing in a compartment right now, the drone excluded. */

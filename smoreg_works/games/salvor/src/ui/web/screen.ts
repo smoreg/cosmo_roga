@@ -1,6 +1,9 @@
 import { hexLayout, type HexLayout, type LogLine, type RoomGame, type Ship } from "@jamrog/engine";
+import { derelictNameOf } from "../../content/derelicts.js";
 import { isTug } from "../../content/tug.js";
-import { aimedAt, codexSeen, codexView, listOf, type AppState } from "../appstate.js";
+import type { Key } from "../../content/i18n/keys.js";
+import { t } from "../../i18n.js";
+import { codexSeen, codexView, lessonView, listOf, mapAim, type AppState } from "../appstate.js";
 import {
   codexBody,
   codexFooter,
@@ -11,25 +14,35 @@ import {
   keyHelp,
 } from "../input.js";
 import { titleScreen, type TitleItem } from "../title.js";
-import { HISTORY_ROWS, historyPages, logFades, logText, opensTurn } from "../logline.js";
+import { HISTORY_ROWS, blastLineOf, historyPages, logFades, logText, opensTurn } from "../logline.js";
 import { codexBadge, debugBlockLines, footBlocks, panelBlocks, type PanelLine } from "../panel.js";
 import { NOTHING_LIT, type Lit } from "../pulse.js";
-import { cardTitles, endHint, endingBanners, historyFooter, latestAlarm, restartHint, runSummary } from "../render.js";
-import { bannerLine, schematicInputOf } from "../schematic-input.js";
+import {
+  cardTitles,
+  endHint,
+  endingBanners,
+  historyFooter,
+  latestAlarm,
+  restartHint,
+  runFigures,
+  type RunFigures,
+} from "../render.js";
+import { hazardsAboard, schematicInputOf, tag } from "../schematic-input.js";
 import { THEME } from "../theme.js";
-import { tugBoard } from "../tugboard.js";
-import { codexHtml, debugHtml, exposeHtml, htmlOf } from "./panel-html.js";
+import { cornerHtml, debugHtml, htmlOf } from "./panel-html.js";
 import { hullArtOf } from "../../content/hulls-art.js";
+import { virusCard } from "../viruscard.js";
 import { hexSvgOf } from "./hex-svg.js";
 import { esc, svgOf } from "./schematic-svg.js";
 import { WEB_ROOT_CLASS } from "./styles.js";
+import { dockHtml } from "./dock-html.js";
 
 /**
  * The graphic screen, assembled: the schematic, the panel, the log and whatever
  * card is in front of them.
  *
  * Every word on it comes out of a function the terminal renderer already calls —
- * `bannerLine`, `panelBlocks`, `listOf`, `helpPages`, `titleScreen`,
+ * `panelBlocks`, `listOf`, `helpPages`, `titleScreen`,
  * `endingBanners`, `runSummary` — and there is not a string of prose in this
  * file. That is deliberate and load-bearing: the two views must not be able to
  * disagree about what the game says, and a localisation pass has one table to
@@ -78,13 +91,24 @@ export function screenHtml(
   // moment the two shared one — which is where the owner found it.
   const foot = footBlocks(game);
   const body = blocks.slice(HEAD_ROWS, blocks.length - foot.length);
+  // The frame the drone took a blow on: the map's edge goes red and, for anyone
+  // who has not asked for less motion, the map shakes once. Aboard only — a
+  // module swapped at the tug's bench is a lower number and not a blow.
+  const hit = flash.size > 0 && !isTug(game) ? " is-hit" : "";
+  // The frame a compartment — or the whole ship — went up on: a white flash
+  // and a harder shake, over whatever the map shows now (`systems/alert.ts`).
+  const boom = blastThisTurn(game) ? " is-boom" : "";
   return [
-    headHtml(blocks),
-    `<div class="web-map">${mapHtml(game, state, lit, map, hull, tiles)}</div>`,
-    // The two marks laid over the map: what the next blow lands on, bottom
-    // left, and what there is to read about, top left (G72).
-    codexHtml(codexBadge(game)),
-    exposeHtml(blocks, flash, lit.ids),
+    headHtml(game, blocks),
+    `<div class="web-map${hit}${boom}">${mapHtml(game, state, lit, map, hull, tiles)}</div>`,
+    // Laid over the map's top-left corner: the codex chip (G72), the alert as
+    // a ladder and the hazards the drone knows of (G89 A3). The exposed slot is
+    // not repeated there — the rack's amber row and the map's own marks say
+    // where the next blow goes.
+    cornerHtml(codexBadge(game), blocks, hazardsAboard(game)),
+    // The lesson's window, over the map's bottom-left corner — the top-left is
+    // the alert's (G90 E3). Empty in every run that is not a training one.
+    lessonHtml(game, state),
     `<div class="web-panel">${htmlOf(body, foot, actions, state.cursor, flash, lit.ids)}</div>`,
     `<div class="web-log">${logHtml(game.log.tail(LOG_LINES))}</div>`,
     // The debug overlay (G68): the owner's flag, drawn under the log and
@@ -106,13 +130,25 @@ export function screenHtml(
  */
 const HEAD_ROWS = 2;
 
-function headHtml(blocks: readonly PanelLine[]): string {
-  const ship = blocks[0]?.text.trim() ?? "";
-  const turn = blocks[1]?.text.trim() ?? "";
+function headHtml(game: RoomGame, blocks: readonly PanelLine[]): string {
+  // Aboard a named hull the strip says the name large and the class small
+  // (3a); the panel's heading packs both into 29 columns with the game's name
+  // in front, and is what the strip falls back to at home and on a fixture.
+  const name = isTug(game) ? undefined : tag(game, "name");
+  const ship = name ?? blocks[0]?.text.trim() ?? "";
+  const kind =
+    name === undefined
+      ? []
+      : [derelictNameOf(tag(game, "type")), t("panel.sortie", { n: game.currentShip.visits })];
+  // The seed beside the turn: the one number a bug report needs, and the
+  // start screen's own word for it.
+  const turn = [blocks[1]?.text.trim() ?? "", `${t("title.menu.seed")} ${game.seed}`];
+  const cls = kind.filter((part) => part !== undefined).join(" · ");
   return [
     '<div class="web-head">',
     `<span class="ship">${esc(ship)}</span>`,
-    `<span class="turn">${esc(turn)}</span>`,
+    cls.length === 0 ? "" : `<span class="cls">${esc(cls)}</span>`,
+    `<span class="turn">${esc(turn.join(" · "))}</span>`,
     "</div>",
   ].join("");
 }
@@ -134,8 +170,11 @@ function mapHtml(
   hull: boolean,
   tiles: boolean,
 ): string {
-  if (isTug(game)) return `<pre class="web-board">${tugBoard(game).map(esc).join("\n")}</pre>`;
-  const input = schematicInputOf(game, lit.rooms, aimedAt(game, state));
+  if (isTug(game)) return dockHtml(game);
+  // No banner in the drawing: the strip above names the hull and the corner
+  // carries its alert, and a banner under the corner box was covered by it.
+  const aim = mapAim(game, state);
+  const input = schematicInputOf(game, lit.rooms, aim.room, aim.route);
   // The hull under the honeycomb is dressed by the ship's own class stamp and
   // seeded by its store id (G81), and the honeycomb is grown inside the hull's
   // own profile (G82): the cells that fit the profile are the mask the layout
@@ -143,11 +182,11 @@ function mapHtml(
   // drawing is then what it was before there was a hull.
   if (map === "hex") {
     const art = hull ? hullArtOf(game.ship, game.shipId) : undefined;
-    return hexSvgOf(input, layoutOf(game.ship, art?.mask), bannerLine(game), art, tiles);
+    return hexSvgOf(input, layoutOf(game.ship, art?.mask), "", art, tiles);
   }
   // `?tiles=1` is a modifier on whichever drawing is up, not a view of its own:
   // `V` keeps walking the same three (docs/tiles-design.md, 3).
-  return svgOf(input, bannerLine(game), tiles);
+  return svgOf(input, "", tiles);
 }
 
 /**
@@ -201,44 +240,100 @@ function logHtml(lines: readonly LogLine[]): string {
     .join("");
 }
 
+// ------------------------------------------------------------- the lesson (G90 E)
+
+/**
+ * The lesson's window: not a card in front of the board but a box in a corner
+ * of the map, the way the alert's ladder is, and every word of it out of
+ * `lessonView`. The head row carries the tick on the frame a step just closed,
+ * the step, the key to press and the fold hint; the instruction sits under it
+ * and is gone while the window is folded (`Esc`). The box takes no clicks, so
+ * the compartment under it is still pressable.
+ */
+function lessonHtml(game: RoomGame, state: AppState): string {
+  const view = lessonView(game, state);
+  if (view === undefined) return "";
+  const classes = ["web-lesson"];
+  if (view.folded) classes.push("is-folded");
+  if (view.done) classes.push("is-done");
+  if (view.over) classes.push("is-over");
+  return [
+    `<div class="${classes.join(" ")}">`,
+    `<div class="lh">`,
+    view.done ? `<span class="ok">${esc(t("lesson.done"))}</span>` : "",
+    `<span class="n">${esc(view.head)}</span>`,
+    view.press.length === 0 ? "" : `<span class="k">${esc(view.press)}</span>`,
+    `<span class="f">${esc(view.fold)}</span>`,
+    `</div>`,
+    ...view.lines.map((line) => `<div class="li">${esc(line)}</div>`),
+    `</div>`,
+  ].join("");
+}
+
 // --------------------------------------------------------------- the overlays
 
 function overlayHtml(game: RoomGame, state: AppState): string {
   if (state.overlay === "help") return card("", helpCard(game, state.helpPage));
   if (state.overlay === "codex") return card("", codexCard(game, state));
+  if (state.overlay === "virus") return card("bad", virusCardHtml(game));
   if (state.overlay === "history") return card("", historyCard(game, state.logPage));
-  const ending = endingBanners()[state.overlay];
+  const ending = endingBanners(game)[state.overlay];
   if (!ending) return "";
   const tone = ending.fg === THEME.good ? "good" : "bad";
+  const figures = runFigures(game);
   return card(tone, [
+    `<div class="end">`,
     `<div class="h">${esc(ending.title)}</div>`,
     ...(ending.why === undefined ? [] : [`<div class="sub">${esc(ending.why)}</div>`]),
-    `<div class="sub">${esc(runSummary(game))}</div>`,
+    // The run's numbers, each large under its own caption: the five
+    // `end.summary` writes in one line for the terminal (artboard 1f).
+    `<div class="end-figures">${FIGURES.map(([key, caption]) => figureHtml(t(caption), figures[key])).join("")}</div>`,
     `<div class="hint">${esc(endHint(state.overlay))}</div>`,
+    `</div>`,
   ]);
 }
 
+/** The captions, in the order `end.summary` says the numbers. */
+const FIGURES = [
+  ["cr", "end.fig.cr"],
+  ["sold", "end.fig.sold"],
+  ["rooms", "end.fig.rooms"],
+  ["turns", "end.fig.turns"],
+  ["kills", "end.fig.kills"],
+  ["burned", "end.fig.burned"],
+] as const satisfies ReadonlyArray<readonly [keyof RunFigures, Key]>;
+
+function figureHtml(caption: string, value: number): string {
+  return `<div class="end-figure"><span class="end-caption">${esc(caption)}</span><span class="end-value">${value}</span></div>`;
+}
+
 /**
- * The start screen, as panels.
+ * The start screen, over the sky.
  *
  * The same value the terminal lays out in a frame and columns (`ui/title.ts`),
- * given the one thing a page has that a grid does not: type sizes and a table.
- * The name is large because a heading can be, the menu is a real three-column
- * table so the keys line up without padding, and the ring rows mark what they
- * are on with a class rather than with a bright cell. Not one word of it is
- * written here — every string came out of `titleScreen` (G84).
+ * laid out the way artboard 1a draws it: the name large on the left, the line
+ * saying what the game is under it, the menu as framed rows with the key in a
+ * chip, the build in the bottom left corner and the controls in the bottom
+ * right. The ships behind it are not in this string — they fly on a layer the
+ * shell keeps between frames (`ui/web/sky.ts`, `mount.ts`). Not one word of it
+ * is written here — every string came out of `titleScreen` (G84); the terminal's
+ * `MENU` heading is left to the terminal, where it rules off a column the page
+ * frames instead.
  */
 function titleCard(state: AppState): string[] {
   const screen = titleScreen(state.settings, state.seedText);
   return [
+    `<div class="title-main">`,
     `<div class="title-name">${esc(screen.name)}</div>`,
     `<div class="title-tag">${esc(screen.tagline)}</div>`,
-    `<div class="head">${esc(screen.menuHead)}</div>`,
     `<div class="title-menu">${screen.items.map((item, i) => titleItemHtml(item, i, state.cursor)).join("")}</div>`,
     ...screen.hints.map((line) => `<div class="hint">${esc(line)}</div>`),
-    `<div class="head">${esc(screen.keysHead)}</div>`,
-    ...screen.keys.map((line) => `<div class="keys">${esc(line)}</div>`),
+    `</div>`,
+    `<div class="title-bottom">`,
     `<div class="title-foot">${esc(screen.foot)}</div>`,
+    `<div class="title-keys"><div class="head">${esc(screen.keysHead)}</div>`,
+    ...screen.keys.map((line) => `<div class="keys">${esc(line)}</div>`),
+    `</div></div>`,
   ];
 }
 
@@ -284,14 +379,29 @@ function helpCard(game: RoomGame, page: number): string[] {
   const keys = keyHelp();
   const pages = helpPages(isTug(game), codexSeen(game));
   const body = (pages[Math.min(page, pages.length - 1)] ?? []).map((line) => {
-    const cls = headings.includes(line) ? "head" : keys.includes(line) ? "keys" : "prose";
-    return `<div class="${cls}">${esc(line)}</div>`;
+    if (keys.includes(line)) return `<div class="keys">${keyLineHtml(line)}</div>`;
+    return `<div class="${headings.includes(line) ? "head" : "prose"}">${esc(line)}</div>`;
   });
   return [
     `<div class="h">${esc(cardTitles().help)}</div>`,
     ...body,
     `<div class="prose">${esc(helpFooter(page, pages.length))}</div>`,
   ];
+}
+
+/**
+ * One row of the key table with its key in the accent, so the keys read down
+ * the card as a column (artboard 1g).
+ *
+ * The row is `keyHelp`'s — the name padded to its column, a space, then the
+ * key and, two spaces on, what it does — and every character of it is kept, so
+ * the page and the terminal still break the card into the same pages. A row
+ * that does not have that shape is drawn plain rather than cut wrongly.
+ */
+function keyLineHtml(line: string): string {
+  const m = /^(\S.*?\s)(\S.*?)(\s{2,}.*)$/.exec(line);
+  if (!m) return esc(line);
+  return `${esc(m[1]!)}<span class="press">${esc(m[2]!)}</span>${esc(m[3]!)}`;
 }
 
 /**
@@ -308,6 +418,23 @@ function codexCard(game: RoomGame, state: AppState): string[] {
     `<div class="h">${esc(codexHeading(view.entry))}</div>`,
     ...body,
     `<div class="hint">${esc(codexFooter(view.page, view.pages))}</div>`,
+  ];
+}
+
+/**
+ * The virus window, laid out as the `i` card is and in the bad tone the panel's
+ * virus line is drawn in: the words and their breaks are `ui/viruscard.ts`'s.
+ */
+function virusCardHtml(game: RoomGame): string[] {
+  const view = virusCard(game);
+  if (view === undefined) return [];
+  const body = view.body.map((line) =>
+    line.length === 0 ? "<div class=\"prose\">&nbsp;</div>" : `<div class="prose">${esc(line)}</div>`,
+  );
+  return [
+    `<div class="h">${esc(view.heading)}</div>`,
+    ...body,
+    `<div class="hint">${esc(view.footer)}</div>`,
   ];
 }
 
@@ -338,5 +465,12 @@ function hint(): string {
 
 function card(tone: string, body: readonly string[]): string {
   const cls = tone.length > 0 ? `card ${tone}` : "card";
-  return `<div class="web-over"><div class="${cls}">${body.join("")}</div></div>`;
+  // The title is not a card over the board but the whole screen: its ground
+  // is left clear so the sky behind it shows (`ui/web/mount.ts`).
+  const over = tone === "title" ? "web-over is-title" : "web-over";
+  return `<div class="${over}"><div class="${cls}">${body.join("")}</div></div>`;
+}
+
+function blastThisTurn(game: RoomGame): boolean {
+  return blastLineOf(game) !== undefined;
 }

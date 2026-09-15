@@ -94,24 +94,6 @@ export const HINT_LINE_KEYS = {
    * mouse (docs/tasks/G87-playability.md, 3).
    */
   mouse: "hint.mouse",
-  // The training run's own chain, said only aboard the training hull and only
-  // in this order (`content/tutorial.ts`, `systems/tutorial.ts`). They live in
-  // this table rather than in a second one of their own so that "once a run"
-  // and "survives a save" are the same mechanism for every line the game says.
-  /** Aboard: everything the drone can do is the numbered list. */
-  "tutorial.enter": "hint.tutorial.enter",
-  /** How to see further than the compartment you are standing in. */
-  "tutorial.scan": "hint.tutorial.scan",
-  /** The first machine, and what a fight costs a rack. */
-  "tutorial.contact": "hint.tutorial.contact",
-  /** The one locked bulkhead, and where its keycard is. */
-  "tutorial.door": "hint.tutorial.door",
-  /** The first of the ship's three systems, and what all three are worth. */
-  "tutorial.system": "hint.tutorial.system",
-  /** The airlock: nothing is paid on the inside of it. */
-  "tutorial.airlock": "hint.tutorial.airlock",
-  /** Home again: the next drone priced, and the end of the lesson. */
-  "tutorial.sale": "hint.tutorial.sale",
 } as const satisfies Record<string, Key>;
 
 export type HintId = keyof typeof HINT_LINE_KEYS | "sold";
@@ -191,24 +173,20 @@ export function soldLine(credits: number, hullPrice: number): string {
 }
 
 /**
- * Ordinary lines the training chain teaches itself, and the chain line that
- * teaches them: one table, read in one direction.
+ * Ordinary lines the lesson says itself, in its own window.
  *
- * `objective` is `tutorial.system` in other words and `payout` is
- * `tutorial.airlock` in other words, and a training run said both of each: 94
- * and 88 of 120 runs heard the same rule twice, often a turn apart, which is
- * how a player learns that the log repeats itself rather than that the rule
- * matters (docs/tasks/G86-tutorial-and-title.md, 5).
+ * `objective` is the systems step in other words and `payout` is the airlock
+ * step in other words (`content/tutorial.ts`, `LESSON_STEPS`), and a training
+ * run used to hear both of each: 94 and 88 of 120 runs heard the same rule
+ * twice, often a turn apart, which is how a player learns that the log repeats
+ * itself rather than that the rule matters (docs/tasks/G86-tutorial-and-title.md, 5).
  *
- * Silent for the whole of a training run rather than only while the chain is
- * behind, because the two lines are one topic and the chain is the one that
- * says it in the compartment it is about. The flag is ticked with the silence,
- * so the twin does not reappear on the second hull of the same voyage.
+ * Silent for the whole of a training run rather than only while the lesson is
+ * on, because the two lines are one topic and the window is the one that says
+ * it in the compartment it is about. The flag is ticked with the silence, so
+ * the twin does not reappear on the second hull of the same voyage.
  */
-const CHAIN_SAYS = {
-  objective: "tutorial.system",
-  payout: "tutorial.airlock",
-} as const satisfies Partial<Record<HintId, HintId>>;
+const LESSON_SAYS: ReadonlySet<HintId> = new Set<HintId>(["objective", "payout"]);
 
 /**
  * One onboarding line, said once per run and never again. True when the line
@@ -225,9 +203,9 @@ export function hint(game: RoomGame, id: HintId, text?: string): boolean {
   if (line === undefined) return false;
   const said = hintsOf(game.player);
   if (said[id] === true) return false;
-  // Ticked off rather than merely skipped: the chain owns this topic for the
+  // Ticked off rather than merely skipped: the lesson owns this topic for the
   // rest of the run, hulls after the training one included.
-  if (id in CHAIN_SAYS && isTraining(game.player)) {
+  if (LESSON_SAYS.has(id) && isTraining(game.player)) {
     said[id] = true;
     return false;
   }
@@ -315,21 +293,3 @@ function hintsOf(player: Entity): Record<string, boolean> {
   return fresh;
 }
 
-/**
- * Open a training run: one line saying what the first hull is for.
- *
- * The second line of the title menu. It used to say all five onboarding lines
- * at once, on turn zero, and mark them read — five rules in a block before
- * anything had happened, which is the shape of explanation this game was
- * designed against. What replaced it is a ship (`content/tutorial.ts`): the
- * itinerary's first hull is one built to be learned on, and seven lines are
- * said on it, each on the turn its subject is first standing in front of the
- * drone (`systems/tutorial.ts`).
- *
- * The five ordinary hints are untouched and unmarked: on the training hull they
- * fire when they fire, like they do in every other run, because a training run
- * *is* a run and nothing about it is easier.
- */
-export function startTraining(game: RoomGame): void {
-  game.log.add(t("hint.training"), game.schedule.time, "warn", "hint.training");
-}

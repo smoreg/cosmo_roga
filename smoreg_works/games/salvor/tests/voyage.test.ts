@@ -11,7 +11,7 @@ import {
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { t } from "../src/i18n.js";
-import { FREIGHTER, type DerelictSpec } from "../src/content/derelicts.js";
+import { FREIGHTER, classOfShip, type DerelictSpec } from "../src/content/derelicts.js";
 import { tugCallsign, tugOpening, voyageOpening } from "../src/content/hints.js";
 import { GHOST, HULLS, SCRAPPER, SPARK, STARTING_CREDITS, hullSlots } from "../src/content/hulls.js";
 import { MAX_GRAFT, moduleKind } from "../src/content/modules.js";
@@ -27,11 +27,15 @@ import { OBJECTIVES, OBJECTIVE_COUNT } from "../src/content/objectives.js";
 import { startRival } from "../src/systems/rival.js";
 import { rivalState } from "../src/systems/rivalstate.js";
 import {
+  JUMP_PRICE,
   TUG_ID,
   VOYAGE,
+  choiceHeads,
   credit,
   currentDerelict,
+  jumpRowLabel,
   modulePrice,
+  rowsAt,
   spend,
   stationTargets,
   voyageOf,
@@ -163,14 +167,14 @@ function raiseIn(game: RoomGame, label: string, turns: number): void {
  * function the screen's sub-lists are built from, same order.
  */
 const TUG_VERBS: readonly string[] = [
-  "buy", "charter", "undock", "repair", "clean", "graft", "stow", "fit", "sell", "jump",
+  "buy", "berth", "undock", "repair", "clean", "graft", "stow", "fit", "sell", "jump",
 ];
 
 /**
  * Verbs whose lines drop the verb, because on the screen the row above them is
  * the verb. A test naming one needs both halves, so it is written back in.
  */
-const VERBLESS: ReadonlySet<string> = new Set(["repair", "graft", "stow", "fit", "sell"]);
+const VERBLESS: ReadonlySet<string> = new Set(["repair", "graft", "stow", "fit", "sell", "jump", "berth"]);
 
 function offers(game: RoomGame) {
   if (!isTug(game)) return VOYAGE.offerActions!(game);
@@ -380,7 +384,9 @@ describe("credits that are not there", () => {
     // was enabled, which is how a bot standing in the DOCK sold the rack it was
     // about to fly with (`testing/roombots.ts`, `disabled`).
     const game = newGame(4);
-    const labels = gatedOffers(game).map((o) => o.label);
+    // A line is its words and what it presses: a stop's list says `no contract`
+    // once a hull, and each of those flies somewhere else (G90 F).
+    const labels = gatedOffers(game).map((o) => `${o.label} ${JSON.stringify(o.cmd)}`);
 
     expect(labels).toHaveLength(new Set(labels).size);
     for (const offer of gatedOffers(game)) {
@@ -809,6 +815,63 @@ describe("losing a drone", () => {
 
 // --------------------------------------------------------------- selling a hull
 
+describe("choosing where to fly, and for which contract", () => {
+  it("flies to the hull on the line chosen, signs that line's contract, and builds that class", () => {
+    for (const seed of [3, 8, 21]) {
+      const game = newGame(seed);
+      expect(game.playerCommand(stationTargets(game, "berth")[0]!.cmd as RoomCommand).ok).toBe(true);
+      voyageOf(game).credits = 500;
+
+      const voyage = voyageOf(game);
+      const rows = rowsAt(voyage, 1);
+      // The first line of the second hull on the list: not the one the voyage drew.
+      const at = rows.findIndex((r) => r.spec.id !== voyage.derelicts[1]!.id);
+      expect(at, `seed ${seed}`).toBeGreaterThan(0);
+      const row = rows[at]!;
+      const line = stationTargets(game, "jump")[at]!;
+      expect(game.playerCommand(line.cmd as RoomCommand).ok, `seed ${seed}`).toBe(true);
+
+      expect(voyage.current, `seed ${seed}`).toBe(1);
+      expect(voyage.derelicts[1]!.id, `seed ${seed}`).toBe(row.spec.id);
+      expect(currentDerelict(game).spec.id, `seed ${seed}`).toBe(row.spec.id);
+      // One contract a ship: the line's own, and nothing else.
+      expect(voyage.charters, `seed ${seed}`).toEqual(row.charter ? [row.charter] : []);
+
+      expect(game.playerCommand({ kind: "act", verb: "undock" }).ok, `seed ${seed}`).toBe(true);
+      expect(classOfShip(game.ship), `seed ${seed}`).toBe(row.spec.id);
+      // The last stop is the father's tug and nothing else.
+      expect(rowsAt(voyage, 2).every((r) => r.spec.id === "fathers-tug"), `seed ${seed}`).toBe(true);
+    }
+  });
+
+  it("refuses a line written for another stop, and spends nothing on it", () => {
+    const game = newGame(5);
+    const berthLine = stationTargets(game, "berth")[0]!;
+    expect(game.playerCommand(berthLine.cmd as RoomCommand).ok).toBe(true);
+    voyageOf(game).credits = 500;
+    // The same number, sent as a jump: it names the first stop, not the next.
+    const out = game.playerCommand({ kind: "act", verb: "jump", target: (berthLine.cmd as { target: number }).target });
+    expect(out.ok).toBe(false);
+    expect(out.cost).toBe(0);
+    expect(voyageOf(game).credits).toBe(500);
+    expect(voyageOf(game).current).toBe(0);
+  });
+
+  it("loads a voyage from before the choice as one hull a stop and no contract", () => {
+    const game = newGame(6);
+    const voyage = voyageOf(game);
+    const itinerary = voyage.derelicts.map((d) => d.id);
+    delete voyage.stops;
+    delete voyage.berthed;
+
+    expect(stationTargets(game, "berth").map((o) => o.label)).toEqual(["no contract"]);
+    voyage.credits = 500;
+    expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(true);
+    expect(voyage.derelicts.map((d) => d.id)).toEqual(itinerary);
+    expect(voyage.charters).toEqual([]);
+  });
+});
+
 describe("selling a derelict", () => {
   it("banks the sale price when the third system is up and the drone is out", () => {
     const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
@@ -912,10 +975,14 @@ describe("selling a derelict", () => {
     expect(shipState(game).online).toEqual(["engine"]);
   });
 
-  it("charges 30 CR for the jump and refuses the last hull's one", () => {
+  it("charges the jump's price and refuses the last hull's one", () => {
+    // Forty since G90 F, measured: one contract a hull pays 30-45 CR where a
+    // board paid 20-30, and at thirty a jump the careful harness reached the
+    // father's hull on 84 % of 32 voyages against a ceiling of 80.
+    expect(JUMP_PRICE).toBe(40);
     const game = gameOn(DERELICT, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     VOYAGE.beforeLevelLeave!(game, 0, "airlock");
-    voyageOf(game).credits = 61;
+    voyageOf(game).credits = JUMP_PRICE + 31;
 
     expect(press(game, "jump").ok).toBe(true);
     expect(credits(game)).toBe(31);
@@ -1018,7 +1085,9 @@ describe("what a charter and a jump leave behind", () => {
     const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     standIn(game, "r1");
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
-    expect(stationTargets(game, "jump")[0]!.label).toMatch(/^jump → /);
+    expect(jumpRowLabel(game)).toBe(`jump, ${JUMP_PRICE} CR ▸`);
+    // The hulls themselves are named over their own lines of the list.
+    expect(choiceHeads(game, "jump")[0]).toMatch(/^freighter \d+-\d+ · \d+ CR$/);
   });
 
   it("names the sale on the jump row, and the dropped charters in the log", () => {
@@ -1027,9 +1096,7 @@ describe("what a charter and a jump leave behind", () => {
     standIn(game, "r1");
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
 
-    expect(stationTargets(game, "jump")[0]!.label).toBe(
-      `drop 1/${OBJECTIVE_COUNT}, sale ${FREIGHTER.salePrice} CR`,
-    );
+    expect(jumpRowLabel(game)).toBe(`drop 1/${OBJECTIVE_COUNT}, sale ${FREIGHTER.salePrice} CR`);
 
     voyageOf(game).charters.push(salvageCharter(FREIGHTER));
     voyageOf(game).credits = 500;

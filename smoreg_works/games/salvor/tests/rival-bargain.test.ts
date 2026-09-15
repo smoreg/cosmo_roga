@@ -264,7 +264,7 @@ describe("take the rival's money", () => {
     expect(credits(game)).toBe(FUNDED + PRICE);
     expect(deal(game)).toBe("sold");
     expect(shipState(game).online).toHaveLength(1);
-    expect(alertState(game).level).toBe(alert + 2);
+    expect(alertState(game).level).toBe(alert + 4);
     expect(logText(game)).toContain("online for you");
   });
 

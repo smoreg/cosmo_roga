@@ -108,8 +108,9 @@ describe("the list of bulkheads", () => {
   it("gives every door of the compartment a row, in door order, and a way back", () => {
     const game = gameIn();
     // A door the drone can walk through is always a choice — through it, or
-    // shut it — so its row carries no verb; the welded seam has one answer.
-    expect(rows(game).map((a) => a.label.trim().split(/\s+/)[0])).toEqual(["d1", "d3", "d4", "cut"]);
+    // shut it — so its row carries no verb; the welded seam is two answers
+    // now, the torch and the chassis (G90 B), so its row asks as well.
+    expect(rows(game).map((a) => a.label.trim().split(/\s+/)[0])).toEqual(["d1", "d3", "d4", "d6"]);
     expect(rows(game).map((a) => a.key)).toEqual(["1", "2", "3", "4"]);
     // The order is the doors', not the offers': welding `d1` shut must not send
     // `d3` up the list and hand the number `d1` was wearing to a lock.
@@ -136,11 +137,12 @@ describe("the list of bulkheads", () => {
 
   it("puts the verb on a row that spends one, and no verb on a row that asks", () => {
     const game = gameIn();
-    // One way through it: pressing the row is that way, so the row says which.
+    // Two ways through the seam — the torch and the chassis (G90 B) — so the
+    // row asks, and the command on it is the first of them.
     const seam = rowFor(game, "d6")!;
     expect(seam.enabled).toBe(true);
     expect(seam.cmd).toEqual({ kind: "act", verb: "cut", target: game.ship.door("d6").id });
-    expect(seam.step).toBeUndefined();
+    expect(seam.step).toBe(game.ship.door("d6").id);
 
     // Two ways — through it, or shut it — so the row is a choice, and the
     // first thing it offers is the step through (G83, 6).
@@ -153,7 +155,7 @@ describe("the list of bulkheads", () => {
     const locked = rowFor(game, "d3")!;
     expect(locked.step).toBe(game.ship.door("d3").id);
     expect(locked.label).not.toContain("open");
-    expect(locked.ways?.map((w) => w.verb)).toEqual(["power", "spike", "cut", "key"]);
+    expect(locked.ways?.map((w) => w.verb)).toEqual(["power", "spike", "cut", "key", "ram"]);
   });
 
   it("says of a welded door what the drone could do about it, and what it could not", () => {
@@ -161,29 +163,29 @@ describe("the list of bulkheads", () => {
     const withTorch = rowFor(game, "d6")!;
     expect(withTorch.enabled).toBe(true);
     expect(withTorch.cmd).toEqual({ kind: "act", verb: "cut", target: game.ship.door("d6").id });
-    expect(withTorch.ways).toHaveLength(1);
+    expect(withTorch.ways).toHaveLength(2);
 
     drop(game, "cutter");
     const without = rowFor(game, "d6")!;
-    expect(without.enabled).toBe(false);
-    expect(without.ways).toBeUndefined();
-    // The compartment's own list refuses a bulkhead nothing can be done about
-    // in exactly these words, and there is one of them.
-    expect(without.why).toBe(t("why.door.state", { door: "d6", state: t("state.sealed") }));
+    // Without the torch the chassis is the one way left (G90 B): the row is
+    // that way itself, with no list under it.
+    expect(without.enabled).toBe(true);
+    expect(without.ways).toHaveLength(1);
+    expect(without.cmd).toEqual({ kind: "act", verb: "ram", target: game.ship.door("d6").id });
     // And the row is still there: a door the drone cannot open is information.
     expect(rows(game)).toHaveLength(4);
   });
 
-  it("stands while any door has an answer, and falls away when none has", () => {
+  it("stands while any door has an answer, and a lock or a seam always has the chassis", () => {
     const game = gameIn();
     expect(doorsStand(game)).toBe(true);
 
-    // A corridor behind a welded seam, with nothing to cut it: four rows become
-    // no question at all, and the level goes back to the compartment.
+    // A corridor behind a welded seam, with nothing to cut it: the chassis is
+    // still an answer (G90 B), so the level stands on that one way.
     const shut = gameIn("r6");
     drop(shut, "cutter");
-    expect(doorsStand(shut)).toBe(false);
-    // With the torch it is a question again.
+    expect(doorsStand(shut)).toBe(true);
+    // With the torch it is a choice of two.
     give(shut, "cutter");
     expect(doorsStand(shut)).toBe(true);
   });
@@ -232,11 +234,12 @@ describe("a bulkhead with more than one answer", () => {
 
   it("falls away the moment the door stops having two of them", () => {
     const game = gameIn();
-    expect(doorWaysStand(game, game.ship.door("d6").id)).toBe(false);
-    // Welded, it is cutting and nothing else: one way, so no list — and with
-    // no torch, no way at all.
-    expect(doorWays(game, game.ship.door("d6").id)).toBeUndefined();
+    // Welded, it is the torch and the chassis: two ways, so a list — and with
+    // no torch the chassis alone, so none (G90 B).
+    expect(doorWaysStand(game, game.ship.door("d6").id)).toBe(true);
+    expect(doorWays(game, game.ship.door("d6").id)).toBeDefined();
     drop(game, "cutter");
+    expect(doorWaysStand(game, game.ship.door("d6").id)).toBe(false);
     expect(doorWays(game, game.ship.door("d6").id)).toBeUndefined();
     // And a door of another compartment is not this level's business at all.
     expect(doorWays(game, game.ship.door("a1").id)).toBeUndefined();
@@ -270,7 +273,7 @@ describe("a bulkhead with more than one answer", () => {
     expect(row.step).toBeUndefined();
   });
 
-  it("offers an open door through, shut, weld; a broken one only through; a seam only the torch", () => {
+  it("offers an open door through, shut, weld; a broken one only through; a seam the torch and the chassis", () => {
     const game = gameIn();
     give(game, "welder");
     const verbs = (label: string) => doorWays(game, game.ship.door(label).id)?.filter((a) => a.step !== null).map((a) => (a.cmd.kind === "go" ? "go" : a.cmd.kind === "act" ? a.cmd.verb : "?"));
@@ -278,19 +281,20 @@ describe("a bulkhead with more than one answer", () => {
     game.ship.door("d1").state = "broken";
     expect(verbs("d1")).toBeUndefined();
     expect(rowFor(game, "d1")!.cmd).toEqual({ kind: "go", door: game.ship.door("d1").id });
-    expect(verbs("d6")).toBeUndefined();
+    expect(verbs("d6")).toEqual(["cut", "ram"]);
     expect(rowFor(game, "d6")!.cmd).toEqual({ kind: "act", verb: "cut", target: game.ship.door("d6").id });
   });
 });
 
 describe("one bulkhead with one way through it", () => {
   it("is the move itself, not a list of one line", () => {
-    // The corridor sits behind a single welded seam and the rack has a torch:
-    // `cut` is the whole of what `d` could offer, so it is what `d` does.
+    // The corridor sits behind a single welded seam and the rack has no torch:
+    // the chassis is the whole of what `d` could offer, so it is what `d` does.
     const game = gameIn("r6");
+    drop(game, "cutter");
     const only = soleWay(game)!;
-    expect(only.verb).toBe("cut");
-    expect(only.cmd).toEqual({ kind: "act", verb: "cut", target: game.ship.door("d6").id });
+    expect(only.verb).toBe("ram");
+    expect(only.cmd).toEqual({ kind: "act", verb: "ram", target: game.ship.door("d6").id });
   });
 
   it("is a list again as soon as there are two ways, or two doors", () => {
@@ -304,9 +308,8 @@ describe("one bulkhead with one way through it", () => {
     expect(soleWay(gameIn())).toBeUndefined();
   });
 
-  it("is nothing at all when the one door has no answer", () => {
+  it("is not a sole way once the torch makes the seam a choice of two", () => {
     const game = gameIn("r6");
-    drop(game, "cutter");
     expect(soleWay(game)).toBeUndefined();
   });
 });

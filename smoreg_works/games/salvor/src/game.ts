@@ -1,14 +1,15 @@
-import { RoomGame, type RoomContentPack, type RoomGameConfig } from "@jamrog/engine";
+import { RoomGame, type RoomContentPack, type RoomGameConfig, type Ship } from "@jamrog/engine";
 import { t } from "./i18n.js";
 import { MAX_MACHINES, kindsForDepth, monsterChance } from "./content/monsters.js";
-import { startTraining } from "./content/hints.js";
+import { stampClass } from "./content/derelicts.js";
 import { makePlayer } from "./content/player.js";
-import { markTraining } from "./content/tutorial.js";
+import { TUTORIAL_SHIP_ID, TUTORIAL_SPEC, markTraining, tutorialShip } from "./content/tutorial.js";
 import { TUG_ID, tugShip } from "./content/tug.js";
 import { ALERT } from "./systems/alert.js";
 import { BLOOM } from "./systems/bloom.js";
 import { CODEX_SYSTEM } from "./systems/codex.js";
 import { CONTACTS } from "./systems/contacts.js";
+import { CROWD } from "./systems/crowd.js";
 import { DOORS } from "./systems/doors.js";
 import { GHOST } from "./systems/ghost.js";
 import { HAZARD } from "./systems/hazards.js";
@@ -51,7 +52,8 @@ export const SALVOR: RoomContentPack = {
 
 /**
  * The same game, with the drone marked as a training run's before anything can
- * ask (`content/tutorial.ts`).
+ * ask (`content/tutorial.ts`), and an opening line that is the lesson's story
+ * rather than the airlock's.
  *
  * The flag has to be on the player entity by the time `VOYAGE.onRunStart`
  * draws the itinerary, and that happens inside the `RoomGame` constructor —
@@ -65,9 +67,31 @@ export const SALVOR: RoomContentPack = {
  * death lines to whatever language was on the moment a run was created, which
  * is a bug `L` would find on the first press.
  */
-const TRAINING: RoomContentPack = Object.assign(Object.create(SALVOR) as RoomContentPack, {
-  makePlayer: () => markTraining(makePlayer()),
-});
+const TRAINING: RoomContentPack = Object.create(SALVOR, {
+  makePlayer: { value: () => markTraining(makePlayer()), enumerable: true },
+  // A getter like the three it shadows, and defined as one: `Object.assign`
+  // would read it once and then fail to write over the prototype's own.
+  openingLine: { get: () => t("lesson.opening"), enumerable: true },
+}) as RoomContentPack;
+
+/**
+ * The lesson's hull, stamped as its class and handed to the run as the ship it
+ * opens on.
+ *
+ * A training run starts *aboard* — the owner's story is the hero linking to a
+ * drone left on an abandoned hull and getting it out, so the tug is where the
+ * lesson ends, not where it begins. The voyage already allows for a run whose
+ * first ship is a derelict rather than the tug (`systems/voyage.ts`, `fresh`),
+ * and the hull is built by hand rather than drawn, so it is the same nine
+ * compartments on every seed (`content/tutorial.ts`, `tutorialShip`). The
+ * stamp is what tells every system whose hull this is: the band its one
+ * machine comes from, the slow clock, the hunter held back.
+ */
+function lessonHull(): Ship {
+  const ship = tutorialShip();
+  stampClass(ship, TUTORIAL_SPEC);
+  return ship;
+}
 
 export const GAME_CONFIG: Omit<RoomGameConfig, "seed"> = {
   content: SALVOR,
@@ -114,8 +138,10 @@ export const GAME_CONFIG: Omit<RoomGameConfig, "seed"> = {
   // cannot matter to anybody: it writes down what the run has shown the player
   // and changes nothing at all, so it wants the turn as everything else has
   // finally left it and nothing wants it (`systems/codex.ts`, G72).
+  // CROWD's only hook clears a per-turn count before the machines act; its
+  // rules live at the rig's damage seam and its place in the list is nobody's.
   systems: [
-    VIRUS, POPULATE, TUG, DOORS, HAZARD, ALERT, GHOST, JAM, BLOOM, RIVAL, SHIP, VOYAGE, CONTACTS, TUTORIAL,
+    VIRUS, POPULATE, TUG, DOORS, CROWD, HAZARD, ALERT, GHOST, JAM, BLOOM, RIVAL, SHIP, VOYAGE, CONTACTS, TUTORIAL,
     CODEX_SYSTEM,
   ],
   // A run starts at home, on the four compartments of the tug, with a drone on
@@ -147,8 +173,11 @@ export type SalvorGame = RoomGame & {
  * play comes through this function, so nobody measures that by accident.
  */
 export function newGame(seed: number, training = false): SalvorGame {
-  const game = new RoomGame({ ...GAME_CONFIG, content: training ? TRAINING : SALVOR, seed });
-  if (training) startTraining(game);
+  const game = new RoomGame(
+    training
+      ? { ...GAME_CONFIG, content: TRAINING, seed, firstShip: lessonHull, firstShipId: TUTORIAL_SHIP_ID }
+      : { ...GAME_CONFIG, seed },
+  );
   return Object.assign(game, {
     progress: () => voyageProgress(game),
     metrics: () => voyageMetrics(game),

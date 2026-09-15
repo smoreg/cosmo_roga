@@ -25,6 +25,7 @@ import {
   objectiveSpec,
   type ObjectiveSpec,
 } from "../content/objectives.js";
+import { TUTORIAL_ID } from "../content/tutorial.js";
 import { t } from "../i18n.js";
 import { addWreck, hostilesIn, registerDamageVeto } from "../twist/rig.js";
 import { notePost, raiseAlert } from "./alert.js";
@@ -87,7 +88,7 @@ const DEAL_PRICE = 100;
  * that file's number and not an export, and a system raised by the competitor
  * is exactly as loud as one raised by the drone.
  */
-const DEAL_ALERT = 2;
+const DEAL_ALERT = 4;
 
 /**
  * The three lines, in the order they are offered. The index into this list is
@@ -144,6 +145,10 @@ export const RIVAL_CHANCE = 0.25;
 function wanted(game: RoomGame): boolean {
   const spec = specOfShip(game.ship);
   if (!spec) return false;
+  // The lesson's hull is nobody's to race for: a competitor raising its
+  // systems on a quarter of the seeds would be a different lesson each time
+  // (`content/tutorial.ts`, G90 E). Every other hull keeps its roll.
+  if (spec.id === TUTORIAL_ID) return false;
   return spec.rival || new Rng(game.currentShip.scheduleSeed).fork(0).chance(RIVAL_CHANCE);
 }
 

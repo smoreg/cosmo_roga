@@ -1,5 +1,6 @@
 import { isAlive, type RoomGame, type System } from "@jamrog/engine";
 import { JAMMER } from "../content/monsters.js";
+import { t } from "../i18n.js";
 
 /**
  * The jammer's field: while one of them is standing in the drone's compartment,
@@ -37,6 +38,6 @@ export const JAM: System<RoomGame> = {
    * a line of a panel that is already full of the rack.
    */
   panelLines(game) {
-    return jammed(game) ? [{ text: "JAMMED", fg: BAD_FG }] : [];
+    return jammed(game) ? [{ text: t("panel.jammed"), fg: BAD_FG }] : [];
   },
 };

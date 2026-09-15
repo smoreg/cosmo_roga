@@ -10,6 +10,7 @@ import { KEY_W, LABEL_W, titleScreen } from "../src/ui/title.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH, THEME } from "../src/ui/theme.js";
 import { VIEWS, type View } from "../src/ui/view.js";
 import { screenHtml } from "../src/ui/web/screen.js";
+import { skySvg } from "../src/ui/web/sky.js";
 import { WEB_CSS } from "../src/ui/web/styles.js";
 
 /**
@@ -155,7 +156,8 @@ function webFrame(view: View): string {
   const game = newGame(SEED);
   const state = initialState({ view, sound: true, seed: SEED });
   const map = view === "hex" ? "hex" : "graph";
-  return `<div class="salvor-web">${screenHtml(game, state, new Set(), undefined, map)}</div>`;
+  // The sky is the shell's layer (`ui/web/mount.ts`), not part of the frame's string.
+  return `<div class="salvor-web"><div class="web-sky">${skySvg()}</div>${screenHtml(game, state, new Set(), undefined, map)}</div>`;
 }
 
 function span(colour: string, text: string): string {
@@ -194,9 +196,9 @@ figcaption{color:#8f9aa2; font-size:.78rem; padding:.5rem .2rem 0; letter-spacin
 pre.ascii{margin:0; font-family:ui-monospace,'DejaVu Sans Mono',Menlo,Consolas,monospace;
   font-size:8px; line-height:1.08; white-space:pre; background:#0a0d10;}
 /* The game's own stylesheet, minus the full-screen shell it wraps the page in. */
-.salvor-web{position:static; inset:auto; display:block; height:auto; min-height:26rem;
-  overflow:visible; background:#0a0d10; font-size:12px;}
-.salvor-web .web-over{position:static; inset:auto; background:none; padding:0; min-height:26rem;}
+.salvor-web{position:relative; inset:auto; display:block; height:auto; min-height:34rem;
+  overflow:hidden; background:#0a0d10; font-size:12px;}
+.salvor-web .web-over{position:relative; inset:auto; background:none; padding:0; min-height:34rem;}
 .salvor-web .card{max-height:none;}
 </style>
 </head>
