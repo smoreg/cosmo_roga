@@ -43,7 +43,6 @@ import {
 import { addWreck, hostilesIn, install, rigOf } from "../src/twist/rig.js";
 import { t } from "../src/i18n.js";
 import { engage, isStop } from "../src/ui/auto.js";
-import { htmlOf, lineHtml } from "../src/ui/web/panel-html.js";
 
 /**
  * The ship's alert, on hand-drawn ships rather than on seeds: every question
@@ -528,19 +527,6 @@ describe("at five the ship starts venting its own compartments", () => {
     wait(game, 2);
     expect(durability(game)).toBe(outside);
   });
-
-  it("shows the compartment as vented on the schematic and names it on the panel", async () => {
-    const { schematicInputOf } = await import("../src/ui/schematic-input.js");
-    const { panelBlocks } = await import("../src/ui/panel.js");
-    const game = quietShip(WALKED, 6008);
-    game.ship.room("r4").hazard = "vented";
-    const box = schematicInputOf(game).rooms.find((r) => r.label === "r4")!;
-    expect(box.glyphs).toContain("~");
-
-    walkTo(game, "r4");
-    const lines = panelBlocks(game, []).map((l) => l.text);
-    expect(lines.some((l) => l.includes("no atmosphere"))).toBe(true);
-  });
 });
 
 // -------------------------------------------------------------- neutralised
@@ -996,24 +982,6 @@ describe("near the top of the gauge the ship sends an ENFORCER", () => {
       text: `ALERT ▮▮▮▮▮ SCUTTLE IN ${SCUTTLE_WARN - 5}`,
       fg: "#d96a6a",
     });
-  });
-
-  it("carries its level onto the page as a class, and is lifted above the rack from three", () => {
-    const html = (level: number, word: string) =>
-      lineHtml({ text: `ALERT ${"▮".repeat(level)}${"▯".repeat(5 - level)} ${word}`.trim() });
-    expect(html(0, "")).toContain("web-alert is-l0");
-    expect(html(3, "HUNTING")).toContain("web-alert is-l3");
-    expect(html(5, "SCUTTLE IN 4")).toContain("web-alert is-l5");
-    // The rival's bar is a bar too, and is not the alert.
-    expect(lineHtml({ text: "RIVAL ▮▯▯" })).not.toContain("web-alert");
-
-    const page = (text: string) =>
-      htmlOf([{ text: "1 CUTTER ▮▮▮▯" }, { text: "" }, { text: "KEYS  0" }, { text }], [], [], 0);
-    expect(page("ALERT ▮▮▯▯▯ SEARCHING")).not.toContain("web-alarm");
-    const lifted = page("ALERT ▮▮▮▯▯ HUNTING");
-    expect(lifted.indexOf("web-alarm is-l3")).toBeGreaterThanOrEqual(0);
-    expect(lifted.indexOf("web-alarm"), "first thing on the page").toBeLessThan(lifted.indexOf("CUTTER"));
-    expect(page("ALERT ▮▮▮▮▮ SCUTTLE IN 3")).toContain("web-alarm is-l5");
   });
 });
 

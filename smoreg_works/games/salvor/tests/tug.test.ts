@@ -33,7 +33,6 @@ import {
 import { ACTION_WIDTH, roomActions, tugStands, type Action } from "../src/ui/actions.js";
 import { capOf, rigOf, findSlot } from "../src/twist/rig.js";
 import { PANEL_WIDTH, panelBlocks } from "../src/ui/panel.js";
-import { schematicInputOf } from "../src/ui/schematic-input.js";
 
 /**
  * The tug as a menu (docs/tasks/G53-tug-is-a-menu.md).
@@ -873,26 +872,6 @@ describe("a run, as it starts", () => {
     const before = game.schedule.time;
     expect(game.playerCommand({ kind: "act", verb: "stow", slot: filled(game)[0]! }).cost).toBe(TURN_COST);
     expect(game.schedule.time).toBeGreaterThan(before);
-  });
-
-  it("says tug over the tug and names the derelict over the derelict", () => {
-    const game = newGame(4);
-    const head = (g: RoomGame): string => panelBlocks(g, roomActions(g))[0]!.text;
-
-    // The hull by its callsign: a voyage is four of them and three can be
-    // freighters (docs/tasks/G55-playtest-findings.md).
-    expect(head(game)).toBe(`SALVOR  tug → ${flavourCallsign(currentDerelict(game).flavour)}`);
-    expect(schematicInputOf(game).shipLine).toBe(
-      `${tugCallsign(4)} · your tug · docked to ${derelictName(currentDerelict(game).spec)}`,
-    );
-    expect(head(game).length).toBeLessThanOrEqual(PANEL_WIDTH);
-
-    undock(game);
-    expect(head(game)).toBe(`SALVOR  ${flavourCallsign(currentDerelict(game).flavour)}  sortie 1`);
-    expect(head(game)).not.toContain("tug");
-    const line = schematicInputOf(game).shipLine;
-    expect(line).not.toContain("your tug");
-    expect(line.startsWith(flavourCallsign(currentDerelict(game).flavour)!)).toBe(true);
   });
 
   it("gives the tug a callsign off the seed, the same one every replay", () => {

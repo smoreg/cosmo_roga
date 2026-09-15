@@ -19,7 +19,6 @@ import {
 } from "../src/ui/input.js";
 import { t } from "../src/i18n.js";
 import { findSlot, makeStartingRig, type Rig } from "../src/twist/rig.js";
-import { helpBody, helpBox } from "../src/ui/render.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
 import { DEFAULT_LANG, LANGS, setLang } from "../src/i18n.js";
 
@@ -213,23 +212,6 @@ describe("key mapping", () => {
     expect(DOOR_USE).toEqual({ cell: "power", spike: "spike", cutter: "cut", welder: "weld" });
   });
 
-  it("documents every key it accepts", () => {
-    const help = [...keyHelp(), ...ruleHelp()].join("\n");
-    const keys = [
-      "1-9", "0", ".", "h", "m", "d", "shift+D", "<", "o", "tab",
-      "s", "e", "w", "p", "K", "f", "c", "?", "shift+R",
-    ];
-    for (const token of [...keys, "up/down", "enter", "L"]) {
-      expect(help, token).toContain(token);
-    }
-    // Every line of the card, keys and prose alike, inside one column: the
-    // frame is drawn to the longest of them (`boxFor`), and a card much wider
-    // than half the screen stops reading as a card.
-    for (const onTug of [true, false]) {
-      for (const l of helpBody(onTug)) expect(l.length, l).toBeLessThanOrEqual(54);
-    }
-  });
-
   it("reads PageUp and PageDown as the log's own past, in both directions", () => {
     expect(toIntent(press("PageUp", "PageUp"))).toEqual({ kind: "history", delta: 1 });
     expect(toIntent(press("PageDown", "PageDown"))).toEqual({ kind: "history", delta: -1 });
@@ -254,114 +236,6 @@ describe("key mapping", () => {
  * exactly the kind of thing that is only ever noticed on someone else's screen.
  */
 describe("the cards fit their frames", () => {
-  it("keeps the help card on the screen, wherever it is opened", () => {
-    for (const onTug of [true, false]) {
-      expect(helpBox(onTug).width, `tug ${onTug}`).toBeLessThanOrEqual(SCREEN_WIDTH);
-      expect(helpBox(onTug).height, `tug ${onTug}`).toBeLessThanOrEqual(SCREEN_HEIGHT);
-    }
-  });
-
-  it("keeps every help line inside the frame", () => {
-    for (const onTug of [true, false]) {
-      for (const line of helpBody(onTug)) {
-        expect(line.length, line).toBeLessThanOrEqual(helpBox(onTug).inner);
-      }
-    }
-    expect(helpBody(true)).toEqual([
-      ...tugHelp(),
-      "",
-      ...keyHelp(),
-      "",
-      ...ruleHelp(),
-      "",
-      ...listHelp(),
-      "",
-      ...charterHelp(),
-      "",
-      ...urlHelp(),
-    ]);
-    expect(helpBody(false).slice(0, shipHelp().length)).toEqual(shipHelp());
-    expect(helpBody(false).slice(shipHelp().length)).toEqual(helpBody(true).slice(tugHelp().length));
-  });
-
-  /**
-   * The question `?` is pressed to ask, answered before anything else on the
-   * card and answered differently in the two places a player can be lost
-   * (docs/tasks/G40-tug-clarity.md, 6).
-   */
-  it("leads with where you are standing, and says something different in each", () => {
-    expect(helpBody(true)[0]).toBe(tugHelp()[0]);
-    expect(helpBody(false)[0]).toBe(shipHelp()[0]);
-
-    // The tug's paragraph names what it does, not the compartments it used to
-    // be spread over: since G53 there are no compartments to name (DOCK, HOLD,
-    // BENCH, HELM are gone from the screen and from this card with them).
-    const tug = helpBody(true).slice(0, tugHelp().length).join(" ");
-    expect(tug).toContain("tug");
-    for (const verb of ["buy", "stow", "sell", "charter", "cast off"]) expect(tug, verb).toContain(verb);
-    for (const station of ["DOCK", "HOLD", "BENCH", "HELM"]) expect(tug, station).not.toContain(station);
-
-    const ship = helpBody(false).slice(0, shipHelp().length).join(" ");
-    expect(ship).toContain("derelict");
-    expect(ship).toContain("airlock");
-    // The tug's own paragraph must not be the one a player reads aboard a hull.
-    expect(ship).not.toContain("stow");
-  });
-
-  /**
-   * One page, four blocks: the keys, the rule the twist is, what the numbered
-   * list is, and what a charter is (`docs/tasks/G32-onboarding-v2.md`, 4). A
-   * voter presses `?` once and closes it again — anything the card does not
-   * answer in that one screen it does not answer at all.
-   */
-  it("answers the three questions the screen cannot", () => {
-    const card = helpBody(false).join("\n");
-    expect(card).toContain("EXPOSED");
-    expect(card).toContain("◀");
-    expect(card).toContain("ACTIONS");
-    expect(card).toContain("CHARTERS");
-    expect(card).toContain("SALVAGE");
-    expect(card).toContain("NEUTRALIZE");
-    // Each block leads with the heading the renderer sets in the bright colour.
-    // The last block is the run's own: what this voyage has already shown you
-    // (G72), and it is on the card only when there is something in it — hence
-    // the list handed in here, which is what a run that has met anything gives.
-    const met = ["SPASM VIRUS"];
-    const bodies = [...helpBody(true, met), ...helpBody(false, met)];
-    for (const heading of helpHeadings()) expect(bodies).toContain(heading);
-    expect(helpBody(false)).not.toContain(t("help.codex.head"));
-    expect(helpHeadings()).toEqual([
-      tugHelp()[0],
-      shipHelp()[0],
-      ruleHelp()[0],
-      listHelp()[0],
-      charterHelp()[0],
-      urlHelp()[0],
-      t("help.codex.head"),
-    ]);
-  });
-
-  /**
-   * The settings that live in the address bar and had no other home.
-   *
-   * All five worked before the card mentioned them and none was written down
-   * anywhere a player would look: a voter who wants the music off, or a bug
-   * report worth reproducing, had the source to read and nothing else
-   * (docs/gui-guides.md, "Что применить", C). Checked in every language,
-   * because a translator who reworded a query string would have broken the one
-   * thing on the card that must be typed exactly.
-   */
-  it("names every setting that lives in the URL, in all three languages", () => {
-    const params = ["?seed=", "?view=", "?sound=off", "?training=1", "?debug=1"];
-    for (const lang of LANGS) {
-      setLang(lang);
-      const card = helpBody(false).join("\n");
-      for (const param of params) expect(card, `${lang}: ${param}`).toContain(param);
-      // On the tug as well: it is the card, not the compartment, that answers.
-      for (const param of params) expect(helpBody(true).join("\n"), lang).toContain(param);
-    }
-    setLang(DEFAULT_LANG);
-  });
 
   /** `PageUp` had no line on the card until it had a meaning (G79). */
   it("says which key opens the log's own past", () => {
@@ -382,48 +256,5 @@ describe("the cards fit their frames", () => {
     const list = listHelp().join("\n");
     expect(list).toContain("0");
     expect(list.toLowerCase()).not.toContain("letters under");
-  });
-
-  it("leaves every page a row for its heading, its footer and its bottom edge", () => {
-    for (const onTug of [true, false]) {
-      for (const page of helpPages(onTug)) {
-        expect(3 + page.length, `tug ${onTug}`).toBeLessThanOrEqual(helpBox(onTug).height - 3);
-      }
-    }
-  });
-
-  /**
-   * The card used to be exactly as tall as the screen, so every key the game
-   * gained was a choice between its own line and somebody else's — G48 spent
-   * that choice once, folding two rows together to fit `m` in. Pages end the
-   * arithmetic: the rule is a per-page ceiling with air over it, and a card
-   * that outgrows one page grows another instead of losing a line.
-   */
-  it("pages the card rather than filling the screen with it", () => {
-    for (const onTug of [true, false]) {
-      const pages = helpPages(onTug);
-      expect(pages.length, `tug ${onTug}`).toBeGreaterThan(0);
-      expect(helpBox(onTug).height, `tug ${onTug}`).toBeLessThanOrEqual(SCREEN_HEIGHT - 4);
-      for (const page of pages) {
-        expect(page.length, `tug ${onTug}`).toBeLessThanOrEqual(HELP_ROWS);
-        // No page opens on a blank row: the cut is between blocks, never inside
-        // one, so a heading never ends up on the page before its own lines.
-        expect(page[0], `tug ${onTug}`).not.toBe("");
-        expect(helpHeadings(), `tug ${onTug}`).toContain(page[0]);
-      }
-      // Every line of the card is on exactly one page, in the order it was in.
-      expect(pages.flat().filter((l) => l !== "")).toEqual(helpBody(onTug).filter((l) => l !== ""));
-    }
-  });
-
-  it("says on every page which one it is and what the next ? will do", () => {
-    const pages = helpPages(false).length;
-    expect(helpFooter(0, pages)).toContain(`1/${pages}`);
-    expect(helpFooter(pages - 1, pages)).toContain(`${pages}/${pages}`);
-    // The last page says the key closes; the others say it turns the page.
-    expect(helpFooter(0, pages)).not.toBe(helpFooter(pages - 1, pages));
-    for (let i = 0; i < pages; i++) {
-      expect(helpFooter(i, pages).length, helpFooter(i, pages)).toBeLessThanOrEqual(helpBox(false).inner);
-    }
   });
 });

@@ -11,29 +11,25 @@ import { alertState } from "../systems/alert.js";
 import { doorHazard, hazardKnown, hazardsOf, roomHazard, signsFresh, type HazardRecord } from "../systems/hazardstate.js";
 import { hostilesIn, wrecksOn } from "../twist/rig.js";
 import { strikersNear } from "./strikers.js";
-import type {
-  RoomState,
-  SchematicDoor,
-  SchematicInput,
-  SchematicRoom,
-  SchematicThing,
-} from "./schematic.js";
 
 /**
- * Where the engine's `Ship` meets the picture of it.
+ * What is in a compartment, in words.
  *
- * `ui/schematic.ts` takes text and gives back text, on purpose: the geometry is
- * testable against hand-written inputs that no generator has to produce first.
- * This file is the one adapter, and it is where every rule about *what the
- * player knows* lives — a room the drone has never entered shows what a sensor
- * pulse remembered, not what is standing in it now (design-doc.md, "Что видит
- * игрок").
+ * This is where every rule about *what the player knows* lives: a compartment
+ * the drone has never entered shows what a sensor pulse remembered, not what
+ * is standing in it now (design-doc.md, "Что видит игрок").
+ *
+ * It used to be the adapter between the engine and the ASCII picture. The
+ * picture is gone and none of this was ever about a picture — these are facts
+ * about the ship, and the panel, the action list and the board all ask them.
  */
 
-/** Room contents the panel and the schematic both draw. */
+/** One thing standing or lying in a compartment, as the game knows it. */
 export interface RoomThing {
   glyph: string;
   name: string;
+  /** A machine that means the drone harm. Absent means it is not one. */
+  hostile?: true;
 }
 
 /**
@@ -43,6 +39,25 @@ export interface RoomThing {
  * expect, and a save file round-trips through JSON with no types at all.
  */
 const CONTENT_KEYS = ["bodies", "crates", "systems", "items"] as const;
+
+/**
+ * How much the drone knows about a compartment.
+ *
+ * Standing in it beats seeing it, seeing it beats having stood in it once, and
+ * a sensor pulse is the least of the four — the ship it drew may have moved
+ * since. The board draws four of these, collapsing `explored` and `visible`,
+ * and says so where it does it (`react/model.ts`).
+ */
+export type RoomState = "unknown" | "scanned" | "explored" | "visible" | "current";
+
+/** Standing in it beats seeing it: which compartment the drone is treating as its own. */
+export function stateOf(game: RoomGame, room: Room, here: RoomId | undefined): RoomState {
+  if (room.id === here) return "current";
+  if (game.visible.has(room.id)) return "visible";
+  if (room.explored) return "explored";
+  if (room.scanned) return "scanned";
+  return "unknown";
+}
 
 /**
  * The mark a thing wears when its own record carries none.
@@ -75,29 +90,6 @@ function bucketName(key: (typeof CONTENT_KEYS)[number], raw: unknown): string {
   return t("thing.system");
 }
 
-/**
- * The picture on the screen: the hull under the drone's feet, or — standing at
- * the tug's airlock — the derelict the tug is tied to.
- *
- * The second case is the whole of the tug's planning (design-doc.md, "Буксир"):
- * before spending anything on a sortie the player reads the ship they are about
- * to walk into, as the last drone left it. Nothing of it is live — the machines
- * aboard are the store's, not the game's — so the drawing is memory, and every
- * compartment shows what was left lying in it rather than what stands there now.
- */
-export function schematicInputOf(
-  game: RoomGame,
-  alarm: ReadonlySet<RoomId> = NO_ALARM,
-  target?: RoomId,
-): SchematicInput {
-  const docked = dockedHull(game);
-  const input = docked ? remoteInput(docked.ship, docked.data) : aboardInput(game, alarm);
-  if (target === undefined) return input;
-  return {
-    ...input,
-    rooms: input.rooms.map((room) => (room.id === target ? { ...room, target: true as const } : room)),
-  };
-}
 
 /**
  * Compartments flashing on this frame, when nothing is: the ordinary case, and
@@ -106,128 +98,12 @@ export function schematicInputOf(
 const NO_ALARM: ReadonlySet<RoomId> = new Set();
 const NO_DOORS: ReadonlySet<number> = new Set();
 
-/**
- * The hull as the drone sees it from inside: sight, memory and the machines.
- *
- * `alarm` is the one thing here that is not a fact about the ship — it is which
- * boxes the screen is flashing this instant, decided by `ui/pulse.ts` against
- * the music's clock and handed down because both views draw off this one value
- * (`ui/render.ts` and `ui/web/schematic-svg.ts`). The remote hull takes none:
- * nobody is aboard it, so nothing can appear in it.
- */
-function aboardInput(game: RoomGame, alarm: ReadonlySet<RoomId>): SchematicInput {
-  const here = game.player.room;
-  // Compartments a shot came out of this turn. The panel names the machine and
-  // the door; the map has to show the box, or a player who reads the picture
-  // and not the sidebar is still being hit by nothing ("опять невидимый
-  // каратель", with the contact block already saying `E enforcer 10/10 d21`).
-  const struck = new Set(
-    here === undefined ? [] : strikersNear(game, here).map((s) => s.room),
-  );
-  const data = game.currentShip.data;
-  // What the red line has just named: the compartment and the door it points
-  // at, lit as the move list's destination is, so a player reading «за d19 —
-  // ЦЕХ, там дым» finds d19 and the box on the map without looking for them
-  // (docs/tasks/G83-anonymous-blows.md, 7).
-  const named = signsNamed(game, here);
-  const rooms = game.ship.rooms.map((room) => {
-    const state = stateOf(game, room, here);
-    const drawn = box(room, state, thingsOf(game, room, state, data), hostileWidth(game, room, state));
-    const lit = alarm.has(room.id) ? { ...drawn, alarm: true as const } : drawn;
-    const hit = struck.has(room.id) ? { ...lit, threat: true as const } : lit;
-    return named.rooms.has(room.id) ? { ...hit, target: true as const } : hit;
-  });
-  const line = isTug(game) ? tugLine(game) : shipLine(game.ship, game.currentShip.data, rooms);
-  return frame(game.ship, rooms, line, named.doors);
-}
 
-/**
- * The compartments and doors this turn's red lines name, read the way the
- * line was worded (`systems/hazards.ts`, `hazardLine`): a compartment hazard
- * is the compartment and the door from here into it, a door trap is the door.
- */
-function signsNamed(game: RoomGame, here: RoomId | undefined): { rooms: Set<RoomId>; doors: Set<number> } {
-  const rooms = new Set<RoomId>();
-  const doors = new Set<number>();
-  if (here === undefined) return { rooms, doors };
-  const ship = game.ship;
-  for (const rec of signsFresh(game)) {
-    if (rec.door !== undefined) {
-      doors.add(rec.door);
-      continue;
-    }
-    if (rec.room === undefined || rec.room === here) continue;
-    rooms.add(rec.room);
-    const door = ship
-      .doorsOf(here)
-      .filter((d) => ship.other(d, here) === rec.room)
-      .sort((a, b) => a.id - b.id)[0];
-    if (door) doors.add(door.id);
-  }
-  return { rooms, doors };
-}
 
-/** A hull nobody is aboard: what it was left like, and nothing more. */
-function remoteInput(ship: Ship, data: Record<string, unknown>): SchematicInput {
-  const rooms = ship.rooms.map((room) => {
-    const state: RoomState = room.explored ? "explored" : room.scanned ? "scanned" : "unknown";
-    return box(room, state, state === "unknown" ? marksOf(ship, room, data) : remembered(ship, room, state, data));
-  });
-  return frame(ship, rooms, shipLine(ship, data, rooms));
-}
 
-/**
- * `BRIGHT ANCHOR · your tug · docked to freighter`.
- *
- * Four rooms and no name is what the caption used to say — `DERELICT · 4 rooms
- * · 4 seen` — while the player stood in the DOCK asking where the tug was. The
- * picture was right and the words under it named somebody else's ship.
- */
-function tugLine(game: RoomGame): string {
-  const parts = [tugCallsign(game.seed), t("ship.yourTug")];
-  const docked = derelictNameOf(tagOf(game.currentShip.data, "docked"));
-  if (docked) parts.push(t("ship.dockedTo", { hull: docked }));
-  return parts.join(" · ");
-}
 
 /** Columns the banner may use: the schematic's own width, short of the hull line. */
-export const BANNER_WIDTH = 62;
 
-/**
- * The line across the top of the schematic: which ship this is, in words.
- *
- * "буксир и данж путаются, давай хоть там текстом" — the owner, after two
- * playtests in which the only difference between home and a dead freighter was
- * the shape of four boxes (docs/tasks/G40-tug-clarity.md, 9). The caption under
- * the schematic says the same thing; this one says it where the eye lands
- * first, and says the alert with it, which the caption never did.
- */
-export function bannerLine(game: RoomGame): string {
-  const docked = dockedHull(game);
-  if (docked) {
-    const ship = docked.ship;
-    return clipTo(
-      t("banner.ahead", {
-        hull: named(tagOf(docked.data, "name"), derelictNameOf(tagOf(docked.data, "type"))),
-        rooms: t("ship.rooms", { n: ship.rooms.length }),
-      }),
-      BANNER_WIDTH,
-    );
-  }
-  if (isTug(game)) {
-    const to = hull(
-      tagOf(game.currentShip.data, "dockedName"),
-      derelictNameOf(tagOf(game.currentShip.data, "docked")),
-    );
-    return clipTo(t("banner.tug", { callsign: tugCallsign(game.seed), hull: to }), BANNER_WIDTH);
-  }
-  const parts = [
-    named(tag(game, "name"), derelictNameOf(tag(game, "type"))),
-    t("ship.rooms", { n: game.ship.rooms.length }),
-    alertWord(game),
-  ];
-  return clipTo(t("banner.derelict", { parts: parts.join(" · ") }), BANNER_WIDTH);
-}
 
 /** `«KESTREL» · freighter`, with whichever half the store actually has. */
 function named(name: string | undefined, type: string | undefined): string {
@@ -264,74 +140,8 @@ function dockedHull(game: RoomGame): { ship: Ship; data: Record<string, unknown>
   return stored ? { ship: stored.ship, data: stored.data } : undefined;
 }
 
-/** The geometry every drawing shares: the wires between the boxes, and the caption. `lit` doors are the ones a red line has just named. */
-function frame(ship: Ship, rooms: SchematicRoom[], caption: string, lit: ReadonlySet<number> = NO_DOORS): SchematicInput {
-  const ports = portMap(ship);
-  const doors: SchematicDoor[] = ship.doors
-    .filter((d) => d.a !== d.b)
-    .map((d) => {
-      const door: SchematicDoor = {
-        id: d.id,
-        label: d.label,
-        a: d.a,
-        b: d.b,
-        state: d.state,
-        portA: ports.get(portKey(d.a, d.id)) ?? 0,
-        portB: ports.get(portKey(d.b, d.id)) ?? 0,
-      };
-      return lit.has(d.id) ? { ...door, target: true as const } : door;
-    });
 
-  const airlock = ship.airlock();
-  const input: SchematicInput = { rooms, doors, shipLine: caption };
-  if (airlock) input.tug = { at: ship.entry, label: airlock.label };
-  return input;
-}
 
-/**
- * A compartment as the drawings take it.
- *
- * `glyphs` is spelled out of `things` rather than built beside it, so the
- * string the terminal prints and the list a tile row walks cannot drift: one
- * list, joined for the view that needs a string. That is also why `things` may
- * never be dropped from a box that has contents — the ASCII schematic would go
- * blank with it.
- */
-function box(room: Room, state: RoomState, things: readonly SchematicThing[], hostiles = 0): SchematicRoom {
-  const out: SchematicRoom = {
-    id: room.id,
-    label: room.label,
-    name: roomName(room),
-    kind: room.kind,
-    col: room.col,
-    row: room.row,
-    state,
-    glyphs: things.map((thing) => thing.glyph).join(" "),
-  };
-  if (things.length > 0) out.things = things;
-  if (hostiles > 0) out.hostiles = hostiles;
-  return out;
-}
-
-/**
- * How many leading columns of a box's glyph row are machines.
- *
- * The schematic paints them in the colour of trouble, and the count is worked
- * out here because this is the file that decides what a box shows at all: a
- * remembered compartment lists the scrap that was left in it and no machines,
- * since machines move and wreckage does not. Glyphs are joined with a space, so
- * n machines occupy 2n-1 columns (docs/tasks/G40-tug-clarity.md, 7).
- */
-function hostileWidth(game: RoomGame, room: Room, state: RoomState): number {
-  if (state !== "current" && state !== "visible") return 0;
-  // Counted off the list the contacts block counts (`hostilesIn`), and the
-  // hostile glyphs lead the row (`thingsOf`), so the prefix it paints is
-  // exactly those machines and never a character of anything behind them —
-  // and the badge every view makes of this number is the number the panel's
-  // rule shows (docs/tasks/G83-anonymous-blows.md, 4).
-  const machines = hostilesIn(game, room.id).length;
-  return machines === 0 ? 0 : machines * 2 - 1;
-}
 
 /** Everything lying in a compartment, in the order the panel lists it. */
 export function thingsIn(game: RoomGame, room: RoomId): RoomThing[] {
@@ -403,37 +213,17 @@ function hazardThings(ship: Ship, room: RoomId, records: readonly HazardRecord[]
   return out;
 }
 
-/** Machines standing in a compartment right now, the drone excluded. */
-export function machinesIn(game: RoomGame, room: RoomId): Entity[] {
-  return game.entitiesIn(room).filter((e) => e.id !== game.player.id && isAlive(e));
-}
-
-// -------------------------------------------------------------------- pieces
-
-/**
- * How much the drone knows about a compartment. Standing in it beats seeing it,
- * seeing it beats having stood in it once, and a sensor pulse is the least of
- * the four — the ship it drew may have moved since.
- */
-function stateOf(game: RoomGame, room: Room, here: RoomId | undefined): RoomState {
-  if (room.id === here) return "current";
-  if (game.visible.has(room.id)) return "visible";
-  if (room.explored) return "explored";
-  if (room.scanned) return "scanned";
-  return "unknown";
-}
-
 /**
  * What the box shows. In sight: everything, machines first. Out of sight: what
  * was left lying there, because wreckage stays where it fell and machines do
  * not — except after a pulse, which is a snapshot and says so by being one.
  */
-function thingsOf(
+export function thingsOf(
   game: RoomGame,
   room: Room,
   state: RoomState,
   data: Record<string, unknown>,
-): SchematicThing[] {
+): RoomThing[] {
   if (state === "unknown") return marksOf(game.ship, room, data);
   if (state !== "current" && state !== "visible") return remembered(game.ship, room, state, data);
 
@@ -444,13 +234,22 @@ function thingsOf(
   const hostile = new Set(hostilesIn(game, room.id).map((m) => m.id));
   const machines = machinesIn(game, room.id)
     .sort((a, b) => Number(hostile.has(b.id)) - Number(hostile.has(a.id)))
-    .map((m): SchematicThing =>
+    .map((m): RoomThing =>
       hostile.has(m.id)
         ? { glyph: m.ch, name: machineName(m.name), hostile: true }
         : { glyph: m.ch, name: machineName(m.name) },
     );
   return [...machines, ...homeThings(game.ship, room), ...thingsOn(game.ship, room.id, data)];
 }
+
+/** Machines standing in a compartment right now, the drone excluded. */
+export function machinesIn(game: RoomGame, room: RoomId): Entity[] {
+  return game.entitiesIn(room).filter((e) => e.id !== game.player.id && isAlive(e));
+}
+
+// -------------------------------------------------------------------- pieces
+
+
 
 /**
  * A compartment nobody is looking at: what was left lying in it, because
@@ -464,7 +263,7 @@ function remembered(
   room: Room,
   state: RoomState,
   data: Record<string, unknown>,
-): SchematicThing[] {
+): RoomThing[] {
   const home = homeThings(ship, room);
   const snapshot = room.data.snapshot;
   if (state === "scanned" && typeof snapshot === "string") {
@@ -475,7 +274,7 @@ function remembered(
     const seen = snapshot
       .split(" ")
       .filter((g) => g.length > 0)
-      .map((glyph): SchematicThing => ({ glyph, name: glyph }));
+      .map((glyph): RoomThing => ({ glyph, name: glyph }));
     return [...home, ...marks, ...seen];
   }
   return [...home, ...thingsOn(ship, room.id, data)];
@@ -488,7 +287,7 @@ function remembered(
  * one it *cannot* look into; the mark still has to be on the box, or the red
  * line points at nothing on the map.
  */
-function marksOf(ship: Ship, room: Room, data: Record<string, unknown>): SchematicThing[] {
+function marksOf(ship: Ship, room: Room, data: Record<string, unknown>): RoomThing[] {
   return hazardThings(ship, room.id, hazardsOf(data));
 }
 
@@ -499,33 +298,11 @@ function marksOf(ship: Ship, room: Room, data: Record<string, unknown>): Schemat
  * has no tile for it on purpose — a label that turned into a silhouette would
  * stop being the thing the player types.
  */
-function homeThings(ship: Ship, room: Room): SchematicThing[] {
+function homeThings(ship: Ship, room: Room): RoomThing[] {
   const airlock = ship.doorsOf(room.id).find((d) => d.state === "airlock");
   return airlock ? [{ glyph: airlock.label, name: airlock.label }] : [];
 }
 
-/**
- * `KESTREL · freighter · 12 rooms · 5 seen · 2 scanned`.
- *
- * Counted off the boxes rather than off the ship, because the caption sits
- * under the picture and the two used to disagree: `seen` was `room.explored`
- * while the drawing also fills in every compartment in sight through an open
- * door, so a player who could read two named boxes was told `1 seen` — on
- * 21 599 screens of a 98 447-screen sweep (docs/tasks/G55, 10). One number, one
- * source: what the drawing shows solid is `seen`, what it shows dashed from a
- * sensor pulse is `scanned`, and a box with nothing in it is neither.
- */
-function shipLine(ship: Ship, data: Record<string, unknown>, drawn: readonly SchematicRoom[]): string {
-  const parts = [tagOf(data, "name") ?? t("word.derelict").toUpperCase()];
-  const type = derelictNameOf(tagOf(data, "type"));
-  if (type) parts.push(type);
-
-  const scanned = drawn.filter((r) => r.state === "scanned").length;
-  const seen = drawn.filter((r) => r.state !== "unknown").length - scanned;
-  parts.push(t("ship.rooms", { n: ship.rooms.length }), t("ship.seen", { n: seen }));
-  if (scanned > 0) parts.push(t("ship.scanned", { n: scanned }));
-  return parts.join(" · ");
-}
 
 /**
  * A string the derelict catalogue left on the ship's store entry. Defensive:

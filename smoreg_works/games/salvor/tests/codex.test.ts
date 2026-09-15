@@ -23,10 +23,8 @@ import {
 } from "../src/systems/codex.js";
 import { install, rigOf } from "../src/twist/rig.js";
 import { appReducer, codexSeen, codexView, initialState, type AppState } from "../src/ui/appstate.js";
-import { screenHtml } from "../src/ui/web/index.js";
 import { codexBadge } from "../src/ui/panel.js";
 import { CODEX_WIDTH, codexBody, codexFooter, codexHeading, helpPages, toIntent } from "../src/ui/input.js";
-import { BOX_PAD_X, codexBox, helpBox } from "../src/ui/render.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
 import { PANEL_WIDTH } from "../src/ui/panel.js";
 
@@ -405,24 +403,6 @@ describe("the badge in the corner", () => {
     readCodex(game, "ghost");
     expect(codexBadge(game)).toBeUndefined();
   });
-
-  it("is on the page, and gone from it when there is nothing to read", () => {
-    const game = run();
-    const state = idle();
-    expect(screenHtml(game, state, new Set())).not.toContain("web-codex");
-    noticeCodex(game, "spasm");
-    expect(screenHtml(game, state, new Set())).toContain("web-codex");
-    expect(screenHtml(game, state, new Set())).toContain(codexBadge(game)!);
-  });
-
-  it("puts the card on the page when the window is open", () => {
-    const game = run();
-    noticeCodex(game, "spasm");
-    const state = press(idle(), "i", game);
-    const html = screenHtml(game, state, new Set());
-    expect(html).toContain(t("codex.spasm.title"));
-    expect(html).toContain(t("codex.label.wrong"));
-  });
 });
 
 // ----------------------------------------------------------------- the widths
@@ -442,25 +422,6 @@ describe("the window fits, in all three languages", () => {
     }
   });
 
-  it("keeps the frame on the screen, and the whole card inside it", () => {
-    for (const lang of LANGS) {
-      setLang(lang);
-      for (const id of CODEX_IDS) {
-        const entry = codexFor(id)!;
-        const fitted = new Set<ModuleId>(entry.modules ?? []);
-        const heading = codexHeading(entry);
-        const body = codexBody(entry, fitted);
-        const footer = codexFooter(0, CODEX_IDS.length);
-        const box = codexBox(heading, body, footer);
-        expect(box.width, `${lang}: ${id}`).toBeLessThanOrEqual(SCREEN_WIDTH);
-        expect(box.height, `${lang}: ${id}`).toBeLessThanOrEqual(SCREEN_HEIGHT);
-        for (const line of [heading, ...body, footer]) {
-          expect(line.length, `${lang}: ${id}: ${line}`).toBeLessThanOrEqual(box.inner);
-        }
-      }
-    }
-  });
-
   it("keeps a title short enough for the panel's own column", () => {
     // The titles are the list at the foot of the help card, and the narrowest
     // column any of them could ever be asked to sit in is the panel's.
@@ -471,23 +432,5 @@ describe("the window fits, in all three languages", () => {
         expect(title.length, `${lang}: ${title}`).toBeLessThanOrEqual(PANEL_WIDTH);
       }
     }
-  });
-
-  it("keeps the help card on the screen with everything this table can add", () => {
-    const everything = CODEX_IDS.map((id) => t(codexFor(id)!.title));
-    for (const lang of LANGS) {
-      setLang(lang);
-      const seen = CODEX_IDS.map((id) => t(codexFor(id)!.title));
-      for (const onTug of [true, false]) {
-        const box = helpBox(onTug, seen);
-        expect(box.width, `${lang} tug ${onTug}`).toBeLessThanOrEqual(SCREEN_WIDTH);
-        expect(box.height, `${lang} tug ${onTug}`).toBeLessThanOrEqual(SCREEN_HEIGHT);
-        for (const line of helpPages(onTug, seen).flat()) {
-          expect(line.length, `${lang}: ${line}`).toBeLessThanOrEqual(box.inner);
-        }
-      }
-    }
-    expect(everything.length).toBe(CODEX_IDS.length);
-    expect(BOX_PAD_X).toBeGreaterThan(0);
   });
 });

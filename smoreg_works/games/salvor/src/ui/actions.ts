@@ -22,7 +22,7 @@ import { gatedOffers } from "../systems/tug.js";
 import { pickLabel, stationTargets, voyageRecord } from "../systems/voyage.js";
 import { hostilesIn, wreckAt } from "../twist/rig.js";
 import { dangerAhead, passableForPlayer, travelRoute } from "./auto.js";
-import { BUCKET_GLYPH } from "./schematic-input.js";
+import { BUCKET_GLYPH } from "./contents.js";
 
 /**
  * The numbered action list: "выбираем что делать текстом" (design-doc.md, "Ход

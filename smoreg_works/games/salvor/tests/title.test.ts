@@ -6,7 +6,6 @@ import { TUTORIAL_SEED } from "../src/content/tutorial.js";
 import { LANGS, currentLang, setLang, DEFAULT_LANG, LANG_STORAGE_KEY, initLang } from "../src/i18n.js";
 import { appReducer, initialState, withSettings, type AppState } from "../src/ui/appstate.js";
 import { toIntent, type KeyLike } from "../src/ui/input.js";
-import { nameBanner, titleBox, titleRows } from "../src/ui/render.js";
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
 import {
   BUILD_VERSION,
@@ -29,7 +28,6 @@ import {
   type TitleSettings,
 } from "../src/ui/title.js";
 import { VIEWS, VIEW_STORAGE_KEY, initialView, isViewKey, nextView, rememberView } from "../src/ui/view.js";
-import { screenHtml } from "../src/ui/web/screen.js";
 
 /**
  * The start screen (docs/tasks/G84-title-screen.md).
@@ -140,68 +138,11 @@ describe("the start screen answers the five questions", () => {
 // --------------------------------------------------------- the shape of it
 
 describe("the start screen fits the terminal in every language", () => {
-  it("fits by width and by height, and every row inside its own frame", () => {
-    for (const lang of LANGS) {
-      setLang(lang);
-      const screen = titleScreen({ ...DEFAULT_TITLE, seed: 4294967295 });
-      const box = titleBox(screen);
-      expect(box.width, lang).toBeLessThanOrEqual(SCREEN_WIDTH);
-      expect(box.height, lang).toBeLessThanOrEqual(SCREEN_HEIGHT);
-      for (const row of titleRows(screen)) {
-        expect(row.text.length, `${lang}: ${row.text}`).toBeLessThanOrEqual(box.inner);
-      }
-    }
-    setLang(DEFAULT_LANG);
-  });
-
-  it("still fits with the seed row being typed into", () => {
-    for (const lang of LANGS) {
-      setLang(lang);
-      const screen = titleScreen(DEFAULT_TITLE, "1".repeat(SEED_DIGITS));
-      expect(titleBox(screen).width, lang).toBeLessThanOrEqual(SCREEN_WIDTH);
-      expect(titleBox(screen).height, lang).toBeLessThanOrEqual(SCREEN_HEIGHT);
-    }
-    setLang(DEFAULT_LANG);
-  });
-
-  it("writes the name in block letters, five rows tall", () => {
-    const banner = nameBanner("SALVOR");
-    expect(banner).toHaveLength(5);
-    expect(new Set(banner.map((r) => r.length)).size).toBe(1);
-    expect(banner.join("")).toContain("█");
-  });
-
-  it("falls back to plain text rather than breaking on a name it has no blocks for", () => {
-    expect(nameBanner("Ковчег")).toEqual(["Ковчег"]);
-  });
-
-  it("rules both headings off to the width of the widest row", () => {
-    const rows = titleRows(titleScreen(DEFAULT_TITLE));
-    const heads = rows.filter((r) => r.role === "head");
-    expect(heads).toHaveLength(2);
-    const widest = rows.reduce((m, r) => Math.max(m, r.text.length), 0);
-    for (const head of heads) expect(head.text.length).toBe(widest);
-  });
 
   it("lines the menu's three columns up, whatever the label is", () => {
     const rows = titleScreen(DEFAULT_TITLE).items.map(itemText);
     const at = rows.map((row) => row.indexOf(row.trimStart()[0]!));
     expect(new Set(at).size).toBe(1);
-  });
-
-  it("says the same things in the graphic view", () => {
-    const game = newGame(11);
-    const html = screenHtml(game, title({ seed: game.seed }), new Set());
-    const screen = titleScreen({ ...DEFAULT_TITLE, seed: game.seed });
-    expect(html).toContain(screen.name);
-    expect(html).toContain(screen.tagline);
-    expect(html).toContain(screen.foot);
-    for (const item of screen.items) expect(html, item.key).toContain(item.label);
-    // The ring's current option is marked in the page the way it is lit in the
-    // terminal, so a player reading either one knows which language is on.
-    expect(html).toContain('class="title-on"');
-    // And nothing of the board leaks out from behind it: the title is the screen.
-    expect(html).not.toContain("web-panel");
   });
 });
 
@@ -217,41 +158,6 @@ describe("the start screen fits the terminal in every language", () => {
  * and none he could press.
  */
 describe("every row of the menu can be clicked", () => {
-  it("marks every row with the index the page's click handler looks for", () => {
-    const game = newGame(11);
-    const html = screenHtml(game, title({ seed: game.seed }), new Set());
-    const marked = [...html.matchAll(/data-line="(\d+)"/g)].map((m) => Number(m[1]));
-    expect(marked).toEqual(TITLE_ROWS.map((_, i) => i));
-    // A row, never a digit: three of the seven wear a letter and no digit at
-    // all, so a click that carried the key would reach nothing.
-    expect(marked).toHaveLength(titleScreen(DEFAULT_TITLE).items.length);
-  });
-
-  /**
-   * And the row the highlight is on is marked in both views.
-   *
-   * The reducer moves a cursor either way (see the keys below); what this holds
-   * is that the two screens draw it — the page with the class its action list
-   * already uses, the terminal with a row of its own colour and the `▸` the
-   * panel points with (docs/tasks/G86-tutorial-and-title.md, 11).
-   */
-  it("lights the row the highlight is on, in both views", () => {
-    const game = newGame(11);
-    const at = TITLE_ROWS.indexOf("view");
-    const html = screenHtml(game, { ...title({ seed: game.seed }), cursor: at }, new Set());
-    const rows = [...html.matchAll(/<div class="title-row([^"]*)" data-line="(\d+)"/g)];
-    expect(rows).toHaveLength(TITLE_ROWS.length);
-    for (const [, classes, index] of rows) {
-      expect(classes!.includes("is-cursor"), `row ${index}`).toBe(Number(index) === at);
-    }
-
-    const menu = titleRows(titleScreen(DEFAULT_TITLE), at).filter((row) => row.role === "menu");
-    expect(menu).toHaveLength(TITLE_ROWS.length);
-    expect(menu.map((row) => row.lit === true)).toEqual(TITLE_ROWS.map((_, i) => i === at));
-    // Nothing is lit for a caller that does not say where the cursor is: the
-    // width checks measure the screen, not a session.
-    expect(titleRows(titleScreen(DEFAULT_TITLE)).some((row) => row.lit === true)).toBe(false);
-  });
 
   it("does by click exactly what the row's key does", () => {
     const clicks = TITLE_ROWS.map((_, i) => appReducer(title(), { kind: "line", index: i }, newGame(7)));

@@ -27,7 +27,7 @@ import { jammed } from "../systems/jam.js";
 import { roomList, type Body, type Crate, type RoomItem, type ShipSystem, type Wreck } from "../systems/populate.js";
 import { findSlot, findSlotAs, hostilesIn, rigOf, shootTarget, type Rig } from "../twist/rig.js";
 import { strikersNear } from "./strikers.js";
-import { tag } from "./schematic-input.js";
+import { tag } from "./contents.js";
 
 /**
  * Auto-explore and closing in — the two keys that keep a jam voter from quitting

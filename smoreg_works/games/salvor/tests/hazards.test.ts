@@ -40,12 +40,7 @@ import { ACTION_WIDTH, doorStands, roomActions } from "../src/ui/actions.js";
 import { initialState } from "../src/ui/appstate.js";
 import { dangerAhead, engage, isStop, makeExplorer, makeTraveller, type AutoResult } from "../src/ui/auto.js";
 import { panelBlocks } from "../src/ui/panel.js";
-import { latestAlarm } from "../src/ui/render.js";
-import { schematic } from "../src/ui/schematic.js";
-import { schematicInputOf } from "../src/ui/schematic-input.js";
-import { hexSvgOf } from "../src/ui/web/hex-svg.js";
-import { svgOf } from "../src/ui/web/schematic-svg.js";
-import { screenHtml } from "../src/ui/web/screen.js";
+import { stateOf, thingsOf } from "../src/ui/contents.js";
 
 /**
  * The hazard framework (docs/tasks/G71-hazard-framework.md), held to its five
@@ -100,8 +95,14 @@ function alarms(game: RoomGame): Array<{ text: string; key?: string }> {
   return game.log.lines.filter((l) => l.tone === "alarm").map((l) => ({ text: l.text, key: l.key }));
 }
 
+/* What a compartment shows, as the box used to spell it. The picture is gone;
+   the rule it drew is not, and it is the rule this file is about. */
 function box(game: RoomGame, room: string): string {
-  return schematicInputOf(game).rooms.find((r) => r.label === room)!.glyphs;
+  const at = game.ship.rooms.find((r) => r.label === room)!;
+  const state = stateOf(game, at, game.player.room);
+  return thingsOf(game, at, state, game.currentShip.data)
+    .map((t: { glyph: string }) => t.glyph)
+    .join(" ");
 }
 
 function cmdOf(result: AutoResult): RoomCommand {
@@ -214,15 +215,6 @@ describe.each(HAZARD_IDS)("%s is readable", (id) => {
     for (const room of marked) expect(box(game, room), `${room} after`).toContain(kind.glyph);
   });
 
-  it("carries the mark in the ASCII box, in the SVG box and in the hexagon", () => {
-    const game = gameOn(line(placed(id)));
-    go(game, "d1");
-    const input = schematicInputOf(game);
-    expect(schematic(input).lines.map((l) => l.text).join("\n")).toContain(kind.glyph);
-    expect(svgOf(input)).toContain(kind.glyph);
-    expect(hexSvgOf(input, hexLayout(game.ship))).toContain(kind.glyph);
-  });
-
   it("is what dangerAhead answers for the door into it, in the words of the red line", () => {
     const game = gameOn(line(placed(id)));
     go(game, "d1");
@@ -292,41 +284,6 @@ describe.each(HAZARD_IDS)("%s is readable", (id) => {
  * puts the light out, a stop or a list does not.
  */
 describe("the red line lights what it names", () => {
-  it("lights the compartment and the door into it for the turn the line is said", () => {
-    const game = gameOn(line("r3: hab hazard=smoke"));
-    go(game, "d1");
-    expect(alarms(game)).toHaveLength(1);
-    const input = schematicInputOf(game);
-    expect(input.rooms.find((r) => r.label === "r3")!.target).toBe(true);
-    expect(input.rooms.filter((r) => r.target === true)).toHaveLength(1);
-    expect(input.doors.find((d) => d.label === "d2")!.target).toBe(true);
-    expect(input.doors.filter((d) => d.target === true)).toHaveLength(1);
-
-    // The ASCII sheet writes the door in the accent colour, and the SVG box
-    // carries the goal class the move list's destination carries.
-    const sheet = schematic(input);
-    const d2 = sheet.lines.flatMap((l) => (l.spans ?? []).filter((sp) => l.text.slice(sp.from, sp.to).includes("d2")));
-    expect(d2.length).toBeGreaterThan(0);
-    expect(svgOf(input)).toContain("is-goal");
-    expect(hexSvgOf(input, hexLayout(game.ship))).toContain("is-goal");
-
-    // A walk stopping a door short of it spends nothing: still lit.
-    expect(isStop(makeExplorer().step(game))).toBe(true);
-    expect(game.inputs).toHaveLength(1);
-    expect(schematicInputOf(game).doors.find((d) => d.label === "d2")!.target).toBe(true);
-    // A turn spent — any turn — is the line no longer this turn's.
-    expect(game.playerCommand({ kind: "wait" }).ok).toBe(true);
-    expect(schematicInputOf(game).rooms.some((r) => r.target === true)).toBe(false);
-    expect(schematicInputOf(game).doors.some((d) => d.target === true)).toBe(false);
-  });
-
-  it("lights the door a trap is on, and nothing else", () => {
-    const game = gameOn(line("d2: trap=mine"));
-    go(game, "d1");
-    const input = schematicInputOf(game);
-    expect(input.doors.filter((d) => d.target === true).map((d) => d.label)).toEqual(["d2"]);
-    expect(input.rooms.some((r) => r.target === true)).toBe(false);
-  });
 
   it("gives every hazard a mark of its own, and none that a machine or a thing already wears", () => {
     const marks = HAZARD_IDS.map((id) => HAZARDS[id].glyph);
@@ -797,21 +754,6 @@ describe("the placer", () => {
 // ------------------------------------------------------------------ the line
 
 describe("the red line", () => {
-  it("is drawn live for the newest alarm and red for the ones before, in the web log", () => {
-    const game = gameOn(line("r3: hab hazard=frost"));
-    go(game, "d1");
-    game.log.add("OLD DANGER", game.schedule.time, "alarm", "log.hazard.tell.smoke");
-    game.log.add("NEW DANGER", game.schedule.time + 1, "alarm", "log.hazard.tell.mine");
-    for (let i = 0; i < 5; i++) game.log.add(`quiet ${i}`, game.schedule.time + 2, "plain");
-    const html = screenHtml(game, { ...initialState(), overlay: "none" }, new Set());
-    // The turn gap (G79) may ride on either row; what is held is the ground
-    // and the ink: `live` on the newest alarm only, and no fade on any alarm.
-    expect(html).toMatch(/<div class="alarm live(?: turn-gap)?">NEW DANGER<\/div>/);
-    expect(html).toMatch(/<div class="alarm(?: turn-gap)?">OLD DANGER<\/div>/);
-    expect(html).not.toMatch(/class="alarm[^"]*(?:old|recent)/);
-    expect(latestAlarm(game.log.tail(14))).toBe(game.log.tail(14).findIndex((l) => l.text === "NEW DANGER"));
-    expect(latestAlarm([])).toBe(-1);
-  });
 
   it("says the stop in the words of the line, in every language", () => {
     for (const lang of LANGS) {

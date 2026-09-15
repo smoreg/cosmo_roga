@@ -15,7 +15,6 @@ import {
   type Sighted,
 } from "../src/ui/pulse.js";
 import { panelBlocks, panelColour } from "../src/ui/panel.js";
-import { schematicInputOf } from "../src/ui/schematic-input.js";
 import { THEME } from "../src/ui/theme.js";
 
 /**
@@ -207,20 +206,6 @@ describe("what the two views paint it with", () => {
     const game = gameOn();
     put(game, "r3");
     expect(machinesInSight(game)).toEqual([]);
-  });
-
-  it("marks the flashing compartment on the schematic input both views draw", () => {
-    const game = gameOn();
-    put(game, "r2");
-    const hold = game.ship.room("r2").id;
-
-    const quiet = schematicInputOf(game).rooms.find((r) => r.id === hold);
-    expect(quiet?.alarm, "no flash between pulses").toBeUndefined();
-
-    const flashing = schematicInputOf(game, new Set([hold])).rooms.find((r) => r.id === hold);
-    expect(flashing?.alarm).toBe(true);
-    // Colour and nothing else: the box may not move, resize or gain a mark.
-    expect({ ...flashing, alarm: undefined }).toEqual({ ...quiet, alarm: undefined });
   });
 
   /**

@@ -27,7 +27,7 @@ import { hostilesIn, rigOf } from "../twist/rig.js";
 import { clipName, omittedActions, UNKNOWN_ROOM, type Action } from "./actions.js";
 import { blowsLastTurn, strikersNear } from "./strikers.js";
 import { debugBlock } from "./debug.js";
-import { thingsIn, tag } from "./schematic-input.js";
+import { thingsIn, tag } from "./contents.js";
 import { LAYOUT, THEME } from "./theme.js";
 
 /**

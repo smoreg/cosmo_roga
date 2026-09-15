@@ -9,7 +9,6 @@ import { MAX_ACTIONS, roomActions } from "../src/ui/actions.js";
 import { RELICS } from "../src/content/modules.js";
 import { codexFor } from "../src/content/codex.js";
 import { initialState } from "../src/ui/appstate.js";
-import { screenHtml } from "../src/ui/web/screen.js";
 import {
   NO_FLASH,
   PANEL_HEIGHT,
@@ -27,7 +26,6 @@ import {
   trackFlash,
 } from "../src/ui/panel.js";
 import { shipState } from "../src/systems/shipstate.js";
-import { schematicInputOf } from "../src/ui/schematic-input.js";
 import { currentDerelict, derelictAboard, voyageOf } from "../src/systems/voyage.js";
 import { isTug } from "../src/content/tug.js";
 import { CALLSIGNS, flavourCallsign } from "../src/content/derelicts.js";
@@ -710,19 +708,6 @@ describe("the contacts block", () => {
     expect(block[3]!.fg).toBe(THEME.fgDim);
   });
 
-  it("says the number the schematic's badge says, off the same list", () => {
-    // The owner read `ВРАГ В ОТСЕКЕ: 6` on the panel and `7` on the map of the
-    // same compartment (docs/tasks/G83-anonymous-blows.md, 4). One source now:
-    // `hostilesIn`, for the rule and for the badge in every view.
-    const game = gameIn();
-    for (let i = 0; i < 7; i++) put(game, "r2", "scout");
-    const box = schematicInputOf(game).rooms.find((r) => r.label === "r2")!;
-    const badge = Math.ceil((box.hostiles ?? 0) / 2);
-    expect(badge).toBe(7);
-    expect(contactsBlock(game)[0]!.text).toContain("ENEMY IN HERE: 7");
-    expect(contactsBlock(game).map((l) => l.text)).toContain("… 1 more in sight");
-  });
-
   it("keeps one machine on the panel however short of rows it is", () => {
     const game = gameIn();
     for (let i = 0; i < 6; i++) put(game, "r2", "scout");
@@ -1251,22 +1236,6 @@ describe("a sidebar row that did not fit says so", () => {
  * two-by-two block, which is what tells a relic there too.
  */
 describe("a relic in the rack is marked", () => {
-  it("wears the mark beside its name in the ASCII panel, the page and the hexagons", () => {
-    const game = gameIn();
-    const rack = rigOf(game.player)!;
-    install(rack, "blade", 14);
-    applyDerived(game.player);
-
-    const row = panelBlocks(game, []).map((l) => l.text).find((text) => text.includes("Q-BLADE"))!;
-    expect(row).toContain(`Q-BLADE${RELIC_MARK}`);
-    expect(row.length).toBeLessThanOrEqual(PANEL_WIDTH);
-
-    const state = { ...initialState(), overlay: "none" as const };
-    for (const map of ["graph", "hex"] as const) {
-      const html = screenHtml(game, state, new Set(), undefined, map);
-      expect(html, map).toContain(`Q-BLADE${RELIC_MARK}`);
-    }
-  });
 
   it("marks none of the five modules that are not relics", () => {
     const game = gameIn();
