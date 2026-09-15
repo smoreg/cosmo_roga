@@ -37,11 +37,15 @@ const STATE: Record<
    * Not a thing the drone does not know about — a thing there is nothing to
    * know about. A compartment the ship no longer has, drawn so the hull comes
    * out symmetric about its keel without the graph being touched (`hull.ts`).
-   * It takes no pointer, offers no verb and never holds anything, so it cannot
-   * be mistaken for somewhere to go: it is the darkest thing on the board and
-   * the only one with no outline at all.
+   *
+   * It has to be *seen* and it has to be unmistakably shut. Drawn with no
+   * outline it read as empty space, which is the one thing it is not: the
+   * point of drawing it at all is that the ship is bigger than the part of it
+   * you can walk. So it wears the plating hatch — structure, not vacuum —
+   * inside a broken rim, and a scar across it. It still takes no pointer,
+   * offers no verb and holds nothing.
    */
-  wrecked: { line: "transparent", fill: "var(--sv-void)", band: null, shows: false },
+  wrecked: { line: "var(--sv-rule)", fill: "var(--sv-hatch)", band: null, shows: false },
   undetected: { line: "var(--sv-rule)", fill: "var(--sv-knock)", band: null, shows: false },
   detected: {
     line: "var(--sv-bulkhead)",
@@ -578,6 +582,27 @@ function HexTile({
           opacity: room.knows === "undetected" ? 0.55 : 1,
         }}
       />
+      {room.knows === "wrecked" ? (
+        <>
+          {/* A rim that is there and does not close: the hull line survives,
+              the compartment does not. */}
+          <HexRing stroke="var(--sv-bulkhead)" width={2} dash="13 9" />
+          {/* And the break itself, across the cell at the angle the plating
+              runs, so it reads as one more torn seam rather than as a mark
+              somebody put on top of the drawing. */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              clipPath: HEX,
+              pointerEvents: "none",
+              background:
+                "linear-gradient(135deg, transparent 0 44%, var(--sv-knock) 44% 50%, transparent 50% 100%)",
+              opacity: 0.85,
+            }}
+          />
+        </>
+      ) : null}
       {hot ? (
         <div
           style={{

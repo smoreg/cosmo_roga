@@ -750,3 +750,46 @@ describe("the panel says why the drone is here and what it stands to lose", () =
     expect(thing?.work).toEqual({ done: 1, of: job.turns });
   });
 });
+
+describe("wreckage is drawn, and is unmistakably shut", () => {
+  beforeAll(stillFrames);
+
+  it("puts a cell on the board for every piece of missing hull", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const board = boardOf(game);
+    const wrecked = board.rooms.filter((r) => r.knows === "wrecked");
+    expect(wrecked.length).toBeGreaterThan(0);
+
+    const { host, unmount } = mount(<Screen game={game} />);
+    /* Every cell the model made is a cell on the screen. Drawn with no outline
+       it was there and invisible, which is the one thing it must not be: the
+       point of drawing it is that the ship is bigger than the part you walk. */
+    const hexes = Array.from(host.querySelectorAll("div")).filter((d) =>
+      (d.getAttribute("style") ?? "").includes("sv-hatch"),
+    );
+    expect(hexes.length).toBeGreaterThanOrEqual(wrecked.length);
+    unmount();
+  });
+
+  it("takes no pointer, so it can never be walked into by clicking it", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const before = game.player.room;
+    const { host, unmount } = mount(<Screen game={game} />);
+    /* The hit layer of a wrecked cell is switched off. Clicking where one is
+       does nothing at all — not a refusal, not a log line, nothing. */
+    const inert = Array.from(host.querySelectorAll("div")).filter((d) => {
+      const s = d.getAttribute("style") ?? "";
+      return s.includes("pointer-events: none") && s.includes("clip-path");
+    });
+    expect(inert.length).toBeGreaterThan(0);
+    for (const el of inert.slice(0, 5)) {
+      act(() => {
+        el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+    expect(game.player.room).toBe(before);
+    unmount();
+  });
+});
