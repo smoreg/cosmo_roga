@@ -276,6 +276,7 @@ const VIEW_NAMES = {
   ascii: "title.view.ascii",
   web: "title.view.web",
   hex: "title.view.hex",
+  react: "title.view.react",
 } as const;
 
 /**

@@ -173,6 +173,18 @@ export const WEB_CSS = `${FACES}
   --sv-title-track:.08em;
   --sv-stencil-track:.18em;
 
+  /* The strip's own height, and the band of the board it stands in.
+
+     Both are arithmetic and not taste: a title line is 21px on 1.15, the
+     housing pads it by 6 and 7 and rules it with 1 each side, which is 39.15 —
+     40 with a rounding to spare. The band is that, the 10px it floats down
+     from the top, and 8px of air under it. Nothing the board draws may be
+     inside the band, which is what stops the strip printing on top of a line:
+     it is one housing over the map and it has nothing to give way to.
+     \`tests/panel-html.test.ts\` holds the two to each other. */
+  --sv-head-h:40px;
+  --sv-head-band:58px;
+
   /* Motion — one frame, and every duration a multiple of it. Nothing
      interpolates: a state is a held frame, and \`--sv-step\` is what holds it.
      The budget is deliberately nearly spent already — this view rebuilds its
@@ -194,7 +206,7 @@ export const WEB_CSS = `${FACES}
      log lines at the 14px floor is 144, the same seven the terminal shows, and
      both fixed bands still land inside the itch viewport's 764
      (docs/itch-page.md). */
-  grid-template-columns:46px 1fr clamp(340px, 31vw, 460px);
+  grid-template-columns:104px 1fr clamp(340px, 31vw, 460px);
   grid-template-rows:minmax(0,1fr) 144px;
   background:var(--bg); color:var(--fg);
   font:var(--sv-body); overflow:hidden;
@@ -212,9 +224,19 @@ export const WEB_CSS = `${FACES}
    the alert's (\`.web-corner\`) and our alert is a ladder of ten rungs rather
    than a dial. It will not share a corner, and two housings overlapping is
    worse than either being where he drew it. Takes no clicks: the compartment
-   under it is still pressable. */
+   under it is still pressable.
+
+   Floating over the board, though, is not floating over what the board draws.
+   The strip and the map were in one grid cell with nothing between them, so
+   the strip stood on whatever happened to be at the top right: the alert's
+   ladder out on a hull, and at home the dock's own head row — two lines of
+   type in one place, and the ship line printed twice (text piling up, the owner). So the
+   board keeps a band clear at the top (\`--sv-head-band\`) and the corner starts
+   under it. The strip is the only thing in that band, in every language:
+   whatever it is holding, there is no line for it to climb onto. */
 .web-head{grid-column:2; grid-row:1; align-self:start; justify-self:end; z-index:3;
   margin:10px 12px 0 0; pointer-events:none; max-width:calc(100% - 24px);
+  height:var(--sv-head-h);
   display:flex; align-items:baseline; gap:8px 16px; padding:6px 14px 7px;
   background:var(--sv-scan),rgba(10,13,16,.92); box-shadow:var(--sv-cast);
   border:1px solid var(--sv-rule); clip-path:var(--sv-cut-bl);
@@ -239,10 +261,28 @@ export const WEB_CSS = `${FACES}
   padding:10px 0 0; align-items:center;
   background:linear-gradient(90deg,var(--sv-plate) 0%,var(--sv-deep) 100%);
   border-right:1px solid var(--sv-rule);}
-.rail-key{width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+.rail-key{width:96px; min-height:44px; display:flex; flex-direction:column; gap:2px;
+  align-items:center; justify-content:center; padding:5px 3px 4px;
   font:var(--sv-value); color:var(--soft); background:var(--sv-plate-lit);
   border:1px solid var(--sv-rule); border-radius:0; cursor:pointer;
   clip-path:polygon(0 0,100% 0,100% 100%,6px 100%,0 calc(100% - 6px));}
+/* The glyph is the key, and the word under it is which window the key opens:
+   the situation aboard and the record of the run are two different things and
+   looked like one (G95 B4).
+
+   The word is set in the sheet's smallest role and not in a size of its own —
+   nothing in the chrome goes under the 14px floor (\`tests/chrome.test.ts\`), and
+   a caption too small to read would have been the defect again in another
+   shape. The rail is as wide as the longest of the three names and the board
+   pays for it, which is the right way round: a board 60px narrower still shows
+   the ship, and a button nobody can read shows nothing.
+
+   Clipped rather than wrapped — a button two lines tall in one language and one
+   in another is a rail that moves between languages. */
+.rail-key .rk-key{line-height:1;}
+.rail-key .rk-name{font:var(--sv-stencil); line-height:1;
+  text-transform:uppercase; max-width:100%; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis;}
 .rail-key:hover{background:var(--sv-plate-hi); color:var(--bright);}
 .rail-key:active{transform:translateY(1px);}
 .rail-key:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
@@ -259,6 +299,14 @@ export const WEB_CSS = `${FACES}
    rail is to its left and the log runs under the whole screen. */
 .web-map{grid-column:2; grid-row:1; min-width:0; min-height:0; padding:10px 4px 4px 12px;
   background:radial-gradient(ellipse 66% 60% at 46% 48%, var(--panel-bg) 0%, var(--bg) 78%);}
+/* At home the board is a page of type rather than a drawing fitted to its box,
+   so it can afford to start under the strip — and it has to, because the dock's
+   own head row is the line the strip was standing on. Out on a hull it cannot:
+   the map is an SVG fitted to its box, 48px off its height is 8 % off every
+   hexagon, and the worst honeycomb the generator makes is already at the floor
+   the tiles are legible at (tests/tiles-view.test.ts). There the strip keeps
+   clear of the corner instead, which costs the board nothing. */
+.web-map:has(.dock){padding-top:var(--sv-head-band);}
 .schematic{width:100%; height:100%; display:block;}
 /* The frame the drone took a blow on (screen.ts, flash): the map's edge goes
    red, and the map shakes once. The edge is a colour and stays for anyone; the
@@ -325,11 +373,27 @@ export const WEB_CSS = `${FACES}
    mattered most (G90 D1). Four classes deep, so no state rule above outranks it. */
 .schematic .room .glyph.hostile{fill:var(--bad); font-weight:700;}
 .schematic .room .tile.hostile{color:var(--bad);}
+/* And one of the three systems that end the hull is green, in every state of
+   the compartment it stands in, for the same reason and to the same depth.
+
+   Green because it was the colour left. Amber is spoken for — on this screen it
+   means a decision is required here, and a system is a place rather than a
+   prompt — and red is the machines'. Drawn in the ink of the crates and the
+   bodies, the hull's whole job was three marks nobody could pick out of the
+   scenery (the owner asked for the goal marks in a colour of their own, green).
+
+   A system still down keeps the weight; one already raised keeps the colour and
+   gives the weight up, so the three read as one job with some of it done rather
+   than as two kinds of thing. */
+.schematic .room .glyph.goal{fill:var(--good); font-weight:700;}
+.schematic .room .tile.goal{color:var(--good);}
+.schematic .room .glyph.goal.is-up{font-weight:400; fill-opacity:.65;}
+.schematic .room .tile.goal.is-up{opacity:.65;}
 
 /* Machines in there, said on the box rather than only in one small glyph: a red
    cap over the top edge with the count on it. An addition to the compartment's
    state, never a replacement for it — the artboards' rule, and the answer to
-   "меня бьют, я не понимаю откуда" (docs/tasks/G55-playtest-findings.md). */
+   being hit without knowing from where (docs/tasks/G55-playtest-findings.md). */
 .threat-cap{fill:var(--bad); opacity:.9;}
 .threat-count{font-size:11px; font-weight:700; fill:var(--bg);}
 /* On the honeycomb the cap is a skull (hex-svg.ts, threat) and the compartment
@@ -364,8 +428,8 @@ export const WEB_CSS = `${FACES}
       faintest. The artboards drew an open door as a hairline in the dim ink and every
       other state louder, which is backwards for the thing the whole picture is
       for — where can I go. Drawn that way the walkable graph disappeared into
-      the background and what was left read as loose labels: "карта всё ещё
-      говно, коридор на глаз не видно".
+      the background and what was left read as loose labels: the map still
+      unreadable, the corridor invisible at a glance (the owner).
    2. What stops you is a line with a GAP in it, and the worse the obstacle the
       wider the gap. Weight says how hard, dash says how shut. */
 .door-wire{fill:none; stroke:var(--soft); stroke-width:2; stroke-linecap:round;
@@ -417,21 +481,30 @@ export const WEB_CSS = `${FACES}
 .hexmap .door-wire{stroke-width:3;}
 .hexmap .door-wire.is-open{stroke:#0c1116;}
 .hexmap .door-tag{fill:var(--bg); fill-opacity:.92;}
-.hexmap .door.link .door-tag{fill:var(--panel-bg); stroke:var(--zone); stroke-width:1;}
-.hexmap .door.link .door-label{fill:var(--zone);}
 
-/* The run a long door makes under the deck. Drawn before everything, so the
-   compartments and corridors it passes behind cover it: what is left is a line
-   you can follow from one chip to the other, which is what tells a walk the
-   long way round from a teleport. */
-.hexmap .duct{stroke:var(--zone); stroke-width:1; stroke-dasharray:2 6; opacity:.4;}
-.hexmap .duct.is-sealed{stroke:var(--bulkhead);}
-.hexmap .duct.is-locked{stroke:var(--accent); opacity:.3;}
+/* A door the lattice could not lay between two hexagons that touch, drawn the
+   long way round (hex-svg.ts, longRun): the corridor's own three strokes bent
+   through the gaps between the cells in between.
+
+   It used to be a chip at each end naming the other, and both halves of that
+   were wrong. A chip is wider than the gap between two hexagons, so it always
+   lay across the cells around it and never went away (it appeared and hung there); and
+   two labels with nothing between them read as the one thing this game does not
+   have (a teleport, which the owner ruled out). A drawn walk cannot be read as a jump.
+
+   Narrower than a corridor: the gutter is narrower than a corridor is, and a
+   service run is not a main passage. Everything else about it — the state's
+   colour and dash, the amber of a door on the way — is the corridor's own, so
+   a long door and a short one say the same things in the same ink. */
+.hexmap .link-run{fill:none; stroke-linejoin:round;}
+.hexmap .link-run.hall-wall{stroke-width:7;}
+.hexmap .link-run.hall-floor{stroke-width:4;}
+.hexmap .link-run.door-wire{stroke-width:2;}
+.hexmap .link-run.door-wire.is-route{stroke-width:3;}
 /* The way to where the drone is aiming — the highlighted line, or the box under
    the pointer (appstate.ts, mapAim): its doors in solid amber, the destination
    in the dashes it already wears (G90 D4). And a door is pressable (mount.ts). */
 .hexmap .door-wire.is-route{stroke:var(--accent); stroke-width:4; stroke-dasharray:none; opacity:1;}
-.hexmap .duct.is-route{stroke:var(--accent); stroke-width:2; opacity:.85;}
 .hexmap [data-door]{cursor:pointer;}
 
 /* An unexplored hexagon is a shape and an id, and nothing else worth reading —
@@ -574,9 +647,14 @@ export const WEB_CSS = `${FACES}
    reads as belonging to the amber decision rather than to the cell it covers,
    and the cost knocked out of a chip the way every other chip on this screen
    knocks its ink out. It takes no clicks: the compartment under it stays the
-   thing you press. */
+   thing you press.
+
+   The plate is opaque. At .95 the name plate underneath showed through it as a
+   ghost of itself, and two rows of letters a twentieth apart is exactly what
+   the owner's hover complaint describes, text piling up — the readout has to be read as a
+   thing standing over the deck, not as ink mixed into it. */
 .hexmap .room-readout{pointer-events:none;}
-.hexmap .readout-plate{fill:var(--bg); fill-opacity:.95; stroke:var(--accent); stroke-width:1;}
+.hexmap .readout-plate{fill:var(--bg); stroke:var(--accent); stroke-width:1;}
 .hexmap .readout-head{font-size:12px; font-weight:700; letter-spacing:.06em; fill:var(--bright);}
 .hexmap .readout-body{font-size:10px; fill:var(--soft);}
 .hexmap .readout-chip{fill:var(--accent);}
@@ -702,15 +780,37 @@ export const WEB_CSS = `${FACES}
   border-left-width:4px; box-shadow:0 0 0 3px rgba(224,164,88,.10); font-weight:600;}
 .pl.slot.hit{border-color:var(--bad); border-left-color:var(--bad);}
 
+/* What a row of the rack says when it is pointed at (panel-html.ts, readHtml):
+   what the module is, what it does, how much of it is left and what the marks
+   on it mean. Folded into the row rather than floated beside it — every housing
+   clips one of its own corners, so a plate hung outside a row would be cut off
+   by the block the row is in — which settles the one rule a readout has as
+   well: it unfolds under the row and can never cover the row it is about. What
+   is below is pushed down, and the panel scrolls.
+
+   \`white-space:normal\` because every other row of the panel is \`pre\`: these are
+   sentences and have to wrap rather than run off the end of a narrow column. */
+.pl.slot .sr{display:none;}
+.pl.slot.has-read{cursor:help;}
+.pl.slot.has-read:hover .sr{display:flex; flex-direction:column; gap:3px;
+  margin:5px 0 1px; padding-top:5px; border-top:1px solid var(--line); white-space:normal;}
+.pl.slot .sr-h{font:var(--sv-stencil); letter-spacing:var(--sv-stencil-track); color:var(--bright);}
+.pl.slot .sr-l{font:var(--sv-body); color:var(--soft);}
+
 /* The top-left corner of the map (panel-html.ts, cornerHtml): the codex chip,
-   then the alert as a ladder of five rungs and the hazards the drone knows are
+   then the alert as a ladder of ten rungs and the hazards the drone knows are
    aboard. In the map's own grid cell, so it can never
    cover the panel, and it takes no clicks — a compartment under it is still
-   pressable. Three and four take the gauge's warning colour, five the red and a
-   blink on the head row, because that row is the one deadline on the screen;
-   the blink is off for anyone who asked their system for less motion. */
+   pressable. The upper half takes the gauge's warning colour, the charges the
+   red and a blink on the head row, because that row is the one deadline on the
+   screen; the blink is off for anyone who asked their system for less motion.
+
+   It floats over the hull, so its width is the hull's: the box is kept to one
+   narrow column of words, and nothing in it is set in the body size the panel
+   uses. Ten rungs at 14px with a second column of explanations covered three
+   compartments — the alert covering part of the ship (the owner). */
 .web-corner{grid-column:2; grid-row:1; align-self:start; justify-self:start; z-index:2;
-  margin:10px 0 0 12px; pointer-events:none;
+  margin:var(--sv-head-band) 0 0 12px; pointer-events:none;
   display:flex; flex-direction:column; align-items:flex-start; gap:6px;}
 /* At home there is no alert and nothing aboard, and the dock's own head is
    where the corner would sit: the codex stays one key away on i. */
@@ -719,27 +819,33 @@ export const WEB_CSS = `${FACES}
   font:var(--sv-stencil); letter-spacing:var(--sv-stencil-track); text-transform:uppercase;
   clip-path:polygon(0 0,100% 0,100% 100%,6px 100%,0 calc(100% - 6px));}
 /* The ladder is a printout: scanlined ground, a cut corner, and the ink at the
-   floor like everything else. It had ten rows at 10px — the smallest type on
-   the screen carrying the one deadline on it. */
-.web-ladder{display:flex; flex-direction:column; gap:1px; padding:7px 10px 8px;
+   floor like everything else. Ten rows of small type, which is what a printout
+   of ten rungs is — and the one place on the screen where small is the right
+   answer, because the alternative is a page of the ship nobody can read. */
+.web-ladder{display:flex; flex-direction:column; gap:1px; padding:5px 8px 6px;
   border:1px solid var(--sv-rule); background:var(--sv-scan),rgba(10,13,16,.9);
   box-shadow:var(--sv-cast); clip-path:var(--sv-cut-bl);
-  font:var(--sv-body); line-height:1.35;}
+  font:400 11px/1.35 var(--mono);}
 .web-ladder.is-l5,.web-ladder.is-l6,.web-ladder.is-l7,.web-ladder.is-l8{border-color:var(--warn);}
 .web-ladder.is-l9,.web-ladder.is-l10{border-color:var(--bad); background:var(--red-wash);}
-.rung-head{font:var(--sv-value); letter-spacing:.04em; color:var(--soft);
-  white-space:pre; margin-bottom:4px;}
+/* The panel's own alert row, word for word: the gauge is ten cells wide and the
+   stage word follows it, so this is the longest line in the box and the one
+   that decides how much hull the box hides. Set at 12px and untracked for that
+   reason alone. */
+.rung-head{font:600 12px/1.3 var(--mono); color:var(--soft);
+  white-space:pre; margin-bottom:3px;}
 .web-ladder.is-l5 .rung-head,.web-ladder.is-l6 .rung-head,.web-ladder.is-l7 .rung-head,
 .web-ladder.is-l8 .rung-head{color:var(--warn);}
 .web-ladder.is-l9 .rung-head,
 .web-ladder.is-l10 .rung-head{color:var(--bad); animation:salvor-alert var(--sv-frame-4) steps(2,end) infinite;}
 @keyframes salvor-alert{0%,100%{opacity:1;} 50%{opacity:.35;}}
 @media (prefers-reduced-motion: reduce){.web-ladder.is-l9 .rung-head,.web-ladder.is-l10 .rung-head{animation:none;}}
-.rung,.hz{display:grid; grid-template-columns:14px 12ch auto; gap:8px; align-items:baseline;
-  white-space:nowrap;}
-.rung i,.hz i{font-style:normal;}
-/* The word is the rung, what it does is the note beside it: one role apart,
-   and the row's own state still colours both. */
+/* A pip and a word, and the row is as wide as its word: a grid of fixed columns
+   held every rung open to the widest one, which on a ladder of one column is
+   ten rows of air over the deck. The hazards keep their second word — where the
+   thing is — because a hazard nobody can locate is not worth listing. */
+.rung,.hz{display:flex; gap:6px; align-items:baseline; white-space:nowrap;}
+.rung i,.hz i{flex:0 0 9px; font-style:normal;}
 .rung .w,.hz .w{font-weight:600;}
 .rung.is-past{color:var(--fg-dim);}
 .rung.is-next{color:var(--soft);}
@@ -815,7 +921,7 @@ export const WEB_CSS = `${FACES}
 .act.is-cursor.is-off .label{font-weight:400;}
 
 /* The keys, pinned to the bottom right corner of the panel in every state —
-   "подсказки по хоткеям всегда снизу справа" (docs/tasks/G48-travel-to-a-room.md).
+   the hotkey hints always bottom right (docs/tasks/G48-travel-to-a-room.md).
    panelBlocks already puts them on its last rows; margin-top:auto is what
    keeps them at the corner when the panel is taller than its content. */
 .pb.foot{margin-top:auto; position:sticky; bottom:0;
@@ -1037,10 +1143,10 @@ export const WEB_CSS = `${FACES}
    G90 E: the training run's window, over the map's bottom-left corner — the
    top-left is the alert's (.web-corner). In the map's own grid cell, like the
    corner, so it can never cover the panel or the log, and it takes no clicks.
-   The head row is the step, the key in the accent and the fold hint dim; the
-   instruction reads in the ordinary ink under it. A step just closed puts a
-   green tick in front of the head for one turn; folded (Esc) it is the head
-   alone; over, the closing line takes the good colour's edge. */
+   The head row is the step and the key in the accent; the instruction reads
+   in the ordinary ink under it. A step just closed puts a green tick in front
+   of the head for one turn; over, the closing line takes the good colour's
+   edge. */
 .web-lesson{grid-column:2; grid-row:1; align-self:end; justify-self:start; z-index:2;
   margin:0 0 10px 12px; pointer-events:none; max-width:min(600px, calc(100% - 24px));
   padding:8px 12px 9px; border:1px solid var(--accent); border-left-width:3px; border-radius:0;
@@ -1050,12 +1156,10 @@ export const WEB_CSS = `${FACES}
   font:var(--sv-stencil); letter-spacing:.08em; text-transform:uppercase; color:var(--soft);}
 .web-lesson .lh .n{color:var(--accent); font-weight:600;}
 .web-lesson .lh .k{color:var(--bright); text-transform:none; letter-spacing:.02em;}
-.web-lesson .lh .f{margin-left:auto; color:var(--fg-dim); text-transform:none; letter-spacing:0;}
 .web-lesson .lh .ok{color:var(--good); font-weight:600;}
 .web-lesson .li{margin-top:4px; color:var(--fg); white-space:pre-wrap;}
 .web-lesson.is-done{border-color:var(--good);}
 .web-lesson.is-over{border-color:var(--good);} .web-lesson.is-over .lh .n{color:var(--good);}
-.web-lesson.is-folded{padding-bottom:6px;}
 
 /* ------------------------------------------------------- the motion budget (G91 A)
    The floor under everything above, and the last word on it: a system asked

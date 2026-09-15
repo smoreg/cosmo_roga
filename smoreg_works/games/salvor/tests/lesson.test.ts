@@ -9,16 +9,20 @@ import {
   initialState,
   lessonRows,
   lessonView,
+  runBegun,
   type AppState,
 } from "../src/ui/appstate.js";
+import { CODEX_WIDTH } from "../src/ui/input.js";
+import { briefing, lessonBrief } from "../src/ui/lessoncard.js";
 import { LAYOUT, SCREEN_WIDTH } from "../src/ui/theme.js";
 import { screenHtml } from "../src/ui/web/screen.js";
 import { WEB_CSS } from "../src/ui/web/styles.js";
 
 /**
  * The lesson's window (docs/tasks/G90-smoreg-wave.md, E3): what it says, that
- * it fits both screens in three languages, that it folds and unfolds without
- * moving the lesson, and that an ordinary run never sees it.
+ * it fits both screens in three languages, that `Esc` leaves it alone — the
+ * window is the lesson, and it no longer folds (G96, 5) — and that an ordinary
+ * run never sees it.
  *
  * Every line the window shows comes out of `lessonView`, and both renderers
  * draw that value — the page as a card over the map's bottom-left corner, the
@@ -44,39 +48,29 @@ function onStep(k: number, done = false) {
 
 describe("what the window says", () => {
   it("says the step, the key and the instruction, and nothing in an ordinary run", () => {
-    const view = lessonView(onStep(0), PLAYING)!;
+    const view = lessonView(onStep(0))!;
     expect(view.head).toBe(t("lesson.head", { n: 1, of: LESSON_STEPS.length }));
     expect(view.press).toBe(t(LESSON_STEPS[0]!.press));
     expect(view.lines).toEqual([t(LESSON_STEPS[0]!.text)]);
-    expect(view.fold).toBe(t("lesson.head.fold"));
     expect(view.done).toBe(false);
     expect(view.over).toBe(false);
-    expect(view.folded).toBe(false);
-    expect(lessonView(newGame(7), PLAYING)).toBeUndefined();
-    expect(lessonRows(newGame(7), PLAYING)).toEqual([]);
+    expect(lessonView(newGame(7))).toBeUndefined();
+    expect(lessonRows(newGame(7))).toEqual([]);
   });
 
   it("carries the tick on the turn after a step closed, and the closing line once over", () => {
-    const ticked = lessonView(onStep(3, true), PLAYING)!;
+    const ticked = lessonView(onStep(3, true))!;
     expect(ticked.done).toBe(true);
-    expect(lessonRows(onStep(3, true), PLAYING)[0]).toContain(t("lesson.done"));
-    expect(lessonRows(onStep(3), PLAYING)[0]).not.toContain(t("lesson.done"));
+    expect(lessonRows(onStep(3, true))[0]).toContain(t("lesson.done"));
+    expect(lessonRows(onStep(3))[0]).not.toContain(t("lesson.done"));
 
-    const over = lessonView(onStep(LESSON_STEPS.length), PLAYING)!;
+    const over = lessonView(onStep(LESSON_STEPS.length))!;
     expect(over.over).toBe(true);
     expect(over.head).toBe(t("lesson.over.head"));
     expect(over.press).toBe("");
     expect(over.lines).toEqual([t("lesson.over")]);
   });
 
-  it("keeps only the head while folded", () => {
-    const folded = { ...PLAYING, lessonFolded: true };
-    const view = lessonView(onStep(2), folded)!;
-    expect(view.folded).toBe(true);
-    expect(view.lines).toEqual([]);
-    expect(view.head).toBe(t("lesson.head", { n: 3, of: LESSON_STEPS.length }));
-    expect(lessonRows(onStep(2), folded)).toHaveLength(1);
-  });
 });
 
 // ---------------------------------------------------------------- the widths
@@ -90,7 +84,7 @@ describe("the window fits", () => {
       setLang(lang);
       for (let k = 0; k <= LESSON_STEPS.length; k++) {
         for (const done of [false, true]) {
-          const rows = lessonRows(onStep(k, done), PLAYING);
+          const rows = lessonRows(onStep(k, done));
           expect(rows.length, `${lang}: step ${k}`).toBeGreaterThanOrEqual(1);
           expect(rows.length, `${lang}: step ${k}`).toBeLessThanOrEqual(LESSON_ROWS);
           for (const row of rows) {
@@ -98,7 +92,7 @@ describe("the window fits", () => {
           }
           // Nothing of the instruction was lost to the row cap: the rows
           // hold every word of it.
-          const view = lessonView(onStep(k, done), PLAYING)!;
+          const view = lessonView(onStep(k, done))!;
           const words = view.lines.join(" ").split(" ").filter((w) => w.length > 0);
           const shown = rows.slice(1).join(" ").split(" ").filter((w) => w.length > 0);
           expect(shown, `${lang}: step ${k} was cut`).toEqual(words);
@@ -125,7 +119,9 @@ describe("the page's card", () => {
     expect(html).toContain(t("lesson.head", { n: 2, of: LESSON_STEPS.length }));
     expect(html).toContain(t(LESSON_STEPS[1]!.press));
     expect(html).toContain(t(LESSON_STEPS[1]!.text));
-    expect(html).toContain(t("lesson.head.fold"));
+    // No fold hint and nothing to fold: the window is the lesson (G96, 5).
+    expect(html).not.toContain('class="f"');
+    expect(html).not.toContain("esc");
     // Over the map's bottom-left corner — the top-left is the alert's — and
     // in the map's own cell, so it can never cover the panel or the log.
     expect(html.indexOf('class="web-lesson')).toBeLessThan(html.indexOf('<div class="web-panel">'));
@@ -134,13 +130,7 @@ describe("the page's card", () => {
     expect(WEB_CSS).toMatch(/\.web-lesson\{[^}]*pointer-events:none/);
   });
 
-  it("folds to its head, ticks once done, and is gone from an ordinary run", () => {
-    const game = onStep(1);
-    const folded = screenHtml(game, { ...PLAYING, lessonFolded: true }, new Set());
-    expect(folded).toContain('<div class="web-lesson is-folded">');
-    expect(folded).not.toContain('<div class="li">');
-    expect(folded).toContain(t("lesson.head", { n: 2, of: LESSON_STEPS.length }));
-
+  it("ticks once done, and is gone from an ordinary run", () => {
     const done = screenHtml(onStep(1, true), PLAYING, new Set());
     expect(done).toContain('<div class="web-lesson is-done">');
     expect(done).toContain(t("lesson.done"));
@@ -155,35 +145,76 @@ describe("the page's card", () => {
 
 // ------------------------------------------------------------------- the key
 
-describe("Esc folds the window and skips nothing", () => {
-  it("toggles the fold with nothing else open, closes a level first, and never moves the step", () => {
+describe("Esc leaves the window alone and skips nothing", () => {
+  it("does nothing with nothing else open, closes a level first, and never moves the step", () => {
     const game = onStep(2);
     let state = appReducer(PLAYING, { kind: "dismiss" }, game);
-    expect(state.lessonFolded).toBe(true);
     expect(state.effect).toEqual({ kind: "idle" });
+    expect(state.overlay).toBe("none");
     expect(lessonOf(game.player)!.step).toBe(2);
     expect(game.inputs).toEqual([]);
-    state = appReducer(state, { kind: "dismiss" }, game);
-    expect(state.lessonFolded).toBe(false);
+    // The window is drawn whole before and after: nothing about it is the screen's to hide.
+    expect(lessonRows(game)).toEqual(lessonRows(game));
+    expect(lessonView(game)!.lines).toEqual([t(LESSON_STEPS[2]!.text)]);
 
-    // With the map's list up, Esc closes it and leaves the fold alone.
+    // With the map's list up, Esc closes it, and only it.
     state = appReducer(state, { kind: "moves" }, game);
     expect(state.moves).toBe(true);
     state = appReducer(state, { kind: "dismiss" }, game);
     expect(state.moves).toBe(false);
-    expect(state.lessonFolded).toBe(false);
-    // And the fold survives a turn: it is the screen's, not the run's.
-    state = { ...state, lessonFolded: true };
-    state = appReducer(state, { kind: "command", cmd: { kind: "wait" } }, game);
-    expect(state.lessonFolded).toBe(true);
     expect(lessonOf(game.player)!.step).toBe(2);
+    expect(lessonView(game)!.lines).toEqual([t(LESSON_STEPS[2]!.text)]);
+  });
+});
+
+// ------------------------------------------------------------------ the brief
+
+/**
+ * The card before the first step (G96, 2): what the job is, said once, on the
+ * first frame of a training run and never again. A card like the virus window
+ * — any key puts it away and spends nothing — and one an ordinary run never
+ * sees.
+ */
+describe("the card before the first step", () => {
+  it("opens over a training run that has not moved, and any key puts it away without a turn", () => {
+    const game = newGame(TUTORIAL_SEED, true);
+    expect(briefing(game)).toBe(true);
+    // Off the title, over a training run: the card.
+    let state = appReducer(initialState(), { kind: "pick", index: 0 }, game);
+    expect(state.overlay).toBe("brief");
+    // The shell builds the run after the reducer has answered, and asks then.
+    expect(runBegun({ ...initialState(), overlay: "none" }, game).overlay).toBe("brief");
+    expect(runBegun({ ...initialState(), overlay: "none" }, newGame(7)).overlay).toBe("none");
+    // Any key: away, and nothing spent — not even the walk the key asked for.
+    state = appReducer(state, { kind: "explore" }, game);
+    expect(state.overlay).toBe("none");
+    expect(state.effect).toEqual({ kind: "idle" });
+    expect(game.inputs).toEqual([]);
+    // The first frame only: a run that has moved does not open on it again.
+    expect(game.playerCommand({ kind: "go", door: game.ship.door("d1").id }).ok).toBe(true);
+    expect(briefing(game)).toBe(false);
+    expect(runBegun({ ...state, overlay: "none" }, game).overlay).toBe("none");
+    // An ordinary run never sees it.
+    expect(appReducer(initialState(), { kind: "pick", index: 0 }, newGame(7)).overlay).toBe("none");
+    expect(briefing(newGame(7))).toBe(false);
   });
 
-  it("starts unfolded on every screen a run begins on", () => {
-    expect(initialState().lessonFolded).toBe(false);
-    const started = appReducer(initialState(), { kind: "pick", index: 0 }, newGame(7));
-    expect(started.lessonFolded).toBe(false);
-    const again = appReducer(PLAYING, { kind: "restart" }, newGame(7));
-    expect(again.lessonFolded).toBe(false);
+  it("says the job in three sentences that fit the card, in all three languages", () => {
+    for (const lang of LANGS) {
+      setLang(lang);
+      const card = lessonBrief();
+      expect(card.heading, lang).toBe(t("lesson.brief.title"));
+      expect(card.footer, lang).toBe(t("lesson.brief.footer"));
+      // Three paragraphs, two blank lines between them, every row inside the frame.
+      expect(card.body.filter((line) => line === ""), lang).toHaveLength(2);
+      for (const line of card.body) expect(line.length, `${lang}: ${line}`).toBeLessThanOrEqual(CODEX_WIDTH);
+      const words = [t("lesson.brief.hull"), t("lesson.brief.job"), t("lesson.brief.pay")].join(" ").split(" ");
+      expect(card.body.join(" ").split(" ").filter((w) => w.length > 0), lang).toEqual(words);
+      // And the page draws it as a card in front of the board.
+      const html = screenHtml(onStep(0), { ...PLAYING, overlay: "brief" }, new Set());
+      expect(html, lang).toContain(t("lesson.brief.title"));
+      expect(html, lang).toContain(t("lesson.brief.footer"));
+      expect(html, lang).toContain('class="web-over"');
+    }
   });
 });

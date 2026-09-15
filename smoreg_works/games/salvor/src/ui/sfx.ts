@@ -85,7 +85,7 @@ const SOUNDS: Readonly<Record<string, SfxId>> = {
   "log.virus.burned": "burn",
   "log.virus.rot.burned": "burn",
   "log.hit.module": "hit",
-  "log.hit.blast": "hit",
+  "log.alert.blast.you": "explode",
   "log.hit.mine": "hit",
   "log.virus.core": "hit",
 

@@ -83,20 +83,20 @@ export const EN = {
   "noun.lattice": "lattice plating",
 
   // Said once, the turn a module burns out. Each names what is now impossible.
-  "burn.cutter": "Your CUTTER burns out. You are down to ramming.",
-  "burn.thrusters": "Your THRUSTERS burn out. You crawl on manipulators.",
-  "burn.scanner": "Your SCANNER burns out. The ship goes dark beyond this door.",
-  "burn.plating": "Your PLATING burns out. Nothing stands between the next hit and your core.",
-  "burn.cell": "Your CELL burns out. Bulkheads will have to be cut.",
-  "burn.emp": "Your EMP burns out. The charge dies in the coil.",
-  "burn.welder": "Your WELDER burns out. No more field repairs.",
-  "burn.laser": "Your LASER burns out. The lens goes cloudy and dead.",
-  "burn.spike": "Your SPIKE burns out. What is locked stays locked.",
-  "burn.emitter": "Your EMITTER burns out. Everything is in reach again, the hard way.",
-  "burn.baffle": "Your BAFFLE burns out. The ship can hear you again.",
-  "burn.blade": "Your Q-BLADE burns out. The edge folds back into nothing; there was only ever one.",
-  "burn.shocker": "Your SHOCKER burns out. The coil cracks, and nothing like it is for sale.",
-  "burn.lattice": "Your LATTICE burns out. The one armour that turned a blow is gone for good.",
+  "burn.cutter": "CUTTER burned out. Ramming only now.",
+  "burn.thrusters": "THRUSTERS burned out. You crawl now.",
+  "burn.scanner": "SCANNER burned out. No sight past this door.",
+  "burn.plating": "PLATING burned out. The next hit reaches the core.",
+  "burn.cell": "CELL burned out. Bulkheads must be cut.",
+  "burn.emp": "EMP burned out. The charge dies in the coil.",
+  "burn.welder": "WELDER burned out. No more field repairs.",
+  "burn.laser": "LASER burned out. The lens is dead.",
+  "burn.spike": "SPIKE burned out. What is locked stays locked.",
+  "burn.emitter": "EMITTER burned out. Everything is in reach again.",
+  "burn.baffle": "BAFFLE burned out. The ship can hear you.",
+  "burn.blade": "Q-BLADE burned out. There was only one.",
+  "burn.shocker": "SHOCKER burned out. None are for sale.",
+  "burn.lattice": "LATTICE burned out. No blow is turned now.",
 
   // ------------------------------------------------------------- the machines
 
@@ -243,9 +243,12 @@ export const EN = {
   "charter.tag": "{charter}+{clause}",
   "action.choice": "{charter} · {cr} CR",
   "action.choice.none": "no contract",
-  "action.pick.berth": "choose the first hull ▸",
-  "action.pick.berthHere": "choose this stop's hull ▸",
-  "action.pick.jump": "jump, {price} CR ▸",
+  // The row that flies the tug on. It names the contract as well as the hull
+  // because since G90 F there is no other line that signs one, and the owner
+  // went looking for the contracts menu that used to be here (G92 B1).
+  "action.pick.berth": "hull & contract ▸",
+  "action.pick.berthHere": "hull & contract here ▸",
+  "action.pick.jump": "hull & contract {price} CR ▸",
   "choice.head": "{hull} {rooms} · {cr} CR",
   "log.charter.none": "No contract on this hull: the tug is here for the sale alone.",
   "log.charter.hot": "{charter}: the hull is awake before the drone is aboard. Alert +{n}.",
@@ -278,13 +281,14 @@ export const EN = {
   // crowded fight — the machines that wait their turn, and the shot from the
   // next compartment that finds one of them instead of the drone.
   "verb.ram": "ram",
+  "verb.force": "force",
   "cost.ram": "8 turns, noise 12",
-  "log.door.ram.on": "You ram {door}. {left} more {left, one: turn, other: turns} of it.",
+  "log.door.ram.on": "Ramming {door}. {left} more {left, one: turn, other: turns}.",
   "log.door.ram.done": "{door} buckles and gives way.",
   "log.work.break.ram": "You break off the ramming.",
   "why.door.noRam": "{door} does not need ramming.",
   "log.crowd.hold": "{Actor} holds back.",
-  "log.shot.stray": "{Actor}'s shot goes wide and hits {target} for {amount} ({hp}/{max}).",
+  "log.shot.stray": "{Actor} → {target}: stray, -{amount} ({hp}/{max}).",
   "verb.weld": "weld",
   "verb.close": "close",
   // The head of a locked door's line: not a way through it but the choice
@@ -319,6 +323,7 @@ export const EN = {
   "word.scrap": "scrap",
   "word.derelict": "derelict",
   "word.keycard": "keycard",
+  "word.hands": "HANDS",
   "word.module": "module",
   "word.system": "system",
   "word.theVoyage": "the voyage",
@@ -341,26 +346,26 @@ export const EN = {
   "log.win": "The airlock closes behind you. The tug pulls away with what you took.",
   "log.death": "Core breach. The drone goes dark. The ship keeps what it takes.",
 
-  "log.hit.module": "{source} hits your {module} ({left}/{max}).",
-  "log.hit.mine": "The mine hits your {module} ({left}/{max}).",
+  "log.hit.module": "{source}: hit, {module} ({left}/{max}).",
+  "log.hit.mine": "MINE: hit, {module} ({left}/{max}).",
   "log.machine.dies": "{target} dies.",
-  "log.scrap.drop": "The {machine} collapses into scrap: {module}.",
+  "log.scrap.drop": "{machine} dies. Scrap: {module}.",
 
-  "log.door.key": "The keycard reader blinks green. {door} slides open.",
-  "log.door.power": "You dump the CELL into {door}. The lock lets go.",
-  "log.door.cut.on": "You cut at {door}. {left} more {left, one: turn, other: turns} of it.",
+  "log.door.key": "Keycard: {door} opens.",
+  "log.door.power": "CELL into {door}: the lock lets go.",
+  "log.door.cut.on": "Cutting {door}. {left} more {left, one: turn, other: turns}.",
   "log.door.cut.done": "{door} gives way with a shriek.",
   "log.door.weld.on": "You run the welder down the seam of {door}.",
   "log.door.weld.done": "{door} is welded shut. It stays that way.",
   "log.door.close": "You pull {door} shut.",
-  "log.spike.on": "You work the {spike} into the {target}.",
+  "log.spike.on": "{spike} into the {target}.",
   "log.spike.done": "The {target} gives. You are through.",
 
-  "log.body.plain": "You go through the body: {cr} CR.",
-  "log.body.key": "You go through the body: {cr} CR and a keycard.",
-  "log.crate.open": "You break the {crate} open: {cr} CR into the hold.",
+  "log.body.plain": "Body searched: {cr} CR.",
+  "log.body.key": "Body searched: {cr} CR and a keycard.",
+  "log.crate.open": "{crate}: {cr} CR into the hold.",
   "log.cargo.take": "You lever the marked crate out of its rack.",
-  "log.upload.on": "The console gives it up slowly. {left} more {left, one: turn, other: turns} of it.",
+  "log.upload.on": "Upload running. {left} more {left, one: turn, other: turns}.",
   "log.upload.done": "The upload completes. Whatever it was, the tug has it.",
   "log.console.away": "You step away from the console. It starts over.",
 
@@ -369,34 +374,35 @@ export const EN = {
   "log.work.break.splice": "You break off the splice.",
   "log.work.break.purge": "You break off the purge.",
 
-  "log.carry.take": "{module} {left}/{max} taken. Carrying {n} of {limit}.",
+  "log.carry.take": "{module} {left}/{max} taken, {n}/{limit} carried.",
   "log.carry.home": "{n} carried home, into the hold.",
-  "log.salvage.graft": "You graft the {module} on. It is better than new ({left}/{max}).",
-  "log.salvage.mend": "You work the scrap into your {module} ({left}/{max}).",
-  "log.salvage.install": "You pull a {module} ({left}/{max}) from the wreck.",
-  "log.weld": "You weld the {module} back to {left}/{max}.",
+  "log.salvage.graft": "Grafted: {module} {left}/{max}.",
+  "log.salvage.mend": "Scrap into {module}: {left}/{max}.",
+  "log.salvage.install": "{module} {left}/{max} off the wreck.",
+  "log.weld": "Welded: {module} {left}/{max}.",
   "log.pulse": "Sensor pulse. Two doors of ship come back on the schematic.",
   "log.emp": "The coil discharges. {n, one: One machine seizes, other: # machines seize} up. {left} left.",
   "log.shock": "The {module} arcs. {n, one: One machine seizes, other: # machines seize} up. {left} left.",
   "log.swap.carried": "{module} in, {old} out and into your arms.",
   "log.swap.dropped": "{module} in. Arms full: the {old} lies here.",
-  "log.relic.take": "A relic: {module}. No bench mends it, no dock sells it.",
+  "log.relic.take": "Relic: {module}. No mending, no selling.",
   "log.relic.seen": "The pulse reads a sealed crate in {room}. Something stands over it.",
   "log.emitter.hit": "Your {emitter} hits {target} for {n} ({hp}/{max}).",
 
-  "log.system.work": "You work the {tool} into the {system}. {left} more {left, one: turn, other: turns} of it.",
-  "log.system.advance": "The charter pays on account:",
-  "log.system.all": "All three started. Press `<` to leave through the airlock and the tug sells the hull.",
-  "log.system.all.paid": "All three started. Press `<` to leave through the airlock and the tug sells the hull: +{cr} CR.",
+  "log.system.work": "{tool} → {system}. {left} more {left, one: turn, other: turns}.",
+  "log.system.work.hands": "{system} by hand, loud. {left} more {left, one: turn, other: turns}.",
+  "log.system.advance": "Charter advance:",
+  "log.system.all": "All three started. `<` leaves through the airlock; the hull sells.",
+  "log.system.all.paid": "All three started. `<` leaves through the airlock: +{cr} CR.",
 
   "log.alert.hunter": "An {hunter} wakes up in {room}.",
-  "log.alert.busy": "The ship has been busy: {n} more machines aboard.",
+  "log.alert.busy": "{n} more machines aboard.",
   "log.alert.calm": "The ship stops looking for you.",
   "log.alert.up": "Alert: {stage}.",
   "log.alert.wake": "Something wakes up in {room}.",
   "log.alert.door": "The ship shuts {door} behind you.",
   "log.alert.lock": "The ship locks {door} behind you.",
-  "log.alert.down": "The ship stands down. Neutralised, it stops answering.",
+  "log.alert.down": "Ship neutralised: it stops answering.",
 
   "alert.noticed": "NOTICED",
   "alert.searching": "SEARCHING",
@@ -408,20 +414,15 @@ export const EN = {
   "alert.pack": "PACK",
   "alert.lockdown": "LOCKDOWN",
   "alert.detonation": "DETONATION",
-  "alert.does.post": "posts a guard",
-  "alert.does.pickets": "posts another",
-  "alert.does.pack": "sends another",
-  "alert.does.lockdown": "locks, hardens",
-  "alert.does.detonation": "blows the ship",
   "panel.alertBoom": "ALERT {gauge} BOOM IN {n}",
   "panel.fuse": "CHARGE {room} · {n}",
   "word.blown": "blown open",
-  "log.alert.charge": "The ship sets a charge in {room}: {n} turns.",
+  "log.alert.charge": "Charge set: {room}, {n} turns.",
   "log.alert.fuse": "Charge in {room}: {n}.",
-  "log.alert.blast": "{room} blows up. Nothing in it is left.",
-  "log.alert.detonation": "DETONATION in {n} turns. Nothing aboard survives it.",
-  "log.alert.boom": "The ship detonates. Nothing aboard survives.",
-  "log.hit.blast": "The blast hits your {module} ({left}/{max}).",
+  "log.alert.blast": "{room} blows up: nothing left.",
+  "log.alert.blast.you": "The charge goes off under you.",
+  "log.alert.detonation": "DETONATION: {n} turns. Nothing survives.",
+  "log.alert.boom": "The ship detonates.",
   "log.voyage.blown": "The {hull} is gone. The tug moves on.",
   "log.voyage.blownLast": "The {hull} is gone, and the voyage with it.",
   "codex.alert-6.title": "ALARM 6: PACK",
@@ -458,13 +459,6 @@ export const EN = {
   "codex.blown.wrong": "Planning a way home through it. The map draws it; the doors do not open.",
   "codex.blown.helps": "A cutter opens a sealed door in three turns, ramming it takes eight and the whole ship hears; the map already routes around it.",
   "codex.blown.lore": "The ship is taking itself apart to be rid of you.",
-  // What each rung of the ladder does, beside its word in the corner of the
-  // graphic view (docs/tasks/G89-festival.md, A3). Short: a column, not a card.
-  "alert.does.noticed": "wakes up",
-  "alert.does.searching": "listens",
-  "alert.does.hunting": "sends one, shuts doors",
-  "alert.does.hunter": "comes for you",
-  "alert.does.scuttle": "blows compartments",
 
   "log.bloom.hatch": "The bloom splits. Something pulls itself out.",
   "log.bloom.strip": "You cut the bloom open: {cr} CR of biomass, and nothing to bolt on.",
@@ -473,7 +467,7 @@ export const EN = {
   "log.ghost.sighted": "Something with your callsign is moving in there.",
   "log.ghost.drop": "The ghost comes apart. Your old rack is on the floor.",
 
-  "log.rival.aboard": "A rival drone is aboard. It is not here for the salvage.",
+  "log.rival.aboard": "A rival drone is aboard, and not for the salvage.",
   "log.rival.gone": "The rival breaks off and runs for its own lock.",
   "log.hull.taken": "{hull} is already on the other tug's line. Three systems for nothing.",
   "log.rival.lost": "Another tug has the ship. You have twenty turns.",
@@ -508,11 +502,11 @@ export const EN = {
   "log.virus.core": "{virus} reaches the core. {left} left.",
   "log.virus.twitch": "Your {module} twitches. {virus} picked where the blow lands.",
   "log.virus.moves": "The virus leaves your {from} for your {to}.",
-  "log.virus.purge.on": "You purge your {module}: {left} {left, one: turn, other: turns} to go.",
+  "log.virus.purge.on": "Purging {module}. {left} more {left, one: turn, other: turns}.",
   "log.virus.purge.done": "The purge takes. Your {module} is clean.",
   "log.virus.burned": "The virus goes with the burned module.",
 
-  "log.helm.board": "The board at the HELM: {flavour}.",
+  "log.helm.board": "BOARD: {flavour}.",
   "log.charter.signed": "Signed: {charter}.",
   "log.charter.filled": "{charter} filled:",
   // Said at the airlock for every signed job that did not pay, and why: a
@@ -521,40 +515,39 @@ export const EN = {
   "log.charter.missed.retrieve": "{charter} not filled: the crate is still aboard.",
   "log.charter.missed.upload": "{charter} not filled: the upload at the console never finished.",
   "log.credit": "{why} +{amount} CR. {total} CR.",
-  "log.hull.bought": "A {hull} comes off the rack: {trait}. {credits} CR left.",
-  "log.hull.tow": "The {hull} goes under tow:",
-  "log.hull.tow.split": "The {hull} goes under tow, the sale split:",
-  "log.hold.emptied": "The hold is emptied:",
+  "log.hull.bought": "{hull} bought: {trait}. {credits} CR left.",
+  "log.hull.tow": "{hull} under tow:",
+  "log.hull.tow.split": "{hull} under tow, sale split:",
+  "log.hold.emptied": "Hold emptied:",
   "log.hold.sell": "Sold for good — {module}:",
   "log.hold.sell.sick": "Sold for good — infected {module}:",
   "log.hold.fit": "You bolt the {module} ({integrity}) into slot {slot}.",
-  "log.bench.repair": "The bench takes your {module} back to {left}/{max}.",
+  "log.bench.repair": "Bench: {module} to {left}/{max}.",
   "log.bench.graft": "The bench grafts your {module} up to {left}/{max}.",
   "log.bench.clean": "The bench burns the virus out of your {module}.",
   "log.jump": "The tug burns for the {hull}. {credits} CR left.",
-  "log.jump.warn": "{hull}: {up} of {of} systems online. A jump leaves the hull behind.",
   "log.jump.left": "Left behind: {charters}.",
   "log.voyage.undock": "The clamps let go.",
-  "log.voyage.home": "The airlock cycles. The tug is waiting, and the derelict is still breathing.",
+  "log.voyage.home": "Airlock cycled. The derelict still stands.",
   "log.voyage.won": "The tug answers on your father's callsign. You take it home. You win.",
   "log.voyage.broke": "The rack is empty and so is the account. Voyage over.",
-  "log.drone.lost": "The drone stops answering. Whatever it was carrying is aboard the derelict now.",
+  "log.drone.lost": "Drone lost. Its cargo stays aboard.",
 
   // -------------------------------------------------------------- the hints
 
   "hint.exposure": "Hits land on whatever you last used.",
-  "hint.burned": "A burned module is gone. Its slot is empty now.",
-  "hint.scrap": "Scrap. Take it apart for a module, or graft it onto one you have.",
-  "hint.blind": "Without a scanner you see only this room. Find one.",
+  "hint.burned": "A burned module never comes back.",
+  "hint.scrap": "Scrap: salvage it, or graft it onto a module.",
+  "hint.blind": "No SCANNER: you see only this compartment.",
   "hint.keycard": "A keycard. Doors marked [ ] read it.",
-  "hint.death": "Your drone is still in there. It will not be friendly.",
-  "hint.objective": "One of the ship's three systems. Start all three, get out alive, and the tug sells the hull.",
-  "hint.payout": "Nothing is paid until the drone is back through the airlock. Die out here and the hold too.",
-  "hint.mouse": "The mouse works too: click a numbered line, or a compartment on the schematic.",
+  "hint.death": "Your dead drone is still aboard, and hostile.",
+  "hint.objective": "Ship system. Start all three, leave alive: the hull sells.",
+  "hint.payout": "Nothing pays until the drone is back through the airlock.",
+  "hint.mouse": "The mouse works: click a numbered line, or a compartment.",
   "hint.sold": "Hold sold for {credits} CR. Hulls cost {hullPrice}.",
-  "hint.shooting": "Shooting exposes what you shot with: the answer lands on the EMITTER, the frailest module.",
-  "hint.sell": "Sold for good: that one won't come back. The dock sells new ones; stow a keeper in the hold.",
-  "hint.virus": "Scrap can carry a virus; v says what it does. Purge it: {turns} turns, {fast} with a {spike}.",
+  "hint.shooting": "Shoot, and the answer lands on your EMITTER.",
+  "hint.sell": "Sold for good. Stow a keeper in the hold instead.",
+  "hint.virus": "`v` shows the virus. Purge: {turns} turns, {fast} with a {spike}.",
   // The virus window and the cure without a module (G90, C). One block: the
   // card behind `v`, the panel's short line, and the SPIKE's faster purge.
   "action.purge.spike": "purge {module} ({spike}, {left} {left, one: turn, other: turns})",
@@ -578,6 +571,12 @@ export const EN = {
   "virus.card.drop": "or sell the module for half, or stow it in the hold: the virus goes with it.",
   "virus.card.purging": "Purging now: {n} {n, one: turn, other: turns} left.",
   "virus.card.footer": "any key closes",
+  "airlock.card.title": "ALL 3 STARTED — NOW GET OUT",
+  "airlock.card.worth": "{hull} is worth {cr} CR the moment it is under tow.",
+  "airlock.card.worth.bare": "{hull} is ready to be taken under tow.",
+  "airlock.card.paid": "Not a credit of it is paid while the drone is aboard. The hull is sold, and the hold with it, when the drone comes out through the airlock — and a drone that does not come out is paid nothing at all.",
+  "airlock.card.press": "Press `<`: the drone walks to the airlock, and `<` again takes it out.",
+  "airlock.card.footer": "any key closes",
   "help.key.virus": "v   the virus aboard and how to cure it",
   "help.name.virus": "VIRUS",
   "panel.jammed": "JAMMED",
@@ -591,6 +590,7 @@ export const EN = {
   "why.credits": "Not enough credits.",
   "why.line.none": "Nothing on that line.",
   "why.notHere": "Not from here.",
+  "why.lesson": "The lesson first: {press}.",
   "why.jammed": "Static. Nothing responds.",
 
   "why.door.notHere": "There is no such door in this compartment.",
@@ -659,6 +659,7 @@ export const EN = {
   "why.jump.aboard": "The tug jumps; the drone cannot.",
   "why.jump.last": "There is nothing further out. This is the last hull of the voyage.",
   "why.jump.first": "The {price} CR jump comes first.",
+  "why.jump.held": "The {hull} is still out there. Take it under tow or let it blow, then jump.",
 
   // ------------------------------------------------ the numbered action list
 
@@ -679,13 +680,15 @@ export const EN = {
   "action.takeMarked": "take the marked crate",
   "action.upload": "upload ({left} {left, one: turn, other: turns})",
   "action.buy": "buy {hull} {price} CR",
-  "action.undock": "cast off → {hull}",
-  "action.undock.todo": "cast off {left}",
-  "undock.left.damaged": "{n} dmg",
+  // What the row is called, and the same row with the visit's checklist in
+  // brackets after it — a note under the line, never the name of it (G92 B2).
+  "action.undock": "boarding the derelict",
+  "action.undock.todo": "boarding the derelict ({left})",
+  "undock.left.damaged": "{n} to repair",
   "undock.left.charter": "last pick",
-  // The same debt when it is the only one: then the row has room to say what
-  // casting off does to the board.
-  "undock.left.board": "— board closes",
+  // The same debt when it is the only one: then the brackets have room to say
+  // what casting off does to the choice of hull.
+  "undock.left.board": "choice closes",
   "action.repair": "{module} {price} CR",
   "action.clean": "clean {module} ({price} CR)",
   "action.graft": "{module} +1 base  {price} CR",
@@ -694,9 +697,6 @@ export const EN = {
   "action.sell": "{module} {left}/{max}  {price} CR",
   "action.charter": "take {charter} ({price})",
   "action.jump": "jump → {hull} {price} CR",
-  // The jump row when it leaves systems raised behind: what is dropped, and
-  // what the hull would have sold for. The group heading already says "jump".
-  "action.jump.drop": "drop {up}/{of}, sale {cr} CR",
   // The last line of a door's own list, and the only place on it the door is
   // named: one level down there is no heading to carry `d3`.
   "action.back": "back ({door})",
@@ -750,6 +750,21 @@ export const EN = {
   "panel.core": "CORE  {dots}",
   "panel.slot.empty": "-- empty --",
   "panel.slot.burned": "-- burned --",
+  // The readout a rack row gives when it is pointed at (`ui/rackcard.ts`): the
+  // numbers the row prints as a bar, and the marks nobody was ever told the
+  // meaning of. Everything else on that plate is borrowed from wherever the
+  // game already says it.
+  "rack.read.hp": "INTEGRITY {left}/{max}",
+  "rack.read.charges": "CHARGES {n}",
+  "rack.read.graft": "+{n} grafted on at the bench, over the catalogue's own integrity. No module takes more than {max}.",
+  "rack.read.exposed": "◀ the next blow lands on this slot.",
+  "rack.read.virus": "{virus} is running in this slot.",
+  // The four modules spent by no key and carrying no codex card of their own:
+  // what they do is a number in the catalogue, said in words once, here.
+  "rack.does.thrusters": "Full walking speed. Burned out, the drone crawls and everything aboard gets extra turns on it.",
+  "rack.does.plating": "Takes the blow before the core does: the one module every hit on the drone passes through.",
+  "rack.does.laser": "A heavier swing than the cutter's, and no use at all on a bulkhead.",
+  "rack.does.baffle": "Quieter steps, and a shorter reach for whatever is looking: the ship notices you later.",
   "panel.keys": "KEYS  {n}",
   "panel.alert": "ALERT {gauge}",
   "panel.alertStage": "ALERT {gauge} {stage}",
@@ -761,7 +776,7 @@ export const EN = {
   "panel.goal.bare": "GOAL: START 3, GET OUT",
   "panel.goal.done": "ALL 3 STARTED  +{cr} CR",
   "panel.goal.out": "< out the airlock to sell",
-  "panel.goal.noTool": "NEED A TOOL: < HOME FOR IT",
+  "panel.goal.noTool": "NO TOOL: BY HAND, OR < HOME",
   "panel.goal.towed": "HULL SOLD  under tow",
   "panel.goal.work": "{mark} {system} {tool}, {left, one: # turn, other: # turns}",
   "panel.charters": "CHARTERS",
@@ -810,6 +825,7 @@ export const EN = {
   "help.where.tug.head": "WHERE YOU ARE — your own tug",
   "help.where.tug.1": "One screen, no walking: buy a drone, mend it, stow",
   "help.where.tug.2": "or sell what you will not fly, pick a hull, cast off.",
+  "help.where.tug.3": "No clock and no alert here: nothing moves at home.",
   "help.where.ship.head": "WHERE YOU ARE — inside a derelict",
   "help.where.ship.1": "Take what pays, start the 3 systems, then out",
   "help.where.ship.2": "through the airlock: the hold is money only once home.",
@@ -824,7 +840,7 @@ export const EN = {
   "banner.tug": "YOUR TUG «{callsign}» · docked to {hull}",
   "banner.derelict": "DERELICT {parts}",
   "word.unknownHull": "unknown hull",
-  "log.opening.tug": "Your tug. All of it is on the list: drone, repairs, charters, cast off. Press ? any time.",
+  "log.opening.tug": "Your tug: drone, repairs, charters, cast off — all on the list. Press ? for help.",
   "log.opening.voyage": "{callsign}. {hulls} hulls out; the last one is your father's tug.",
 
   // ---------------------------------------------------------- title and help
@@ -847,6 +863,7 @@ export const EN = {
   "title.view.ascii": "ASCII",
   "title.view.web": "panels",
   "title.view.hex": "honeycomb",
+  "title.view.react": "REACT",
   "title.view.judges": "The jam's judges expect ASCII: that is what a fresh session opens in.",
   "title.seed.empty": "type digits",
   "title.seed.typing": "digits then Enter · nothing then Enter draws at random · Esc cancels",
@@ -859,29 +876,35 @@ export const EN = {
   // The lesson's window: the story line the run opens on, the head of the
   // window, and one instruction and one key per step (`content/tutorial.ts`,
   // `LESSON_STEPS`; docs/tasks/G90-smoreg-wave.md, E).
+  "lesson.brief.title": "THE JOB",
+  "lesson.brief.hull": "A derelict: a dead hull adrift, its machines still awake, and your drone linked to it from the tug.",
+  "lesson.brief.job": "The job is always the same. Bring the hull's three systems back online — ENGINE, REACTOR, TERMINAL — and walk the drone out through the airlock.",
+  "lesson.brief.pay": "Then the tug tows the hull in and sells it. That is the whole game. This lesson shows each move once; the box in the corner says what to press.",
+  "lesson.brief.footer": "any key — the lesson begins",
   "lesson.opening": "You remember the first drone: a dead hull, a link that still answered. Get it out.",
   "lesson.head": "LESSON {n}/{of}",
-  "lesson.head.fold": "esc hides",
   "lesson.done": "✓ done",
   "lesson.over.head": "LESSON OVER",
-  "lesson.over": "That is how the first drone came home. The tug is yours now: 8 picks a real derelict and its contract.",
+  "lesson.over": "That is how the first drone came home. The tug is yours now: 1 picks a real derelict and its contract.",
   "lesson.click": "The drone answers. Click the next compartment on the map and it walks there. Nothing moves until you do.",
   "lesson.click.press": "click r2 · or m, then its line",
   "lesson.explore": "Press o: the drone explores on its own and stops at anything worth a decision — a door, a thing, a machine.",
   "lesson.explore.press": "o",
   "lesson.modules": "A parts crate. Press its salvage line: the SPIKE goes into your free slot. Every blow lands on the module you last used.",
   "lesson.modules.press": "salvage line",
-  "lesson.fight": "A machine. Press Tab to close in and hit: one blow a press. It hits back — the rack takes it, the core only once the rack is gone.",
+  "lesson.fight": "The lock woke the scout: it comes for you. Tab closes in and hits, one blow a press. Its blows land on the module you used last; the core is hit only once the rack is gone.",
   "lesson.fight.press": "Tab",
+  "lesson.scan": "Press s: a sensor pulse reads two doors of ship through shut bulkheads and shows what stood there that moment. It costs a turn, and it is loud: the whole ship hears it.",
+  "lesson.scan.press": "s",
   "lesson.door": "Search the crew body: bodies carry credits and keycards. Then the locked bulkhead: press its open line and pick — CELL (p) is cheap; keep the keycard for the TERMINAL.",
   "lesson.door.press": "search line · open line · p",
   "lesson.alert": "A welded door ahead: walk up to it (o), then cut it (c, 3 turns) or ram it (8). Loud work climbs the ALERT: higher rungs send machines after you, and at the top the ship blows.",
   "lesson.alert.press": "o · cut line · c",
-  "lesson.virus": "The SPIKE carried the ship's virus: it takes over the rack. Read its card (v), then press the purge line until it is clean; a SPIKE aboard makes the purge half as long.",
+  "lesson.virus": "The SPIKE came out of that crate carrying the ship's virus — salvage does that. Read its card (v), then press the purge line until it is clean; a SPIKE aboard halves the purge.",
   "lesson.virus.press": "purge line · v",
-  "lesson.systems": "Three systems, one per compartment: press the work line in each. ENGINE takes the CUTTER, REACTOR the CELL, TERMINAL the SPIKE or the keycard. All three up, and the hull sells.",
+  "lesson.systems": "Three systems, one per compartment: press the work line in each. ENGINE: CUTTER, REACTOR: CELL, TERMINAL: SPIKE or keycard. All three up: hull sold. No tool? By hand, slow and loud.",
   "lesson.systems.press": "work line · in ENGINEERING, REACTOR, CONTROL",
-  "lesson.leave": "Back to the airlock: press < to walk there, and < again to step out. Nothing is paid until the drone is out.",
+  "lesson.leave": "All three are up: back to the airlock and out. Press < to walk there, < again to step out. The tug tows the hull in and pays for it; nothing is paid while the drone is aboard.",
   "lesson.leave.press": "<",
 
   // The captions over the numbers of a run that is over, one each (G89 B):
@@ -1088,10 +1111,21 @@ export const EN = {
   "help.list.4": "Or click it: a line, or a box on the schematic.",
 
   "help.charter.head": "CHARTERS — what a sortie is for",
-  "help.charter.1": "One a hull, chosen with the hull under NEXT HULL,",
+  "help.charter.1": "One a hull, signed on the row that picks the hull,",
   "help.charter.2": "paid when the drone is home. SALVAGE wants credits",
   "help.charter.3": "home; HOT, QUIET and 1 TRIP pay more but can void.",
   "help.charter.4": "START 3 is the goal: engine, reactor, terminal.",
+  "help.charter.5": "No tool for one? By hand it goes: slow, and loud.",
+  "help.dock.head": "THE TUG'S ROWS — what each group does",
+  "help.dock.1": "1 hull & contract: where to fly and what it pays.",
+  "help.dock.2": "2 boarding: the drone flies to the hull you chose.",
+  "help.dock.3": "3 buying drones: no drone on the rails, no sortie.",
+  "help.dock.4": "Then the rack: mend, fit from the hold or the shelf,",
+  "help.dock.5": "stow, sell for good, clean a virus off a module.",
+  "help.voyage.head": "THE VOYAGE — three stops, his tug last",
+  "help.voyage.1": "Three stops, and at each one you choose where to fly.",
+  "help.voyage.2": "The last hull is your father's tug: taking it wins.",
+  "help.voyage.3": "A hull pays only once the drone is out the airlock.",
 
   "help.url.head": "THE ADDRESS BAR — settings with no key",
   "help.url.seed": "?seed=N        play that ship again, exactly",
@@ -1108,7 +1142,9 @@ export const EN = {
   "end.lost": "DRONE LOST",
   "end.blown": "THE HULL BLEW UP",
   "end.won": "YOUR FATHER'S TUG IS YOURS",
-  "end.sold": "SHIP SOLD",
+  "end.sold": "DERELICT NEUTRALISED AND SOLD",
+  "end.sold.why": "{hull}: all {n} started, the hull is under tow. +{cr} CR on the account.",
+  "end.sold.why.bare": "{hull}: all {n} started, the hull is under tow.",
   "end.dead.why": "No drone on the rails and nothing left to buy one with.",
   "end.won.why": "The last hull of the itinerary is under tow. The voyage is over.",
   "end.again": "shift+R for a new run",
@@ -1133,19 +1169,18 @@ export const EN = {
 
   // ------------------------------------------------ the tug as a menu (G53)
 
-  // The five verbs the tug is read by. Groups, not compartments: DOCK, HOLD,
-  // BENCH and HELM were the inside of the ship talking, and a player who has
-  // never been aboard one cannot guess which of the four mends a module
-  // (docs/tasks/G53-tug-is-a-menu.md, 1).
-  "tug.group.repair": "REPAIR",
-  "tug.group.rig": "RIG",
-  "tug.group.voyage": "CHARTERS",
-  "tug.group.jump": "NEXT HULL",
+  // The three the tug is read by, in the owner's order and his words (G92 B1).
+  // Groups, not compartments: DOCK, HOLD, BENCH and HELM were the inside of the
+  // ship talking, and a player who has never been aboard one cannot guess which
+  // of the four mends a module (docs/tasks/G53-tug-is-a-menu.md, 1).
+  "tug.group.voyage": "VOYAGE",
+  "tug.group.drone": "BUYING DRONES",
+  "tug.group.rig": "RACK",
 
   // One verb, one line: the modules it could be aimed at are the list under it.
   "action.pick.buy": "buy a hull ▸",
   // What a plain row is called on the turn it has nothing to name.
-  "action.dead.undock": "cast off",
+  "action.dead.undock": "boarding the derelict",
   "action.dead.clean": "clean a module",
   "action.dead.jump": "jump to the next hull",
   "action.pick.repair": "repair a module ▸",
@@ -1205,10 +1240,10 @@ export const EN = {
   "engine.hit.taken": "{Actor} hits you for {amount}.",
   "engine.hit.other": "{Actor} hits {target} for {amount} ({hp}/{max}).",
   "engine.dies": "{Target} dies.",
-  "engine.cover.you": "You slip into cover.",
-  "engine.cover.other": "{Actor} slips into cover.",
+  "engine.cover.you": "In cover.",
+  "engine.cover.other": "{Actor}: in cover.",
 
-  "engine.door.open": "The door {door} slides open.",
+  "engine.door.open": "{door}: open.",
   "engine.door.breached": "{door} gives way with a shriek.",
   "engine.door.cut.you": "You cut at {door}.",
   "engine.door.cut.other": "{Actor} cuts at {door}.",
@@ -1248,9 +1283,9 @@ export const EN = {
   // (`systems/hazards.ts`). Every one ends in ` [i]`: the codex's hook, the
   // key that opens this hazard's own card (docs/tasks/G72-codex.md).
 
-  "log.hazard.tell.frost": "DANGER: {room} beyond {door} is iced over. Engines lose speed in there. [i]",
-  "log.hazard.tell.smoke": "DANGER: {room} beyond {door} is full of smoke. Nobody sees anybody in there. [i]",
-  "log.hazard.tell.mine": "DANGER: {door} is mined. The first one through it takes the blast. [i]",
+  "log.hazard.tell.frost": "DANGER: {door} → {room}, ice. Engines crawl. [i]",
+  "log.hazard.tell.smoke": "DANGER: {door} → {room}, smoke. Nobody sees. [i]",
+  "log.hazard.tell.mine": "DANGER: {door} mined. First through takes it. [i]",
 
   // The word in the compartment block, next to the mark.
   "word.hazard.frost": "frost: engines slow here",
@@ -1279,4 +1314,106 @@ export const EN = {
   // G88 B: the panel's own lines.
   "panel.systems.lost": "not found:",
   "panel.letters.tugTop": "? help",
+
+  // --------------------------------------- the fourth view's own chrome (G93)
+  //
+  // The React screen (`ui/react/`) draws the same run as the other three and
+  // says most of it in their words: its rack panel is `tug.group.rig`, its
+  // codex labels are `codex.label.*`, its endings are `end.*`, its refusals are
+  // the engine's. These rows are what that design says and no other screen
+  // does — the column labels of a readout, the drawers behind the rail, the
+  // words a card is turned by, and the tooltips a pointer finds.
+  //
+  // `word.crShort` is the unit standing on its own, because the readout sets
+  // the number large and the unit small beside it; `word.cr` is the two
+  // together, which is what a sentence wants.
+
+  "word.crShort": "CR",
+
+  "react.rail.menu": "menu",
+  "react.rail.sound": "sound {state}",
+  "react.paused": "paused",
+  "react.close": "close",
+  "react.core": "core",
+  "react.slot.empty": "empty",
+
+  // The goal panel and the tug's account: a label, and the number answering it.
+  "react.stat.goal": "goal",
+  "react.stat.alert": "alert",
+  "react.stat.systems": "systems",
+  "react.stat.keys": "keys",
+  "react.stat.held": "held",
+  "react.stat.banked": "banked",
+  "react.stat.hold": "in the hold",
+  "react.stat.sortie": "sortie",
+  "react.stat.lost": "drones lost",
+  "react.alert.charge": "charge {room}",
+  "react.next.here": "This stop",
+  // A range rather than a count — `8-12` compartments, `3-6` machines — so
+  // these take a plain substitution and the form a range reads in.
+  "react.next.rooms": "{n} rooms",
+  "react.next.machines": "{n} machines",
+  "react.next.next": "Next stop",
+
+  "react.rack.drone": "drone",
+  "react.rack.drones": "drones",
+  "react.rack.preview": "preview",
+  "react.room.unknown": "unscanned",
+  "react.here.empty": "nothing in here",
+
+  "react.menu.abandon": "abandons this one",
+  "react.menu.settings": "Settings",
+  // The people this game owes something to, never the money: `panel.credits`
+  // is the account, and a translator reading only the English would merge them.
+  "react.menu.credits": "Credits",
+  "react.settings.motion": "Reduced motion",
+  "react.settings.fromSystem": "system",
+  "react.credits.typefaces": "typefaces",
+  "react.credits.debt": "owes a debt to",
+  "react.controls.how": "how to fly it",
+
+  "react.log.kept": "{n} kept",
+  "react.stencil.seed": "seed {n}",
+  "react.seed.set": "set",
+
+  "react.tug.alongside": "alongside",
+  "react.tug.systems": "{up}/{of} up",
+  "react.dock.back": "put the rack back",
+  "react.dock.show": "show this one in the rack above",
+  "react.dock.rails": "on the rails",
+  "react.hull.core": "core {n}",
+  "react.hull.slots": "{n} slots",
+  "react.hull.speed": "speed {n}",
+
+  // The verb a thing on the board answers to, printed on its chip and in the
+  // manifest beside it. These extend the `verb.*` family above, which held only
+  // the ways through a bulkhead: the honeycomb puts a verb on every object, so
+  // every `act` the engine can aim at one needs a word of its own. Found by
+  // `tId("verb", …)` from the command, so a verb with no row here would print
+  // the engine's own id at a player.
+  "verb.attack": "attack",
+  "verb.salvage": "salvage",
+  "verb.carry": "take",
+  "verb.swap": "swap",
+  "verb.search": "search",
+  "verb.strip": "strip",
+  "verb.work": "work",
+  "verb.take": "take",
+  "verb.upload": "upload",
+  "verb.use": "use",
+  "verb.bargain": "deal",
+  "verb.shoot": "shoot",
+
+  "react.page.prev": "prev",
+  "react.page.next": "next",
+  "react.page.older": "older",
+  "react.page.newer": "newer",
+  "react.codex.what": "what it is",
+  "react.end.complete": "voyage complete",
+  "react.end.over": "voyage over",
+  "react.end.seed": "?seed={seed} flies this voyage again, exactly.",
+  "react.board.hint": "right-drag to pan · hover a room for the route",
+
+  // The sixth figure of a run that is over, in the family of the other five.
+  "end.fig.sorties": "SORTIES",
 } as const;

@@ -15,17 +15,19 @@ import type { KeyLike } from "./input.js";
  * of the suite runs in.
  */
 
-export type View = "ascii" | "web" | "hex";
+export type View = "ascii" | "web" | "hex" | "react";
 
 /**
  * The cycle, in the order `V` walks it.
  *
- * Three drawings of one game: the terminal the design document specifies to the
- * column, the graph of boxes and wires, and the honeycomb deck plan the owner
- * asked for third. None of them decides anything — every word and every state
- * on all three comes out of the same pure functions.
+ * Four drawings of one game: the terminal the design document specifies to the
+ * column, the graph of boxes and wires, the honeycomb deck plan the owner asked
+ * for third, and the React screen built on a branch of its own. None of them
+ * decides anything — every word and every state on all four comes out of the
+ * same pure functions, which is the only reason a fourth could be added beside
+ * the others rather than in place of one.
  */
-export const VIEWS: readonly View[] = ["ascii", "web", "hex"];
+export const VIEWS: readonly View[] = ["ascii", "web", "hex", "react"];
 
 /**
  * What a session with no preference gets.
@@ -56,7 +58,7 @@ export interface ViewStore {
 }
 
 export function isView(value: unknown): value is View {
-  return value === "ascii" || value === "web" || value === "hex";
+  return value === "ascii" || value === "web" || value === "hex" || value === "react";
 }
 
 /** The press that switches views, and nothing else. `V` is not a chord: shift is spent on it. */
@@ -64,7 +66,7 @@ export function isViewKey(e: KeyLike): boolean {
   return e.key === VIEW_KEY && e.ctrlKey !== true && e.metaKey !== true;
 }
 
-/** The next view round the cycle. Two of them today; the cycle is what `V` promises. */
+/** The next view round the cycle. Four of them today; the cycle is what `V` promises. */
 export function nextView(view: View): View {
   const i = VIEWS.indexOf(view);
   return VIEWS[(i + 1) % VIEWS.length] ?? DEFAULT_VIEW;

@@ -3,11 +3,15 @@ import { RoomGame, spawnMonsterIn, type RoomGameConfig } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
+import { newGame } from "../src/game.js";
+import { keysHeld } from "../src/systems/doors.js";
 import { keyed, roomActions, type Action } from "../src/ui/actions.js";
 import { panelBlocks, type PanelLine } from "../src/ui/panel.js";
+import { rackReadout, rackReadouts } from "../src/ui/rackcard.js";
+import { MAX_GRAFT, moduleBurnLine, moduleName } from "../src/content/modules.js";
+import { capOf, rigOf } from "../src/twist/rig.js";
 import { LANGS, setLang, t } from "../src/i18n.js";
 import { THEME } from "../src/ui/theme.js";
-import type { Key } from "../src/content/i18n/keys.js";
 import { cornerHtml, htmlOf, lineHtml } from "../src/ui/web/panel-html.js";
 import { MAX_LEVEL } from "../src/systems/alert.js";
 import { screenHtml } from "../src/ui/web/screen.js";
@@ -276,6 +280,74 @@ describe("the HTML panel", () => {
  * as classes the stylesheet has rules for, and not the old count of three.
  */
 /**
+ * The map answers a hover with a readout beside the compartment; the rack did
+ * not answer one at all — «наведение на модуль должно давать инфо» (the owner).
+ * What is checked here is that it says the things the row cannot, that none of
+ * them is a sentence written for this plate, and that the plate is part of the
+ * row rather than something laid over it.
+ */
+describe("a rack row answers being pointed at", () => {
+  it("names the module, says what it does, and counts what is left of it", () => {
+    const game = gameIn();
+    const rig = rigOf(game.player)!;
+    const slot = rig.slots.findIndex((s) => s !== null);
+    const fitted = rig.slots[slot]!;
+    const read = rackReadouts(game).get(slot)!;
+    expect(read.head).toContain(moduleName(fitted.kind));
+    expect(read.head.startsWith(String(slot + 1))).toBe(true);
+    expect(read.lines[0]).toBe(t("rack.read.hp", { left: fitted.integrity, max: capOf(fitted) }));
+    // What it does is a line some other card already prints — the controls card
+    // for a module with a key, the codex card for a relic — so it arrives
+    // worded, and in whatever language is on.
+    expect(read.lines[1]).toBeTruthy();
+    expect(read.lines[1]).not.toContain("{");
+  });
+
+  it("explains the marks on the row, each only when the row is wearing it", () => {
+    const game = gameIn();
+    const rig = rigOf(game.player)!;
+    rig.exposed = null;
+    expect(rackReadout(game, 0)!.lines).not.toContain(t("rack.read.exposed"));
+    rig.exposed = 0;
+    rig.slots[0]!.bonus = 1;
+    const read = rackReadout(game, 0)!;
+    expect(read.lines).toContain(t("rack.read.exposed"));
+    expect(read.lines).toContain(t("rack.read.graft", { n: 1, max: MAX_GRAFT }));
+  });
+
+  it("says what a burned bay lost, and leaves a bay that never held anything", () => {
+    const game = gameIn();
+    const rig = rigOf(game.player)!;
+    rig.slots[1] = null;
+    rig.scars[1] = "scanner";
+    const burned = rackReadout(game, 1)!;
+    expect(burned.head).toContain(t("panel.slot.burned"));
+    expect(burned.lines).toEqual([moduleBurnLine("scanner")]);
+    // `-- empty --` is the whole of what an empty bay has to say.
+    rig.slots[2] = null;
+    rig.scars[2] = null;
+    expect(rackReadout(game, 2)).toBeUndefined();
+  });
+
+  it("folds into the row it is about, so it can never be over it", () => {
+    const line: PanelLine = { text: "1 CUTTER   ▮▮▯", fg: THEME.fg };
+    const reads = new Map([[0, { head: "1 CUTTER", lines: ["3/11"] }]]);
+    const html = lineHtml(line, new Set(), new Set(), false, reads);
+    // One element, and the readout inside it: a plate hung outside the row
+    // would be cut off by the housing's own clipped corner.
+    expect(count(html, "<div")).toBe(1);
+    expect(html.indexOf('<span class="sr">')).toBeGreaterThan(html.indexOf("CUTTER"));
+    expect(html).toContain('<span class="sr-h">1 CUTTER</span>');
+    // Folded away until the pointer is on the row, and never taken out of flow.
+    expect(WEB_CSS).toContain(".pl.slot .sr{display:none;}");
+    expect(WEB_CSS).toMatch(/\.pl\.slot\.has-read:hover \.sr\{[^}]*display:flex/);
+    expect(WEB_CSS).not.toMatch(/\.sr\{[^}]*position:(absolute|fixed)/);
+    // And a row with nothing to say about it is the row it always was.
+    expect(lineHtml(line)).not.toContain("has-read");
+  });
+});
+
+/**
  * The top-left corner of the map (G89 A3): the codex chip, the alert as a
  * ladder of ten rungs (G90 A), and the hazards the drone knows are aboard.
  */
@@ -292,33 +364,41 @@ describe("the corner of the map", () => {
     expect(count(html, '<div class="rung is-past">')).toBe(4);
     expect(count(html, '<div class="rung is-now">')).toBe(1);
     expect(count(html, '<div class="rung is-next">')).toBe(5);
-    // The rung the ship is on carries its own word and what it does.
+    // The rung the ship is on carries its own word, and the rung is a word: the
+    // column that said what the ship does on it covered the hull it floats over
+    // and went to the codex card, which is a page and not a margin.
     const now = html.slice(html.indexOf("is-now"));
     expect(now).toContain(t("alert.hunting"));
-    expect(now).toContain(t("alert.does.hunting"));
+    expect(html).not.toContain('<span class="do">');
     // Headed by the panel's own row, gauge and all.
     expect(html).toContain('<div class="rung-head">');
     expect(html).toContain('<span class="bar">');
   });
 
-  it("names every rung in the language that is on, inside its two columns", () => {
+  it("names every rung in the language that is on, in a column narrow enough to float over a hull", () => {
     const words = [
       "alert.noticed", "alert.searching", "alert.post", "alert.pickets", "alert.hunting",
       "alert.pack", "alert.hunter", "alert.lockdown", "alert.scuttle", "alert.detonation",
     ] as const;
-    const does = words.map((w) => w.replace("alert.", "alert.does.") as Key);
     try {
       for (const lang of LANGS) {
         setLang(lang);
         const html = cornerHtml(undefined, [row(MAX_LEVEL)], []);
-        for (const key of [...words, ...does]) expect(html, `${lang} ${key}`).toContain(t(key));
-        // 76 px of 10 px type for the word, and a short phrase beside it.
+        for (const key of words) expect(html, `${lang} ${key}`).toContain(t(key));
+        // 12 characters of 11 px type: under 80 px of the deck, whatever the rung.
         for (const key of words) expect(t(key).length, `${lang} ${key}`).toBeLessThanOrEqual(12);
-        for (const key of does) expect(t(key).length, `${lang} ${key}`).toBeLessThanOrEqual(22);
       }
     } finally {
       setLang("en");
     }
+  });
+
+  it("sets nothing in the box in the size the panel reads at", () => {
+    // The head row is the longest line in it — the word, ten gauge cells and
+    // the stage — so the box is as wide as that row is set.
+    expect(WEB_CSS).toContain(".rung-head{font:600 12px/1.3 var(--mono);");
+    expect(WEB_CSS).toContain(".web-ladder{display:flex; flex-direction:column; gap:1px; padding:5px 8px 6px;");
+    expect(WEB_CSS).toContain("font:400 11px/1.35 var(--mono);");
   });
 
   it("is red and blinking from the charges up, and the blink yields to reduced motion", () => {
@@ -369,12 +449,39 @@ describe("the screen by artboard 3a", () => {
     expect(144 - 10).toBeGreaterThanOrEqual(7 * 14 * 1.35);
     expect(144).toBeLessThan(764 / 2);
     // A rail for the mouse, the board, the panel — and the log across the foot.
-    expect(WEB_CSS).toMatch(/grid-template-columns:\d\dpx 1fr clamp\(3\d0px, \d+vw, 4\d0px\);/);
+    expect(WEB_CSS).toMatch(/grid-template-columns:\d+px 1fr clamp\(3\d0px, \d+vw, 4\d0px\);/);
     expect(WEB_CSS).toMatch(/\.web-panel\{grid-column:3; grid-row:1;/);
     expect(WEB_CSS).toMatch(/\.web-log\{grid-column:1 \/ -1; grid-row:2;/);
     // The newest line on the floor of the box, and the key row on the floor of the panel.
     expect(WEB_CSS).toContain(".web-log > div:first-child{margin-top:auto;}");
     expect(WEB_CSS).toMatch(/\.pb\.foot\{[^}]*position:sticky; bottom:0;/);
+  });
+
+  it("keeps the board clear of the strip, so neither line can climb onto the other", () => {
+    // The strip floats over the board, and floating over the board is not
+    // floating over what the board draws: it stood on the alert's ladder out on
+    // a hull and on the dock's own head row at home, which is the ship line
+    // printed twice in one place. The board now keeps a band clear at the top
+    // and the corner starts under it, so the strip is the only thing in that
+    // band whatever it is holding and in whatever language.
+    const px = (name: string): number =>
+      Number(/:(\d+(?:\.\d+)?)px;/.exec(new RegExp(`--${name}:[^;]+;`).exec(WEB_CSS)![0])![1]);
+    const band = px("sv-head-band");
+    // Arithmetic and not taste: a title line on its own leading, the housing's
+    // padding and rules, the 10px it floats down from the top, and air under it.
+    const line = 21 * 1.15;
+    expect(px("sv-head-h")).toBeGreaterThanOrEqual(line + 6 + 7 + 2);
+    expect(band).toBeGreaterThanOrEqual(10 + px("sv-head-h"));
+    // At home the dock's page starts under the strip; out on a hull the board
+    // is fitted to its box and cannot give the height up, so there it is the
+    // alert's corner that starts under it instead.
+    expect(WEB_CSS).toContain(".web-map:has(.dock){padding-top:var(--sv-head-band);}");
+    expect(WEB_CSS).toContain("margin:var(--sv-head-band) 0 0 12px;");
+    expect(WEB_CSS).toContain(".web-map{grid-column:2; grid-row:1; min-width:0; min-height:0; padding:10px 4px 4px 12px;");
+    // And the strip's own height is fixed, so the band cannot be outgrown by a
+    // longer hull name: the flex row never wraps.
+    expect(WEB_CSS).toMatch(/\.web-head\{[^}]*height:var\(--sv-head-h\);/);
+    expect(WEB_CSS).toMatch(/\.web-head\{[^}]*white-space:nowrap;/);
   });
 
   it("names the hull large, its class small, and the turn with the seed at the right", () => {
@@ -517,5 +624,88 @@ describe("the page and the terminal draw the same line", () => {
     expect(html).toContain('<span class="extra">(by hand, 2 turns)</span>');
     const rows = panelBlocks(game, priced, 0).map((l) => l.text);
     expect(rows).toContain("   (by hand, 2 turns)");
+  });
+});
+
+/**
+ * The rail down the left edge (G91 A2), and the one thing it was missing: a
+ * player who reads `?`, `i` and `≡` off the live build cannot tell two of them
+ * apart — «два значка одного и того же» (G95 B4). The name of the window each
+ * button opens is on the button, in whatever language is on.
+ */
+describe("the rail says which window each button opens", () => {
+  const playing = { ...initialState(), overlay: "none" as const };
+  const railOf = (html: string): string => {
+    const at = html.indexOf('class="web-rail"');
+    expect(at).toBeGreaterThanOrEqual(0);
+    return html.slice(at, html.indexOf("</div>", at));
+  };
+
+  it("names all three, differently, in every language", () => {
+    for (const lang of LANGS) {
+      setLang(lang);
+      const rail = railOf(screenHtml(gameIn("r2", 4242), playing, new Set()));
+      const names = [...rail.matchAll(/class="rk-name">([^<]+)</g)].map((m) => m[1]);
+      // The words are the help card's own, so there is nothing here to
+      // translate twice.
+      expect(names, lang).toEqual([t("help.name.help"), t("help.name.codex"), t("help.name.log")]);
+      expect(new Set(names).size, `${lang}: two buttons that read the same`).toBe(3);
+      // And every button is still the key it was: the rail adds no command.
+      expect(rail, lang).toContain('data-key="?"');
+      expect(rail, lang).toContain('data-key="i"');
+      expect(rail, lang).toContain('data-key="PageUp"');
+    }
+    setLang("en");
+  });
+
+  it("keeps the word on one line, in a column wide enough to hold it", () => {
+    // A button two lines tall in Russian and one in English is a rail that
+    // moves between languages, so the word is clipped rather than wrapped.
+    expect(WEB_CSS).toMatch(/\.rail-key \.rk-name\{[^}]*white-space:nowrap/);
+    expect(WEB_CSS).toMatch(/\.rail-key \.rk-name\{[^}]*text-overflow:ellipsis/);
+    expect(WEB_CSS).toContain("grid-template-columns:104px");
+    expect(WEB_CSS).toMatch(/\.rail-key\{width:96px/);
+    // In the sheet's own smallest role, so the 14px floor holds on it too
+    // (`tests/chrome.test.ts`): a caption nobody can read is the same defect
+    // in another shape.
+    expect(WEB_CSS).toMatch(/\.rail-key \.rk-name\{font:var\(--sv-stencil\)/);
+  });
+});
+
+/**
+ * The keycards, where they are spent (G95 B5).
+ *
+ * The counter left the tug this morning on purpose — at home it said `KEYS 0`
+ * for ever — and aboard it was drawn all along, in the stack of counters the
+ * page puts under the action list. Under the list is under the fold of the
+ * owner's screen: «нет счётчика карт», said about a screen that was printing
+ * it. A card is a thing the drone carries, so it rides with the rack.
+ */
+describe("the keycard count aboard", () => {
+  const playing = { ...initialState(), overlay: "none" as const };
+
+  it("rides with the rack, over the list, and is one row in the terminal too", () => {
+    const game = gameIn("r2", 4242);
+    const keys = t("panel.keys", { n: keysHeld(game.player) });
+
+    const html = screenHtml(game, playing, new Set());
+    const at = html.indexOf('data-pb="rack"');
+    const rack = html.slice(at, html.indexOf("</section>", at));
+    expect(rack, "the count is in the rack's own block").toContain(keys);
+    expect(html.indexOf(keys)).toBeLessThan(html.indexOf('data-pb="acts"'));
+
+    // And the sidebar is unchanged: the row still follows the rack with no
+    // blank between them, and the counters open their own block after it.
+    const rows = panelBlocks(game, roomActions(game), 0).map((l) => l.text);
+    const row = rows.findIndex((r) => r.startsWith(keys));
+    expect(row).toBeGreaterThan(0);
+    expect(rows[row - 1]!.trim().length, "no blank row above the count").toBeGreaterThan(0);
+  });
+
+  it("is not a row of the tug, where nothing is ever locked", () => {
+    const game = gameIn("r2", 4242);
+    expect(screenHtml(game, playing, new Set())).toContain(t("panel.keys", { n: 0 }));
+    const home = newGame(4);
+    expect(panelBlocks(home, roomActions(home), 0).some((l) => l.text.startsWith(t("panel.keys", { n: 0 })))).toBe(false);
   });
 });

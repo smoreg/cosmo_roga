@@ -43,7 +43,7 @@ export interface RoomThing {
  * this file must not crash a run because a card left something it did not
  * expect, and a save file round-trips through JSON with no types at all.
  */
-const CONTENT_KEYS = ["bodies", "crates", "systems", "items"] as const;
+export const CONTENT_KEYS = ["bodies", "crates", "systems", "items"] as const;
 
 /**
  * The mark a thing wears when its own record carries none.
@@ -67,7 +67,7 @@ export const BUCKET_GLYPH: Readonly<Record<(typeof CONTENT_KEYS)[number], string
 };
 
 /** What each bucket's thing is called, when its record does not say. */
-function bucketName(key: (typeof CONTENT_KEYS)[number], raw: unknown): string {
+export function bucketName(key: (typeof CONTENT_KEYS)[number], raw: unknown): string {
   const rec = raw as { kind?: unknown; searched?: unknown } | null;
   const kind = typeof rec?.kind === "string" ? rec.kind : undefined;
   if (key === "bodies") return t(rec?.searched === true ? "thing.body.searched" : "thing.body");
@@ -95,18 +95,22 @@ export function schematicInputOf(
   const docked = dockedHull(game);
   const input = docked ? remoteInput(docked.ship, docked.data) : aboardInput(game, alarm);
   if (target === undefined) return input;
-  // What walking to the aimed compartment would cost, for the readout beside it
-  // (`SchematicRoom.reach`). Aboard only, and never for the compartment the
-  // drone is standing in: there is no walk to where you already are, and a cell
-  // that answered "no way" about itself would be the map calling the drone
-  // stranded on its own deck.
+  // What walking to the aimed compartment would cost, for the chip on the
+  // readout beside it (`SchematicRoom.reach`). Aboard only, and never for the
+  // compartment the drone is standing in: there is no walk to where you already
+  // are, and a cell that answered "no way" about itself would be the map calling
+  // the drone stranded on its own deck. The readout itself is drawn either way —
+  // it is `aimed` that asks for it, and what is lying in a compartment is worth
+  // reading whether or not there is a walk to price.
   const reach = docked || target === game.player.room
     ? undefined
     : reachOf(input.doors, route);
   return {
     ...input,
     rooms: input.rooms.map((room) =>
-      room.id === target ? { ...room, target: true as const, ...(reach === undefined ? {} : { reach }) } : room,
+      room.id === target
+        ? { ...room, target: true as const, aimed: true as const, ...(reach === undefined ? {} : { reach }) }
+        : room,
     ),
     // Only aboard: the tug's picture of the hull ahead is memory, with nobody
     // on it to walk anywhere.
@@ -427,8 +431,8 @@ export const VENTED_GLYPH = "~";
  * and what the drone *knows* of its hazards to the ship's pocket in the store
  * (`systems/hazardstate.ts`), which is the `data` here.
  */
-function thingsOn(ship: Ship, room: RoomId, pocket: Record<string, unknown>): RoomThing[] {
-  const out: RoomThing[] = [];
+function thingsOn(ship: Ship, room: RoomId, pocket: Record<string, unknown>): SchematicThing[] {
+  const out: SchematicThing[] = [];
   if (ship.roomAt(room).hazard === BLOWN) out.push({ glyph: VENTED_GLYPH, name: t("word.blown") });
   out.push(...hazardThings(ship, room, hazardsOf(pocket)));
   out.push(...wrecksOn(ship, room).map((w): RoomThing => {
@@ -445,7 +449,7 @@ function thingsOn(ship: Ship, room: RoomId, pocket: Record<string, unknown>): Ro
     const list = data[key];
     if (!Array.isArray(list)) continue;
     for (const raw of list) {
-      const thing = asThing(raw, BUCKET_GLYPH[key], bucketName(key, raw));
+      const thing = asThing(raw, BUCKET_GLYPH[key], bucketName(key, raw), key === "systems");
       if (thing) out.push(thing);
     }
   }
@@ -688,7 +692,12 @@ function clipTo(text: string, width: number): string {
  */
 export const ONLINE_GLYPH = "✓";
 
-function asThing(raw: unknown, fallback: string, called: string): RoomThing | undefined {
+function asThing(
+  raw: unknown,
+  fallback: string,
+  called: string,
+  goal = false,
+): SchematicThing | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const thing = raw as { glyph?: unknown; name?: unknown; label?: unknown; online?: unknown };
   const own = typeof thing.glyph === "string" && thing.glyph.length > 0 ? thing.glyph[0]! : undefined;
@@ -703,7 +712,10 @@ function asThing(raw: unknown, fallback: string, called: string): RoomThing | un
   const glyph = thing.online === true ? ONLINE_GLYPH : mark;
   const name =
     typeof thing.name === "string" ? thing.name : typeof thing.label === "string" ? thing.label : called;
-  return { glyph, name };
+  // And a system carries the fact that it is one, for the drawings to paint it
+  // in the colour of the job rather than in the colour of the scenery.
+  if (!goal) return { glyph, name };
+  return { glyph, name, goal: thing.online === true ? "up" : "down" };
 }
 
 /**

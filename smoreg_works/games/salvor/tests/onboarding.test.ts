@@ -33,7 +33,7 @@ import { VOYAGE, cratePrice, currentDerelict, undock, voyageOf } from "../src/sy
 import { RIG, hostilesIn, rigOf, type Rig } from "../src/twist/rig.js";
 import { engage, isStop, makeExplorer, makeTraveller, type AutoResult, type Explorer } from "../src/ui/auto.js";
 import { roomActions, waysHere } from "../src/ui/actions.js";
-import { appReducer, initialState, listOf, stoppedAt, syncStatus, walkEnded, type AppState } from "../src/ui/appstate.js";
+import { appReducer, initialState, listOf, runBegun, stoppedAt, syncStatus, walkEnded, type AppState } from "../src/ui/appstate.js";
 import { toIntent } from "../src/ui/input.js";
 
 /**
@@ -163,7 +163,7 @@ describe("the first thing a player ever does", () => {
       // place on every seed, which is the other half of what this holds.
       const list = roomActions(game);
       const off = list.findIndex((a) => a.cmd.kind === "act" && a.cmd.verb === "undock");
-      expect(off, `seed ${seed}`).toBe(list.length - 1);
+      expect(off, `seed ${seed}`).toBe(1);
       press(list[off]!.key);
 
       expect(game.shipId, `seed ${seed}`).not.toBe(TUG_ID);
@@ -180,19 +180,22 @@ describe("the first thing a player ever does", () => {
     const game = newGame(11);
     const labels = (): string[] => roomActions(game).map((a) => a.label);
 
-    expect(labels()[0]).toBe("buy a hull ▸");
-    // The row that casts off comes last and is a checklist of what the visit
-    // home has left undone; a fresh board has one thing on it
+    // The voyage leads the list, in the owner's order (G92 B1, G95 B1): the
+    // hull and contract the tug flies to, then boarding it.
+    expect(labels()[0]).toBe("hull & contract ▸");
+    expect(labels()[1]).toBe("boarding the derelict");
+    expect(labels()[2]).toBe("buy a hull ▸");
+    // What the visit home has left undone is the note under the row that casts
+    // off, not its name; a fresh board has one thing on it
     // (docs/tug-menu-audit.md, "what a designer would do", 5, and П7).
-    expect(labels()[8]).toBe("cast off — board closes");
-    expect(labels().some((l) => l.startsWith("choose the first hull"))).toBe(true);
+    expect(roomActions(game)[1]!.extra).toBe("(choice closes)");
     expect(roomActions(game)).toHaveLength(9);
     expect(roomActions(game).every((a) => a.key !== "")).toBe(true);
 
     // And the same ten from anywhere aboard, because nothing about them is
     // about where the drone is standing.
     for (const door of [1, 2, 3]) expect(game.playerCommand({ kind: "go", door }).ok).toBe(true);
-    expect(labels()[8]).toBe("cast off — board closes");
+    expect(roomActions(game)[1]!.extra).toBe("(choice closes)");
 
     // The first stop, one level down: every starting hull the seed offers, each
     // over its own contracts, and the job the first sortie is paid for leading
@@ -201,11 +204,11 @@ describe("the first thing a player ever does", () => {
     expect(board[0]!.label).toBe(`SALVAGE · ${CHARTER_PAY.salvage} CR`);
     expect(board[0]!.head).toContain(derelictName(currentDerelict(game).spec));
 
-    // With nothing outstanding the row is the hull by its callsign: a voyage
-    // can draw two freighters, and the line that flies you to one has to say
-    // which (G55, 17).
+    // With nothing outstanding the row is its own name and nothing else: a
+    // menu row does not change what it is called with the state of the rack.
     expect(game.playerCommand(board[0]!.cmd).ok).toBe(true);
-    expect(labels()[8]).toBe(`cast off → ${flavourCallsign(currentDerelict(game).flavour)}`);
+    expect(labels()[1]).toBe("boarding the derelict");
+    expect(roomActions(game)[1]!.extra).toBeUndefined();
   });
 
   /**
@@ -220,8 +223,8 @@ describe("the first thing a player ever does", () => {
       const list = roomActions(game);
 
       expect(list, `seed ${seed}`).toHaveLength(9);
-      expect(list[8]!.label, `seed ${seed}`).toMatch(/^cast off /);
-      expect(list[8]!.enabled, `seed ${seed}`).toBe(true);
+      expect(list[1]!.label, `seed ${seed}`).toBe("boarding the derelict");
+      expect(list[1]!.enabled, `seed ${seed}`).toBe(true);
       // The rack, always: three hulls one level down, the drone on the rails
       // among them (docs/tasks/G40-tug-clarity.md, 3).
       const rack = roomActions(game, "buy");
@@ -253,6 +256,7 @@ describe("the first thing a player ever does", () => {
 
     // Once a run, like every other line that goes through `hint`.
     voyageOf(game).credits = 500;
+    currentDerelict(game).sold = true;
     game.playerCommand({ kind: "act", verb: "jump" });
     expect(said()).toBe(1);
   });
@@ -473,7 +477,7 @@ describe("the five hints", () => {
     // In its own turn means: on the same line of the log as the thing that
     // earned it, and right after it — not the turn the world has moved on to
     // by the time the command is over.
-    const found = `You go through the body: ${BODY_CREDITS} CR and a keycard.`;
+    const found = `Body searched: ${BODY_CREDITS} CR and a keycard.`;
     expect(saidOn(game, t(HINT_LINE_KEYS.keycard))).toBe(saidOn(game, found));
     expect(indexOf(game, t(HINT_LINE_KEYS.keycard))).toBe(indexOf(game, found) + 1);
 
@@ -501,8 +505,8 @@ describe("the five hints", () => {
     expect(game.shipId).toBe(TUG_ID);
     expect(said(game, soldLine(24, HULL_PRICE))).toBe(1);
     // Straight after the line that banked it, so the two read as one sentence:
-    // `The hold is emptied: +24 CR. 49 CR.` / `Hold sold for 24 CR. Hulls cost 40.`
-    const banked = `The hold is emptied: +24 CR. ${STARTING_CREDITS + 24} CR.`;
+    // `Hold emptied: +24 CR. 49 CR.` / `Hold sold for 24 CR. Hulls cost 40.`
+    const banked = `Hold emptied: +24 CR. ${STARTING_CREDITS + 24} CR.`;
     expect(indexOf(game, soldLine(24, HULL_PRICE))).toBe(indexOf(game, banked) + 1);
     expect(soldLine(24, HULL_PRICE)).toBe(`Hold sold for 24 CR. Hulls cost ${HULL_PRICE}.`);
 
@@ -620,7 +624,11 @@ function verbOf(text: string): string {
 
 function followLesson(seed: number): Flown {
   const game = newGame(seed, true);
-  let state: AppState = { ...initialState(), overlay: "none" };
+  // The run opens on the card that says what the job is (G96, 2), and the
+  // follower reads it the way a player does: one key, no turn.
+  let state: AppState = runBegun({ ...initialState(), overlay: "none" }, game);
+  if (state.overlay !== "brief") return { game, seen: [], ticks: 0, stuck: "no opening card" };
+  state = appReducer(state, { kind: "dismiss" }, game);
   const seen: number[] = [];
   let ticks = 0;
 
@@ -650,7 +658,7 @@ function followLesson(seed: number): Flown {
     else if (e.kind === "log") game.log.add(e.text, game.schedule.time, "warn");
     // A card the run raised — the hull sold, the virus caught — is put away
     // by the next key, as any key does.
-    if (state.overlay === "sold" || state.overlay === "lost" || state.overlay === "virus") {
+    if (state.overlay === "sold" || state.overlay === "lost" || state.overlay === "virus" || state.overlay === "brief") {
       state = appReducer(state, { kind: "dismiss" }, game);
     }
   };
@@ -716,6 +724,9 @@ function followLesson(seed: number): Flown {
       case "virus":
         line(word("action.purge", { module: "", left: 0 }));
         break;
+      case "scan":
+        press("s");
+        break;
       case "systems": {
         if (line(word("action.workBare", { system: "", left: 0 }))) break;
         const online = shipState(game).online;
@@ -750,11 +761,12 @@ describe("the lesson, followed", () => {
           expect(isTug(run.game), `${lang}, seed ${seed}`).toBe(true);
           expect(run.game.player.hp, `${lang}, seed ${seed}`).toBeGreaterThan(0);
           // Home with the lesson over, and the key the closing line names is
-          // what the tug actually wears: 8 opens the next hulls with their
-          // contracts (G90 F), and the sale left enough to pay for the jump.
-          const eight = roomActions(run.game).find((a) => a.key === "8")!;
-          expect(eight.step, `${lang}, seed ${seed}`).toBe("jump");
-          expect(eight.enabled, `${lang}, seed ${seed}: the row the closing line names is greyed`).toBe(true);
+          // what the tug actually wears: 1 opens the next hulls with their
+          // contracts (G90 F, reordered in G92 B1 and again in G95 B1), and the
+          // sale left enough to pay for the jump.
+          const named = roomActions(run.game).find((a) => a.key === "1")!;
+          expect(named.step, `${lang}, seed ${seed}`).toBe("jump");
+          expect(named.enabled, `${lang}, seed ${seed}: the row the closing line names is greyed`).toBe(true);
           expect(roomActions(run.game, "jump").some((a) => a.enabled && a.cmd.kind === "act" && a.cmd.verb === "jump"), `${lang}, seed ${seed}`).toBe(true);
           turns += run.game.schedule.time;
         }

@@ -11,7 +11,7 @@ import {
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { t } from "../src/i18n.js";
-import { FREIGHTER, classOfShip, type DerelictSpec } from "../src/content/derelicts.js";
+import { FREIGHTER, classOfShip, derelictName, type DerelictSpec } from "../src/content/derelicts.js";
 import { tugCallsign, tugOpening, voyageOpening } from "../src/content/hints.js";
 import { GHOST, HULLS, SCRAPPER, SPARK, STARTING_CREDITS, hullSlots } from "../src/content/hulls.js";
 import { MAX_GRAFT, moduleKind } from "../src/content/modules.js";
@@ -222,17 +222,18 @@ describe("the first thing the log says", () => {
     expect(opening[1]).toBe(voyageOpening(tugCallsign(seed), voyageOf(game).derelicts.length));
     expect(opening[1]).toContain("father's tug");
     const state = currentDerelict(game);
-    expect(opening[2]).toBe(`The board at the HELM: ${flavourLine(state.spec, state.flavour)}.`);
+    expect(opening[2]).toBe(`BOARD: ${flavourLine(state.spec, state.flavour)}.`);
   });
 
   it("says them once a run and not again on every jump", () => {
     const game = gameOn(DERELICT, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     VOYAGE.beforeLevelLeave!(game, 0, "airlock");
     voyageOf(game).credits = 500;
+    currentDerelict(game).sold = true;
     expect(press(game, "jump").ok).toBe(true);
 
     expect(lines(game).filter((l) => l === tugOpening())).toHaveLength(1);
-    expect(lines(game).filter((l) => l.startsWith("The board at the HELM:"))).toHaveLength(2);
+    expect(lines(game).filter((l) => l.startsWith("BOARD: "))).toHaveLength(2);
   });
 });
 
@@ -308,7 +309,7 @@ describe("what a sortie is worth", () => {
 
     expect(credits(game)).toBe(STARTING_CREDITS + 3);
     expect(loot(game)).toBe(0);
-    expect(lines(game)).toContain(`The hold is emptied: +3 CR. ${STARTING_CREDITS + 3} CR.`);
+    expect(lines(game)).toContain(`Hold emptied: +3 CR. ${STARTING_CREDITS + 3} CR.`);
   });
 });
 
@@ -503,7 +504,7 @@ describe("buying a drone", () => {
       "buy GHOST 160 CR",
     ]);
     expect(offers(empty).slice(0, 3).every((o) => o.enabled)).toBe(true);
-    expect(offerLike(empty, "cast off")).toBeUndefined();
+    expect(offerLike(empty, "boarding")).toBeUndefined();
 
     press(empty, "buy SPARK");
     expect(offers(empty).slice(0, 3).map((o) => o.label)).toEqual([
@@ -513,7 +514,7 @@ describe("buying a drone", () => {
     ]);
     expect(offers(empty).slice(0, 3).some((o) => o.enabled)).toBe(false);
     for (const line of offers(empty).slice(0, 3)) expect(line.why).toBe("The rack is full.");
-    expect(offerLike(empty, "cast off")?.enabled).toBe(true);
+    expect(offerLike(empty, "boarding")?.enabled).toBe(true);
 
     const out = press(empty, "sell PLATING");
     expect(out.ok).toBe(true);
@@ -821,6 +822,8 @@ describe("choosing where to fly, and for which contract", () => {
       const game = newGame(seed);
       expect(game.playerCommand(stationTargets(game, "berth")[0]!.cmd as RoomCommand).ok).toBe(true);
       voyageOf(game).credits = 500;
+      // The first hull stamped as under tow: one still out there holds the tug.
+      currentDerelict(game).sold = true;
 
       const voyage = voyageOf(game);
       const rows = rowsAt(voyage, 1);
@@ -866,6 +869,7 @@ describe("choosing where to fly, and for which contract", () => {
 
     expect(stationTargets(game, "berth").map((o) => o.label)).toEqual(["no contract"]);
     voyage.credits = 500;
+    currentDerelict(game).sold = true;
     expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(true);
     expect(voyage.derelicts.map((d) => d.id)).toEqual(itinerary);
     expect(voyage.charters).toEqual([]);
@@ -907,13 +911,13 @@ describe("selling a derelict", () => {
     standIn(game, "r1");
     game.playerCommand({ kind: "leave" });
 
-    const out = press(game, "cast off");
+    const out = press(game, "boarding");
     expect(out.ok).toBe(false);
     expect(out.cost).toBe(0);
 
     expect(press(game, "jump").ok).toBe(true);
     expect(voyageOf(game).current).toBe(1);
-    expect(press(game, "cast off").ok).toBe(true);
+    expect(press(game, "boarding").ok).toBe(true);
     expect(game.shipId).toBe("2");
   });
 
@@ -969,7 +973,7 @@ describe("selling a derelict", () => {
     expect(currentDerelict(game).online).toEqual(["engine"]);
     expect(currentDerelict(game).sold).toBe(false);
 
-    expect(press(game, "cast off").ok).toBe(true);
+    expect(press(game, "boarding").ok).toBe(true);
     expect(game.shipId).toBe("1");
     expect(voyageOf(game).sortie).toBe(1);
     expect(shipState(game).online).toEqual(["engine"]);
@@ -983,6 +987,7 @@ describe("selling a derelict", () => {
     const game = gameOn(DERELICT, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     VOYAGE.beforeLevelLeave!(game, 0, "airlock");
     voyageOf(game).credits = JUMP_PRICE + 31;
+    currentDerelict(game).sold = true;
 
     expect(press(game, "jump").ok).toBe(true);
     expect(credits(game)).toBe(31);
@@ -996,44 +1001,63 @@ describe("selling a derelict", () => {
   });
 });
 
-describe("the warning a jump would drop the hull", () => {
-  /** A turn spent at home, which is where the warning is now said (G53). */
-  function atHome(game: RoomGame): void {
-    expect(game.playerCommand({ kind: "wait" }).ok).toBe(true);
+describe("the hull holds the tug until it is dealt with", () => {
+  /**
+   * The owner's rule (G92): «прыжок до разбора или самоуничтожения дереликта
+   * ЗАБЛОЧЕН». It replaced a warning said once at home — `{hull}: 1 of 3
+   * systems online. A jump leaves the hull behind.` — which is a sentence
+   * about a jump that no longer exists.
+   */
+  function jumpLine(game: RoomGame) {
+    return stationTargets(game, "jump")[0];
   }
 
-  it("says so at home, once for the stay, when there is a system to lose", () => {
-    // It used to wait for the drone to stand at the HELM, two bulkheads from
-    // the airlock. There is no HELM to stand at any more, and the warning is
-    // better for it: the jump is on the same screen as everything else, so the
-    // first turn a player can press it is the first turn they read this.
+  it("holds the jump while a system is up and the hull is not under tow", () => {
     const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     raiseIn(game, "r2", 3);
     standIn(game, "r1");
-
-    const state = currentDerelict(game);
-    const warn = t("log.jump.warn", { hull: flavourCallsign(state.flavour), up: 1, of: OBJECTIVE_COUNT });
-    expect(lines(game)).not.toContain(warn);
-
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
     expect(game.shipId).toBe(TUG_ID);
-    atHome(game);
-    expect(lines(game).filter((l) => l === warn)).toHaveLength(1);
+    voyageOf(game).credits = 500;
 
-    // Still at home, still one system up: the second turn does not repeat it.
-    atHome(game);
-    expect(lines(game).filter((l) => l === warn)).toHaveLength(1);
+    const held = t("why.jump.held", { hull: derelictName(currentDerelict(game).spec) });
+    expect(jumpLine(game)?.enabled).toBe(false);
+    expect(jumpLine(game)?.why).toBe(held);
+
+    const out = game.playerCommand({ kind: "act", verb: "jump" });
+    expect(out.ok).toBe(false);
+    expect(out.cost, "a refusal costs no turn").toBe(0);
+    expect(out.reason).toBe(held);
+    expect(voyageOf(game).current).toBe(0);
+    expect(credits(game), "and nothing was taken").toBe(500);
+
+    // Never a dead end: the way back aboard is open for as long as the hull is.
+    expect(offerLike(game, "boarding")?.enabled).toBe(true);
   });
 
-  it("says nothing with no system raised", () => {
+  it("holds it with nothing raised either: the hull is still out there", () => {
     const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     standIn(game, "r1");
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
-    atHome(game);
-    expect(lines(game).some((l) => l.includes("systems online"))).toBe(false);
+    voyageOf(game).credits = 500;
+
+    expect(jumpLine(game)?.enabled).toBe(false);
+    expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(false);
   });
 
-  it("says nothing once the hull is already sold", () => {
+  it("holds it before anything has been aboard: berth is how a stop is changed", () => {
+    const game = newGame(4);
+    voyageOf(game).credits = 500;
+    expect(game.playerCommand({ kind: "act", verb: "berth" }).ok).toBe(true);
+
+    const list = stationTargets(game, "jump");
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.every((o) => !o.enabled)).toBe(true);
+    expect(list[0]!.why).toBe(t("why.jump.held", { hull: derelictName(currentDerelict(game).spec) }));
+    expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(false);
+  });
+
+  it("lets the tug go once the hull is under tow", () => {
     const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     rig(game).slots[5] = { kind: "spike", integrity: 3 };
     raiseIn(game, "r2", 3);
@@ -1043,8 +1067,28 @@ describe("the warning a jump would drop the hull", () => {
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
     expect(currentDerelict(game).sold).toBe(true);
 
-    atHome(game);
-    expect(lines(game).some((l) => l.includes("systems online"))).toBe(false);
+    expect(jumpLine(game)?.enabled).toBe(true);
+    expect(press(game, "jump").ok).toBe(true);
+    expect(voyageOf(game).current).toBe(1);
+  });
+
+  it("lets the tug go once the other tug has the hull, and not on a hull with a deal", () => {
+    const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
+    raiseIn(game, "r2", 3);
+    standIn(game, "r1");
+    expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
+    voyageOf(game).credits = 500;
+
+    // The other tug got all three first: the hull is theirs, and the tug is free.
+    const state = currentDerelict(game);
+    state.rivalProgress = OBJECTIVE_COUNT;
+    expect(jumpLine(game)?.enabled).toBe(true);
+
+    // A hull with a deal on it is never taken (G34), so it is still this tug's
+    // to finish — and still holds it.
+    state.deal = "split";
+    expect(jumpLine(game)?.enabled).toBe(false);
+    expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(false);
   });
 });
 
@@ -1085,21 +1129,28 @@ describe("what a charter and a jump leave behind", () => {
     const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     standIn(game, "r1");
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
-    expect(jumpRowLabel(game)).toBe(`jump, ${JUMP_PRICE} CR ▸`);
+    // The contract is named on the row as well as the hull: since G90 F there
+    // is no other line that signs one, and the owner went looking for the
+    // contracts menu that used to be there (G92 B1).
+    expect(jumpRowLabel(game)).toBe(`hull & contract ${JUMP_PRICE} CR ▸`);
     // The hulls themselves are named over their own lines of the list.
     expect(choiceHeads(game, "jump")[0]).toMatch(/^freighter \d+-\d+ · \d+ CR$/);
   });
 
-  it("names the sale on the jump row, and the dropped charters in the log", () => {
+  it("names the jump on the row whatever is raised, and the dropped charters in the log", () => {
     const game = gameOn(WHOLE, 5, [POPULATE, DOORS, SHIP, VOYAGE, TWO_HULLS]);
     raiseIn(game, "r2", 3);
     standIn(game, "r1");
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
 
-    expect(jumpRowLabel(game)).toBe(`drop 1/${OBJECTIVE_COUNT}, sale ${FREIGHTER.salePrice} CR`);
+    // The row used to price the sale a jump walked away from. There is no such
+    // jump now: the row is the jump, and the greyed line says what holds it —
+    // and the row names the contract it signs alongside the hull (G92 B1).
+    expect(jumpRowLabel(game)).toBe(`hull & contract ${JUMP_PRICE} CR ▸`);
 
     voyageOf(game).charters.push(salvageCharter(FREIGHTER));
     voyageOf(game).credits = 500;
+    currentDerelict(game).sold = true;
     expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(true);
     expect(lines(game)).toContain("Left behind: SALVAGE.");
   });
@@ -1187,7 +1238,7 @@ describe("a voyage replays bit for bit", () => {
     };
   }
 
-  it("replays a purchase, a death and a jump from the seed and the commands", () => {
+  it("replays a purchase, a death and the sorties after them from the seed and the commands", () => {
     const seed = 23;
     const cfg = {
       ...GAME_CONFIG,
@@ -1234,11 +1285,12 @@ describe("a voyage replays bit for bit", () => {
     expect(voyageOf(game).hull).toBeUndefined();
     expect(game.status).toBe("playing");
 
-    // A drone off the rack, and the tug burns for the next hull.
+    // A drone off the rack, and back into the same hull: one still out there
+    // holds the tug (`jumpHeld`), so the voyage goes on where the last drone
+    // died. It used to jump here, on a rule that no longer exists.
     expect(play({ kind: "act", verb: "buy", target: 2000 })).toBe(true);
-    expect(play({ kind: "act", verb: "jump" })).toBe(true);
     expect(play({ kind: "act", verb: "undock" })).toBe(true);
-    expect(game.shipId).toBe("2");
+    expect(game.shipId).toBe("1");
 
     // And ten sorties that go one compartment in and turn straight around,
     // which is the cheapest way to make the airlock cross itself often enough

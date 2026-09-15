@@ -7,9 +7,9 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { DERELICTS, buildDerelict } from "../src/content/derelicts.js";
 import { schematicInputOf } from "../src/ui/schematic-input.js";
-import { hexSvgOf } from "../src/ui/web/hex-svg.js";
+import { HEX_R, hexCentre, hexSvgOf } from "../src/ui/web/hex-svg.js";
 import { TOKENS, WEB_CSS } from "../src/ui/web/styles.js";
-import { t } from "../src/i18n.js";
+import { setLang, t } from "../src/i18n.js";
 
 /**
  * The honeycomb drawing. What the layout guarantees is tested in the engine
@@ -40,6 +40,24 @@ function gameIn(room = "r2", seed = 7): RoomGame {
   };
   const game = new RoomGame({ ...config, seed });
   game.player.room = game.ship.room(room).id;
+  game.refreshSight();
+  return game;
+}
+
+/**
+ * The fixture with a loop in it (`GOLDEN_SHIP`, below): a ship whose honeycomb
+ * has a door the lattice cannot lay between two hexagons that touch, which is
+ * the only way to test what the drawing does about one.
+ */
+function loopGame(seed = 7): RoomGame {
+  const config: Omit<RoomGameConfig, "seed"> = {
+    ...GAME_CONFIG,
+    content: { ...SALVOR, monsterChance: () => 0 },
+    firstShip: () => shipFromText(GOLDEN_SHIP).ship,
+    firstShipId: "1",
+  };
+  const game = new RoomGame({ ...config, seed });
+  game.player.room = game.ship.room("r2").id;
   game.refreshSight();
   return game;
 }
@@ -82,34 +100,91 @@ describe("the honeycomb drawing", () => {
     expect(svg).not.toContain("<path");
   });
 
-  it("says a door it could not draw, at both of its ends", () => {
-    const game = gameIn();
+  it("draws a door it could not make a corridor of, instead of naming it twice", () => {
+    const game = loopGame();
+    const layout = hexLayout(game.ship);
+    const svg = svgOfGame(game);
+    expect(layout.links.size, "the fixture's loop is the door that cannot be drawn straight")
+      .toBeGreaterThan(0);
+    for (const id of layout.links) {
+      expect(count(svg, `<g class="link" data-door="${id}">`), String(id)).toBe(1);
+    }
+    // Three strokes each, as a corridor has: a rail down both sides and the
+    // door's own state down the middle.
+    expect(count(svg, '<polyline class="link-run')).toBe(layout.links.size * 3);
+    // And not one chip. `d6 → r7` at each end, with nothing drawn between them,
+    // is what the owner read as the thing this game does not have.
+    expect(svg).not.toContain(" → ");
+  });
+
+  it("says every door exactly once, whether it is a corridor or a long run", () => {
+    const game = loopGame();
     const layout = hexLayout(game.ship);
     const svg = svgOfGame(game);
     for (const door of game.ship.doors) {
       if (door.a === door.b) continue;
-      if (!layout.links.has(door.id)) continue;
-      // Once per end, and each end names the compartment on the other side:
-      // a door to somewhere with an id on the same screen, not a teleport.
-      const a = game.ship.roomAt(door.a).label;
-      const b = game.ship.roomAt(door.b).label;
-      expect(count(svg, `>${door.label} → ${b}</text>`), door.label).toBe(1);
-      expect(count(svg, `>${door.label} → ${a}</text>`), door.label).toBe(1);
+      expect(count(svg, `>${door.label}</text>`), door.label).toBe(1);
+    }
+    expect(layout.corridors.size + layout.links.size).toBe(
+      game.ship.doors.filter((d) => d.a !== d.b).length,
+    );
+  });
+
+  it("keeps a long run out of every compartment it goes past", () => {
+    const game = loopGame();
+    const layout = hexLayout(game.ship);
+    const svg = svgOfGame(game);
+    const centres = [...layout.cells.values()].map(hexCentre);
+    const runs = [...svg.matchAll(/<polyline class="link-run hall-wall[^>]*points="([^"]+)"/g)];
+    expect(runs.length).toBe(layout.links.size);
+    for (const [, points] of runs) {
+      const bends = points!.split(" ").map((pair) => {
+        const [x, y] = pair.split(",").map(Number);
+        return { x: x!, y: y! };
+      });
+      // An outline, at least one gap, an outline: a run always bends.
+      expect(bends.length).toBeGreaterThanOrEqual(3);
+      for (let i = 1; i < bends.length; i++) {
+        for (let step = 0; step <= 20; step++) {
+          const at = step / 20;
+          const x = bends[i - 1]!.x + (bends[i]!.x - bends[i - 1]!.x) * at;
+          const y = bends[i - 1]!.y + (bends[i]!.y - bends[i - 1]!.y) * at;
+          for (const c of centres) {
+            // A hexagon reaches `HEX_R` from its centre at its six points and
+            // less everywhere else, so a walk that stays that far out of every
+            // centre has crossed no compartment at all — which is the whole of
+            // what makes it a walk rather than a jump.
+            expect(Math.hypot(x - c.x, y - c.y)).toBeGreaterThanOrEqual(HEX_R - 0.2);
+          }
+        }
+      }
     }
   });
 
-  it("says every door exactly once as a corridor or twice as a link", () => {
+  it("gives the hull's own job a colour of its own, raised or not", () => {
     const game = gameIn();
-    const layout = hexLayout(game.ship);
-    const svg = svgOfGame(game);
-    for (const door of game.ship.doors) {
-      if (door.a === door.b) continue;
-      const asCorridor = count(svg, `>${door.label}</text>`);
-      const asLink = count(svg, `>${door.label} → `);
-      const drawn = layout.corridors.has(door.id);
-      expect(asCorridor, door.label).toBe(drawn ? 1 : 0);
-      expect(asLink, door.label).toBe(drawn ? 0 : 2);
-    }
+    // r4 has been walked through, so what was left lying in it is drawn.
+    game.ship.room("r4").data.systems = [{ id: "core" }];
+    const input = schematicInputOf(game);
+    const thing = input.rooms
+      .find((r) => r.label === "r4")!
+      .things!.find((t) => t.goal !== undefined);
+    expect(thing?.goal, "a system carries the fact that it is one").toBe("down");
+    // The letter and the picture both, because the owner plays with the
+    // pictures on: «выделяй значки с целями отдельным цветом, например зелёным».
+    expect(svgOfGame(game)).toContain('<tspan class="glyph goal is-down">+</tspan>');
+    expect(hexSvgOf(input, hexLayout(game.ship), "", undefined, true))
+      .toContain('<use class="tile goal is-down"');
+    // And a system already raised reads differently from one still down.
+    game.ship.room("r4").data.systems = [{ id: "core", online: true }];
+    const up = hexSvgOf(schematicInputOf(game), hexLayout(game.ship), "", undefined, true);
+    expect(up).toContain('<use class="tile goal is-up"');
+    expect(WEB_CSS).toContain(".schematic .room .tile.goal{color:var(--good);}");
+    expect(WEB_CSS).toContain(".schematic .room .tile.goal.is-up{opacity:.65;}");
+    // Green and not amber: amber says a decision is required here, and a
+    // compartment with a system in it is a place rather than a prompt.
+    expect(TOKENS.good).not.toBe(TOKENS.accent);
+    expect(contrast(TOKENS.good!, TOKENS.bg!)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("marks the compartment the drone is in, and only that one", () => {
@@ -127,20 +202,17 @@ describe("the honeycomb drawing", () => {
     expect(svg).not.toContain(">REACTOR</text>");
   });
 
-  it("runs a duct under the deck for every door it could not draw", () => {
-    const game = gameIn();
-    const layout = hexLayout(game.ship);
+  it("lays the long run with the corridors, under the hexagons and over the hull", () => {
+    const game = loopGame();
     const svg = svgOfGame(game);
-    // One line per link, and it comes before the hexagons in the document so
-    // they cover it: a run you can follow, not a corridor and not a teleport.
-    expect(count(svg, '<line class="duct')).toBe(layout.links.size);
-    if (layout.links.size > 0) {
-      expect(svg.indexOf('class="duct')).toBeLessThan(svg.indexOf('class="room-box'));
-    }
+    // It never passes over a cell, so being under them costs it nothing — and
+    // its label is drawn after them, with every other door label.
+    expect(svg.indexOf('class="link-run')).toBeLessThan(svg.indexOf('class="room-box'));
+    expect(svg.indexOf('class="room-box')).toBeLessThan(svg.lastIndexOf('class="door-tag"'));
   });
 
-  it("does not print two chips of one compartment on top of each other", () => {
-    const game = gameIn();
+  it("does not print two door labels on top of each other", () => {
+    const game = loopGame();
     const svg = svgOfGame(game);
     const at = [...svg.matchAll(/class="door-tag" x="([-\d.]+)" y="([-\d.]+)"/g)].map(
       (m) => `${m[1]},${m[2]}`,
@@ -148,18 +220,15 @@ describe("the honeycomb drawing", () => {
     expect(new Set(at).size).toBe(at.length);
   });
 
-  it("says in a tooltip what each hexagon is and what is in it, and no more than the drone knows", () => {
+  it("hands a hover to nobody else: not one `<title>` on the whole board", () => {
+    // A `<title>` is the browser's own tooltip — its box, its type, its delay —
+    // drawn over the readout that is already answering the same question in our
+    // letters: "подсказка браузера тут точно не нужна, нужна нашего интерфейса"
+    // (the owner). So no cell carries one, and neither does a tile inside one.
     const game = gameIn();
     const input = schematicInputOf(game);
-    const svg = hexSvgOf(input, hexLayout(game.ship));
-    expect(count(svg, "<title>")).toBe(game.ship.rooms.length);
-    for (const room of input.rooms) {
-      const head = room.state === "unknown" ? `···· ${room.label}` : `${room.name} ${room.label}`;
-      const words = (room.things ?? []).map((thing) => thing.name);
-      expect(svg, room.label).toContain(`<title>${[head, ...words].join(" · ")}</title>`);
-    }
-    // r5 is unknown: its tooltip is its number, never its name.
-    expect(svg).not.toContain("<title>REACTOR");
+    expect(hexSvgOf(input, hexLayout(game.ship))).not.toContain("<title>");
+    expect(hexSvgOf(input, hexLayout(game.ship), "", undefined, true)).not.toContain("<title>");
   });
 
   it("closes every tag it opens", () => {
@@ -355,6 +424,48 @@ describe("the honeycomb's hazards", () => {
     expect(svg).toMatch(/<g class="door is-\w+ has-trap hz-mine" data-door="\d+">/);
   });
 
+  it("still names the hazard with the tiles on, beside the compartment's own picture", () => {
+    const game = hazardGame();
+    game.ship.room("r3").scanned = true;
+    game.ship.room("r4").scanned = true;
+    const svg = hexSvgOf(schematicInputOf(game), hexLayout(game.ship), "", undefined, true);
+    // The owner played `?tiles=1`, found a cell with a wavy mark on it and asked
+    // what the mark was. A picture nobody can name has to be looked up, so the
+    // word is drawn where the mark is — in every mode, not only where the mark
+    // happens to be a letter.
+    expect(svg).toContain(`>${t("codex.smoke.title")}</text>`);
+    expect(svg).toContain(`>${t("codex.frost.title")}</text>`);
+    // ENGINEERING is one of the six kinds that get a pictogram, so its cell has
+    // two things to say on one line: they share it, left to right, and neither
+    // silences the other.
+    const head = svg.indexOf(`>${t("codex.frost.title")}</text>`);
+    const cell = svg.slice(svg.lastIndexOf('<g class="room ', head), head);
+    const tile = /<use class="zone-tile"[^>]*x="([-\d.]+)"/.exec(cell);
+    const word = /<text class="hz-word" x="([-\d.]+)"/.exec(cell);
+    expect(tile, "the pictogram is still drawn").not.toBeNull();
+    expect(Number(word![1]!)).toBeGreaterThan(Number(tile![1]!) + 14);
+  });
+
+  it("keeps a hazard's word inside the cell in all three languages", () => {
+    const game = hazardGame();
+    game.ship.room("r3").scanned = true;
+    game.ship.room("r4").scanned = true;
+    for (const lang of ["en", "es", "ru"] as const) {
+      setLang(lang);
+      const svg = hexSvgOf(schematicInputOf(game), hexLayout(game.ship), "", undefined, true);
+      const words = [...svg.matchAll(/<text class="hz-word"[^>]*>[^<]+<\/text>/g)];
+      expect(words.length, lang).toBe(2);
+      for (const [tag] of words) {
+        // Either the word is short enough for the line it sits on, or it is
+        // squeezed to it: the hexagon has closed in to fifty-two units by the
+        // cap's line, and `COMPARTIMENTO REVENTADO` is twenty-three characters.
+        const fit = /textLength="([\d.]+)"/.exec(tag!);
+        if (fit) expect(Number(fit[1]!), lang).toBeLessThanOrEqual(52);
+      }
+    }
+    setLang("en");
+  });
+
   it("says which property on a rhythm and not only on a hue", () => {
     const game = hazardGame();
     game.ship.room("r3").scanned = true;
@@ -422,6 +533,13 @@ describe("the honeycomb without a hull", () => {
     // And again on 15.09 (G91 B) for the partner's board: the plate the name is
     // now printed on, the corridor's third stroke that hollows it out, and the
     // drone's mark as a hexagon rather than a disc.
+    // And again on 15.09 (G92 A5) for one deletion: the `<title>` off every
+    // hexagon — the browser's own tooltip, drawn over our readout. Nothing else
+    // in the file moved, which is the whole of what re-recording it claims.
+    // And again on 15.09 (G95 A) for `d6`, the fixture's loop: the duct and the
+    // two chips naming each other are gone, and in their place is the walk the
+    // door actually is — a corridor bent through the gutter around HAB BLOCK,
+    // with the label once, halfway along it. Nothing else in the file moved.
     const config: Omit<RoomGameConfig, "seed"> = {
       ...GAME_CONFIG,
       content: { ...SALVOR, monsterChance: () => 0 },

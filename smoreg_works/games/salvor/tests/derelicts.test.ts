@@ -642,8 +642,11 @@ describe("every hull, boarded", () => {
       seed,
       systems: [secondHull(spec), ...(GAME_CONFIG.systems ?? [])],
     });
-    // Down the tug to the HELM, out to the next hull, back to the airlock.
+    // Down the tug to the HELM, out to the next hull, back to the airlock. The
+    // freighter is stamped as under tow first: a hull still out there holds
+    // the tug (`jumpHeld`).
     for (const door of [1, 2, 3]) expect(game.playerCommand({ kind: "go", door }).ok, where).toBe(true);
+    voyageOf(game).state[0]!.sold = true;
     expect(game.playerCommand({ kind: "act", verb: "jump" }).ok, where).toBe(true);
     for (const door of [3, 2, 1]) expect(game.playerCommand({ kind: "go", door }).ok, where).toBe(true);
     expect(game.playerCommand({ kind: "act", verb: "undock" }).ok, where).toBe(true);

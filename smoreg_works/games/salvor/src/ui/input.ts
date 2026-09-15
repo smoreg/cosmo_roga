@@ -325,7 +325,16 @@ export function toIntent(e: KeyLike, rig?: Rig): UiIntent {
  * where am I, what do I do next — because that is the order the owner asked
  * them in on the first playtest (docs/tasks/G40-tug-clarity.md, 6).
  */
-const TUG_KEYS = ["help.where.tug.head", "help.where.tug.1", "help.where.tug.2"] as const satisfies readonly Key[];
+const TUG_KEYS = [
+  "help.where.tug.head",
+  "help.where.tug.1",
+  "help.where.tug.2",
+  // And the half of "where am I" that is only true here: the clock is stopped.
+  // Nothing aboard the tug spends a turn, nothing is hunting, and a player who
+  // has just walked out of a ship that was doing both has no way of knowing
+  // that except by standing still and watching nothing happen (G95 B6).
+  "help.where.tug.3",
+] as const satisfies readonly Key[];
 
 const SHIP_KEYS = [
   "help.where.ship.head",
@@ -379,11 +388,37 @@ const KEY_ROWS = [
   ["help.name.help", "help.key.help"],
 ] as const satisfies ReadonlyArray<readonly [Key, Key]>;
 
-export function keyHelp(): string[] {
+/**
+ * The rows of that table a player can actually press at home.
+ *
+ * A subset and never its own list, so the line a reader meets on the tug's card
+ * is the same string as the line on the derelict's — which is what keeps the
+ * graphic view lighting the key in it (`ui/web/screen.ts`, `helpCard`, matches
+ * the row against `keyHelp()`).
+ *
+ * The rest of the table is the drone's: hide, ram, the scanner pulse, the EMP,
+ * the torch, the keycard. None of them can be done on the tug and the card
+ * offered all of them the moment the owner pressed `?` at home — «помощь на
+ * буксире должна рассказывать про буксир, а не управление дроном» (G95 B6).
+ *
+ * The virus stays: the bench at home is one of the four cures, and a module
+ * that came back infected is read about here before it is paid for.
+ */
+const TUG_KEY_ROWS: ReadonlySet<Key> = new Set<Key>([
+  "help.key.act",
+  "help.key.pick",
+  "help.key.codex",
+  "help.key.virus",
+  "help.key.log",
+  "help.key.help",
+]);
+
+export function keyHelp(onTug = false): string[] {
+  const rows = onTug ? KEY_ROWS.filter(([, text]) => TUG_KEY_ROWS.has(text)) : KEY_ROWS;
   // The gutter is spelled out rather than folded into `NAME_W`, because a name
   // may fill the column exactly — Russian «СБЛИЗИТЬСЯ» is ten of ten — and
   // `padEnd` then adds nothing, running the name into the keys beside it.
-  return KEY_ROWS.map(([name, text]) => `${t(name).padEnd(NAME_W)} ${t(text)}`);
+  return rows.map(([name, text]) => `${t(name).padEnd(NAME_W)} ${t(text)}`);
 }
 
 /** The one rule the game is built on. Voters read this before they read a wiki. */
@@ -405,7 +440,33 @@ const LIST_KEYS = [
  * that needs explaining is the one on the contract.
  */
 const CHARTER_KEYS = [
-  "help.charter.head", "help.charter.1", "help.charter.2", "help.charter.3", "help.charter.4",
+  "help.charter.head", "help.charter.1", "help.charter.2", "help.charter.3", "help.charter.4", "help.charter.5",
+] as const satisfies readonly Key[];
+
+/**
+ * What the nine rows of the tug do, group by group.
+ *
+ * The screen says it in nine labels and the card says it in five lines, and the
+ * difference is the order: a label answers "what does this row do", this
+ * answers "what is this screen for" — which is the question `?` was pressed to
+ * ask. The digits are named because they do not move (`ui/actions.ts`,
+ * `TUG_ROWS`, and the test that holds them still).
+ */
+const DOCK_KEYS = [
+  "help.dock.head", "help.dock.1", "help.dock.2", "help.dock.3", "help.dock.4", "help.dock.5",
+] as const satisfies readonly Key[];
+
+/**
+ * What all of it is *for*: three stops, the father's tug at the end of them,
+ * and the one rule about when a hull turns into money.
+ *
+ * On the tug's card only. Aboard a hull the answer to "what now" is the airlock
+ * and the three systems, which the ship's own paragraph and the charter block
+ * already give; at home it is the itinerary, and nothing on the screen said how
+ * long one is or what the last hull of it is.
+ */
+const VOYAGE_KEYS = [
+  "help.voyage.head", "help.voyage.1", "help.voyage.2", "help.voyage.3",
 ] as const satisfies readonly Key[];
 
 /**
@@ -447,6 +508,14 @@ export function charterHelp(): string[] {
   return CHARTER_KEYS.map((k) => t(k));
 }
 
+export function dockHelp(): string[] {
+  return DOCK_KEYS.map((k) => t(k));
+}
+
+export function voyageHelp(): string[] {
+  return VOYAGE_KEYS.map((k) => t(k));
+}
+
 /**
  * The card's blocks, in the order they are read: where you are and what to do
  * about it, the keys, the rule the twist is, what the numbered list is, what a
@@ -469,7 +538,15 @@ export function charterHelp(): string[] {
 function helpBlocks(onTug: boolean, seen: readonly string[]): string[][] {
   const blocks = [
     onTug ? tugHelp() : shipHelp(),
-    keyHelp(),
+    keyHelp(onTug),
+    // The two blocks that are the tug's own: its rows, and the itinerary they
+    // serve. They take the place the drone's fifteen keys had, which is the
+    // whole of the change — the card is as long as it was and every line of it
+    // is about the screen the reader is looking at.
+    ...(onTug ? [dockHelp(), voyageHelp()] : []),
+    // The rule stays on both. It is read here as much as aboard: the rack the
+    // bench mends is the rack the rule burned, and the price of a repair is the
+    // first time a player asks why a module is at half.
     ruleHelp(),
     listHelp(),
     charterHelp(),
@@ -538,6 +615,8 @@ export function helpHeadings(): string[] {
   return [
     t(TUG_KEYS[0]),
     t(SHIP_KEYS[0]),
+    t(DOCK_KEYS[0]),
+    t(VOYAGE_KEYS[0]),
     t(RULE_KEYS[0]),
     t(LIST_KEYS[0]),
     t(CHARTER_KEYS[0]),
@@ -616,8 +695,14 @@ export function codexFooter(page: number, pages: number): string {
   return pages > 1 ? t("codex.footer.more", at) : t("codex.footer.last", at);
 }
 
-/** One line broken to `CODEX_WIDTH`, on spaces. A blank line stays a blank line. */
-function wrapped(text: string): string[] {
+/**
+ * One line broken to `CODEX_WIDTH`, on spaces. A blank line stays a blank line.
+ *
+ * Exported because every card in front of the board is the same box in the same
+ * two views, so they all break their prose to the same column
+ * (`ui/airlockcard.ts`).
+ */
+export function wrapped(text: string): string[] {
   const out: string[] = [];
   let line = "";
   for (const word of text.split(" ")) {

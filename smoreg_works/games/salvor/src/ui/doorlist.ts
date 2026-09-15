@@ -11,7 +11,9 @@ import {
   clipName,
   doorMenu,
   farName,
+  gated,
   keyed,
+  lessonGateOf,
   methodAction,
   pad,
   waysHere,
@@ -59,7 +61,7 @@ export type Sealing = { ok: true; cmd: RoomCommand } | { ok: false; why: string 
  * rules offer no verb for a hull's own hatch.
  */
 export function doorLevel(game: RoomGame, cursor = 0): Action[] {
-  return keyed([...doorRows(game), backToRoom()], cursor);
+  return keyed([...gated(game, lessonGateOf(game), doorRows(game)), backToRoom()], cursor);
 }
 
 /**
@@ -87,7 +89,7 @@ export function doorWays(game: RoomGame, id: DoorId, cursor = 0): Action[] | und
   // same line the row would be if walking were the only answer. The methods
   // after it are priced, as methods are.
   const lines = ways.map((way) => (way.verb === "go" ? { ...methodAction(way), label: doorLabel(game, door, "go") } : methodAction(way)));
-  return keyed([...lines, backAction(door)], cursor);
+  return keyed([...gated(game, lessonGateOf(game), lines), backAction(door)], cursor);
 }
 
 /** Is that bulkhead's own list of ways still standing? */

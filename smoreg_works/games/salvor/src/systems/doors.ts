@@ -19,6 +19,7 @@ import { DEFUSE_NOISE, DEFUSE_TURNS } from "../content/hazards.js";
 import { hint } from "../content/hints.js";
 import type { Key } from "../content/i18n/keys.js";
 import { moduleBurnLine, moduleName, type ModuleId } from "../content/modules.js";
+import { isTug } from "../content/tug.js";
 import { verbWord } from "../content/words.js";
 import { t } from "../i18n.js";
 import {
@@ -717,8 +718,13 @@ export const DOORS: System<RoomGame> = {
     return offers;
   },
 
+  // Aboard a hull, and only there. A keycard comes off a body and opens a
+  // bulkhead of the ship it was found on; the tug has three doors, nothing ever
+  // locks them and nothing is ever aboard to search. So at home the counter is
+  // a row of the panel spent saying `KEYS 0` for ever — «что за ключи в
+  // бункере?» (G92 B3), and the one row the tug's list can least afford.
   panelLines(game) {
-    return [{ text: t("panel.keys", { n: keysHeld(game.player) }) }];
+    return isTug(game) ? [] : [{ text: t("panel.keys", { n: keysHeld(game.player) }) }];
   },
 };
 

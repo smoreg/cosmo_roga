@@ -50,6 +50,19 @@ export interface SchematicThing {
   name: string;
   /** A machine, painted in the colour of trouble. Absent means it is not one. */
   hostile?: true;
+  /**
+   * One of the three systems a derelict is neutralised by
+   * (`content/objectives.ts`), and whether it is up yet: `"down"` while there
+   * is work to do in there, `"up"` once it has been raised.
+   *
+   * Carried rather than read off the glyph, which is a content table's
+   * business and not a drawing's. What the drawings do with it is give it a
+   * colour of its own — the hull's whole job found at a glance, instead of
+   * three marks in the same ink as the crates and the bodies («выделяй значки
+   * с целями отдельным цветом, например зелёным» — the owner). Absent on
+   * everything else, and on a hand-written fixture.
+   */
+  goal?: "up" | "down";
 }
 
 export interface SchematicRoom {
@@ -66,6 +79,17 @@ export interface SchematicRoom {
    * the map rather than only in the list.
    */
   target?: true;
+  /**
+   * The one compartment the map is *aiming* at — the pointer's, or the
+   * highlighted row's (`ui/appstate.ts`, `aimedAt`) — and the one the honeycomb
+   * draws its readout beside.
+   *
+   * Not `target`, which two things set: the aim, and every compartment this
+   * turn's red line named (`signsNamed`). A readout per named hazard would be
+   * three answers to a question nobody asked, so the aim carries a mark of its
+   * own and there is never more than one of it on a drawing.
+   */
+  aimed?: true;
   /**
    * A machine in here hit the drone on the turn just gone, out of a compartment
    * the drone cannot see into (`strikersNear`, ui/panel.ts). Painted in the
@@ -137,8 +161,9 @@ export interface SchematicRoom {
    * imperative. Which door is in the way is his, and it is the half of the
    * readout that tells a player what to do next.
    *
-   * Only ever on the compartment `target` is on, and never on the one underfoot:
-   * there is no walk to where you already are. Assembled here and not in the
+   * Only ever on the compartment `aimed` is on, and never on the one underfoot:
+   * there is no walk to where you already are — that cell gets its readout
+   * without a cost. Assembled here and not in the
    * drawing, so `hexSvgOf` stays a function of its input alone — a picture that
    * called `t()` itself would draw differently in three languages while the
    * golden file remembers one of them.

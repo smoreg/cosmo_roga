@@ -29,7 +29,8 @@ import { virusOf } from "../src/systems/virus.js";
 import { voyageOf } from "../src/systems/voyage.js";
 import { LANGS, setLang, t, tIn } from "../src/i18n.js";
 import { findSlot, hostilesIn, rigOf } from "../src/twist/rig.js";
-import { appReducer, initialState, type AppState } from "../src/ui/appstate.js";
+import { lessonGateOf, roomActions } from "../src/ui/actions.js";
+import { appReducer, initialState, listOf, type AppState } from "../src/ui/appstate.js";
 
 /**
  * The hull a training run is learned on, and the nine steps it is learned with
@@ -107,6 +108,10 @@ describe("the lesson's hull", () => {
 
     const machines = game.entities.filter((e) => e.id !== game.player.id);
     expect(machines.map((m) => [m.name, ship.roomAt(m.room!).label])).toEqual([["scout", "r4"]]);
+    // Asleep from the first turn, with its own behaviour kept for the fight
+    // step to give back (G96, 3): nothing walks in on an earlier lesson.
+    expect(machines[0]!.behaviour).toBe("static");
+    expect(machines[0]!.data?.dozing).toBe("stalker");
 
     const bodies = ship.rooms.flatMap((r) => roomList<Body>(r, "bodies").map((b) => [r.label, b.key]));
     expect(bodies).toEqual([["r3", "k1"], ["r7", "k2"]]);
@@ -258,6 +263,8 @@ const NOTHING: LessonFacts = {
   moved: false,
   explored: 1,
   installed: false,
+  scanned: 0,
+  scanner: true,
   kills: 0,
   locked: 1,
   sealed: 1,
@@ -268,17 +275,21 @@ const NOTHING: LessonFacts = {
 
 const step = (id: LessonId) => LESSON_STEPS.find((s) => s.id === id)!;
 
-describe("the nine steps", () => {
-  it("are the nine, in the order the corridor puts them in front of the drone", () => {
+describe("the ten steps", () => {
+  it("are the ten, in the order the corridor puts them in front of the drone", () => {
     expect(LESSON_STEPS.map((s) => s.id)).toEqual([
-      "click", "explore", "modules", "door", "fight", "alert", "virus", "systems", "leave",
+      "click", "explore", "modules", "virus", "scan", "door", "fight", "alert", "systems", "leave",
     ]);
     for (const s of LESSON_STEPS) {
       expect(s.text).toBe(`lesson.${s.id}`);
       expect(s.press).toBe(`lesson.${s.id}.press`);
     }
-    // The one step the run has to set up: the virus does not wait for a roll.
-    expect(LESSON_STEPS.filter((s) => s.setup !== undefined).map((s) => [s.id, s.setup])).toEqual([["virus", "infect"]]);
+    // The two steps the run has to set up: the fight wakes the machine, and
+    // the virus does not wait for a roll.
+    expect(LESSON_STEPS.filter((s) => s.setup !== undefined).map((s) => [s.id, s.setup])).toEqual([
+      ["virus", "infect"],
+      ["fight", "wake"],
+    ]);
   });
 
   it("are each completed by one fact, and by nothing else", () => {
@@ -292,6 +303,10 @@ describe("the nine steps", () => {
     expect(step("explore").done({ ...NOTHING, explored: 3 })).toBe(true);
     expect(step("explore").done({ ...NOTHING, explored: 2 })).toBe(false);
     expect(step("modules").done({ ...NOTHING, installed: true })).toBe(true);
+    // The scan is the first pulse — or a rack that has nothing to pulse with.
+    expect(step("scan").done({ ...NOTHING, scanned: 1 })).toBe(true);
+    expect(step("scan").done({ ...NOTHING, scanner: false })).toBe(true);
+    expect(step("scan").done(NOTHING)).toBe(false);
     expect(step("door").done({ ...NOTHING, locked: 0 })).toBe(true);
     expect(step("fight").done({ ...NOTHING, kills: 1 })).toBe(true);
     expect(step("alert").done({ ...NOTHING, sealed: 0 })).toBe(true);
@@ -303,7 +318,7 @@ describe("the nine steps", () => {
     // Every step but the last is a fact about the hull; the last is the sale,
     // which is only ever true once the drone is off it.
     for (const s of LESSON_STEPS.slice(0, -1)) {
-      const off = { ...NOTHING, aboard: false, moved: true, explored: 8, installed: true, kills: 1, locked: 0, sealed: 0, online: 3 };
+      const off = { ...NOTHING, aboard: false, moved: true, explored: 8, installed: true, scanned: 8, kills: 1, locked: 0, sealed: 0, online: 3 };
       expect(s.done(off), `${s.id} counts off the hull`).toBe(false);
     }
     expect(step("leave").done({ ...NOTHING, aboard: false, sold: true })).toBe(true);
@@ -319,7 +334,7 @@ describe("the nine steps", () => {
           expect(line, `${lang}: ${key}`).not.toBe(key);
         }
       }
-      for (const key of ["lesson.opening", "lesson.head", "lesson.head.fold", "lesson.done", "lesson.over", "lesson.over.head"] as const) {
+      for (const key of ["lesson.opening", "lesson.head", "lesson.done", "lesson.over", "lesson.over.head"] as const) {
         expect(tIn(lang, key), `${lang}: ${key}`).not.toBe(key);
       }
     }
@@ -341,6 +356,7 @@ describe("the nine steps", () => {
       click: ["r2", "m"],
       explore: ["o"],
       modules: [],
+      scan: ["s"],
       door: ["p"],
       fight: ["Tab"],
       alert: ["o", "c"],
@@ -397,13 +413,41 @@ describe("the steps are earned by facts on the real hull", () => {
     expect(ship.rooms.filter((r) => r.explored).length).toBe(3);
   });
 
-  it("a module bolted on is the modules", () => {
+  it("a module bolted on is the modules, and the install is what brings the virus", () => {
     const crate = roomList<Wreck>(game.roomOf(game.player), "wrecks")[0]!;
     ok({ kind: "act", verb: "salvage", target: crate.id });
     expect(findSlot(rigOf(game.player)!, TUTORIAL_CRATE)).not.toBeNull();
-    expect(id()).toBe("door");
-    // The virus is the virus step's: a sealed crate rolled for nothing.
+    expect(id()).toBe("virus");
+    // The setup ran inside the command that bolted the module on (G96, 4):
+    // the strain is on the crate's module, and the log says so right under
+    // the line that installed it.
+    const virus = virusOf(game.player)!;
+    expect(virus).toBeDefined();
+    expect(rigOf(game.player)!.slots[virus.slot]?.kind).toBe(TUTORIAL_CRATE);
+    expect(virus.strain).toBe("spasm");
+    const keys = game.log.lines.map((l) => l.key);
+    expect(keys[keys.length - 1]).toBe("log.virus.caught");
+    expect(lessonStatus(game)?.done).toBe(true);
+    ok({ kind: "wait" });
+    expect(lessonStatus(game)?.done, "the tick lasts one turn").toBe(false);
+    expect(id(), "a turn with the virus aboard is not the cure").toBe("virus");
+  });
+
+  it("the purge is the virus", () => {
+    for (let i = 0; i < 8 && virusOf(game.player) !== undefined; i++) {
+      ok({ kind: "act", verb: "cure", slot: virusOf(game.player)!.slot });
+    }
     expect(virusOf(game.player)).toBeUndefined();
+    expect(id()).toBe("scan");
+  });
+
+  it("one pulse is the scan, and it reads the machine behind the lock", () => {
+    const slot = findSlot(rigOf(game.player)!, "scanner")!;
+    expect(ship.room("r4").scanned).toBe(false);
+    ok({ kind: "act", verb: "use", slot });
+    expect(ship.room("r4").scanned, "through the shut bulkhead").toBe(true);
+    expect(ship.room("r5").scanned, "two doors out").toBe(true);
+    expect(id()).toBe("door");
   });
 
   it("the lock opened — with the CELL, keeping the card — is the door", () => {
@@ -411,10 +455,16 @@ describe("the steps are earned by facts on the real hull", () => {
     ok({ kind: "act", verb: "search", target: body.id });
     expect(game.player.data?.keys).toBe(1);
     expect(id(), "a search is not the door").toBe("door");
+    const scout = game.entities.find((e) => e.name === "scout")!;
+    expect(scout.behaviour, "asleep until the lock opens").toBe("static");
     ok({ kind: "act", verb: "power", target: ship.door("d3").id });
     expect(ship.door("d3").state).toBe("open");
     expect(id()).toBe("fight");
     expect(game.player.data?.keys, "the card is still in hand").toBe(1);
+    // The lock opening is what wakes it: from its next turn it is the
+    // stalker the catalogue says, and the fight step has its cause.
+    expect(scout.behaviour).toBe("stalker");
+    expect(scout.data?.dozing).toBeUndefined();
   });
 
   it("the scout scrapped is the fight", () => {
@@ -431,28 +481,10 @@ describe("the steps are earned by facts on the real hull", () => {
     expect(id()).toBe("alert");
   });
 
-  it("the weld cut open is the alert, and the next step brings the virus", () => {
+  it("the weld cut open is the alert", () => {
     if (game.roomOf(game.player).label !== "r4") go("d3");
     for (let i = 0; i < 3; i++) ok({ kind: "act", verb: "cut", target: ship.door("d4").id });
     expect(ship.door("d4").state).toBe("broken");
-    expect(id()).toBe("virus");
-    // The setup: the strain is on the crate's module, and the log says so.
-    const virus = virusOf(game.player)!;
-    expect(virus).toBeDefined();
-    expect(rigOf(game.player)!.slots[virus.slot]?.kind).toBe(TUTORIAL_CRATE);
-    expect(virus.strain).toBe("spasm");
-    expect(game.log.lines.some((l) => l.key === "log.virus.caught")).toBe(true);
-    expect(lessonStatus(game)?.done).toBe(true);
-    ok({ kind: "wait" });
-    expect(lessonStatus(game)?.done, "the tick lasts one turn").toBe(false);
-    expect(id(), "a turn with the virus aboard is not the cure").toBe("virus");
-  });
-
-  it("the purge is the virus", () => {
-    for (let i = 0; i < 8 && virusOf(game.player) !== undefined; i++) {
-      ok({ kind: "act", verb: "cure", slot: virusOf(game.player)!.slot });
-    }
-    expect(virusOf(game.player)).toBeUndefined();
     expect(id()).toBe("systems");
   });
 
@@ -490,31 +522,122 @@ describe("the steps are earned by facts on the real hull", () => {
   });
 });
 
-// ------------------------------------------------------------------- the fold
+// -------------------------------------------------------------------- the key
 
-describe("the window folds without the lesson moving", () => {
-  it("toggles on Esc with nothing else to close, and closes a card first", () => {
+describe("Esc never moves the lesson", () => {
+  it("does nothing with nothing to close, and closes a card first", () => {
     const game = newGame(TUTORIAL_SEED, true);
     let state: AppState = { ...initialState(), overlay: "none" };
-    expect(state.lessonFolded).toBe(false);
     state = appReducer(state, { kind: "dismiss" }, game);
-    expect(state.lessonFolded).toBe(true);
     expect(state.effect).toEqual({ kind: "idle" });
+    expect(state.overlay).toBe("none");
     expect(lessonOf(game.player)!.step, "Esc is not a step").toBe(0);
     expect(game.inputs).toEqual([]);
-    state = appReducer(state, { kind: "dismiss" }, game);
-    expect(state.lessonFolded).toBe(false);
     // The help card in front of the board takes the key instead.
     state = appReducer(state, { kind: "help" }, game);
     expect(state.overlay).toBe("help");
     state = appReducer(state, { kind: "dismiss" }, game);
     expect(state.overlay).toBe("none");
-    expect(state.lessonFolded).toBe(false);
+    expect(lessonOf(game.player)!.step).toBe(0);
   });
 
   it("does nothing on Esc in a run with no lesson", () => {
     const game = newGame(7);
     const state = appReducer({ ...initialState(), overlay: "none" }, { kind: "dismiss" }, game);
-    expect(state.lessonFolded).toBe(false);
+    expect(state.effect).toEqual({ kind: "idle" });
+    expect(state.overlay).toBe("none");
+  });
+});
+
+// ------------------------------------------------------------------- the gate
+
+/**
+ * While a step is open the screen lets through the moves it is about and
+ * refuses the rest (G96, 1): greyed rows with the step's own line as the
+ * reason, keys that print it and spend nothing. A screen rule only — the sim
+ * takes what it always took — and one that stands aside the moment nothing
+ * the step allows can be done, so a lesson never walls the drone in.
+ */
+describe("the lesson gates everything but the open step's move", () => {
+  const PLAYING: AppState = { ...initialState(), overlay: "none" };
+  const why = (step: LessonId): string => t("why.lesson", { press: t(LESSON_STEPS.find((s) => s.id === step)!.press) });
+
+  it("greys the rows the first step is not about, and lets the walk through", () => {
+    const game = newGame(TUTORIAL_SEED, true);
+    // The airlock's own line is out through the hatch, and the first step is a
+    // step into the corridor: the line is on the list, greyed, saying so.
+    const out = roomActions(game).find((a) => a.cmd.kind === "leave")!;
+    expect(out).toBeDefined();
+    expect(out.enabled).toBe(false);
+    expect(out.why).toBe(why("click"));
+    // The map's one row is the walk the step asks for.
+    const map = roomActions(game, undefined, true).filter((a) => a.cmd.kind === "go");
+    expect(map.length).toBeGreaterThanOrEqual(1);
+    for (const row of map) expect(row.enabled, row.label).toBe(true);
+
+    // A key that would spend the turn on something else prints the reason and spends nothing.
+    let state = appReducer(PLAYING, { kind: "command", cmd: { kind: "wait" } }, game);
+    expect(state.effect).toEqual({ kind: "log", text: why("click") });
+    state = appReducer(PLAYING, { kind: "exit" }, game);
+    expect(state.effect).toEqual({ kind: "log", text: why("click") });
+    expect(game.inputs).toEqual([]);
+    // And the walk itself is let through.
+    state = appReducer(PLAYING, { kind: "explore" }, game);
+    expect(state.effect.kind).toBe("explore");
+    state = appReducer(PLAYING, { kind: "command", cmd: { kind: "go", door: game.ship.door("d1").id } }, game);
+    expect(state.effect.kind).toBe("command");
+  });
+
+  it("keeps the salvage line live on the module step and greys the body and the walk", () => {
+    const game = newGame(TUTORIAL_SEED, true);
+    for (const door of ["d1", "d2"]) expect(game.playerCommand({ kind: "go", door: game.ship.door(door).id }).ok).toBe(true);
+    expect(currentStep(lessonOf(game.player)!)?.id).toBe("modules");
+    const list = roomActions(game);
+    const salvage = list.find((a) => a.cmd.kind === "act" && a.cmd.verb === "salvage")!;
+    const search = list.find((a) => a.cmd.kind === "act" && a.cmd.verb === "search")!;
+    expect(salvage.enabled).toBe(true);
+    expect(search.enabled).toBe(false);
+    expect(search.why).toBe(why("modules"));
+    // The lock's own level is a list and not a turn: still pressable, and the
+    // ways under it are the ones refused.
+    const lock = list.find((a) => a.step === game.ship.door("d3").id)!;
+    expect(lock.enabled).toBe(true);
+    const ways = roomActions(game, game.ship.door("d3").id).filter((a) => a.step === undefined);
+    for (const way of ways) expect(way.enabled, way.label).toBe(false);
+    for (const row of roomActions(game, undefined, true).filter((a) => a.cmd.kind === "go")) {
+      expect(row.enabled, row.label).toBe(false);
+      expect(row.why, row.label).toBe(why("modules"));
+    }
+    // Every list the screen draws is the gated one.
+    const state = { ...PLAYING, moves: true };
+    expect(listOf(game, state).filter((a) => a.cmd.kind === "go").every((a) => !a.enabled)).toBe(true);
+    // Pressing the greyed row prints its reason and spends nothing.
+    const at = listOf(game, PLAYING).findIndex((a) => a.cmd.kind === "act" && a.cmd.verb === "search");
+    const pressed = appReducer(PLAYING, { kind: "line", index: at }, game);
+    expect(pressed.effect).toEqual({ kind: "log", text: why("modules") });
+    expect(game.inputs).toHaveLength(2);
+  });
+
+  it("stands aside when nothing the step allows can be done", () => {
+    const game = newGame(TUTORIAL_SEED, true);
+    // The fight step with the scout still behind the lock: no machine in
+    // sight, nothing to close with, so the gate is open and a turn is a turn.
+    lessonOf(game.player)!.step = LESSON_STEPS.findIndex((s) => s.id === "fight");
+    expect(lessonGateOf(game)).toBeUndefined();
+    const state = appReducer(PLAYING, { kind: "command", cmd: { kind: "wait" } }, game);
+    expect(state.effect).toEqual({ kind: "command", cmd: { kind: "wait" } });
+  });
+
+  it("gates nothing in an ordinary run, before or after the airlock", () => {
+    const game = newGame(7);
+    expect(lessonGateOf(game)).toBeUndefined();
+    expect(roomActions(game).some((a) => a.why?.startsWith(t("why.lesson", { press: "" }).slice(0, 8)))).toBe(false);
+    expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
+    expect(lessonGateOf(game)).toBeUndefined();
+    const list = roomActions(game);
+    const map = roomActions(game, undefined, true);
+    expect([...list, ...map].some((a) => a.why === t("why.lesson", { press: "" }))).toBe(false);
+    const state = appReducer(PLAYING, { kind: "command", cmd: { kind: "wait" } }, game);
+    expect(state.effect).toEqual({ kind: "command", cmd: { kind: "wait" } });
   });
 });

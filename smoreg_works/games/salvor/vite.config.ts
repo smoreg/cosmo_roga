@@ -1,9 +1,13 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 // Relative base: itch.io serves HTML5 builds from a subdirectory.
 export default defineConfig({
   base: "./",
+  // The fourth view is React; the other three are hand-written DOM. The plugin
+  // only touches .tsx, so it costs those three nothing.
+  plugins: [react()],
   build: { target: "es2020", assetsInlineLimit: 0, sourcemap: false },
   resolve: { conditions: ["development", "import"] },
   // Audio lives in the monorepo's shared assets/, two levels up, and

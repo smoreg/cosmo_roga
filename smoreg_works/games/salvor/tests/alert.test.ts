@@ -344,7 +344,7 @@ describe("the ladder: every rung once, on the way up", () => {
     // Each rung's line exactly once, and the top of the gauge says what it is.
     for (const word of WORDS) expect(logged(game, `Alert: ${word}.`), word).toBe(1);
     expect(st.fuses.length, "nine sets its first charge at once").toBe(1);
-    expect(game.log.lines.some((l) => l.text.startsWith(`DETONATION in ${DETONATION_TURNS} turns`))).toBe(true);
+    expect(game.log.lines.some((l) => l.text.startsWith(`DETONATION: ${DETONATION_TURNS} turns`))).toBe(true);
 
     // Provoked again at the top: nothing new is woken and nothing is said twice.
     const before = machines(game).length;
@@ -510,7 +510,7 @@ describe("at nine the ship starts blowing its own compartments up", () => {
 
     expect(st.fuses.map((f) => game.ship.roomAt(f.room).label), "the one compartment it may take").toEqual(["r4"]);
     expect(fuseIn(game, r4)).toBe(FUSE_TURNS);
-    expect(logged(game, `The ship sets a charge in REACTOR: ${FUSE_TURNS} turns.`)).toBe(1);
+    expect(logged(game, `Charge set: REACTOR, ${FUSE_TURNS} turns.`)).toBe(1);
     expect(ALERT.panelLines?.(game)?.map((l) => l.text)).toContain(`CHARGE r4 · ${FUSE_TURNS}`);
 
     loudWait(game, FUSE_TURNS - 1);
@@ -525,7 +525,7 @@ describe("at nine the ship starts blowing its own compartments up", () => {
     expect(game.entities.includes(posted)).toBe(false);
     expect(game.ship.door("d3").state, "sealed behind it").toBe("sealed");
     expect(st.blasts).toBe(1);
-    expect(logged(game, "REACTOR blows up. Nothing in it is left.")).toBe(1);
+    expect(logged(game, "REACTOR blows up: nothing left.")).toBe(1);
 
     // The next charge is due eight turns after the first, and there is
     // nowhere it may go: r3 holds the scrap, r2 is the only way to it.
@@ -540,7 +540,7 @@ describe("at nine the ship starts blowing its own compartments up", () => {
     expect(st.fuses.length).toBe(1);
   });
 
-  it("never picks the drone's compartment or the airlock's, never a system still down, never the only way to one", () => {
+  it("never picks the drone's compartment or the airlock's, never a ship system, never the only way to one", () => {
     const fused = (game: RoomGame) => alertState(game).fuses.map((f) => game.ship.roomAt(f.room).label);
     for (let s = 0; s < 20; s++) {
       // r1 is the airlock's, r2 the drone's, r4 holds a reactor that is still
@@ -559,11 +559,12 @@ describe("at nine the ship starts blowing its own compartments up", () => {
       (leaf.ship.room("r3").data as Record<string, unknown>).systems = [{ id: 1, kind: "core", online: false }];
       raiseAlert(leaf, CHARGE_LEVEL);
       expect(fused(leaf), `seed ${6200 + s}`).toEqual(["r4"]);
-      // ...and once the reactor is up, r3 is fair game as well.
+      // ...and raising the reactor does not hand r3 over: a compartment the
+      // drone has just started a system in must not then go up under it.
       (leaf.ship.room("r3").data as { systems: Array<{ online: boolean }> }).systems[0]!.online = true;
       loudWait(leaf, CHARGE_PERIOD);
       expect(blown(leaf), `seed ${6200 + s}`).toEqual(["r4"]);
-      expect(fused(leaf), `seed ${6200 + s}`).toEqual(["r3"]);
+      expect(fused(leaf), `seed ${6200 + s}`).toEqual([]);
     }
   });
 
@@ -616,7 +617,7 @@ describe("at nine the ship starts blowing its own compartments up", () => {
     expect(reactorReachable(), "after the second blast").toBe(true);
   });
 
-  it("the blast hits a drone that stayed, through the rack, and blows the doors out rather than sealing it in", () => {
+  it("kills a drone that stayed, and blows the doors out rather than sealing the wreck in", () => {
     const game = quietShip(WALKED, 6007);
     decoyHunter(game, "r2");
     addWreck(game, game.ship.room("r3").id, "cell", 3);
@@ -631,14 +632,15 @@ describe("at nine the ship starts blowing its own compartments up", () => {
     const fight = engage(game);
     expect(isStop(fight) ? fight.stop : fight.cmd).toBe(t("why.fight.hazard"));
 
-    const before = durability(game);
     while (fuseIn(game, r4) !== undefined) wait(game, 1);
     expect(blown(game)).toEqual(["r4"]);
-    expect(durability(game), "the blast came through the rack").toBeLessThan(before);
-    expect(game.log.lines.some((l) => l.key === "log.hit.blast")).toBe(true);
-    expect(isAlive(game.player)).toBe(true);
-    expect(game.ship.door("d3").state, "blown out, not sealed: the drone can leave").toBe("broken");
-    walkTo(game, "r3");
+    // A compartment going up around the drone is the end of it: the rack does
+    // not stand between the drone and a charge the way it stands between the
+    // drone and a blow.
+    expect(isAlive(game.player), "the charge went off under it").toBe(false);
+    expect(game.log.lines.some((l) => l.key === "log.alert.blast.you")).toBe(true);
+    expect(alertState(game).blastDeaths).toBe(1);
+    expect(game.ship.door("d3").state, "blown out, not sealed: the wreck is walkable").toBe("broken");
   });
 
   it("shows the fuse on the schematic, and the wreck afterwards, and names both on the panel", async () => {
@@ -699,7 +701,7 @@ describe("at ten the ship blows itself up", () => {
     expect(alertState(game).detonated).toBe(true);
     expect(detonated(game)).toBe(true);
     expect(isAlive(decoy), "nothing aboard survives").toBe(false);
-    expect(logged(game, "The ship detonates. Nothing aboard survives.")).toBe(1);
+    expect(logged(game, "The ship detonates.")).toBe(1);
     expect(game.ship.rooms.every((r) => isBlown(r))).toBe(true);
     // No voyage in this fixture: the engine's own death is what is left.
     expect(game.isOver()).toBe(true);
@@ -744,6 +746,9 @@ describe("at ten the ship blows itself up", () => {
     // Jump straight to the father's tug: every jump paid for out of thin air.
     while (voyage.current < voyage.derelicts.length - 1) {
       voyage.credits += 1000;
+      // And every hull on the way stamped as under tow: a hull still out there
+      // holds the tug (`jumpHeld`).
+      voyage.state[voyage.current]!.sold = true;
       expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(true);
     }
     expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
@@ -784,7 +789,7 @@ describe("a neutralised ship stops answering", () => {
     expect(ALERT.panelLines?.(game)?.[0]?.text).toBe(`ALERT ${GAUGE(MAX_LEVEL)} BOOM IN ${DETONATION_TURNS}`);
 
     standDown(game);
-    expect(logged(game, "The ship stands down. Neutralised, it stops answering.")).toBe(1);
+    expect(logged(game, "Ship neutralised: it stops answering.")).toBe(1);
     expect(ALERT.panelLines?.(game)?.[0]).toEqual({ text: `ALERT ${GAUGE(MAX_LEVEL)} OFF` });
     expect(alertState(game).fuses, "disarmed").toEqual([]);
     loudWait(game, DETONATION_TURNS + FUSE_TURNS);
@@ -1145,10 +1150,14 @@ describe("at seven the ship sends an ENFORCER", () => {
     // it just made rather than walking in.
     expect(doorsAway(game.ship, game.player.room!, hunter.room!)).toBeLessThanOrEqual(1);
     // Either line will do: a blow that lands in the rack is the twist's to
-    // report (`The enforcer hits your PLATING (12/16).`) and one that reaches
-    // the core is the engine's. Twelve turns of 1d3+1 no longer get through a
-    // full rack, which is the point of the pass that raised it.
-    expect(game.log.lines.some((l) => /enforcer hits/i.test(l.text))).toBe(true);
+    // report (`log.hit.module`) and one that reaches the core is the engine's.
+    // Twelve turns of 1d3+1 no longer get through a full rack, which is the
+    // point of the pass that raised it. Asked by key rather than by wording,
+    // which is what the log's lines get rewritten for (G97).
+    const blows = new Set(["log.hit.module", "engine.hit.taken"]);
+    expect(
+      game.log.lines.some((l) => l.key !== undefined && blows.has(l.key) && /enforcer/i.test(l.text)),
+    ).toBe(true);
   });
 
   it("from the lockdown a dead hunter is replaced fifteen turns later", () => {

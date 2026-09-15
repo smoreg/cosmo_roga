@@ -3,7 +3,9 @@ import type { LogLine, RoomGame } from "@jamrog/engine";
 import { isTug } from "../content/tug.js";
 import { t } from "../i18n.js";
 import { rigOf } from "../twist/rig.js";
-import { voyageProgress, voyageRecord } from "../systems/voyage.js";
+import { voyageProgress, voyageRecord, type DerelictState } from "../systems/voyage.js";
+import { derelictName } from "../content/derelicts.js";
+import { OBJECTIVE_COUNT } from "../content/objectives.js";
 import {
   codexBody,
   codexFooter,
@@ -39,7 +41,9 @@ import { BANNER_WIDTH, bannerLine, schematicInputOf } from "./schematic-input.js
 import { LAYOUT, SCREEN_HEIGHT, SCREEN_WIDTH, THEME } from "./theme.js";
 import { tugBoard } from "./tugboard.js";
 import { aimedAt, codexSeen, codexView, lessonRows, listOf, type AppState, type Overlay } from "./appstate.js";
+import { airlockCard } from "./airlockcard.js";
 import { virusCard } from "./viruscard.js";
+import { lessonBrief } from "./lessoncard.js";
 
 /**
  * The only file in the game that talks to a display.
@@ -261,8 +265,48 @@ export function endingBanners(game?: RoomGame): Partial<Record<Overlay, { title:
     dead: boom ?? { title: t("end.dead"), fg: THEME.bad, why: t("end.dead.why") },
     lost: boom ?? { title: t("end.lost"), fg: THEME.bad },
     won: { title: t("end.won"), fg: THEME.good, why: t("end.won.why") },
-    sold: { title: t("end.sold"), fg: THEME.good },
+    sold: { title: t("end.sold"), fg: THEME.good, why: towedLine(game) },
   };
+}
+
+/**
+ * What the hull just sold was and what it paid, in the words the goal is stated
+ * in: three systems started, the hull under tow, the sum on the account.
+ *
+ * The card used to be the two words `SHIP SOLD` over the voyage's running
+ * figures, which is the one ending in this game that happens again and again —
+ * and the owner asked for it by name: «ДЕРЕЛИКТ ОБЕЗВРЕЖЕН И ПРОДАН — надпись в
+ * конце каждого дереликта». What was missing is which hull and how much.
+ *
+ * Off the voyage's own record rather than off the log, because the number is a
+ * fact about the sale and not a sentence about it: half when the sale was split
+ * with the other tug (`systems/voyage.ts`), which is exactly the case a player
+ * reads the card twice over.
+ */
+function towedLine(game: RoomGame | undefined): string | undefined {
+  const state = game === undefined ? undefined : towedHull(game);
+  if (state === undefined) return undefined;
+  const price = state.deal === "split" ? Math.floor(state.spec.salePrice / 2) : state.spec.salePrice;
+  const hull = derelictName(state.spec);
+  return price > 0
+    ? t("end.sold.why", { hull, n: OBJECTIVE_COUNT, cr: price })
+    : t("end.sold.why.bare", { hull, n: OBJECTIVE_COUNT });
+}
+
+/**
+ * The hull the card is about: the one the tug is tied to, which is the one that
+ * has just gone under tow — the sale is what raises the card, and nothing moves
+ * the tug until a key puts the card away (`ui/appstate.ts`).
+ *
+ * Anything else falls back to the last hull of the voyage that was sold, so a
+ * card drawn a turn late still names a ship rather than nothing.
+ */
+function towedHull(game: RoomGame): DerelictState | undefined {
+  const voyage = voyageRecord(game);
+  if (voyage === undefined) return undefined;
+  const here = voyage.state[voyage.current];
+  if (here?.sold === true) return here;
+  return [...voyage.state].reverse().find((s) => s.sold);
 }
 
 /** Log keys the voyage writes when a detonation takes the hull (`systems/voyage.ts`). */
@@ -401,6 +445,8 @@ export class Renderer {
     if (overlay === "help") this.drawHelp(game, state.helpPage);
     if (overlay === "codex") this.drawCodex(game, state);
     if (overlay === "virus") this.drawVirus(game);
+    if (overlay === "brief") this.drawBrief();
+    if (overlay === "airlock") this.drawAirlock(game);
     if (overlay === "history") this.drawHistory(game, state.logPage);
     const ending = endingBanners(game)[overlay];
     if (ending) this.drawBanner(ending.title, ending.why, runSummary(game), ending.fg, endHint(overlay));
@@ -505,7 +551,7 @@ export class Renderer {
     // The lesson's window, on the rows above the log (G90 E3): the head in
     // the accent, the instruction in the reading colour, and the log's tail
     // on whatever rows are left under them. Nothing in a run without one.
-    const lesson = lessonRows(game, state);
+    const lesson = lessonRows(game);
     lesson.forEach((row, i) => {
       this.putLine(1, y0 + i, clamp(row, SCREEN_WIDTH - 2), i === 0 ? THEME.accent : THEME.fg);
     });
@@ -638,6 +684,39 @@ export class Renderer {
     const y0 = (SCREEN_HEIGHT - h) >> 1;
     this.box(x0, y0, w, h);
     this.putLine(x0 + 2, y0 + 1, clamp(card.heading, inner), THEME.bad);
+    this.putLine(x0 + 2, y0 + h - 2, clamp(card.footer, inner), THEME.fgDim);
+    card.body.forEach((line, i) => {
+      this.putLine(x0 + 2, y0 + 3 + i, clamp(line, inner), THEME.fg);
+    });
+  }
+
+  /** The lesson's opening card, in the `i` card's frame (G96, 2): `ui/lessoncard.ts` wrote it. */
+  private drawBrief(): void {
+    const card = lessonBrief();
+    const { width: w, height: h, inner } = codexBox(card.heading, card.body, card.footer);
+    const x0 = (SCREEN_WIDTH - w) >> 1;
+    const y0 = (SCREEN_HEIGHT - h) >> 1;
+    this.box(x0, y0, w, h);
+    this.putLine(x0 + 2, y0 + 1, clamp(card.heading, inner), THEME.accent);
+    this.putLine(x0 + 2, y0 + h - 2, clamp(card.footer, inner), THEME.fgDim);
+    card.body.forEach((line, i) => {
+      this.putLine(x0 + 2, y0 + 3 + i, clamp(line, inner), THEME.fg);
+    });
+  }
+
+  /**
+   * The airlock card, in the same frame as the virus window and in the colour
+   * the goal is written in: the hull is finished and the money is outside. Every
+   * word of it is `ui/airlockcard.ts`'s.
+   */
+  private drawAirlock(game: RoomGame): void {
+    const card = airlockCard(game);
+    if (card === undefined) return;
+    const { width: w, height: h, inner } = codexBox(card.heading, card.body, card.footer);
+    const x0 = (SCREEN_WIDTH - w) >> 1;
+    const y0 = (SCREEN_HEIGHT - h) >> 1;
+    this.box(x0, y0, w, h);
+    this.putLine(x0 + 2, y0 + 1, clamp(card.heading, inner), THEME.good);
     this.putLine(x0 + 2, y0 + h - 2, clamp(card.footer, inner), THEME.fgDim);
     card.body.forEach((line, i) => {
       this.putLine(x0 + 2, y0 + 3 + i, clamp(line, inner), THEME.fg);

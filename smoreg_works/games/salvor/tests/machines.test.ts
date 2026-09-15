@@ -557,7 +557,10 @@ describe("a shot from the next compartment", () => {
     expect(taken, "the rest still reach the drone").toBeGreaterThan(20);
     expect(stray / (stray + taken)).toBeLessThanOrEqual(0.5 + 0.12);
     expect(bystander.hp, "the bystander took them").toBeLessThan(500);
-    expect(game.log.lines.some((l) => l.text.includes("shot goes wide and hits the bloom"))).toBe(true);
+    expect(
+      game.log.lines.some((l) => l.key === "log.shot.stray" && l.text.includes("bloom")),
+      "the line names what the shot found instead",
+    ).toBe(true);
   });
 
   it("never strays with the drone alone in its compartment", () => {

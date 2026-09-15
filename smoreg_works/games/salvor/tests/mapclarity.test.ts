@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { RoomGame, hexLayout, spawnMonsterIn, type RoomGameConfig } from "@jamrog/engine";
+import { RoomGame, Rng, hexLayout, spawnMonsterIn, type RoomGameConfig } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
+import { DERELICTS, buildDerelict } from "../src/content/derelicts.js";
 import { rigOf } from "../src/twist/rig.js";
 import { hazardStore } from "../src/systems/hazardstate.js";
 import { ACTION_KEYS, roomActions } from "../src/ui/actions.js";
@@ -17,7 +18,7 @@ import {
   type AppState,
 } from "../src/ui/appstate.js";
 import { toIntent, type KeyLike } from "../src/ui/input.js";
-import { schematicInputOf } from "../src/ui/schematic-input.js";
+import { schematicInputOf, thingsIn } from "../src/ui/schematic-input.js";
 import { hexSvgOf } from "../src/ui/web/hex-svg.js";
 import { WEB_CSS } from "../src/ui/web/styles.js";
 import { setLang, t } from "../src/i18n.js";
@@ -315,7 +316,7 @@ describe("the readout beside the compartment being aimed at", () => {
     expect(WEB_CSS).toContain(".hexmap .room-readout.is-shut .readout-chip{fill:var(--bad);}");
   });
 
-  it("says no way when nothing reaches it, and nothing at all about where the drone stands", () => {
+  it("says no way when nothing reaches it, and drops only the cost on the cell underfoot", () => {
     const cut = shipFromText(`
       TUG -a1- r1
       r1 -d1- r2
@@ -333,8 +334,14 @@ describe("the readout beside the compartment being aimed at", () => {
     game.player.room = game.ship.room("r2").id;
     game.refreshSight();
     expect(aimed(game, game.ship.room("r3").id)).toContain(`>${t("dist.none")}</text>`);
-    // There is no walk to where you already are.
-    expect(aimed(game, game.ship.room("r2").id)).not.toContain("room-readout");
+    // There is no walk to where you already are — but there is a compartment,
+    // and what is in it is the same question as anywhere else on the board.
+    // Hovering it used to answer nothing at all («при наведении на текущую
+    // комнату ничего»); now it answers everything but the price.
+    const here = aimed(game, game.ship.room("r2").id);
+    expect(here).toContain('<g class="room-readout">');
+    expect(here).toContain(">CARGO BAY r2</text>");
+    expect(here).not.toContain("readout-chip");
   });
 
   it("never knows more than the cell it stands beside does", () => {
@@ -362,8 +369,92 @@ describe("the readout beside the compartment being aimed at", () => {
 
   it("takes no clicks, so the compartment under it is still the thing you press", () => {
     expect(WEB_CSS).toContain(".hexmap .room-readout{pointer-events:none;}");
+    // And it is opaque: at .95 the name plate under it showed through as a
+    // ghost, which is two rows of letters a twentieth apart («при наведении
+    // текст наезжает»).
+    expect(WEB_CSS).toContain(".hexmap .readout-plate{fill:var(--bg); stroke:var(--accent);");
+    expect(WEB_CSS).not.toContain("readout-plate{fill:var(--bg); fill-opacity");
+  });
+
+  it("breaks its contents between things and counts what is left, never cutting a word", () => {
+    const game = run();
+    // Six things in one compartment: more than two rows of thirty characters
+    // hold, so the last of them says how many went unsaid.
+    const room = game.ship.room("r6");
+    room.explored = true;
+    room.data.bodies = [{ id: "b1" }, { id: "b2" }];
+    room.data.crates = [{ id: "c1" }, { id: "c2" }, { id: "c3" }, { id: "c4" }];
+    game.refreshSight();
+    const svg = aimed(game, room.id);
+    const rows = [...svg.matchAll(/class="readout-body"[^>]*>([^<]*)</g)].map((m) => m[1]!);
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.length).toBeLessThanOrEqual(2);
+    expect(svg).not.toContain("…");
+    // Every row is whole words of the panel's own, and the tail is a count.
+    const said = rows.join(" · ").split(" · ");
+    const names = new Set(thingsIn(game, room.id).map((thing) => thing.name));
+    for (const word of said) expect(names.has(word) || /^\+\d+$/.test(word), word).toBe(true);
+    expect(said.at(-1)).toMatch(/^\+\d+$/);
+  });
+
+  it("stands clear of the cell it belongs to, and off the other compartments' names", () => {
+    // Every compartment of every class, hovered in turn: the plate may never
+    // cover the hexagon it is answering for, and on a lattice this tight it
+    // keeps off the names of the rest by standing under their line, not on it.
+    let covered = 0;
+    let checked = 0;
+    for (const spec of DERELICTS.slice(0, 4)) {
+      for (const seed of [1, 2, 3]) {
+        const ship = buildDerelict(spec, 3, new Rng(seed), { flags: new Set(), shipIndex: 2 }).ship;
+        const game = new RoomGame({
+          ...GAME_CONFIG,
+          content: { ...SALVOR, monsterChance: () => 0 },
+          firstShip: () => ship,
+          firstShipId: "1",
+          seed,
+        });
+        for (const r of game.ship.rooms) r.explored = true;
+        game.player.room = game.ship.rooms[0]!.id;
+        game.refreshSight();
+        const layout = hexLayout(game.ship);
+        for (const r of game.ship.rooms) {
+          const state = hovered(playing(game), r.id);
+          const aim = mapAim(game, state);
+          const svg = hexSvgOf(schematicInputOf(game, undefined, aim.room, aim.route), layout, "", undefined, true);
+          const plate = /class="readout-plate" x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="(\d+)"/.exec(svg);
+          expect(plate, `${spec.id} seed ${seed} ${r.label}`).not.toBeNull();
+          const [x, y, w, h] = plate!.slice(1).map(Number) as [number, number, number, number];
+          const cell = svg.slice(svg.indexOf(`data-room="${r.id}"`));
+          const own = /class="room-box" points="([^"]+)"/.exec(cell.slice(0, cell.indexOf("</g>")))![1]!;
+          const pts = own.split(" ").map((p) => p.split(",").map(Number) as [number, number]);
+          const box = {
+            x: Math.min(...pts.map((p) => p[0])),
+            y: Math.min(...pts.map((p) => p[1])),
+            w: Math.max(...pts.map((p) => p[0])) - Math.min(...pts.map((p) => p[0])),
+            h: Math.max(...pts.map((p) => p[1])) - Math.min(...pts.map((p) => p[1])),
+          };
+          expect(
+            over({ x, y, w, h }, box),
+            `${spec.id} seed ${seed} ${r.label}: the readout is over its own cell`,
+          ).toBe(false);
+          for (const band of [...svg.matchAll(/class="room-band" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="(\d+)"/g)]) {
+            const [bx, by, bw, bh] = band.slice(1).map(Number) as [number, number, number, number];
+            if (over({ x, y, w, h }, { x: bx, y: by, w: bw, h: bh })) covered++;
+          }
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+    // One name in a hundred compartments, against every one of them before.
+    expect(covered / checked).toBeLessThan(0.05);
   });
 });
+
+/** Do two rectangles share any ink at all. */
+function over(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
 
 describe("the highlight", () => {
   it("never rests on a greyed row while the list has a pressable one", () => {

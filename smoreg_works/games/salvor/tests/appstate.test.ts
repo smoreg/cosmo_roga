@@ -4,6 +4,7 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
 import { VOYAGE, currentDerelict, voyageOf } from "../src/systems/voyage.js";
 import { moduleName } from "../src/content/modules.js";
+import { OBJECTIVE_COUNT } from "../src/content/objectives.js";
 import { t } from "../src/i18n.js";
 import { addWreck, applyDerived, install, rigOf } from "../src/twist/rig.js";
 import { ACTION_KEYS, BACK_KEY, roomActions } from "../src/ui/actions.js";
@@ -557,6 +558,79 @@ describe("one level down, into a bulkhead", () => {
     key(state, enter, game);
     expect(list[state.cursor]!.cmd).not.toEqual({ kind: "act", verb: "undock" });
     expect(game.inputs.filter((c) => c.kind === "act" && c.verb === "undock")).toEqual([]);
+  });
+
+  /**
+   * The voyage's list closes on the jump it was opened for (G92 B4).
+   *
+   * Every other group of the tug is a rack the player works down — mend five,
+   * sell three — and shutting after the first would be the audit's own defect
+   * over again. The stops are not a rack: the jump lands the tug at the next
+   * one, whose candidates refill the same list, so the question the player
+   * opened ("where do I fly now?") silently became another one and the very
+   * next line offered was another jump — «после прыжка даёт сразу сделать ещё
+   * прыжок, а не возвращается на старое меню».
+   */
+  it("closes the voyage's list on the jump, and comes back to the tug's own", () => {
+    const game = tugRun();
+    // Enough for the jump throughout: a row nothing can be pressed on is grey,
+    // and the highlight does not rest on a grey row (G90 D5) — which would be a
+    // different rule answering this test.
+    voyageOf(game).credits = 500;
+    const row = roomActions(game).findIndex((a) => a.step === "jump");
+    expect(row).toBe(0);
+
+    // The first stop, chosen: that is a berth, on the same row and the same list.
+    let state = key(playing(game), digit(row), game);
+    expect(state.menu).toBe("jump");
+    state = key(state, digit(0), game);
+    expect(game.playerCommand((state.effect as { cmd: RoomCommand }).cmd).ok).toBe(true);
+    state = syncStatus(state, game);
+    expect(state.menu, "the stops are answered, not worked down").toBeUndefined();
+
+    // And the same for the jump itself, which is what the owner pressed. The
+    // hull holds the tug until it is dealt with (G92 C), so the other tug takes
+    // this one: that frees the jump without ending anything under the player.
+    currentDerelict(game).rivalProgress = OBJECTIVE_COUNT;
+    state = key(state, digit(row), game);
+    expect(state.menu).toBe("jump");
+    const at = roomActions(game, "jump")
+      .findIndex((a) => a.enabled && a.cmd.kind === "act" && a.cmd.verb === "jump");
+    expect(at).toBeGreaterThanOrEqual(0);
+    state = key(state, digit(at), game);
+    expect(game.playerCommand((state.effect as { cmd: RoomCommand }).cmd).ok).toBe(true);
+
+    state = syncStatus(state, game);
+    expect(state.menu, "another jump is not the next thing offered").toBeUndefined();
+    // Back on the row it opened from, or the first pressable row after it: the
+    // new hull holds the tug the moment it arrives (G92 C), so the jump row is
+    // grey and the highlight does not rest on a grey row (G90 D5).
+    const list = roomActions(game);
+    expect(state.cursor).toBeGreaterThanOrEqual(row);
+    expect(list.slice(row, state.cursor).every((a) => !a.enabled)).toBe(true);
+    // The stops after this one are still there — nothing about the rule says
+    // the voyage is over, only where the menu lands.
+    expect(roomActions(game, "jump").length).toBeGreaterThan(1);
+  });
+
+  /**
+   * A rack is worked down, so its list stays standing while there is anything
+   * left on it. The two rules live in the same field and this is the half that
+   * did not change (`TugRow.once`).
+   */
+  it("keeps a rack's list open after one of its lines is spent", () => {
+    const game = tugRun();
+    voyageOf(game).credits = 500;
+    const row = roomActions(game).findIndex((a) => a.step === "sell");
+    expect(roomActions(game, "sell").length).toBeGreaterThan(2);
+
+    let state = key(playing(game), digit(row), game);
+    expect(state.menu).toBe("sell");
+    state = key(state, digit(0), game);
+    expect(game.playerCommand((state.effect as { cmd: RoomCommand }).cmd).ok).toBe(true);
+
+    state = syncStatus(state, game);
+    expect(state.menu, "there is more on the rack").toBe("sell");
   });
 
   it("hands the same row back when the player steps out of a tug group by hand", () => {

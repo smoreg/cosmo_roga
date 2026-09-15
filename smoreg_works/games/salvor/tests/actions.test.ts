@@ -896,18 +896,21 @@ describe("the same list, on the tug", () => {
     const game = newGame(4);
     const list = labels(game);
 
-    // The order a visit home is spent in: a drone first, casting off last.
-    expect(list[0]).toBe("buy a hull ▸");
+    // The owner's order: the voyage first — where to fly and for what, then
+    // over there — then the drone, then the rack (G92 B1, G95 B1).
+    expect(list[0]).toBe("hull & contract ▸");
+    expect(list[1]).toBe("boarding the derelict");
+    expect(list[2]).toBe("buy a hull ▸");
     // A board with nothing signed on it is the one thing a fresh screen has
-    // left undone, so the row that casts off says so instead of naming the
-    // hull (docs/tug-menu-audit.md, "what a designer would do", 5).
-    expect(list[8]).toBe("cast off — board closes");
+    // left undone, so the row that casts off says so — in the note under it,
+    // not in its name (docs/tug-menu-audit.md, "what a designer would do", 5).
+    expect(roomActions(game)[1]!.extra).toBe("(choice closes)");
     expect(list.some((l) => l.startsWith("go "))).toBe(false);
     expect(list.some((l) => l.startsWith("leave"))).toBe(false);
     // Every verb of the tug is here, on the first screen, with nothing walked to.
     // `hold & shelf` is the row that fits a module, from either place it can
     // come from: the hold, and the three the dock has for sale.
-    for (const line of ["cast off", "repair", "graft", "clean", "stow", "hold &", "sell", "choose the first hull"]) {
+    for (const line of ["boarding", "repair", "graft", "clean", "stow", "hold &", "sell", "hull & contract"]) {
       expect(list.some((l) => l.startsWith(line)), line).toBe(true);
     }
   });

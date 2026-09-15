@@ -1,4 +1,4 @@
-import type { RoomGame, System } from "@jamrog/engine";
+import type { Entity, RoomGame, System } from "@jamrog/engine";
 import { classOfShip, flavourCallsign } from "../content/derelicts.js";
 import { TUG_OPENING_KEY } from "../content/hints.js";
 import type { Key } from "../content/i18n/keys.js";
@@ -13,12 +13,13 @@ import {
   lessonOf,
   setLesson,
   type LessonFacts,
+  type LessonMove,
   type LessonSetup,
   type LessonState,
 } from "../content/tutorial.js";
 import { DEFAULT_STRAIN, strainName, strainOf } from "../content/viruses.js";
 import { t } from "../i18n.js";
-import { findSlot, rigOf } from "../twist/rig.js";
+import { findSlot, findSlotAs, rigOf } from "../twist/rig.js";
 import { shipState } from "./shipstate.js";
 import { virusOf, type VirusState } from "./virus.js";
 import { derelictAboard, voyageRecord } from "./voyage.js";
@@ -64,6 +65,13 @@ export const TUTORIAL: System<RoomGame> = {
     // is the module step, and a second module lying under the drone on turn
     // zero would teach it a step early.
     delete game.ship.roomAt(game.ship.entry).data.wrecks;
+    // And the hull's machine sleeps until the fight step wakes it (G96, 3):
+    // a stalker that heard the torch on the lock walked in on the door
+    // lesson, and the fight was over before its own step came up.
+    for (const machine of machinesOf(game)) {
+      (machine.data ??= {})[DOZING_KEY] = machine.behaviour ?? "brute";
+      machine.behaviour = SLEEPING;
+    }
   },
 
   afterPlayerTurn(game) {
@@ -94,7 +102,7 @@ function filled(game: RoomGame): number {
 }
 
 /**
- * The ten questions, answered off the game as it stands after this turn.
+ * The twelve questions, answered off the game as it stands after this turn.
  *
  * Nothing is remembered here; the two facts that are differences rather than
  * states — the drone moved, the rack grew — are differences against what the
@@ -111,6 +119,11 @@ function facts(game: RoomGame, state: LessonState): LessonFacts {
     // turn late would still be saying "press o" over `You reach STORAGE.`
     explored: aboard ? game.ship.rooms.filter((r) => r.explored || r.id === game.player.room).length : 0,
     installed: filled(game) > state.slots,
+    scanned: aboard ? game.ship.rooms.filter((r) => r.scanned).length : 0,
+    scanner: (() => {
+      const rig = rigOf(game.player);
+      return rig !== undefined && findSlotAs(rig, "scanner") !== null;
+    })(),
     kills: game.kills,
     locked: doors.filter((d) => d.state === "locked").length,
     sealed: doors.filter((d) => d.state === "sealed").length,
@@ -130,13 +143,32 @@ function advance(game: RoomGame, state: LessonState): void {
   if (next?.setup !== undefined) SETUPS[next.setup](game);
 }
 
+/** The behaviour a sleeping machine wears, and where its own is kept meanwhile. */
+const SLEEPING = "static";
+const DOZING_KEY = "dozing";
+
+/** Every machine aboard the hull underfoot, dead ones included. */
+function machinesOf(game: RoomGame): Entity[] {
+  return game.entities.filter((e) => e.id !== game.player.id && e.room !== undefined);
+}
+
 /**
- * What each named setup does. One today: the virus step puts the strain on the
- * module the crate handed over, in the record `systems/virus.ts` reads, and
- * says the line that file would have said had the deck's roll come up — so the
- * clock, the panel row and the cure are the ordinary ones from here on.
+ * What each named setup does. The virus step puts the strain on the module the
+ * crate handed over, in the record `systems/virus.ts` reads, and says the line
+ * that file would have said had the deck's roll come up — so the clock, the
+ * panel row and the cure are the ordinary ones from here on. The fight step
+ * gives the sleeping machine its own behaviour back, so that from its next
+ * turn it is the stalker the catalogue says it is.
  */
 const SETUPS: Readonly<Record<LessonSetup, (game: RoomGame) => void>> = {
+  wake(game) {
+    for (const machine of machinesOf(game)) {
+      const own = machine.data?.[DOZING_KEY];
+      if (typeof own !== "string") continue;
+      machine.behaviour = own;
+      delete machine.data![DOZING_KEY];
+    }
+  },
   infect(game) {
     const rig = rigOf(game.player);
     if (rig === undefined || virusOf(game.player) !== undefined) return;
@@ -216,4 +248,24 @@ export function lessonStatus(game: RoomGame): LessonStatus | undefined {
     done: state.doneAt >= 0 && state.doneAt === game.inputs.length,
     over: step === undefined,
   };
+}
+
+/** The moves the open step lets through, and the key line the refusal names. */
+export interface LessonAllowance {
+  readonly allows: readonly LessonMove[];
+  readonly press: Key;
+}
+
+/**
+ * What the lesson lets the drone do right now (G96, 1), or nothing when there
+ * is no step open: an ordinary run, a lesson that is over, or a training run
+ * that has moved on to a real hull. Nothing gated is the default, so every
+ * caller in an ordinary run gets `undefined` and changes nothing.
+ */
+export function lessonAllows(game: RoomGame): LessonAllowance | undefined {
+  const status = lessonStatus(game);
+  if (status === undefined || status.over) return undefined;
+  const step = LESSON_STEPS[status.step];
+  if (step === undefined) return undefined;
+  return { allows: step.allows, press: step.press };
 }

@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   DOOR_USE,
   charterHelp,
+  dockHelp,
+  voyageHelp,
   HELP_ROWS,
   helpFooter,
   helpHeadings,
@@ -267,8 +269,28 @@ describe("the cards fit their frames", () => {
         expect(line.length, line).toBeLessThanOrEqual(helpBox(onTug).inner);
       }
     }
+    // At home the card is about home: the tug's own rows and the itinerary they
+    // serve stand where the drone's fifteen keys stood, and the keys left are
+    // the ones a player can press with no drone in front of them (G95 B6).
     expect(helpBody(true)).toEqual([
       ...tugHelp(),
+      "",
+      ...keyHelp(true),
+      "",
+      ...dockHelp(),
+      "",
+      ...voyageHelp(),
+      "",
+      ...ruleHelp(),
+      "",
+      ...listHelp(),
+      "",
+      ...charterHelp(),
+      "",
+      ...urlHelp(),
+    ]);
+    expect(helpBody(false)).toEqual([
+      ...shipHelp(),
       "",
       ...keyHelp(),
       "",
@@ -280,8 +302,14 @@ describe("the cards fit their frames", () => {
       "",
       ...urlHelp(),
     ]);
-    expect(helpBody(false).slice(0, shipHelp().length)).toEqual(shipHelp());
-    expect(helpBody(false).slice(shipHelp().length)).toEqual(helpBody(true).slice(tugHelp().length));
+    // Every row the tug keeps is a row of the one table, word for word, so the
+    // page lights its key exactly as the derelict's does.
+    for (const row of keyHelp(true)) expect(keyHelp(), row).toContain(row);
+    // And nothing the drone alone can do is offered at home.
+    const home = helpBody(true).join("\n");
+    for (const key of ["help.key.hide", "help.key.cutter", "help.key.emp", "help.key.keycard", "help.key.seal"] as const) {
+      expect(home, key).not.toContain(t(key));
+    }
   });
 
   /**
@@ -333,12 +361,39 @@ describe("the cards fit their frames", () => {
     expect(helpHeadings()).toEqual([
       tugHelp()[0],
       shipHelp()[0],
+      dockHelp()[0],
+      voyageHelp()[0],
       ruleHelp()[0],
       listHelp()[0],
       charterHelp()[0],
       urlHelp()[0],
       t("help.codex.head"),
     ]);
+  });
+
+  /**
+   * `?` at home, after the owner pressed it there and got the drone: «помощь на
+   * буксире должна рассказывать про буксир, а не управление дроном» (G95 B6).
+   * The card answers the questions the tug raises — what this screen is, what
+   * its rows do, where the voyage goes — and none the drone raises.
+   */
+  it("tells the tug's own story at home, in all three languages", () => {
+    for (const lang of LANGS) {
+      setLang(lang);
+      const home = helpBody(true).join("\n");
+      // What the screen is: one place, no clock, nothing hunting.
+      expect(home, lang).toContain(t("help.where.tug.3"));
+      // What its rows do, and where the voyage goes.
+      for (const line of [...dockHelp(), ...voyageHelp()]) expect(home, `${lang}: ${line}`).toContain(line);
+      // Aboard, neither block is on the card: the derelict's questions are the
+      // airlock and the three systems, and its own paragraph answers them.
+      const ship = helpBody(false).join("\n");
+      for (const line of [...dockHelp(), ...voyageHelp()]) expect(ship, `${lang}: ${line}`).not.toContain(line);
+      expect(ship, lang).not.toContain(t("help.where.tug.3"));
+      // And the drone's table is whole out there, every row of it.
+      for (const row of keyHelp()) expect(ship, `${lang}: ${row}`).toContain(row);
+    }
+    setLang(DEFAULT_LANG);
   });
 
   /**

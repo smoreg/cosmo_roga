@@ -199,7 +199,7 @@ describe("the welder", () => {
     expect(r.slots[cutter]!.integrity).toBe(2);
     expect(r.slots[thrusters]!.integrity).toBe(2);
     expect(game.log.tail(20).map((m) => m.text)).toContain(
-      `You weld the CUTTER back to 2/${MODULES.cutter.integrity}.`,
+      `Welded: CUTTER 2/${MODULES.cutter.integrity}.`,
     );
     expect(r.exposed).toBe(slot);
     expect(game.noise.get(room(game, "r1"))).toBe(5);
@@ -323,7 +323,7 @@ describe("the spike", () => {
 
     expect(game.playerCommand({ kind: "act", verb: "use", slot, target: 12 }).ok).toBe(true);
     expect(hatch.opened).toBe(false);
-    expect(game.log.tail(5).map((m) => m.text)).toContain("You work the SPIKE into the hatch.");
+    expect(game.log.tail(5).map((m) => m.text)).toContain("SPIKE into the hatch.");
 
     expect(game.playerCommand({ kind: "act", verb: "use", slot, target: 12 }).ok).toBe(true);
     expect(hatch.opened).toBe(true);
@@ -521,7 +521,7 @@ describe("the module table", () => {
       expect(r.slots[slot]).toBeNull();
       expect(r.scars[slot]).toBe(id);
       expect(r.burned).toContain(id);
-      expect(moduleBurnLine(id)).toMatch(/^Your [A-Z-]+ burns? out\./);
+      expect(moduleBurnLine(id)).toMatch(/^[A-Z-]+ burned out\./);
     }
   });
 

@@ -2,7 +2,7 @@ import { HEX_SPACING, type HexCell, type HexLayout } from "@jamrog/engine";
 import type { HullArt } from "../../content/hulls-art.js";
 import { hullLayer, type Box } from "./hullart.js";
 import { esc } from "./schematic-svg.js";
-import { thingsOf, tileDefs, tileRow, tileRowWidth, zoneTile } from "./tiles.js";
+import { thingsOf, tileDefs, tileRow, tileRowWidth, zoneIdOf, zoneTile } from "./tiles.js";
 import type { SchematicDoor, SchematicInput, SchematicRoom } from "../schematic.js";
 
 /**
@@ -46,6 +46,15 @@ import type { SchematicDoor, SchematicInput, SchematicRoom } from "../schematic.
  * the outline whose rhythm says which one. A rhythm because the outline is the
  * state's, the floor is the hazard's tint and red is the machines'; there was
  * no hue left that meant anything, and there is always another rhythm.
+ *
+ * ## What a hover says, and who says it
+ *
+ * The board carries no `<title>`, on a cell or on a tile. It used to, and the
+ * browser drew it: a yellow box in the system's own type, after the system's
+ * own delay, over the readout that was already answering the same question in
+ * our letters — "подсказка браузера тут точно не нужна, нужна нашего
+ * интерфейса" (the owner). So the readout is the whole of it, and it is drawn
+ * for every compartment the map is aiming at, including the one underfoot.
  *
  * ## The hull under it
  *
@@ -213,22 +222,31 @@ export function hexSvgOf(
 
   const corridors = input.doors.filter((d) => layout.corridors.has(d.id));
   const links = input.doors.filter((d) => layout.links.has(d.id) && d.a !== d.b);
-  const named = new Map(input.rooms.map((room) => [room.id, room.label]));
+  // The way round for each door the lattice could not lay a corridor on, worked
+  // out once: the run is drawn under the hexagons and its label over them, and
+  // the two must be the same walk.
+  const runs = new Map<number, Point[]>();
+  for (const door of links) {
+    const run = longRun(layout.cells.get(door.a), layout.cells.get(door.b));
+    if (run !== undefined) runs.set(door.id, run);
+  }
+  const nameplates = plates(input, at);
 
   const body = [
     hull?.svg ?? "",
-    ...links.map((door) => duct(door, at)),
+    ...links.map((door) => longCorridor(door, runs.get(door.id))),
     ...corridors.map((door) => corridor(door, at)),
     ...input.rooms.map((room) => hex(room, at.get(room.id), tiles)),
     ...corridors.map((door) => tag(door, at)),
-    ...stacked(links, at, named),
+    ...links.map((door) => tag(door, at, runs.get(door.id))),
     // Where the drone is, last of everything on the deck: over the hazard's
     // floor, the target's dashes, the tiles and any chip that strays onto the
     // cell, so one amber mark is never covered by anything the map draws.
     ...input.rooms.map((room) => (room.state === "current" ? droneMark(at.get(room.id)) : "")),
     // And over even that: what the compartment being aimed at is, what is
-    // unusual in it, and what walking there would cost.
-    ...input.rooms.map((room) => readout(room, at.get(room.id), box)),
+    // unusual in it, and what walking there would cost. It is handed the name
+    // plates of the whole board so it can stand where it hides fewest of them.
+    ...input.rooms.map((room) => readout(room, at.get(room.id), box, nameplates)),
     banner.length > 0 ? text(box.x + 14, box.y + 26, banner, "banner") : "",
     input.shipLine.length > 0
       ? text(box.x + 14, box.y + box.h - 12, input.shipLine, "ship-line")
@@ -322,10 +340,6 @@ function hex(room: SchematicRoom, c: Point | undefined, tiles: boolean): string 
     .map((p) => `${round(p.x)},${round(p.y)}`)
     .join(" ");
   const body = [
-    // What a pointer resting on the cell says: the name, the number and the
-    // words of whatever the glyph row stands for — the same `things` the panel
-    // names, so a hover never knows more than the drone does.
-    `<title>${esc(tooltip(room, unknown))}</title>`,
     room.state === "current"
       ? `<polygon class="room-halo" points="${points}"/>`
       : "",
@@ -344,13 +358,9 @@ function hex(room: SchematicRoom, c: Point | undefined, tiles: boolean): string 
     // tinted the same dark still read apart, and a colourblind reader has a
     // channel that is not a hue.
     propRing(room) ? ring(c, PROP_RING_R, "prop-ring") : "",
-    // What the compartment is for, over its name. Never on an unknown one:
-    // that is precisely the fact the drone has not found out, and a reactor
-    // drawn on a dashed cell would say otherwise.
-    tiles && !unknown ? zoneTile(room, c.x - ZONE_SIZE / 2, c.y + ZONE_TOP, ZONE_SIZE) : "",
-    // Its name over the compartment's, where the pictogram would otherwise go:
-    // with tiles on, the tint and the tile say it between them.
-    room.hazard === undefined || tiles ? "" : text(c.x, c.y - HAZARD_WORD, room.hazard.word, "hz-word", "middle"),
+    // What the compartment is for, and what is in the air in it — the line
+    // above the name, shared when the cell has both to say.
+    cap(room, c, tiles, unknown),
     // The name on its band, knocked out of it. Not on an unknown cell: the
     // absence of the plate is the whole of what that cell has to say.
     unknown ? "" : band(c, room.state === "scanned"),
@@ -375,14 +385,50 @@ function hex(room: SchematicRoom, c: Point | undefined, tiles: boolean): string 
   ].join("");
 }
 
-/** `MESS r6 · frost: engines slow here · scrap THRUSTERS 2/8`. */
-function tooltip(room: SchematicRoom, unknown: boolean): string {
-  const head = `${unknown ? UNKNOWN : room.name} ${room.label}`;
-  return [head, ...(room.things ?? []).map((thing) => thing.name)].join(" · ");
-}
-
 /** Where the hazard's word sits, above the centre: clear of the name and of the cap. */
 const HAZARD_WORD = 24;
+
+/**
+ * How wide the hexagon still is on that line, and the air between the two
+ * things that share it. A pointy-top cell is full width only about its middle;
+ * by the cap's line it has closed in to a little over half, and a word set at
+ * its natural length ran out through the outline — `BLOWN COMPARTMENT` is
+ * seventeen characters, and in Spanish twenty-three.
+ */
+const CAP_FIT = 52;
+const CAP_GAP = 4;
+
+/**
+ * The cap line: the compartment's pictogram, the word for what fills it, or
+ * both side by side.
+ *
+ * The word used to be dropped whenever the tiles were on, on the argument that
+ * the tint and the mark said it between them. They do not: the owner played
+ * `?tiles=1`, found a compartment with a wavy mark in it and asked what the
+ * mark was («что значит этот знак?»). A picture nobody can name is a picture
+ * that has to be looked up, and the map is where the answer belongs — so the
+ * word is now drawn in every mode, and where the cell also has a pictogram the
+ * two share the line rather than one silencing the other. Squeezed to the
+ * cell's own width (`textLength`), because three languages name the same
+ * hazard in three lengths and the longest of them is a sentence.
+ */
+function cap(room: SchematicRoom, c: Point, tiles: boolean, unknown: boolean): string {
+  // Never a pictogram on an unknown cell: that is precisely the fact the drone
+  // has not found out, and a reactor drawn on a dashed cell would say otherwise.
+  const pic = tiles && !unknown && zoneIdOf(room.kind) !== undefined;
+  const word = room.hazard?.word;
+  if (word === undefined) {
+    return pic ? zoneTile(room, c.x - ZONE_SIZE / 2, c.y + ZONE_TOP, ZONE_SIZE, true) : "";
+  }
+  const shared = pic ? ZONE_SIZE + CAP_GAP : 0;
+  const fit = CAP_FIT - shared;
+  const wide = Math.min(word.length * NAME_CHAR_W, fit);
+  const left = c.x - (wide + shared) / 2;
+  return [
+    pic ? zoneTile(room, left, c.y + ZONE_TOP, ZONE_SIZE, true) : "",
+    text(left + shared + wide / 2, c.y - HAZARD_WORD, word, "hz-word", "middle", fit),
+  ].join("");
+}
 
 /** The rim of a hazard: the upper-left and upper-right edges, over the outline. */
 function rim(c: Point): string {
@@ -403,6 +449,8 @@ function tileRowIn(room: SchematicRoom, c: Point): string {
   const spec = { size: TILE_SIZE, step: TILE_STEP, max: TILE_MAX };
   return tileRow(things, {
     ...spec,
+    // No `<title>`: this board answers a hover itself, in the readout.
+    quiet: true,
     x: round(c.x - tileRowWidth(things.length, spec) / 2),
     y: round(c.y + TILE_BOTTOM - TILE_SIZE),
     baseline: round(c.y + TILE_BOTTOM),
@@ -484,13 +532,34 @@ function band(c: Point, striped: boolean): string {
 }
 
 /**
- * The glyph row with the machines at its head painted red. `hostiles` counts
- * terminal columns, the machines' glyphs and the spaces between them, which is
- * exactly the length of the string to lift out (`ui/schematic-input.ts`,
- * `hostileWidth`). Never on an unknown cell: its only glyph is a hazard's mark.
+ * The glyph row with the machines at its head painted red, and each of the
+ * three systems in the colour of the job.
+ *
+ * `hostiles` counts terminal columns — the machines' glyphs and the spaces
+ * between them, which is exactly the length of the string to lift out
+ * (`ui/schematic-input.ts`, `hostileWidth`) — and that is the whole of it while
+ * nothing else on the row wants a colour. A compartment with a system in it
+ * does: the row is then set from the things themselves, one `<tspan>` per mark,
+ * which spells the same string (`tests/tiles-view.test.ts` holds `glyphs` and
+ * `things` to each other) and can paint any of them. Never on an unknown cell:
+ * its only glyph is a hazard's mark.
  */
 function glyphRow(room: SchematicRoom, c: Point, unknown: boolean): string {
   const width = unknown ? 0 : Math.min(room.hostiles ?? 0, room.glyphs.length);
+  const things = unknown ? undefined : room.things;
+  if (things !== undefined && things.some((thing) => thing.goal !== undefined)) {
+    const marks = things.map((thing, i) => {
+      const tone =
+        thing.hostile === true
+          ? ["", "hostile"].join(" ")
+          : ["", "goal", `is-${thing.goal}`].join(" ");
+      const gap = i === 0 ? "" : " ";
+      return thing.goal === undefined && thing.hostile !== true
+        ? esc(gap + thing.glyph)
+        : `${esc(gap)}<tspan class="glyph${tone}">${esc(thing.glyph)}</tspan>`;
+    });
+    return `<text class="glyph" x="${round(c.x)}" y="${round(c.y + 26)}" text-anchor="middle">${marks.join("")}</text>`;
+  }
   if (width === 0) return text(c.x, c.y + 26, room.glyphs, "glyph", "middle");
   const head = `<tspan class="glyph hostile">${esc(room.glyphs.slice(0, width))}</tspan>`;
   return `<text class="glyph" x="${round(c.x)}" y="${round(c.y + 26)}" text-anchor="middle">${head}${esc(room.glyphs.slice(width))}</text>`;
@@ -539,48 +608,182 @@ function droneMark(c: Point | undefined): string {
  * It never says more than the cell does. An unnamed compartment reads `····`
  * here as it does on its own face, and its contents line is empty, because not
  * knowing is exactly the fact the map is drawing.
+ *
+ * Drawn for every compartment the map is aiming at, the one underfoot included.
+ * That one has no cost line — there is no walk to where you already are — and
+ * for a while it had no readout either, so the one cell a player looks at most
+ * was the one cell that answered nothing («при наведении на текущую комнату
+ * ничего»). The chip is what the walk costs; the rest is what is in there, and
+ * what is in there is true wherever the drone is standing.
  */
-function readout(room: SchematicRoom, c: Point | undefined, box: Frame): string {
-  if (c === undefined || room.reach === undefined) return "";
+function readout(
+  room: SchematicRoom,
+  c: Point | undefined,
+  box: Frame,
+  plates: readonly Rect[],
+): string {
+  if (c === undefined || room.aimed !== true) return "";
   const unknown = room.state === "unknown";
   const head = `${unknown ? UNKNOWN : room.name} ${room.label}`;
-  // The same words the tooltip uses, and no others: a readout that out-knew the
-  // pointer resting on the same cell would be a second answer to one question.
-  const said = unknown ? "" : (room.things ?? []).map((thing) => thing.name).join(" · ");
-  const lines = said.length > READ_CHARS ? `${said.slice(0, READ_CHARS - 1)}…` : said;
-  const cost = room.reach.line;
-  const costW = cost.length * READ_CHAR + 12;
-  const w = round(Math.max(head.length * READ_CHAR + costW + 14, lines.length * READ_CHAR + 14, 120));
-  const h = lines.length > 0 ? 36 : 22;
-  // Beside the cell, on the side with room for it, and clamped into the frame
-  // so a readout can never be the one thing that grows the drawing. It may lie
-  // over the compartments next door — it is a readout, and it is drawn last.
-  const right = c.x + INRADIUS + 10;
-  const left = c.x - INRADIUS - 10 - w;
-  const wanted = right + w < box.x + box.w - 6 ? right : left;
-  const x = round(Math.min(Math.max(wanted, box.x + 6), box.x + box.w - w - 6));
-  const y = round(Math.min(Math.max(c.y - h / 2, box.y + 6), box.y + box.h - h - 6));
+  // The same words the panel names, and no others: a readout that out-knew the
+  // compartment's own block would be a second answer to one question.
+  const said = unknown ? [] : (room.things ?? []).map((thing) => thing.name);
+  const lines = wrapped(said, READ_CHARS, READ_LINES);
+  const cost = room.reach?.line;
+  const costW = cost === undefined ? 0 : cost.length * READ_CHAR + 12;
+  const w = round(
+    Math.max(head.length * READ_CHAR + costW + 14, ...lines.map((l) => l.length * READ_CHAR + 14), 120),
+  );
+  const h = READ_HEAD + lines.length * READ_LINE;
+  const { x, y } = spot(c, w, h, box, plates);
   const chipX = x + w - 7 - costW;
   return [
     // Amber when the click is a move and red when it is not: the chip and the
     // plate's rule both take it off the group, so the readout cannot say "go"
     // in one colour and "you cannot" in the other.
-    `<g class="room-readout${room.reach.blocked === true ? " is-shut" : ""}">`,
+    `<g class="room-readout${room.reach?.blocked === true ? " is-shut" : ""}">`,
     `<rect class="readout-plate" x="${x}" y="${y}" width="${w}" height="${h}" rx="2"/>`,
     text(x + 7, y + 15, head, "readout-head"),
-    `<rect class="readout-chip" x="${round(chipX)}" y="${y + 4}" width="${round(costW)}" height="14" rx="2"/>`,
-    text(chipX + costW / 2, y + 15, cost, "readout-cost", "middle"),
-    lines.length > 0 ? text(x + 7, y + 30, lines, "readout-body") : "",
+    cost === undefined
+      ? ""
+      : `<rect class="readout-chip" x="${round(chipX)}" y="${y + 4}" width="${round(costW)}" height="14" rx="2"/>`,
+    cost === undefined ? "" : text(chipX + costW / 2, y + 15, cost, "readout-cost", "middle"),
+    ...lines.map((line, i) => text(x + 7, y + 30 + i * READ_LINE, line, "readout-body")),
     "</g>",
   ]
     .filter((s) => s.length > 0)
     .join("");
 }
 
-/** How wide the readout's second line may get before it is cut. */
+/** How wide a row of the readout's contents may get before the next one starts. */
 const READ_CHARS = 30;
+/** And how many rows there are: two, and the rest is a count. */
+const READ_LINES = 2;
 /** What one character of it costs: the plate's two sizes average out to this. */
 const READ_CHAR = 6.4;
+/** The head's own height, and one row of contents under it. */
+const READ_HEAD = 22;
+const READ_LINE = 14;
+
+/** What the things in a compartment are called, between two of them. */
+const READ_SEP = " · ";
+
+/**
+ * The contents of a compartment in at most `max` rows, **broken between things
+ * and never inside one**.
+ *
+ * It used to be one row cut at thirty characters with an ellipsis on the end,
+ * which in Russian reads as a typo rather than as a width: `тело кого-т…` is a
+ * word with its last letters missing, and the owner read it as one («список а
+ * на обрыв за ...»). A thing is the unit here — the row breaks between two of
+ * them, and what is left over after the last row is said as a number, which is
+ * the same `+N` the tile row already counts its overflow with.
+ */
+function wrapped(names: readonly string[], width: number, max: number): string[] {
+  const rows: string[][] = [];
+  for (const name of names) {
+    const row = rows[rows.length - 1];
+    if (row === undefined || (row.length > 0 && [...row, name].join(READ_SEP).length > width)) {
+      rows.push([name]);
+      continue;
+    }
+    row.push(name);
+  }
+  if (rows.length <= max) return rows.map((row) => row.join(READ_SEP));
+  // More than the plate holds: the rows that fit, and — in place of as many
+  // things at the end of the last of them as it takes — how many went unsaid.
+  const kept = rows.slice(0, max);
+  const tail = kept[max - 1]!;
+  let left = names.length - kept.reduce((n, row) => n + row.length, 0);
+  while (tail.length > 1 && [...tail, `+${left}`].join(READ_SEP).length > width) {
+    tail.pop();
+    left++;
+  }
+  return [...kept.slice(0, max - 1), [...tail, `+${left}`]].map((row) => row.join(READ_SEP));
+}
+
+/** A rectangle on the board: the readout's plate, and the plates it tries to miss. */
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Every compartment's name plate, for the readout to keep off. */
+function plates(input: SchematicInput, at: ReadonlyMap<number, Point>): Rect[] {
+  const out: Rect[] = [];
+  for (const room of input.rooms) {
+    const c = at.get(room.id);
+    // An unknown cell has no plate at all — that absence is what it says.
+    if (c === undefined || room.state === "unknown") continue;
+    out.push({ x: c.x - BAND_HALF, y: c.y + BAND_TOP, w: BAND_HALF * 2, h: BAND_H });
+  }
+  return out;
+}
+
+/**
+ * Where the readout stands: clear of the cell it belongs to, inside the frame,
+ * and over as few of the other compartments' names as the board allows.
+ *
+ * Eight places are tried in the order they are worth having, and the first that
+ * hides nothing wins. The cell's own face is never among them, so the
+ * compartment the player is pointing at cannot be the one the answer covers
+ * («при наведении текст наезжает»).
+ *
+ * The first two are beside the cell and **just below its name's line**, which is
+ * the whole trick. Every plate on the board sits on the same band — a strip
+ * sixteen units tall on each row's own centre — and the rows are ninety-two
+ * apart, so the sixty units under one band row are the one place on a honeycomb
+ * where a plate this wide crosses no name at all. Level with the cell, which is
+ * where this used to start, is level with every name in the row.
+ */
+function spot(c: Point, w: number, h: number, box: Frame, plates: readonly Rect[]): Point {
+  const right = c.x + INRADIUS + 10;
+  const left = c.x - INRADIUS - 10 - w;
+  const under = c.y + R + 6;
+  const over = c.y - R - 6 - h;
+  // Just clear of the name band's lower edge, and of the one a row further up.
+  const below = c.y + BAND_TOP + BAND_H + 3;
+  const above = c.y + BAND_TOP - 3 - h;
+  const tries: Point[] = [
+    { x: right, y: below },
+    { x: left, y: below },
+    { x: right, y: above },
+    { x: left, y: above },
+    { x: right, y: under },
+    { x: left, y: under },
+    { x: c.x - w / 2, y: under },
+    { x: c.x - w / 2, y: over },
+  ];
+  let best: Point | undefined;
+  let fewest = Number.POSITIVE_INFINITY;
+  for (const p of tries) {
+    if (p.x < box.x + 6 || p.x + w > box.x + box.w - 6) continue;
+    if (p.y < box.y + 6 || p.y + h > box.y + box.h - 6) continue;
+    const hidden = plates.filter((r) => hits(r, { ...p, w, h })).length;
+    if (hidden < fewest) {
+      fewest = hidden;
+      best = p;
+      if (hidden === 0) break;
+    }
+  }
+  // Nothing fits the frame whole — a hull two compartments wide, and a plate
+  // wider than either side of it. Beside the cell and pushed in, as before: a
+  // readout may never be the one thing that grows the drawing.
+  if (best === undefined) {
+    const wanted = right + w < box.x + box.w - 6 ? right : left;
+    best = { x: Math.min(Math.max(wanted, box.x + 6), box.x + box.w - w - 6), y: c.y - h / 2 };
+  }
+  return {
+    x: round(best.x),
+    y: round(Math.min(Math.max(best.y, box.y + 6), box.y + box.h - h - 6)),
+  };
+}
+
+function hits(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
 
 /**
  * The charge the ship set in here: the turns left, red, on the hexagon's
@@ -654,12 +857,13 @@ function trimmed(door: SchematicDoor, at: ReadonlyMap<number, Point>): [Point, P
   ];
 }
 
-/** The door's own label, on a plate at the middle of its corridor. */
-function tag(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
-  const ends = trimmed(door, at);
-  if (!ends) return "";
-  const [from, to] = ends;
-  const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+/**
+ * The door's own label, on a plate at the middle of its corridor — or, given a
+ * long run, halfway along the walk rather than halfway between its two ends.
+ */
+function tag(door: SchematicDoor, at: ReadonlyMap<number, Point>, run?: Point[]): string {
+  const mid = run === undefined ? straightMid(door, at) : halfway(run);
+  if (mid === undefined) return "";
   const w = door.label.length * TAG_CHAR_W + 8;
   return [
     `<g class="door is-${door.state}${door.target === true ? " is-goal" : ""}${trapClass(door)}" data-door="${door.id}">`,
@@ -674,89 +878,207 @@ function tag(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
   ].join("");
 }
 
-/**
- * The run a link makes under the deck: a faint straight line between the two
- * compartments, drawn beneath the hexagons.
- *
- * This is what stops a link reading as a teleport. A chip on its own says "a
- * door is here" and nothing about the distance, and the owner read that exactly
- * as it looks: «че опять телепорты?». A line you can follow — long, dim, going
- * behind the compartments in between — says the other thing: a service run, a
- * walk the long way round. It is drawn first, so every hexagon and every
- * corridor covers it.
- */
-function duct(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
-  const a = at.get(door.a);
-  const b = at.get(door.b);
-  if (!a || !b) return "";
-  return [
-    `<line class="duct is-${door.state}${door.route === true ? " is-route" : ""}"`,
-    ` x1="${round(a.x)}" y1="${round(a.y)}" x2="${round(b.x)}" y2="${round(b.y)}"/>`,
-  ].join("");
+/** The middle of an ordinary corridor, where its own label goes. */
+function straightMid(door: SchematicDoor, at: ReadonlyMap<number, Point>): Point | undefined {
+  const ends = trimmed(door, at);
+  if (!ends) return undefined;
+  const [from, to] = ends;
+  return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
 }
 
+// ------------------------------------------------------------- the long runs
+
 /**
- * Every link's two chips, spread so that two doors out of one compartment do
- * not print on top of each other.
+ * A door whose two compartments do not touch, drawn as the walk it is.
  *
- * They did. A compartment with two long doors put both chips at the same point
- * on its own edge, one hiding the other's second half — legible in neither.
- * Chips are counted per compartment and stepped down by their own height.
+ * The honeycomb cannot embed every graph — a cell has six neighbours and a ship
+ * with loops can want a seventh — so `hexLayout` hands back the doors it could
+ * not make corridors of. They used to be *said* rather than drawn: a chip beside
+ * each of the two compartments naming the other, `d18 → r15`. Two things were
+ * wrong with that and the owner found both. The chip is wider than the gap
+ * between two hexagons, so it always lay across the cells around it and never
+ * went away («появилось и висит»). And a label at each end with nothing between
+ * them is the one thing this game does not have: «d18 → r15 — телепорт! их не
+ * должно быть».
+ *
+ * So the leftovers are drawn too, the long way round: a corridor that leaves
+ * the hexagon at a corner and bends through the **gutter** — the gaps the
+ * lattice leaves between cells, which `HEX_SPACING` opened and which no
+ * compartment can ever stand in. It crosses nothing, it ends on two outlines,
+ * and on the hulls we ship the two cells are two steps apart at the median:
+ * one hexagon to walk around, drawn as one hexagon walked around.
  */
-function stacked(
-  links: readonly SchematicDoor[],
-  at: ReadonlyMap<number, Point>,
-  named: ReadonlyMap<number, string>,
-): string[] {
-  const used = new Map<number, number>();
-  const step = (room: number): number => {
-    const n = used.get(room) ?? 0;
-    used.set(room, n + 1);
-    return n;
+
+/**
+ * A vertex of the gutter: where three cells that all touch each other leave a
+ * triangle of deck between them.
+ *
+ * Two per cell — the triangle east of it and the one north-east — and each one
+ * lies `STEP/√3` from all three centres, which is 61.7 against a hexagon's
+ * reach of 46. So every gutter vertex is outside every hexagon, and the segment
+ * between two of them passes the midpoint of two cells' own gap: thirteen units
+ * clear of both outlines, whichever pair it runs between.
+ */
+interface Gap {
+  q: number;
+  r: number;
+  /** The north-east triangle of the cell rather than the south-east one. */
+  up: boolean;
+}
+
+/** The three cells that leave this gap between them. */
+function gapCells(g: Gap): HexCell[] {
+  return g.up
+    ? [{ q: g.q, r: g.r }, { q: g.q + 1, r: g.r }, { q: g.q + 1, r: g.r - 1 }]
+    : [{ q: g.q, r: g.r }, { q: g.q + 1, r: g.r }, { q: g.q, r: g.r + 1 }];
+}
+
+/** Where it is: the middle of those three centres. */
+function gapAt(g: Gap): Point {
+  const cells = gapCells(g).map(centre);
+  return {
+    x: (cells[0]!.x + cells[1]!.x + cells[2]!.x) / 3,
+    y: (cells[0]!.y + cells[1]!.y + cells[2]!.y) / 3,
   };
-  return links.map((door) => {
-    const a = at.get(door.a);
-    const b = at.get(door.b);
-    if (!a || !b) return "";
-    return [
-      chip(a, b, door, named.get(door.b) ?? "", step(door.a)),
-      chip(b, a, door, named.get(door.a) ?? "", step(door.b)),
-    ].join("");
-  });
+}
+
+/** The three gaps this one can be walked to: the ones sharing two of its cells. */
+function gapsAround(g: Gap): Gap[] {
+  return g.up
+    ? [
+        { q: g.q, r: g.r, up: false },
+        { q: g.q + 1, r: g.r - 1, up: false },
+        { q: g.q, r: g.r - 1, up: false },
+      ]
+    : [
+        { q: g.q, r: g.r, up: true },
+        { q: g.q - 1, r: g.r + 1, up: true },
+        { q: g.q, r: g.r + 1, up: true },
+      ];
+}
+
+/** The six gaps around one cell — its own corners, in the fixed order. */
+function gapsOf(cell: HexCell): Gap[] {
+  return [
+    { q: cell.q, r: cell.r, up: false },
+    { q: cell.q - 1, r: cell.r, up: false },
+    { q: cell.q, r: cell.r - 1, up: false },
+    { q: cell.q, r: cell.r, up: true },
+    { q: cell.q - 1, r: cell.r, up: true },
+    { q: cell.q - 1, r: cell.r + 1, up: true },
+  ];
+}
+
+function gapKey(g: Gap): string {
+  return `${g.q},${g.r},${g.up ? 1 : 0}`;
+}
+
+/** How many gaps a run may walk through before the drawing gives it up. */
+const RUN_STEPS = 48;
+
+/**
+ * The way round, from one cell's outline to the other's.
+ *
+ * Steepest descent through the gutter and not a search, because the gutter has
+ * no obstacles in it: every vertex has three neighbours a hundred and twenty
+ * degrees apart, so one of them always lies within sixty degrees of the target
+ * and the walk shortens on every step until it arrives. It ends on one of the
+ * six gaps around the far cell — those are the six nearest gutter vertices to
+ * its centre, so the descent cannot pass them — and the fixed order of
+ * `gapsAround` breaks what ties are left, which is what keeps one seed drawing
+ * one picture.
+ */
+function longRun(a: HexCell | undefined, b: HexCell | undefined): Point[] | undefined {
+  if (a === undefined || b === undefined) return undefined;
+  const target = centre(b);
+  const goal = new Set(gapsOf(b).map(gapKey));
+  const start = gapsOf(a).sort((p, q) => away(p, target) - away(q, target))[0];
+  if (start === undefined) return undefined;
+  const walk = [start];
+  let here = start;
+  while (!goal.has(gapKey(here)) && walk.length < RUN_STEPS) {
+    let best: Gap | undefined;
+    let shortest = away(here, target);
+    for (const next of gapsAround(here)) {
+      const d = away(next, target);
+      if (d < shortest) {
+        shortest = d;
+        best = next;
+      }
+    }
+    if (best === undefined) return undefined;
+    walk.push(best);
+    here = best;
+  }
+  if (!goal.has(gapKey(here))) return undefined;
+  const through = walk.map(gapAt);
+  return [
+    onOutline(centre(a), through[0]!),
+    ...through,
+    onOutline(centre(b), through[through.length - 1]!),
+  ];
+}
+
+function away(g: Gap, to: Point): number {
+  const p = gapAt(g);
+  return Math.hypot(p.x - to.x, p.y - to.y);
 }
 
 /**
- * A door the lattice could not draw as a corridor, said instead: a chip beside
- * each of its two compartments, naming the door and where it leads.
- *
- * The honesty rule, and the reason this view is allowed to exist at all — a
- * honeycomb cannot embed every graph, so the ones it cannot embed are stated
- * rather than dropped (`hexLayout`, and G49 before it).
+ * Where the run meets a hexagon: on its outline, in the direction of the first
+ * gap it walks through. That direction is always one of the cell's six corners
+ * — a gutter vertex lies on the corner's own ray — so the run is attached to a
+ * point of the hexagon and never to the middle of an edge, which is a corridor's
+ * place and has to stay one.
  */
-/**
- * One end of a link: a chip on `from`, leaning towards `to`, and **naming where
- * the door goes**.
- *
- * The name is the whole of it. A chip reading `d12 ⇄` says a door is here and
- * nothing about where it comes out, which the owner read as the one thing this
- * game does not have: "тут есть телепорты типа d12, так не должно быть". A chip
- * reading `d12 → r7` is a door to a compartment with an id on the same screen —
- * far away, walked to the long way round, and no more a teleport than a
- * corridor is.
- */
-function chip(from: Point, to: Point, door: SchematicDoor, far: string, rank: number): string {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
+function onOutline(from: Point, toward: Point): Point {
+  const dx = toward.x - from.x;
+  const dy = toward.y - from.y;
   const len = Math.hypot(dx, dy) || 1;
-  const x = from.x + (dx / len) * (INRADIUS - 4);
-  const y = from.y + (dy / len) * (R - 6) + rank * (TAG_H + 3);
-  const label = far.length > 0 ? `${door.label} → ${far}` : door.label;
-  const w = label.length * TAG_CHAR_W + 8;
+  return { x: from.x + (dx / len) * R, y: from.y + (dy / len) * R };
+}
+
+/** Halfway along a walk, measured along it and not between its ends. */
+function halfway(run: readonly Point[]): Point | undefined {
+  if (run.length < 2) return run[0];
+  const legs = run.slice(1).map((p, i) => Math.hypot(p.x - run[i]!.x, p.y - run[i]!.y));
+  let left = legs.reduce((sum, leg) => sum + leg, 0) / 2;
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i]!;
+    if (left > leg) {
+      left -= leg;
+      continue;
+    }
+    const t = leg === 0 ? 0 : left / leg;
+    return {
+      x: run[i]!.x + (run[i + 1]!.x - run[i]!.x) * t,
+      y: run[i]!.y + (run[i + 1]!.y - run[i]!.y) * t,
+    };
+  }
+  return run[run.length - 1];
+}
+
+/**
+ * The run itself: the corridor's own three strokes, bent — a rail down each
+ * side, the deck between them, the door's state down the middle — drawn thinner
+ * than a corridor because the gutter is thinner than a corridor is, and because
+ * a service run is not a main passage.
+ *
+ * Drawn with the corridors and under the hexagons, which costs it nothing: it
+ * never passes over a cell, so there is nothing for a cell to cover.
+ */
+function longCorridor(door: SchematicDoor, run: Point[] | undefined): string {
+  if (run === undefined) return "";
+  const points = ` points="${run.map((p) => `${round(p.x)},${round(p.y)}`).join(" ")}"/>`;
+  const route = door.route === true ? " is-route" : "";
   return [
-    `<g class="door link is-${door.state}${door.target === true ? " is-goal" : ""}${trapClass(door)}" data-door="${door.id}">`,
-    `<rect class="door-tag" x="${round(x - w / 2)}" y="${round(y - TAG_H / 2)}"`,
-    ` width="${w}" height="${TAG_H}" rx="2"/>`,
-    text(x, y + 4, label, "door-label", "middle"),
+    `<g class="link" data-door="${door.id}">`,
+    `<polyline class="link-run hall-wall is-${door.state}${route}"`,
+    points,
+    `<polyline class="link-run hall-floor is-${door.state}"`,
+    points,
+    `<polyline class="link-run door-wire is-${door.state}${door.target === true ? " is-goal" : ""}${route}"`,
+    points,
     "</g>",
   ].join("");
 }

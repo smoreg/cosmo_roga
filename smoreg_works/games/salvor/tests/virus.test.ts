@@ -370,7 +370,7 @@ describe("the purge", () => {
       expect(game.playerCommand({ kind: "act", verb: "cure", slot: cell }).ok).toBe(true);
       expect(virus(game).curing?.left).toBe(CURE_TURNS - turn);
     }
-    expect(said(game, "You purge your CELL: 1 turn to go.")).toBe(1);
+    expect(said(game, "Purging CELL. 1 more turn.")).toBe(1);
 
     expect(game.playerCommand({ kind: "act", verb: "cure", slot: cell }).ok).toBe(true);
     expect(virusOf(game.player)).toBeUndefined();

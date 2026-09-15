@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { Rng, type RoomGame } from "@jamrog/engine";
 import { BOTS_ROOMS, seedRange } from "@jamrog/engine/testing";
 import { newGame } from "../src/game.js";
@@ -24,6 +26,16 @@ import { titleLines } from "../src/ui/title.js";
 import { tugBoard } from "../src/ui/tugboard.js";
 import { screenHtml } from "../src/ui/web/index.js";
 import { VIEWS } from "../src/ui/view.js";
+import { Screen } from "../src/ui/react/Screen.js";
+import { TitleScreen } from "../src/ui/react/screens/Title.js";
+import {
+  CodexCardView,
+  EndingCard,
+  HelpCard,
+  HistoryCard,
+  VirusCardView,
+} from "../src/ui/react/screens/Cards.js";
+import { codexOf, endingOf, helpOf, historyOf, virusOf } from "../src/ui/react/model.js";
 
 /**
  * Everything a player can read, in the language they did not ask for
@@ -92,6 +104,7 @@ function sweep(lang: Lang): Swept {
       const settings = { view, sound, seed: TUTORIAL_SEED };
       take(titleLines(settings));
       take([visible(screenHtml(newGame(1), { ...initialState(settings), overlay: "title" }, new Set()))]);
+      take([reactText(render(createElement(TitleScreen, { ...TITLE_HANDLERS, settings })))]);
     }
   }
 
@@ -132,14 +145,20 @@ function frame(game: RoomGame): string[] {
   for (const map of ["graph", "hex"] as const) out.push(visible(screenHtml(game, IDLE, new Set(), undefined, map)));
   // `?tiles=1`: pictures in place of letters, each with a `<title>` a hover shows.
   out.push(visible(screenHtml(game, IDLE, new Set(), undefined, "hex", false, true, true)));
+  // `?view=react`: the fourth drawing of the same turn, rendered to markup and
+  // read the same way, tooltips included (`ui/react/`).
+  out.push(reactText(render(createElement(Screen, { game, sound: true }))));
   out.push(...game.log.lines.map(logText));
   return out;
 }
 
-/** What a run ends on and what a player opens: help, codex, history, the four endings. */
+/**
+ * What a run ends on and what a player opens: help, codex, history, the four
+ * endings, and the card the third system raises (G95 B2).
+ */
 function cards(game: RoomGame): string[] {
   const out: string[] = [];
-  for (const overlay of ["help", "history", "dead", "won", "lost", "sold"] as Overlay[]) {
+  for (const overlay of ["help", "history", "dead", "won", "lost", "sold", "brief", "airlock"] as Overlay[]) {
     out.push(visible(screenHtml(game, { ...IDLE, overlay }, new Set())));
   }
   const seen = CODEX_IDS.map((id) => t(CODEX[id]!.title));
@@ -149,7 +168,73 @@ function cards(game: RoomGame): string[] {
     out.push(e!.title, e!.why ?? "", endHint(overlay as Overlay));
   }
   out.push(runSummary(game), restartHint());
+  out.push(...reactCards(game));
   return out;
+}
+
+/**
+ * The same four cards, as the React screen draws them.
+ *
+ * Rendered straight rather than opened on a mounted screen: each is a function
+ * of what it is handed and nothing else (`ui/react/screens/Cards.tsx`), so a
+ * card built here says exactly what a card the player opened says, and this
+ * file stays in the node environment the other three views are read in.
+ *
+ * The ending is drawn twice because the two endings are one card with one word
+ * different, and the word is the one that could be left in English.
+ */
+function reactCards(game: RoomGame): string[] {
+  const out: string[] = [];
+  const help = helpOf(game);
+  const noop = (): void => undefined;
+  out.push(
+    reactText(
+      render(
+        createElement(HelpCard, { pages: help.pages, headings: help.headings, page: 0, onPage: noop }),
+      ),
+    ),
+  );
+  out.push(reactText(render(createElement(HistoryCard, { entries: historyOf(game), page: 0, onPage: noop }))));
+  for (const won of [true, false]) {
+    out.push(
+      reactText(render(createElement(EndingCard, { ending: { ...endingOf(game), won }, onAgain: noop }))),
+    );
+  }
+  for (const id of CODEX_IDS) {
+    const card = codexOf(game, id);
+    if (card === undefined) continue;
+    out.push(reactText(render(createElement(CodexCardView, { card, page: 0, pages: 1, onPage: noop }))));
+  }
+  /* The fifth card, on the turns there is one: a strain aboard the rack. The
+     bots catch them off scrap, so over fifty voyages this does get drawn — and
+     its own chrome was the last English left in this view. */
+  const strain = virusOf(game);
+  if (strain !== undefined) out.push(reactText(render(createElement(VirusCardView, { card: strain }))));
+  return out;
+}
+
+/** The menu the React title hangs its rows off; none of them is pressed here. */
+const TITLE_HANDLERS = {
+  onVoyage: (): void => undefined,
+  onTraining: (): void => undefined,
+  onHelp: (): void => undefined,
+  onSound: (): void => undefined,
+  onSeed: (): void => undefined,
+};
+
+const render = renderToStaticMarkup;
+
+/**
+ * A React fragment as a player reads it — the words in it, and the words in the
+ * tooltips, which `visible` throws away with the rest of the attributes.
+ *
+ * The tooltip is where the rail keeps its three labels and the dock keeps the
+ * sentence that says what pressing a drone does, so dropping attributes would
+ * have left the one part of this view nobody sees until they hover unswept.
+ */
+function reactText(html: string): string {
+  const tips = [...html.matchAll(/title="([^"]*)"/g)].map((m) => m[1] ?? "");
+  return [visible(html), ...tips].join("\n");
 }
 
 /** The text a browser shows for a fragment: every tag a line break, entities decoded. */
@@ -161,6 +246,9 @@ function visible(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    // React escapes an apostrophe this way, and `father's` is three words of
+    // English the check would otherwise read as `father&#x27;s`.
+    .replace(/&#x27;/g, "'")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&");
 }
@@ -171,11 +259,12 @@ const CYRILLIC = /[Ѐ-ӿ]/;
  * Words Spanish shares with English on purpose: the same word in both
  * (`REACTOR`, `TERMINAL`, `RIVAL`, `SENSOR`, `base`), the shortenings a panel
  * column keeps (`LAB`, `EVAC`, `reac`), and the names nobody translates
- * (`SALVOR`, `ASCII`). Anything else identical to English is a row somebody
- * forgot. (`SENSOR` is English only once the schematic's seven columns have cut
- * `SENSOR BAY` down to it.)
+ * (`SALVOR`, `ASCII`, `REACT` — the fourth view carries the name of the library
+ * that draws it, set like the other name in its row). Anything else identical
+ * to English is a row somebody forgot. (`SENSOR` is English only once the schematic's
+ * seven columns have cut `SENSOR BAY` down to it.)
  */
-const SHARED_WORDS = /\b(REACTOR|TERMINAL|RIVAL|SENSOR|LAB|EVAC|SALVOR|ASCII|base|reac)\b/g;
+const SHARED_WORDS = /\b(REACTOR|TERMINAL|RIVAL|SENSOR|LAB|EVAC|SALVOR|ASCII|REACT|base|reac)\b/g;
 
 /**
  * What is never translated and so may stand alone on a line of its own: the
@@ -236,7 +325,7 @@ describe("nothing left in English on a Spanish or a Russian screen", () => {
         l
           .replace(NAMES, "")
           .replace(/\b[a-z]\d+\b|\bCR\b|\?[a-z]+=\S*|\[i\]/g, "")
-          .replace(/\b(SALVOR|ASCII|EN|ES|RU|web|hex|Tab|Enter|roguetemple's|Fortnight|smoreg)\b/g, ""),
+          .replace(/\b(SALVOR|ASCII|REACT|EN|ES|RU|web|hex|react|Tab|Enter|roguetemple's|Fortnight|smoreg)\b/g, ""),
       ),
     );
     expect(latin).toEqual([]);

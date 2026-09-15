@@ -159,7 +159,7 @@ describe("a keycard", () => {
     expect(noiseHere(game)).toBe(0);
     // Standing still and working a reader: nothing of the rack is in the way.
     expect(exposedKind(game)).toBe("plating");
-    expect(lines(game)).toContain("The keycard reader blinks green. d1 slides open.");
+    expect(lines(game)).toContain("Keycard: d1 opens.");
   });
 
   it("costs no turn without a card, and none on a door that is not locked", () => {
@@ -329,7 +329,7 @@ describe("the ram", () => {
       expect(exposedKind(game), `turn ${turn}`).toBe("thrusters");
       expect(stateOf(game, "d1"), `turn ${turn}`).toBe(turn === 8 ? "broken" : "locked");
     }
-    expect(lines(game)).toContain("You ram d1. 7 more turns of it.");
+    expect(lines(game)).toContain("Ramming d1. 7 more turns.");
     expect(lines(game)).toContain("d1 buckles and gives way.");
   });
 

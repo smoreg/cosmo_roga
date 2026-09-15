@@ -2,6 +2,7 @@ import { t } from "../../i18n.js";
 import type { Key } from "../../content/i18n/keys.js";
 import type { Action } from "../actions.js";
 import { panelColour, slotNumberOf, type PanelLine } from "../panel.js";
+import type { RackReadout } from "../rackcard.js";
 import type { KnownHazard } from "../schematic-input.js";
 import { THEME } from "../theme.js";
 import { esc } from "./schematic-svg.js";
@@ -85,6 +86,7 @@ export function htmlOf(
   cursor: number,
   flash: ReadonlySet<number> = new Set(),
   lit: ReadonlySet<number> = new Set(),
+  reads: ReadonlyMap<number, RackReadout> = new Map(),
 ): string {
   const heading = listHeading();
   // The alert is not the panel's on a page: it stands in the corner of the map
@@ -93,7 +95,7 @@ export function htmlOf(
   const body = blocks.filter((line) => alertLevelOf(line.text) === undefined);
   const groups = ordered(groupsOf(body), heading);
   const out = groups.map(({ kind, lines }) => {
-    const rows = lines.map((line, j) => lineHtml(line, flash, lit, j === 0));
+    const rows = lines.map((line, j) => lineHtml(line, flash, lit, j === 0, reads));
     // The list belongs to the block its heading is in, under that heading —
     // which is where `panelBlocks` puts it for the terminal too.
     if (lines.some((line) => line.text.trim() === heading)) rows.push(actionsHtml(actions, cursor));
@@ -181,21 +183,28 @@ function groupsOf(blocks: readonly PanelLine[]): PanelLine[][] {
 }
 
 /**
- * The ten rungs of the alert, in order: the word the panel shows for each, and
- * what the ship does on it, short. The words are the ladder's own
- * (`systems/alert.ts`, `LADDER`); the second column exists only here.
+ * The ten rungs of the alert, in order: the word the panel shows for each. The
+ * words are the ladder's own (`systems/alert.ts`, `LADDER`).
+ *
+ * A word and nothing else. Each rung used to carry a second column saying what
+ * the ship does on it — «ставит машину», «шлёт ещё одну» — and those twenty
+ * characters made the box three compartments wide, floating over the top-left
+ * of the hull: "тревога закрывается часть корабля… можно без текст пояснений"
+ * (the owner). The sentence is not lost; it is the codex card for the rung
+ * (`content/codex.ts`, `alert-N`), which is a page with room for it and one
+ * keystroke away, rather than a column printed across the deck at all times.
  */
-const RUNGS: ReadonlyArray<readonly [Key, Key]> = [
-  ["alert.noticed", "alert.does.noticed"],
-  ["alert.searching", "alert.does.searching"],
-  ["alert.post", "alert.does.post"],
-  ["alert.pickets", "alert.does.pickets"],
-  ["alert.hunting", "alert.does.hunting"],
-  ["alert.pack", "alert.does.pack"],
-  ["alert.hunter", "alert.does.hunter"],
-  ["alert.lockdown", "alert.does.lockdown"],
-  ["alert.scuttle", "alert.does.scuttle"],
-  ["alert.detonation", "alert.does.detonation"],
+const RUNGS: readonly Key[] = [
+  "alert.noticed",
+  "alert.searching",
+  "alert.post",
+  "alert.pickets",
+  "alert.hunting",
+  "alert.pack",
+  "alert.hunter",
+  "alert.lockdown",
+  "alert.scuttle",
+  "alert.detonation",
 ];
 
 /**
@@ -204,10 +213,14 @@ const RUNGS: ReadonlyArray<readonly [Key, Key]> = [
  *
  * The alert used to be a counter in the panel's stack and, from three up, a
  * framed row lifted over the rack. As a ladder it answers the question the row
- * could not — what comes next, and what it will do — while the row itself
- * heads it word for word, gauge, countdown and all, so the corner and the
- * terminal still say one thing. Passed rungs go dim, the one the ship is on
- * takes the gauge's colour, and the rest wait in between.
+ * could not — what comes next — while the row itself heads it word for word,
+ * gauge, countdown and all, so the corner and the terminal still say one thing.
+ * Passed rungs go dim, the one the ship is on takes the gauge's colour, and the
+ * rest wait in between.
+ *
+ * Ten words in one narrow column, and that is deliberate: the box floats over
+ * the hull, and every character it prints is a character of the ship nobody can
+ * read through it.
  *
  * Every word is handed in or looked up: the row out of `panelBlocks`, the
  * badge out of `codexBadge`, the hazards out of `hazardsAboard`. Empty when all
@@ -226,14 +239,13 @@ export function cornerHtml(
       ? []
       : [
           `<div class="rung-head">${bars(row.text.trim())}</div>`,
-          ...RUNGS.map(([word, does], i) => {
+          ...RUNGS.map((word, i) => {
             const at = i + 1;
             const state = at < level ? "is-past" : at === level ? "is-now" : "is-next";
             return [
               `<div class="rung ${state}">`,
               `<i>${at <= level ? "▮" : "▯"}</i>`,
               `<span class="w">${esc(t(word))}</span>`,
-              `<span class="do">${esc(t(does))}</span>`,
               "</div>",
             ].join("");
           }),
@@ -272,6 +284,7 @@ export function lineHtml(
   flash: ReadonlySet<number> = new Set(),
   lit: ReadonlySet<number> = new Set(),
   first = false,
+  reads: ReadonlyMap<number, RackReadout> = new Map(),
 ): string {
   const slot = slotNumberOf(line.text);
   const hit = slot !== undefined && flash.has(slot);
@@ -284,7 +297,36 @@ export function lineHtml(
   // A line that stands for a key is pressed by clicking it (`mount.ts`).
   const press = line.press === undefined ? "" : ` data-key="${esc(line.press)}"`;
   if (press.length > 0) classes.push("is-press");
-  return `<div class="${classes.join(" ")}"${press} style="color:${colour}">${toned(line, lit)}</div>`;
+  const read = slot === undefined ? undefined : reads.get(slot);
+  if (read !== undefined) classes.push("has-read");
+  return [
+    `<div class="${classes.join(" ")}"${press} style="color:${colour}">`,
+    toned(line, lit),
+    read === undefined ? "" : readHtml(read),
+    "</div>",
+  ].join("");
+}
+
+/**
+ * The readout under the row it belongs to, folded away until the pointer is on
+ * that row.
+ *
+ * In the row rather than over it, and that is the whole of its positioning. A
+ * plate floating beside the rack is what the map does, because the map has room
+ * beside a compartment; the panel is a column twenty-nine characters wide whose
+ * every block is clipped at one corner (`.pb`, `clip-path`), so a plate hung out
+ * of a row would be cut off by the housing it hangs out of. Unfolding in place
+ * costs the rows below a shove downwards and can cover nothing at all — least
+ * of all the row being asked about, which is the one thing a readout may never
+ * hide.
+ */
+function readHtml(read: RackReadout): string {
+  return [
+    `<span class="sr">`,
+    `<span class="sr-h">${esc(read.head)}</span>`,
+    ...read.lines.map((row) => `<span class="sr-l">${esc(row)}</span>`),
+    `</span>`,
+  ].join("");
 }
 
 /**

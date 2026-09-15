@@ -887,16 +887,17 @@ export function choiceHeads(game: RoomGame, verb: string): Array<string | undefi
 
 /**
  * What the tug's jump row is called. While the first stop is open it is the
- * choice of the first hull; after that, where a jump goes — or, with systems
- * raised on the hull the tug is tied to, the sale a jump walks away from, which
- * is the one thing the list below it cannot say (docs/problem-map-2026-09-11.md).
+ * choice of the first hull; after that, where a jump goes.
+ *
+ * It used to name the sale a jump walked away from — `drop 1/3, sale 120 CR` —
+ * because that was the one thing the list below it could not say
+ * (docs/problem-map-2026-09-11.md). There is no such jump any more: a hull
+ * with anything still on it holds the tug until it is dealt with (`jumpHeld`),
+ * and the greyed line says why instead.
  */
 export function jumpRowLabel(game: RoomGame): string {
   if (berthOpen(game)) return t(voyageOf(game).current === 0 ? "action.pick.berth" : "action.pick.berthHere");
-  const here = currentDerelict(game);
-  if (here.sold || here.online.length === 0) return t("action.pick.jump", { price: JUMP_PRICE });
-  const sale = here.deal === "split" ? Math.floor(here.spec.salePrice / 2) : here.spec.salePrice;
-  return t("action.jump.drop", { up: here.online.length, of: OBJECTIVE_COUNT, cr: sale });
+  return t("action.pick.jump", { price: JUMP_PRICE });
 }
 
 /** The stop a jump flies to now, and its hulls, for the board. Nothing past the last. */
@@ -1019,6 +1020,39 @@ function jumpFirst(game: RoomGame): string | undefined {
   const state = voyage.state[voyage.current];
   if (state?.sold !== true || !voyage.derelicts[voyage.current + 1]) return undefined;
   return t("why.jump.first", { price: JUMP_PRICE });
+}
+
+/**
+ * The sentence the jump row says while the hull the tug is tied to is still
+ * out there, or nothing once it is not.
+ *
+ * The owner's rule, word for word: «прыжок до разбора или самоуничтожения
+ * дереликта ЗАБЛОЧЕН». A hull is done with in one of three ways — taken under
+ * tow (`sold`), blown up under the drone at the top of the alert ladder
+ * (`systems/alert.ts`, `detonated`), or taken by the other tug (`comeHome`,
+ * `taken`) — and until one of them the tug stays. Before this the jump was
+ * open the moment the account held 40 CR, and that is what it cost: a hull
+ * with two systems up and a 120 CR sale on it left for a hull the drone had
+ * not seen, and the tug at the father's hull with nothing to fly
+ * (`testing/roombots.ts`, `goBack`, for what a bot had to learn about it).
+ *
+ * A hull nobody has boarded holds the tug too: the way to change one's mind
+ * about a stop is `berth`, open exactly until something has been aboard. And
+ * it never traps a run — with a drone on the rails `undock` is open for as
+ * long as the hull is not sold, and with none the account either buys one or
+ * the run is already over (`endIfBroke`, and the cheapest hull is the price of
+ * a jump).
+ */
+function jumpHeld(game: RoomGame): string | undefined {
+  const state = currentDerelict(game);
+  if (dealtWith(game, state)) return undefined;
+  return t("why.jump.held", { hull: derelictName(state.spec) });
+}
+
+/** Is this hull done with: under tow, blown, or on the other tug's line? */
+function dealtWith(game: RoomGame, state: DerelictState): boolean {
+  if (state.sold || detonated(game, state.shipId)) return true;
+  return state.deal === undefined && state.rivalProgress >= OBJECTIVE_COUNT;
 }
 
 /** Can the account pay this without eating the jump it may still need? */
@@ -1543,11 +1577,12 @@ export function undock(game: RoomGame): Outcome {
 }
 
 /**
- * `act jump`: the tug flies to the next hull of the itinerary, 30 CR.
+ * `act jump`: the tug flies to the next hull of the itinerary, 40 CR.
  *
  * The tug moves, not the drone — the next derelict is generated the first time
- * something undocks into it — and neutralising the hull left behind was never
- * compulsory (design-doc.md, "Типы дереликтов").
+ * something undocks into it. Neutralising the hull left behind used not to be
+ * compulsory (design-doc.md, "Типы дереликтов"); since G92 the hull holds the
+ * tug until it is under tow, blown, or the other tug's (`jumpHeld`).
  */
 export function jump(game: RoomGame, target?: number): Outcome {
   const voyage = voyageOf(game);
@@ -1555,6 +1590,8 @@ export function jump(game: RoomGame, target?: number): Outcome {
 
   const next = voyage.current + 1;
   if (!voyage.derelicts[next]) return FAIL(t("why.jump.last"));
+  const held = jumpHeld(game);
+  if (held !== undefined) return FAIL(held);
   const row = rowOf(game, next, target);
   if (!row) return FAIL(t("why.choice.none"));
   if (!spend(game, JUMP_PRICE)) return FAIL(t(NOT_ENOUGH));
@@ -1609,65 +1646,6 @@ function hullGone(game: RoomGame, state: DerelictState | undefined): void {
   }
   game.log.add(t("log.voyage.blown", { hull }), game.schedule.time, "bad", "log.voyage.blown");
   moveOn(game, next, spec, leadingCharter(voyage, next));
-}
-
-/**
- * Which derelict index the HELM has already warned about, this game.
- *
- * Kept off `player.data` on purpose, unlike everything else this file
- * remembers: `tests/replay.test.ts` fingerprints a run by hashing the whole of
- * `player.data` plus the log, against recordings made before this warning
- * existed, and a field that shows up on every derelict whether or not the
- * warning ever fires would invalidate every one of them for a reason that has
- * nothing to do with what they test. A `WeakMap` keyed by the game itself carries
- * the same "once this stay" guarantee without writing anything a save file, a
- * replay's `stateOf`, or `RECORD=1` would ever see: `replayRooms` builds a fresh
- * `RoomGame` for every replay, so a fresh, empty entry is exactly what a fresh
- * instance should start from — nothing here can leak from one game to another
- * the way a plain module variable would (contrast `voyageOf`'s own comment on
- * that failure mode).
- *
- * The cost is the one a `WeakMap` always is: a drone that saves mid-stay and
- * reloads may hear the line again. Cheaper than the alternative, which is
- * either not having the line or breaking three fixtures nobody touched to get
- * it.
- */
-const jumpWarnedAt = new WeakMap<RoomGame, Set<number>>();
-
-/**
- * The line the jump offer itself cannot make room for: `jump → {hull} (30 CR)`
- * says nothing about the systems raised on the hull it leaves behind, because
- * those live on the panel and not in the numbered list
- * (docs/tasks/G30-balance-v2.md, "Хуже стало одно…" — the bot that surfaced
- * this pressed `jump` the moment it had 30 CR, on a hull worth 120–220 sold
- * whole). Said once, the first turn home there is something to lose, and not
- * again until `dock` starts a fresh stay on the next hull.
- *
- * It used to wait for the drone to be standing at the HELM. There is no HELM to
- * stand at now (G53), and the warning is better for it: the jump is on the same
- * screen as everything else, so the turn the player can first press it is the
- * turn they should first read this.
- */
-function warnBeforeJump(game: RoomGame): void {
-  if (game.status !== "playing" || !isTug(game)) return;
-
-  const voyage = voyageOf(game);
-  if (!voyage.derelicts[voyage.current + 1]) return;
-
-  const state = currentDerelict(game);
-  if (state.sold || state.online.length === 0) return;
-
-  const said = jumpWarnedAt.get(game) ?? new Set<number>();
-  if (said.has(voyage.current)) return;
-  said.add(voyage.current);
-  jumpWarnedAt.set(game, said);
-
-  game.log.add(
-    t("log.jump.warn", { hull: flavourCallsign(state.flavour), up: state.online.length, of: OBJECTIVE_COUNT }),
-    game.schedule.time,
-    "warn",
-    "log.jump.warn",
-  );
 }
 
 // -------------------------------------------------------------- the crossings
@@ -2091,11 +2069,18 @@ export function pickLabel(verb: string): string | undefined {
  * cost 1.81 → 0.41 a voyage (`STATION_ORDER`), and a rack under its ceiling is
  * the whole of what the first sortie is survived on.
  *
- * The callsign gives way to them, and only to them. A tug row is twenty-five
- * columns (`ACTION_WIDTH`) and the longest callsign is thirteen of them, so a
- * line carrying both would be cut somewhere; the hull is named twice more on
- * the same screen — on the banner and on the panel — and what is undone is
- * named nowhere else. With nothing outstanding the row is the callsign again.
+ * It is a note and not the name. The row used to be worded out of this list —
+ * `вылет 4 битых`, which the owner read off the live build and called what it
+ * is: «корявое имя» (G92 B2). What a row of a menu is called may not change
+ * with the state of the rack; the checklist is what the row has to *say*, so it
+ * goes in brackets after the name, where `fitLabel` puts it on its own row
+ * under the line the moment the two together are over twenty-five columns.
+ *
+ * The callsign is off the row for the same reason it was only ever on it
+ * conditionally: a tug row is twenty-five columns (`ACTION_WIDTH`) and the
+ * longest callsign is thirteen of them. The hull is named twice more on the
+ * same screen — on the banner and on the panel — and what is undone is named
+ * nowhere else.
  */
 function castOffLeft(game: RoomGame, rig: Rig | undefined): string[] {
   const out: string[] = [];
@@ -2103,8 +2088,8 @@ function castOffLeft(game: RoomGame, rig: Rig | undefined): string[] {
   if (hurt > 0) out.push(t("undock.left.damaged", { n: hurt }));
   // Only while there is one to sign: a board the drone has cleared is not a
   // thing left undone, and neither is one that never had anything on it.
-  // Alone on the row there is room to say what casting off does to the board;
-  // beside the damage there is not, and the short word stands in for it.
+  // Alone in the brackets there is room to say what casting off does to the
+  // board; beside the damage there is not, and the short word stands in for it.
   if (berthOpen(game)) {
     out.push(t(hurt > 0 ? "undock.left.charter" : "undock.left.board"));
   }
@@ -2146,14 +2131,17 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
   if (verb === "berth" || verb === "jump") {
     const stop = stopOf(game, verb);
     if (stop === undefined) return out;
+    // Held before it is priced: a greyed line has one sentence, and "the hull
+    // is still out there" is the one that says what to do about it.
+    const held = verb === "jump" ? jumpHeld(game) : undefined;
     const paid = verb === "berth" || voyage.credits >= JUMP_PRICE;
     rowsAt(voyage, stop).forEach((row, i) => {
       out.push(
         offer(
           choiceLabel(row),
           { kind: "act", verb, target: CHOICE_TARGET + stop * CHOICE_STRIDE + i },
-          paid,
-          t(NOT_ENOUGH),
+          held === undefined && paid,
+          held ?? t(NOT_ENOUGH),
         ),
       );
     });
@@ -2167,19 +2155,19 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
 
   if (voyage.hull === undefined) return out;
 
-  // The hull by its callsign, not by its class: a voyage draws three of these
-  // and two of them can be freighters, so `cast off → freighter` names a ship
-  // the player cannot tell from the last one
-  // (docs/tasks/G55-playtest-findings.md, 17). The class is on the board where
-  // the schematic goes, and on the panel, and neither of those is the line that
-  // flies you there.
+  // The row says what it does — go aboard the derelict — and the checklist of
+  // what the visit home left undone rides after it in brackets (`castOffLeft`).
+  // The refusal keeps the callsign: a voyage draws three of these and two of
+  // them can be freighters, so a sentence about "the freighter" names a ship the
+  // player cannot tell from the last one
+  // (docs/tasks/G55-playtest-findings.md, 17).
   if (verb === "undock") {
     const state = currentDerelict(game);
     const hull = flavourCallsign(state.flavour);
     const left = castOffLeft(game, rig);
     out.push(
       offer(
-        left.length === 0 ? t("action.undock", { hull }) : t("action.undock.todo", { left: left.join(", ") }),
+        left.length === 0 ? t("action.undock") : t("action.undock.todo", { left: left.join(", ") }),
         { kind: "act", verb: "undock" },
         !state.sold,
         t("why.undock.tow", { hull }),
@@ -2454,7 +2442,6 @@ export const VOYAGE: System<RoomGame> = {
     }
     checkQuiet(game);
     endIfBroke(game);
-    warnBeforeJump(game);
   },
 
   offerActions(game) {

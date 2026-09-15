@@ -27,11 +27,14 @@ import {
   runFigures,
   type RunFigures,
 } from "../render.js";
+import { rackReadouts } from "../rackcard.js";
 import { hazardsAboard, schematicInputOf, tag } from "../schematic-input.js";
 import { THEME } from "../theme.js";
 import { cornerHtml, debugHtml, htmlOf } from "./panel-html.js";
 import { hullArtOf } from "../../content/hulls-art.js";
+import { airlockCard } from "../airlockcard.js";
 import { virusCard } from "../viruscard.js";
+import { lessonBrief } from "../lessoncard.js";
 import { hexSvgOf } from "./hex-svg.js";
 import { esc, svgOf } from "./schematic-svg.js";
 import { WEB_ROOT_CLASS } from "./styles.js";
@@ -111,8 +114,11 @@ export function screenHtml(
     cornerHtml(codexBadge(game), blocks, hazardsAboard(game)),
     // The lesson's window, over the map's bottom-left corner — the top-left is
     // the alert's (G90 E3). Empty in every run that is not a training one.
-    lessonHtml(game, state),
-    `<div class="web-panel">${htmlOf(body, foot, actions, state.cursor, flash, lit.ids)}</div>`,
+    lessonHtml(game),
+    // The rack's rows carry their own readout, folded away until one is
+    // pointed at (`ui/rackcard.ts`): the map answers a hover and the panel did
+    // not — «наведение на модуль должно давать инфо» (the owner).
+    `<div class="web-panel">${htmlOf(body, foot, actions, state.cursor, flash, lit.ids, rackReadouts(game))}</div>`,
     // The strip is the way into the record, as the ticker on his screen is: a
     // click is `PageUp`, which is the key that already opens it.
     `<div class="web-log" data-key="${LOG_KEY}" title="${esc(cardTitles().history)}">${logHtml(game.log.tail(LOG_LINES))}</div>`,
@@ -135,8 +141,17 @@ export function screenHtml(
  * beforehand, which is the one thing a jam voter will not do.
  *
  * The glyph on a button is the key itself where the key is a character, and the
- * name under the pointer is the name the help card gives it — so there is not a
+ * word under it is the name the help card gives that window — so there is not a
  * word here that is not already in the table, in whatever language is on.
+ *
+ * The word is on the button and not only under the pointer because the glyphs
+ * are not self-evident: the owner, playing the graphic view, read two of the
+ * three as the same thing («два значка одного и того же», G95 B4). `i` opens
+ * what is going on aboard right now and `≡` opens the record of what has
+ * already happened, which is a difference no pair of glyphs was going to carry
+ * on its own — and a tooltip is not an answer for a player who does not know
+ * there is a question. The name is also the one already in the tooltip, so this
+ * adds nothing to translate.
  */
 const LOG_KEY = "PageUp";
 
@@ -147,9 +162,13 @@ const RAIL: ReadonlyArray<readonly [string, string, Key]> = [
 ];
 
 function railHtml(): string {
-  const keys = RAIL.map(
-    ([glyph, key, name]) =>
-      `<button type="button" class="rail-key" data-key="${esc(key)}" title="${esc(t(name))}">${esc(glyph)}</button>`,
+  const keys = RAIL.map(([glyph, key, name]) =>
+    [
+      `<button type="button" class="rail-key" data-key="${esc(key)}" title="${esc(t(name))}">`,
+      `<span class="rk-key">${esc(glyph)}</span>`,
+      `<span class="rk-name">${esc(t(name))}</span>`,
+      "</button>",
+    ].join(""),
   );
   return `<div class="web-rail">${keys.join("")}</div>`;
 }
@@ -282,15 +301,13 @@ function logHtml(lines: readonly LogLine[]): string {
  * The lesson's window: not a card in front of the board but a box in a corner
  * of the map, the way the alert's ladder is, and every word of it out of
  * `lessonView`. The head row carries the tick on the frame a step just closed,
- * the step, the key to press and the fold hint; the instruction sits under it
- * and is gone while the window is folded (`Esc`). The box takes no clicks, so
- * the compartment under it is still pressable.
+ * the step and the key to press; the instruction sits under it. The box takes
+ * no clicks, so the compartment under it is still pressable.
  */
-function lessonHtml(game: RoomGame, state: AppState): string {
-  const view = lessonView(game, state);
+function lessonHtml(game: RoomGame): string {
+  const view = lessonView(game);
   if (view === undefined) return "";
   const classes = ["web-lesson"];
-  if (view.folded) classes.push("is-folded");
   if (view.done) classes.push("is-done");
   if (view.over) classes.push("is-over");
   return [
@@ -299,7 +316,6 @@ function lessonHtml(game: RoomGame, state: AppState): string {
     view.done ? `<span class="ok">${esc(t("lesson.done"))}</span>` : "",
     `<span class="n">${esc(view.head)}</span>`,
     view.press.length === 0 ? "" : `<span class="k">${esc(view.press)}</span>`,
-    `<span class="f">${esc(view.fold)}</span>`,
     `</div>`,
     ...view.lines.map((line) => `<div class="li">${esc(line)}</div>`),
     `</div>`,
@@ -312,6 +328,8 @@ function overlayHtml(game: RoomGame, state: AppState): string {
   if (state.overlay === "help") return card("", helpCard(game, state.helpPage));
   if (state.overlay === "codex") return card("", codexCard(game, state));
   if (state.overlay === "virus") return card("bad", virusCardHtml(game));
+  if (state.overlay === "brief") return card("", briefCardHtml());
+  if (state.overlay === "airlock") return card("good", airlockCardHtml(game));
   if (state.overlay === "history") return card("", historyCard(game, state.logPage));
   const ending = endingBanners(game)[state.overlay];
   if (!ending) return "";
@@ -471,6 +489,37 @@ function virusCardHtml(game: RoomGame): string[] {
     `<div class="h">${esc(view.heading)}</div>`,
     ...body,
     `<div class="hint">${esc(view.footer)}</div>`,
+  ];
+}
+
+/** The lesson's opening card, laid out as the `i` card is (G96, 2). */
+function briefCardHtml(): string[] {
+  const view = lessonBrief();
+  const body = view.body.map((line) =>
+    line.length === 0 ? "<div class=\"prose\">&nbsp;</div>" : `<div class="prose">${esc(line)}</div>`,
+  );
+  return [`<div class="h">${esc(view.heading)}</div>`, ...body, `<div class="hint">${esc(view.footer)}</div>`];
+}
+
+/**
+ * The airlock card, in the virus window's layout and the good tone: the hull is
+ * finished, and the money is on the other side of the airlock. The words and
+ * their breaks are `ui/airlockcard.ts`'s.
+ *
+ * Its footer carries the key that closes it, so the owner's mouse can put the
+ * card away without reaching for the keyboard — every other card on this screen
+ * is closed by a key he would have to know.
+ */
+function airlockCardHtml(game: RoomGame): string[] {
+  const view = airlockCard(game);
+  if (view === undefined) return [];
+  const body = view.body.map((line) =>
+    line.length === 0 ? "<div class=\"prose\">&nbsp;</div>" : `<div class="prose">${esc(line)}</div>`,
+  );
+  return [
+    `<div class="h">${esc(view.heading)}</div>`,
+    ...body,
+    `<div class="hint" data-key="Escape">${esc(view.footer)}</div>`,
   ];
 }
 

@@ -100,13 +100,12 @@ export const LOCK_LEVEL = 8;
  * The charges: from `CHARGE_LEVEL` the ship sets a charge in one of its own
  * compartments every `CHARGE_PERIOD` turns, and each one blows `FUSE_TURNS`
  * turns after it is set, counting down on the panel, on the map and in the
- * log. What is in the compartment when it goes is gone; the drone, if it
- * stayed, takes `BLAST_DAMAGE` through the rack.
+ * log. What is in the compartment when it goes is gone, the drone included if
+ * it stayed: a charge is a compartment to be out of, not a blow to take.
  */
 export const CHARGE_LEVEL = 9;
 export const CHARGE_PERIOD = 8;
 export const FUSE_TURNS = 5;
-export const BLAST_DAMAGE = 6;
 
 /**
  * The detonation: `ARM_TURNS` after the charges start the ship arms itself —
@@ -698,7 +697,7 @@ export function fuseIn(game: RoomGame, room: RoomId): number | undefined {
  * The ship sets a charge in one of its own compartments.
  *
  * Never the drone's compartment and never the airlock's; never one holding
- * anything the drone came for — a system not yet raised, a module, a crate,
+ * anything the drone came for — a ship system, raised or not, a module, a crate,
  * a charter's package, a body not yet searched (the keycard on it is the only
  * kind the ship has); and never one whose loss would cut the drone off from
  * the airlock or from any of those, whether it walks bare-handed or with a
@@ -740,7 +739,11 @@ function setCharge(game: RoomGame, st: AlertState): void {
 function worthKeeping(room: Room): boolean {
   const data = room.data as Record<string, unknown>;
   const list = (key: string): unknown[] => (Array.isArray(data[key]) ? (data[key] as unknown[]) : []);
-  if (list("systems").some((s) => (s as { online?: unknown }).online !== true)) return true;
+  // Any ship system at all, raised or not. A charge in the compartment whose
+  // drive the drone has just started reads as the game taking the work back,
+  // and the record the SHIP system keeps of a raised one is not what the
+  // player is looking at — the hexagon with the tick on it is.
+  if (list("systems").length > 0) return true;
   if (list("wrecks").length > 0 || list("crates").length > 0 || list("items").length > 0) return true;
   return list("bodies").some((b) => (b as { searched?: unknown }).searched !== true);
 }
@@ -776,7 +779,18 @@ function cutsOff(ship: Ship, here: RoomId, room: RoomId, armed: ReadonlySet<Room
 }
 
 /**
- * The fuses burn down: every charge says how long it has left, and one at
+ * How near zero a fuse has to be before the log says so again.
+ *
+ * The panel prints every burning charge on a red row, compartment and turns
+ * left, on every frame (`panelLines`) — so a log line each turn of the burn was
+ * the same countdown twice, and the one the player did not ask for. It is worth
+ * a row when it is about to matter: the last two turns, which are the two the
+ * drone can still walk out on (docs/gui-guides.md, §5a, rule 4).
+ */
+const FUSE_LOUD = 2;
+
+/**
+ * The fuses burn down: a charge near zero says how long it has left, and one at
  * zero goes off. True when a blast killed the drone — the death hook has
  * moved the operator home by then, and the caller must not touch the ship it
  * was reading.
@@ -786,7 +800,14 @@ function tickFuses(game: RoomGame, st: AlertState): boolean {
     const left = fuse.at - st.turnsAboard;
     const room = game.ship.roomAt(fuse.room);
     if (left > 0) {
-      game.log.add(t("log.alert.fuse", { room: roomName(room), n: left }), game.schedule.time, "bad", "log.alert.fuse");
+      if (left <= FUSE_LOUD) {
+        game.log.add(
+          t("log.alert.fuse", { room: roomName(room), n: left }),
+          game.schedule.time,
+          "bad",
+          "log.alert.fuse",
+        );
+      }
       continue;
     }
     st.fuses = st.fuses.filter((f) => f !== fuse);
@@ -839,8 +860,13 @@ function blast(game: RoomGame, st: AlertState, room: Room): boolean {
   }
 
   if (!inside) return false;
-  blamedOn("log.hit.blast", () => dealDamage(game, game.player, BLAST_DAMAGE));
-  if (isAlive(game.player)) return false;
+  // Standing in the compartment when the charge goes is the end of the drone.
+  // It used to be `BLAST_DAMAGE` through the rack, which a full rack shrugged
+  // off — a compartment blowing up around the drone and costing it a few
+  // points of PLATING is the ship's worst move reading as a scratch.
+  game.player.hp = 0;
+  game.player.alive = false;
+  game.log.add(t("log.alert.blast.you"), game.schedule.time, "bad", "log.alert.blast.you");
   st.blastDeaths++;
   game.onDeath(game.player);
   return true;

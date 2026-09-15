@@ -69,6 +69,17 @@ export interface TileRowSpec {
   max: number;
   /** Baseline for a mark with no tile, which is drawn as the letter it was. */
   baseline: number;
+  /**
+   * Leave the `<title>` off every tile in the row.
+   *
+   * For a drawing that answers a hover itself. A `<title>` is the browser's own
+   * tooltip, and the browser draws it where it likes, in its own type, after a
+   * delay of its own — over the honeycomb's readout, which says the same thing
+   * in our letters and without the wait: "подсказка браузера тут точно не
+   * нужна, нужна нашего интерфейса" (the owner). The boxes-and-wires view has
+   * no readout, so it keeps its titles and this stays off.
+   */
+  quiet?: boolean;
 }
 
 /**
@@ -93,23 +104,43 @@ export function tileRow(things: readonly SchematicThing[], spec: TileRowSpec): s
 
 function cell(thing: SchematicThing, x: number, spec: TileRowSpec): string {
   const id = tileIdOf(thing.glyph);
-  const hostile = thing.hostile === true;
+  const tone = toneOf(thing);
   if (id === undefined) {
     // Centred in the cell the tile would have taken, because a mark is not
     // always one character wide — the airlock's label is two — and a letter set
     // from the cell's left edge grows into its neighbour.
-    const cls = hostile ? "glyph hostile" : "glyph";
-    return `<text class="${cls}" x="${x + spec.size / 2}" y="${spec.baseline}" text-anchor="middle">${esc(thing.glyph)}</text>`;
+    return `<text class="glyph${tone}" x="${x + spec.size / 2}" y="${spec.baseline}" text-anchor="middle">${esc(thing.glyph)}</text>`;
   }
   // The name rides along as a `<title>`, which is the only word a tile is
   // allowed to carry: it is read out by a screen reader and shown on hover, and
   // it never occupies a pixel — the rule is that text is never laid *under* a
-  // tile (docs/gui-guides.md, 6.7).
+  // tile (docs/gui-guides.md, 6.7). Unless the drawing says the same thing
+  // itself, in which case the browser's tooltip is a second answer over the
+  // top of the first (`quiet`).
   return [
-    `<use class="${hostile ? "tile hostile" : "tile"}" href="#${id}"`,
-    ` x="${x}" y="${spec.y}" width="${spec.size}" height="${spec.size}">`,
-    `<title>${esc(thing.name)}</title></use>`,
+    `<use class="tile${tone}" href="#${id}"`,
+    ` x="${x}" y="${spec.y}" width="${spec.size}" height="${spec.size}"`,
+    spec.quiet === true ? "/>" : `><title>${esc(thing.name)}</title></use>`,
   ].join("");
+}
+
+/**
+ * What a thing is painted as, on top of being a thing: a machine, or one of the
+ * three systems that end the hull.
+ *
+ * Two colours and no third. Red is the machines' and has been since G40; green
+ * is the job's — the owner asked for the objective marks to be told apart from
+ * the crates and the bodies they were drawn in the same ink as, and named the
+ * colour («например зелёным»). Amber was not free: on this screen it means a
+ * decision is required here, and a system is a place, not a prompt.
+ *
+ * A system already up keeps the colour and loses the weight, so the three read
+ * as one job with some of it done rather than as two kinds of thing.
+ */
+function toneOf(thing: SchematicThing): string {
+  if (thing.hostile === true) return ["", "hostile"].join(" ");
+  if (thing.goal === undefined) return "";
+  return ["", "goal", `is-${thing.goal}`].join(" ");
 }
 
 /**
@@ -164,13 +195,19 @@ export function tileIdOf(glyph: string): string | undefined {
  * `kind` and not `name`: the name is translated, and the picture has to be the
  * same one in three languages.
  */
-export function zoneTile(room: SchematicRoom, x: number, y: number, size: number): string {
+export function zoneTile(
+  room: SchematicRoom,
+  x: number,
+  y: number,
+  size: number,
+  quiet = false,
+): string {
   const id = zoneIdOf(room.kind);
   if (id === undefined) return "";
   return [
     `<use class="zone-tile" href="#${id}"`,
-    ` x="${x}" y="${y}" width="${size}" height="${size}">`,
-    `<title>${esc(room.name)}</title></use>`,
+    ` x="${x}" y="${y}" width="${size}" height="${size}"`,
+    quiet ? "/>" : `><title>${esc(room.name)}</title></use>`,
   ].join("");
 }
 

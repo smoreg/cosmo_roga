@@ -19,6 +19,7 @@ import {
   crashed,
   hovered,
   initialState,
+  runBegun,
   syncStatus,
   stoppedAt,
   walkEnded,
@@ -42,6 +43,7 @@ import {
 import { SalvorSfx, linesAfter, sfxFor } from "./sfx.js";
 import { UiSound, blipFor, type Turn } from "./uisound.js";
 import { initialView, isViewKey, nextView, rememberView, type View, type ViewStore } from "./view.js";
+import type { ScreenRoot } from "./react/mount.js";
 import { WebRenderer } from "./web/index.js";
 
 /**
@@ -51,10 +53,17 @@ import { WebRenderer } from "./web/index.js";
  * at all lives in `actions.ts` — all three testable without a DOM, which is the
  * whole point of this file being this short.
  *
- * There are two renderers and one game. `V` swaps which one is drawing; nothing
- * else about the run changes, because neither of them decides anything — the
- * screen is `schematic()`, `panelBlocks()` and `roomActions()` in both, and a
- * renderer is only what puts their output on a page (`ui/view.ts`).
+ * There are three renderers and one game. `V` swaps which one is drawing;
+ * nothing else about the run changes, because none of them decides anything —
+ * the screen is `schematic()`, `panelBlocks()` and `roomActions()` in the two
+ * that were here first, and the React one reads the same engine through
+ * `ui/react/model.ts`. A renderer is only what puts those answers on a page
+ * (`ui/view.ts`).
+ *
+ * The React screen differs in one way worth naming: it owns the keyboard while
+ * it is up, because it is a screen with its own popovers and drawers rather
+ * than a drawing of `AppState`. So this file hands it the game and stands back,
+ * and the run it moves is the same object the other two draw.
  */
 export class App {
   private game: RoomGame;
@@ -64,6 +73,17 @@ export class App {
   /** Both built on first use: a session that never presses `V` pays for one. */
   private ascii: Renderer | undefined;
   private web: WebRenderer | undefined;
+  /**
+   * The React screen, and the element it lives in.
+   *
+   * Loaded on the first switch to it rather than with the page: React and its
+   * DOM half are the largest thing in the build by some way, and three of the
+   * four views do not use a line of it. A session that never presses `V` that
+   * far never fetches it.
+   */
+  private reactHost: HTMLElement | undefined;
+  private screen: ScreenRoot | undefined;
+  private loadingScreen = false;
   private view: View;
   private readonly store: ViewStore | undefined;
   /**
@@ -205,6 +225,12 @@ export class App {
       return;
     }
     this.wakeSound();
+    // The React screen listens for its own keys and reads its own state out of
+    // them — `?` for the controls, `Esc` out of a drawer, a digit for a row of
+    // its own list. Answering the same press here as well would spend the turn
+    // twice on one game. `V` is already gone by this point, which is the one
+    // key that has to keep working on every screen.
+    if (this.view === "react") return;
     // After `wakeSound`, not before: pressing the sound key is itself the user
     // gesture a browser wants, so turning the sound on with it has to be able
     // to start the track it just asked for.
@@ -493,6 +519,8 @@ export class App {
     // exactly the same route.
     const seed = training ? TUTORIAL_SEED : chosen ?? (Math.random() * 0xffffffff) >>> 0;
     this.game = newGame(seed, training);
+    // A training run opens on the card that says what the job is (G96, 2).
+    this.state = runBegun(this.state, this.game);
     // The old run's lines are not in this log, so what was heard is this one's
     // opening: its first sound is the drone's first move, as on the first run.
     this.heard = lastLine(this.game);
@@ -595,13 +623,18 @@ export class App {
    * canvas — so `V` is not a reset.
    */
   private paint(): void {
-    // Two of the three views are the same renderer with a different map half,
-    // so the choice is which drawing it puts there rather than which renderer
+    // Two of the four views are the same renderer with a different map half, so
+    // the choice there is which drawing it puts up rather than which renderer
     // exists (`ui/web/screen.ts`, `MapKind`).
-    const web = this.view !== "ascii";
+    const react = this.view === "react";
+    const web = !react && this.view !== "ascii";
     const lit = litNow(this.pulse, Date.now());
-    this.asciiHost.hidden = web;
-    if (web) {
+    this.asciiHost.hidden = react || web;
+    if (this.reactHost) this.reactHost.hidden = !react;
+    if (react) {
+      this.paintReact();
+      this.paintDebugHost(false);
+    } else if (web) {
       const renderer = this.webRenderer();
       renderer.setMap(this.view === "hex" ? "hex" : "graph");
       renderer.setHull(this.hull);
@@ -613,6 +646,43 @@ export class App {
       this.paintDebugHost(true);
     }
     this.web?.show(web);
+  }
+
+  /**
+   * The React screen, over the run this shell is holding.
+   *
+   * The first call fetches the module and mounts nothing else; the frame that
+   * finishes the fetch draws, and every frame after that is one `render` on a
+   * root that is never thrown away — the same contract the other two renderers
+   * keep, so `V` is not a reset here either.
+   */
+  private paintReact(): void {
+    const host = this.reactMount();
+    if (this.screen !== undefined) {
+      this.screen.draw(this.game, this.sound);
+      return;
+    }
+    if (this.loadingScreen) return;
+    this.loadingScreen = true;
+    void import("./react/mount.js")
+      .then((react) => {
+        this.screen = react.mountScreen(
+          host,
+          (on) => this.guard(() => { if (on !== this.sound) this.toggleSound(); }),
+          () => this.guard(() => { this.newRun(); this.redraw(); }),
+        );
+        // The view may have been walked past while the fetch was in the air.
+        if (this.view === "react") this.screen.draw(this.game, this.sound);
+      })
+      .catch((error) => this.fail(error));
+  }
+
+  private reactMount(): HTMLElement {
+    if (!this.reactHost) {
+      this.reactHost = this.mount.ownerDocument.createElement("div");
+      this.mount.appendChild(this.reactHost);
+    }
+    return this.reactHost;
   }
 
   /**

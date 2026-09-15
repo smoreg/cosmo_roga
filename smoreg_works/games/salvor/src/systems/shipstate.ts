@@ -28,6 +28,22 @@ export interface ShipState {
 }
 
 /**
+ * How many systems of the ship the drone is standing in are up, asked without
+ * writing anything.
+ *
+ * The screen asks this on every key, including on ships that never had a record
+ * of their own — the tug, a hand-drawn fixture — and a question must never be
+ * the thing that creates one (`ui/appstate.ts`, `marksOf`). `shipState` below is
+ * for the systems that are about to write.
+ */
+export function systemsUp(game: RoomGame): number {
+  const raw = game.currentShip.data.ship;
+  if (typeof raw !== "object" || raw === null) return 0;
+  const online = (raw as Partial<ShipState>).online;
+  return Array.isArray(online) ? online.length : 0;
+}
+
+/**
  * The current derelict's state, created on first use.
  *
  * In `StoredShip.data` and not on the drone: a ship half neutralised is the

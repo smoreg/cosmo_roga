@@ -371,8 +371,15 @@ const MAX_CONSECUTIVE_HIDES = 4;
  * And for a job several turns long: past this many turns in a row on one offer,
  * "the job is still running" and "this offer never goes away" look the same
  * from out here, so the bot stops paying for the difference.
+ *
+ * Sixteen, because the longest honest job the shipped game has is fifteen
+ * turns — a ship system raised with nothing in the rack — and a cap under it
+ * is a bot that pays six loud turns for every such job and finishes none of
+ * them: measured at six, wins over 200 seeds 7 → 5 and banked 74.7 → 61.4 CR
+ * a voyage, all of it noise for nothing. A line that never goes away is still
+ * caught, by `idle` — it comes back word for word; a job counts itself down.
  */
-const MAX_JOB_TURNS = 6;
+const MAX_JOB_TURNS = 16;
 
 /**
  * What the drone could do the turn it came aboard: how fast it moves and the

@@ -95,15 +95,17 @@ describe("the start screen answers the five questions", () => {
     }
   });
 
-  it("offers the three languages and the three views on the screen itself", () => {
+  it("offers the three languages and every view on the screen itself", () => {
     const screen = titleScreen({ ...DEFAULT_TITLE, view: "hex" });
     const lang = screen.items.find((i) => i.key === "L")!;
     const view = screen.items.find((i) => i.key === "V")!;
     expect(lang.options?.map((o) => o.text)).toEqual(["EN", "ES", "RU"]);
     expect(view.options).toHaveLength(VIEWS.length);
     expect(view.options?.filter((o) => o.on)).toHaveLength(1);
-    // The honeycomb is on, so the honeycomb is the marked one.
-    expect(view.options?.at(-1)?.on).toBe(true);
+    // The honeycomb is on, so the honeycomb is the marked one — found by its
+    // place in the cycle rather than at the end of the row, which is where it
+    // happened to be while the cycle was three long.
+    expect(view.options?.[VIEWS.indexOf("hex")]?.on).toBe(true);
   });
 
   it("says the jam judges expect ASCII, and opens in it", () => {

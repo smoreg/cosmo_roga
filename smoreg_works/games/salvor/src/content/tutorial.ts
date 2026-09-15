@@ -113,7 +113,7 @@ export const TUTORIAL_CRATE = "spike";
  *
  *   r1 DOCKING      the drone wakes here                            → click r2
  *   r2 CORRIDOR     one door in                                     → o
- *   r3 STORAGE      a parts crate (SPIKE), a body with a keycard    → salvage; search, open d3
+ *   r3 STORAGE      a parts crate (SPIKE), a body with a keycard    → salvage (the virus); purge; s; search, open d3
  *   r4 CARGO        one scout behind the locked door d3, cover      → Tab
  *   r5 HAB          behind the welded door d4                       → cut it: the alert
  *   r6 ENGINEERING  the ENGINE                                      ┐
@@ -126,6 +126,14 @@ export const TUTORIAL_CRATE = "spike";
  * crate had been touched. A lock is the one door a machine cannot walk
  * through, so the fight is met on the step that is about it — which puts the
  * door lesson one step ahead of the fight rather than one behind.
+ *
+ * And it *sleeps* until that step opens (G96, 3). The owner opened the lock
+ * with the torch, the scout heard it and walked in on the door lesson, and
+ * the fight was over before its step came up — so the machine is stood down
+ * the moment the drone comes aboard (`systems/tutorial.ts`, `onLevelEnter`)
+ * and woken by the fight step's own setup: the lock opening is what wakes it,
+ * which is the one order that lets the door lesson finish and gives the fight
+ * a cause the window can name.
  *
  * The spare card in the reactor is a safety net and not a lesson: a player who
  * spends the first card on the lock, against the window's advice, still finds
@@ -247,6 +255,10 @@ export interface LessonFacts {
   readonly explored: number;
   /** The rack holds more modules than it did when the step began. */
   readonly installed: boolean;
+  /** Compartments a sensor pulse has read. */
+  readonly scanned: number;
+  /** The rack carries a scanner that still works. */
+  readonly scanner: boolean;
   /** Machines the drone has scrapped this run. */
   readonly kills: number;
   /** Locked bulkheads still aboard. */
@@ -267,19 +279,57 @@ export interface LessonFacts {
  * A name rather than a function, because doing it takes the systems — the
  * virus lives in `systems/virus.ts`'s record on the drone — and this file
  * cannot import them. `systems/tutorial.ts` owns the table that performs each
- * one. Today there is one: the virus step does not wait for a roll the deck
- * might never make, it puts the strain on the module the crate handed over.
+ * one. Two today: the virus step does not wait for a roll the deck might never
+ * make, it puts the strain on the module the crate handed over; and the fight
+ * step wakes the hull's one machine, which has slept since the drone came
+ * aboard so that no earlier step is interrupted by it (G96, 3).
  */
-export type LessonSetup = "infect";
+export type LessonSetup = "infect" | "wake";
+
+/**
+ * What a step lets the drone do while it is open (G96, 1).
+ *
+ * The owner, after playing the lesson: «обучение блокируй всё, кроме того, что
+ * надо сделать по обучению». So every step names the moves it is about, in a
+ * vocabulary of ten words, and the screen refuses the rest — greyed rows with a
+ * reason, keys that print the same reason and spend no turn. Reading a card,
+ * moving the highlight, opening a list: none of those is a move, so none of
+ * them is ever refused. The words are the lesson's, not the engine's:
+ * `ui/lessongate.ts` is what knows which command is which word, and it is also
+ * what opens the gate again when nothing a step allows can be done — a lesson
+ * that walled the drone in would be worse than one that let it wander.
+ */
+export type LessonMove =
+  /** Through a door: a click, `o`, `m` and a line, `<` on the way to the airlock. */
+  | "walk"
+  /** The salvage line on a crate or a wreck. */
+  | "salvage"
+  /** The purge line, on the module the virus is in. */
+  | "purge"
+  /** `s`: the sensor pulse. */
+  | "scan"
+  /** The search line on a body. */
+  | "search"
+  /** Any way through a locked bulkhead: the cell, the card, the spike, the torch, the ram. */
+  | "open"
+  /** `Tab`, or the attack line: a blow, or the step towards one. */
+  | "attack"
+  /** Any way through a welded bulkhead: the torch or the ram. */
+  | "cut"
+  /** The work line on a system. */
+  | "work"
+  /** `<` at the airlock: out. */
+  | "leave";
 
 export type LessonId =
   | "click"
   | "explore"
   | "modules"
+  | "virus"
+  | "scan"
   | "door"
   | "fight"
   | "alert"
-  | "virus"
   | "systems"
   | "leave";
 
@@ -292,14 +342,16 @@ export interface LessonStep {
   readonly press: Key;
   /** The fact that counts the step done. Asked every turn while the step is current. */
   done(at: LessonFacts): boolean;
+  /** The moves the screen lets through while this step is open; everything else is refused. */
+  readonly allows: readonly LessonMove[];
   /** What the run does the turn this step becomes current, if anything. */
   readonly setup?: LessonSetup;
 }
 
 /**
- * The nine, in the order the corridor puts them in front of the drone
+ * The ten, in the order the corridor puts them in front of the drone
  * (docs/tasks/G90-smoreg-wave.md, E2, with the door and the fight swapped —
- * see `CABINS`). Every one is completed by the fact it names and by nothing
+ * see `CABINS` — and the virus and the scan moved up by G96). Every one is completed by the fact it names and by nothing
  * else: a player who clicks the far end of the ship at step one has done
  * steps one and two, and the window says so a turn apart.
  *
@@ -312,21 +364,79 @@ export interface LessonStep {
  * rungs.
  */
 export const LESSON_STEPS: readonly LessonStep[] = [
-  { id: "click", text: "lesson.click", press: "lesson.click.press", done: (at) => at.aboard && at.moved },
-  { id: "explore", text: "lesson.explore", press: "lesson.explore.press", done: (at) => at.aboard && at.explored >= 3 },
-  { id: "modules", text: "lesson.modules", press: "lesson.modules.press", done: (at) => at.aboard && at.installed },
-  { id: "door", text: "lesson.door", press: "lesson.door.press", done: (at) => at.aboard && at.locked === 0 },
-  { id: "fight", text: "lesson.fight", press: "lesson.fight.press", done: (at) => at.aboard && at.kills >= 1 },
-  { id: "alert", text: "lesson.alert", press: "lesson.alert.press", done: (at) => at.aboard && at.sealed === 0 },
+  { id: "click", text: "lesson.click", press: "lesson.click.press", done: (at) => at.aboard && at.moved, allows: ["walk"] },
+  {
+    id: "explore",
+    text: "lesson.explore",
+    press: "lesson.explore.press",
+    done: (at) => at.aboard && at.explored >= 3,
+    allows: ["walk"],
+  },
+  {
+    id: "modules",
+    text: "lesson.modules",
+    press: "lesson.modules.press",
+    done: (at) => at.aboard && at.installed,
+    allows: ["salvage"],
+  },
+  // Straight after the install, because the install is what causes it (G96,
+  // 4): the setup runs inside the very command that bolted the SPIKE on, so
+  // the log reads `salvaged`, then `the scrap carries something`, and the
+  // rule the step teaches — salvage carries the ship's virus — is the one the
+  // player just watched happen. It used to come after the weld, and the owner
+  // read it as random: «я резал дверь и поймал вирус?»
   {
     id: "virus",
     text: "lesson.virus",
     press: "lesson.virus.press",
     done: (at) => at.aboard && !at.infected,
+    allows: ["purge"],
     setup: "infect",
   },
-  { id: "systems", text: "lesson.systems", press: "lesson.systems.press", done: (at) => at.aboard && at.online >= 3 },
-  { id: "leave", text: "lesson.leave", press: "lesson.leave.press", done: (at) => at.sold },
+  // Before the lock, because that is where a pulse earns its turn (G96, 8):
+  // it reads through the shut bulkhead, so the player sees the machine in
+  // CARGO before opening on it. Done on the first pulse — or on a rack whose
+  // scanner has burned, which is a step the lesson cannot teach and must not
+  // wait for.
+  {
+    id: "scan",
+    text: "lesson.scan",
+    press: "lesson.scan.press",
+    done: (at) => at.aboard && (at.scanned >= 1 || !at.scanner),
+    allows: ["scan"],
+  },
+  {
+    id: "door",
+    text: "lesson.door",
+    press: "lesson.door.press",
+    done: (at) => at.aboard && at.locked === 0,
+    allows: ["search", "open"],
+  },
+  {
+    id: "fight",
+    text: "lesson.fight",
+    press: "lesson.fight.press",
+    done: (at) => at.aboard && at.kills >= 1,
+    allows: ["attack"],
+    setup: "wake",
+  },
+  // The weld is one compartment on from wherever the fight ended, so the walk
+  // to it is part of the step.
+  {
+    id: "alert",
+    text: "lesson.alert",
+    press: "lesson.alert.press",
+    done: (at) => at.aboard && at.sealed === 0,
+    allows: ["walk", "cut"],
+  },
+  {
+    id: "systems",
+    text: "lesson.systems",
+    press: "lesson.systems.press",
+    done: (at) => at.aboard && at.online >= 3,
+    allows: ["walk", "work"],
+  },
+  { id: "leave", text: "lesson.leave", press: "lesson.leave.press", done: (at) => at.sold, allows: ["walk", "leave"] },
 ];
 
 // ------------------------------------------------------------------ the state

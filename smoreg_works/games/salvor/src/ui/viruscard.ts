@@ -94,7 +94,7 @@ function bullet(text: string): string[] {
 }
 
 /** One paragraph broken on spaces, the way the `i` card breaks its own. */
-function wrapped(text: string, width = CODEX_WIDTH): string[] {
+export function wrapped(text: string, width = CODEX_WIDTH): string[] {
   const out: string[] = [];
   let line = "";
   for (const word of text.split(" ")) {

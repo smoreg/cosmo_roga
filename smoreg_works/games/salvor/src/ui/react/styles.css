@@ -1,0 +1,136 @@
+/* The same two families the other views use, out of the repo's own assets/
+   rather than off Google. This arrived as an @import of fonts.googleapis.com,
+   which is a live network fetch — and the build this game ships as is a zip
+   itch.io serves from a subdirectory, so the fetch would be the one thing on
+   the screen that needs the internet. The files are already here and already
+   subsetted, Cyrillic included, which the Google link was not: the React view
+   draws Russian like every other (`ui/web/styles.ts`, the same faces). */
+@font-face{font-family:"Barlow Condensed";font-style:normal;font-weight:600;font-display:swap;
+  src:url('../../../../../assets/fonts/barlow-condensed-600-latin.woff2') format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2122,U+2212}
+@font-face{font-family:"Barlow Condensed";font-style:normal;font-weight:700;font-display:swap;
+  src:url('../../../../../assets/fonts/barlow-condensed-700-latin.woff2') format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2122,U+2212}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;
+  src:url('../../../../../assets/fonts/plex-mono-400-latin.woff2') format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2122,U+2212}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;
+  src:url('../../../../../assets/fonts/plex-mono-400-cyrillic.woff2') format("woff2");
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:600;font-display:swap;
+  src:url('../../../../../assets/fonts/plex-mono-600-latin.woff2') format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2122,U+2212}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:600;font-display:swap;
+  src:url('../../../../../assets/fonts/plex-mono-600-cyrillic.woff2') format("woff2");
+  unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+
+/* SALVOR — near-black and amber, with the derelict kit's geometry, depth and
+   frame-stepped motion. Colour is the shipped game's; everything else is new. */
+
+:root{
+  /* ground */
+  --sv-deep:#060809;
+  --sv-void:#0a0d10;
+  --sv-deck:#10151a;
+  --sv-plate:#1b242c;
+  --sv-plate-lit:#28343e;
+  --sv-plate-hi:#33414d;
+
+  /* rules and light */
+  --sv-line:#1d242a;
+  --sv-rule:#2a3238;
+  --sv-rim:#8fa8b6;
+
+  /* ink */
+  --sv-ink:#dfe9f0;
+  --sv-fg:#b9c4cc;
+  --sv-soft:#8f9aa2;
+  --sv-faint:#5c676e;
+  --sv-dim:#3f4a52;
+
+  /* the one interactive colour */
+  --sv-amber:#e0a458;
+  --sv-amber-hi:#f2c88c;
+  --sv-amber-deep:#7a5427;
+  --sv-amber-wash:#1a140a;
+
+  /* state */
+  --sv-good:#7fc97f;
+  --sv-warn:#d9b56a;
+  --sv-bad:#d96a6a;
+  --sv-burned:#4a3a3a;
+  --sv-red-wash:#1c1113;
+
+  /* the hull, as SALVOR names it */
+  --sv-zone:#6f8a9a;
+  --sv-airlock:#a07a44;
+  --sv-bulkhead:#5a4e42;
+
+  /* geometry — the kit's vocabulary, ported */
+  --sv-notch:16px; /* @kind radius */
+  --sv-notch-sm:9px; /* @kind radius */
+  --sv-hairline:1px; /* @kind spacing */
+  --sv-strike:2px; /* @kind spacing */
+  --sv-hex:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); /* @kind other */
+  --sv-hull:polygon(0 50%,16% 0,84% 0,100% 50%,84% 100%,16% 100%); /* @kind other */
+  --sv-hatch:repeating-linear-gradient(135deg,#0d1216 0 6px,#111820 6px 12px); /* @kind other */
+  --sv-hatch-warm:repeating-linear-gradient(135deg,#14110b 0 6px,#191509 6px 12px); /* @kind other */
+  /* the printed language: scanlines on the body, ink knocked out of the accent */
+  --sv-scan:repeating-linear-gradient(0deg,transparent 0 3px,rgba(223,233,240,.028) 3px 4px); /* @kind other */
+  --sv-knock:#060809;
+  --sv-cut-bl:polygon(0 0,100% 0,100% 100%,9px 100%,0 calc(100% - 9px)); /* @kind other */
+  --sv-cast:0 7px 10px rgba(0,0,0,.62); /* @kind shadow */
+
+  /* type — five roles, hard floor 14px */
+  --sv-font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sv-font-display:'Barlow Condensed',sans-serif;
+  --sv-display:700 34px/1 'Barlow Condensed',sans-serif; /* @kind font */
+  --sv-title:600 24px/1.1 'Barlow Condensed',sans-serif; /* @kind font */
+  --sv-value:600 18px/1.2 'IBM Plex Mono',monospace; /* @kind font */
+  --sv-body:400 14px/1.6 'IBM Plex Mono',monospace; /* @kind font */
+  --sv-stencil:600 14px/1 'IBM Plex Mono',monospace; /* @kind font */
+  --sv-display-track:.07em; /* @kind other */
+  --sv-title-track:.06em; /* @kind other */
+  --sv-stencil-track:.22em; /* @kind other */
+
+  /* the cell. Cogmind holds a strict terminal grid and refuses sub-cell pixel
+     offsets for any reason; ours is looser, but motion and offsets quantise to
+     this so nothing ever lands between cells. */
+  --sv-cell:16px; /* @kind spacing */
+  --sv-cell-map:84px; /* @kind spacing */
+
+  /* motion — nothing interpolates. every duration is a multiple of one frame. */
+  --sv-frame:225ms; /* @kind other */
+  --sv-frame-2:450ms; /* @kind other */
+  --sv-frame-3:675ms; /* @kind other */
+  --sv-step:steps(1,end); /* @kind other */
+}
+
+/* Everything that moves holds a discrete frame. No easing lives in this file
+   on purpose: derelict-fx sequences state, CSS only holds it. */
+@keyframes sv-flick{0%{opacity:1}50%{opacity:.34}}
+/* Hover brackets: the selected row grabs a bar on each side, in held steps. */
+@keyframes sv-bracket{0%{transform:scaleY(.25)}50%{transform:scaleY(.7)}100%{transform:scaleY(1)}}
+/* A hex fills its outline from the waist out to both points — the hexagon's own
+   axis, so the growth follows the shape rather than a box around it. */
+@keyframes sv-hex-grow{0%{clip-path:inset(46% 0 46% 0)}33%{clip-path:inset(30% 0 30% 0)}66%{clip-path:inset(14% 0 14% 0)}100%{clip-path:inset(0 0 0 0)}}
+/* A drawer arrives in held steps like everything else — four frames of travel,
+   never a glide. The exit is the same frames in reverse. */
+@keyframes sv-slide-in{0%{transform:translateX(-100%)}33%{transform:translateX(-62%)}66%{transform:translateX(-28%)}100%{transform:translateX(0)}}
+@keyframes sv-slide-out{0%{transform:translateX(0)}33%{transform:translateX(-28%)}66%{transform:translateX(-62%)}100%{transform:translateX(-100%)}}
+/* A planned step lands one frame after the one before it. */
+@keyframes sv-step-in{0%{opacity:0}100%{opacity:1}}
+/* A housing's border draws out from the middle of each edge — four held frames,
+   never a transition, so it reads as the same machine as the text reveals. */
+@keyframes sv-draw-x{0%{transform:scaleX(.12)}33%{transform:scaleX(.44)}66%{transform:scaleX(.76)}100%{transform:scaleX(1)}}
+@keyframes sv-draw-y{0%{transform:scaleY(.12)}33%{transform:scaleY(.44)}66%{transform:scaleY(.76)}100%{transform:scaleY(1)}}
+@keyframes sv-strobe{0%{opacity:.2}25%{opacity:1}50%{opacity:.5}75%{opacity:1}}
+@keyframes sv-wipe{0%{clip-path:inset(0 100% 0 0)}33%{clip-path:inset(0 66% 0 0)}66%{clip-path:inset(0 33% 0 0)}100%{clip-path:inset(0 0 0 0)}}
+@keyframes sv-rouse{0%{transform:translateY(-100%)}50%{transform:translateY(120%)}100%{transform:translateY(320%)}}
+
+a{color:var(--sv-amber);text-decoration:none;border-bottom:1px solid var(--sv-amber-deep)}
+a:hover{color:var(--sv-amber-hi);border-bottom-color:var(--sv-amber-hi)}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important}
+}

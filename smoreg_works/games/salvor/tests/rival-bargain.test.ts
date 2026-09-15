@@ -317,7 +317,7 @@ describe("split the sale", () => {
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
 
     expect(credits(game) - before).toBe(Math.floor(FREIGHTER.salePrice / 2));
-    expect(logText(game)).toContain("the sale split:");
+    expect(logText(game)).toContain("under tow, sale split:");
   });
 
   it("pays the whole price on a hull nobody struck a deal over", () => {
@@ -445,7 +445,7 @@ describe("a deal is a truce", () => {
       game.playerCommand({ kind: "wait" });
     }
     expect(integrity(game)).toBeLessThan(rack);
-    expect(logText(game)).toContain("The security unit hits your");
+    expect(logText(game)).toContain("The security unit: hit,");
     // And still not one blow from the thing that was paid.
     expect(logText(game)).not.toContain("The rival drone hits");
   });

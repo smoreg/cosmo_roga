@@ -383,7 +383,7 @@ describe("raising a ghost is off the ship's seed, not the run's", () => {
 describe("the hint the tug shows at the first death", () => {
   it("names the row the hint table says it once a run", () => {
     expect(GHOST_HINT_KEY).toBe("hint.death");
-    expect(t(GHOST_HINT_KEY)).toBe("Your drone is still in there. It will not be friendly.");
+    expect(t(GHOST_HINT_KEY)).toBe("Your dead drone is still aboard, and hostile.");
   });
 });
 
@@ -476,8 +476,10 @@ describe("a drone lost on a real voyage", () => {
     die(game);
     expect(game.playerCommand({ kind: "act", verb: "buy", target: 2000 }).ok).toBe(true);
 
-    // To the HELM, on to the next hull, and back out to the airlock.
+    // To the HELM, on to the next hull, and back out to the airlock — with the
+    // first hull stamped as under tow, since one still out there holds the tug.
     for (const door of [1, 2, 3]) expect(game.playerCommand({ kind: "go", door }).ok).toBe(true);
+    currentDerelict(game).sold = true;
     expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(true);
     for (const door of [3, 2, 1]) expect(game.playerCommand({ kind: "go", door }).ok).toBe(true);
     expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);

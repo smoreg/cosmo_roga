@@ -15,7 +15,7 @@ import { isTug } from "../content/tug.js";
 import { roomName, zoneName } from "../content/zones.js";
 import { t, tId } from "../i18n.js";
 import { codexUnread } from "../systems/codex.js";
-import { keysHeld } from "../systems/doors.js";
+import { DOORS, keysHeld } from "../systems/doors.js";
 import { dangerWord } from "../systems/contacts.js";
 import { roomList, type ShipSystem } from "../systems/populate.js";
 import { objectiveHere, systemsAboard } from "../systems/ship.js";
@@ -319,8 +319,20 @@ function headBlocks(
   for (const sys of game.systems) {
     const lines = sys.panelLines?.(game) ?? [];
     if (lines.length === 0) continue;
-    if (lines.length > 1 || paragraph) out.push({ text: "" });
-    paragraph = lines.length > 1;
+    // The keycards ride with the rack instead of opening the stack of
+    // counters: a card is a thing the drone is *carrying*, and a blank row
+    // above it made it one of the numbers about the voyage instead.
+    //
+    // Which costs nothing here and is everything on the page, where a block is
+    // exactly what the blank rows say it is: the counters are drawn under the
+    // action list, so the one number a locked bulkhead is priced in sat off the
+    // bottom of the owner's screen — «нет счётчика карт» (G95 B5), on a screen
+    // that was printing it. With the rack it is the third thing read, beside
+    // the modules the same bulkhead would be opened with.
+    const joins = sys === DOORS && lines.length === 1 && (out[out.length - 1]?.text.trim().length ?? 0) > 0;
+    if (joins) paragraph = true;
+    else if (lines.length > 1 || paragraph) out.push({ text: "" });
+    if (!joins) paragraph = lines.length > 1;
     for (const line of lines) {
       const infected = sick !== undefined && slotNumberOf(line.text) === sick;
       const text = clip(infected ? `${line.text} !` : line.text);

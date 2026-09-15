@@ -127,11 +127,11 @@ describe("the events that used to be silent", () => {
     }
   });
 
-  it("thumps when a mine goes off, and the blast that reaches the drone is a hit", () => {
+  it("thumps when a mine goes off, and a charge under the drone is the explosion itself", () => {
     for (const key of ["log.hazard.mine.hit", "log.hazard.mine.machine"]) {
       expect(sfxForKey(key), key).toBe("emp");
     }
-    expect(sfxForKey("log.hit.blast")).toBe("hit");
+    expect(sfxForKey("log.alert.blast.you")).toBe("explode");
   });
 
   it("ticks for a charge being set and counting down, and booms for what goes up (G90 A5)", () => {

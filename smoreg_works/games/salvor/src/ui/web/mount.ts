@@ -94,6 +94,17 @@ export class WebRenderer {
       this.hovered = room;
       hover(room);
     });
+    // And when it leaves the screen altogether. Moving off a compartment onto
+    // anything else in here arrives above as a `mouseover` on that thing, with
+    // no compartment on it — but a pointer that goes out of the window, or onto
+    // the browser's own furniture, fires nothing at all, and the compartment it
+    // left stayed aimed at with nobody pointing at it: «курсор уведён, а
+    // содержимое груза светится» (the owner).
+    this.root.addEventListener("mouseleave", () => {
+      if (this.hovered === undefined) return;
+      this.hovered = undefined;
+      hover(undefined);
+    });
   }
 
   /** The honeycomb or the graph. One renderer: the panel and the log are shared. */
@@ -118,6 +129,11 @@ export class WebRenderer {
       this.flash = trackFlash(this.flash, rackIntegrity(game.player), game.schedule.time);
     }
     this.sky.hidden = state.overlay !== "title";
+    // The next key takes the aim off the map (`ui/appstate.ts`, `hovered`), and
+    // this is the memory of what was last reported: left standing, it swallows
+    // the report that would put the aim back, because the pointer is still on
+    // the compartment it named and the browser has no new arrival to announce.
+    if (state.hover === undefined) this.hovered = undefined;
     this.frame.innerHTML = screenHtml(
       game,
       state,

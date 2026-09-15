@@ -47,12 +47,20 @@ const FORBIDDEN: Array<{ pattern: RegExp; why: string }> = [
   { pattern: /\brequire\s*\(/, why: "the rules are ES modules only" },
 ];
 
+/**
+ * Every source file under a directory, `.tsx` included.
+ *
+ * The fourth view is written in JSX (`src/ui/react/`), and while this walked
+ * `.ts` alone the whole of it — sixteen files, five thousand lines — sat
+ * outside every scan in this file. It is a screen like the other three and is
+ * held to the same rule: nothing but the tables speaks English.
+ */
 function tsFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) out.push(...tsFiles(path));
-    else if (entry.name.endsWith(".ts")) out.push(path);
+    else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) out.push(path);
   }
   return out;
 }
@@ -202,6 +210,8 @@ const ALLOWED_TEXT = new Set([
   // rather than read by a player (`assets/CREDITS.md`).
   "Barlow Condensed",
   "IBM Plex Mono",
+  // The same two, as the fourth view's credits sheet prints them.
+  "Barlow Condensed · IBM Plex Mono",
   "glyph hostile",
   // A media query, which is CSS the app asks a question with rather than
   // anything the player reads: whether this browser wants less motion, which
@@ -225,7 +235,23 @@ const ALLOWED_TEXT = new Set([
   "LAST FERRY",
   "IRON WIDOW",
   "STILL HARBOUR",
+  // The game the fourth view's look owes a debt to, and the studio that made
+  // it, printed on its credits sheet. Two proper nouns and a middot
+  // (`ui/react/Screen.tsx`).
+  "Cogmind · Grid Sage Games",
 ]);
+
+/**
+ * A CSS value, which is not prose however many words it has in it.
+ *
+ * The other views write their styling into a stylesheet or into markup, and the
+ * markup rule below covers it. The React tree writes it into `style={{…}}`
+ * objects — `"1px solid var(--sv-line)"`, `"color-mix(in oklab, …)"`,
+ * `"sv-hex-grow var(--sv-frame) var(--sv-step) 1 both"` — where there is no tag
+ * to recognise it by. So it is recognised by what CSS is made of: a custom
+ * property, a function call, or a dimension at the front of it.
+ */
+const CSS_VALUE = /var\(--|^[^A-Za-z]*(?:[a-z-]+\(|[\d.]+(?:px|%|em|rem|deg|fr|ms|s|vh|vw)\b)/;
 
 /**
  * One line of a catalogue is allowed to hold English: the `name` a machine is
@@ -240,6 +266,7 @@ function allowedText(line: string, quoted: string, stripped: string): boolean {
   // `helpBody`, `titleLines`, `bannerLine` — so a tag, an attribute or a path
   // is structure, and the words inside it came through `t()` upstream.
   if (/[<>]/.test(stripped) || /\w="/.test(stripped)) return true;
+  if (CSS_VALUE.test(stripped)) return true;
   if (/^[\s\dMLCZ.,+-]+$/.test(stripped)) return true;
   if (/\bthrow new Error\(/.test(line)) return true;
   const escaped = quoted.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -278,5 +305,86 @@ describe("nothing but the tables speaks English", () => {
       }
     }
     expect(found).toEqual([]);
+  });
+
+  /**
+   * And the same rule for the half of a JSX file that is not a string.
+   *
+   * `<span>goal</span>` is a word on the screen and not a literal, so the scan
+   * above walked straight past it — which is how the fourth view came to print
+   * `goal`, `alongside`, `empty`, `not from here` and `right-drag to pan` in
+   * English on a Russian screen with every other check green. A JSX text node
+   * is what stands between a tag or an expression and the next one, so that is
+   * what this looks for: a run of plain words with none of the punctuation code
+   * is made of, between `>` or `}` and `<` or `{`.
+   *
+   * Anything it finds is either a sentence to move into the tables or a glyph,
+   * and a glyph has no letters in it.
+   */
+  it("finds no word printed straight into the markup of the React view", () => {
+    /* Plain words — none of the punctuation code is made of, `$` included so a
+       template literal's tail is not read as one — between a tag or an
+       expression and the next. The `>` may not be the end of an arrow: `() =>
+       void {` is a return type, not a span with a word in it. */
+    const run = "[^<>{}()[\\];,:=`'\"!?|&+*/%\\\\$]*";
+    const text = new RegExp(`(?<!=)>(${run}[A-Za-z]${run})[<{]|\\}(${run}[A-Za-z]${run})[<{]`, "g");
+    /* `} else {`, `} as const` and a declaration after a closing brace are the
+       other shapes that look like a text node and are not one. */
+    const code_ = /^(?:else|catch|finally|try|do|while|as const|(?:export\s+)?(?:interface|type|class|enum|namespace|function|abstract|declare|const|let|var)\b)/;
+    const found: string[] = [];
+    for (const file of tsFiles(join(ROOT, "games", "salvor", "src", "ui", "react"))) {
+      if (!file.endsWith(".tsx")) continue;
+      const source = code(readFileSync(file, "utf8"));
+      for (const m of source.matchAll(text)) {
+        const words = (m[1] ?? m[2] ?? "").replace(/\s+/g, " ").trim();
+        if (words === "" || code_.test(words)) continue;
+        const line = source.slice(0, m.index).split("\n").length;
+        found.push(`${relative(ROOT, file)}:${line}  ${JSON.stringify(words)}`);
+      }
+    }
+    expect(found, `\n${found.join("\n")}\n`).toEqual([]);
+  });
+
+  /**
+   * And the other half of a word left in the markup: a prop that is one word.
+   *
+   * The scan at the top of this block only looks at literals with a space in
+   * them, because most of the single words in a source file are ids, CSS
+   * keywords and object keys, and scanning them all would be all noise. That
+   * makes `stencil="virus"` invisible — a printed label a player reads, no
+   * different from `stencil="paused"` beside it, and it is exactly what was
+   * left behind when the virus window was ported.
+   *
+   * So the props that are known to carry words are named here and held to the
+   * rule whether or not what they carry has a space in it. Everything else — a
+   * colour, a tone, an id, a CSS shorthand — is somebody else's prop.
+   */
+  it("finds no one-word label passed to a React component", () => {
+    const WORDED_PROPS = /\b(title|stencil|label|empty|head|hint|note|word|verb|text|caption|placeholder)=("[^"\n]*")/g;
+    const found: string[] = [];
+    for (const file of tsFiles(join(ROOT, "games", "salvor", "src", "ui", "react"))) {
+      if (!file.endsWith(".tsx")) continue;
+      code(readFileSync(file, "utf8"))
+        .split("\n")
+        .forEach((line, i) => {
+          for (const m of line.matchAll(WORDED_PROPS)) {
+            const value = (m[2] ?? "").slice(1, -1);
+            if (!/[A-Za-z]/.test(value)) continue;
+            found.push(`${relative(ROOT, file)}:${i + 1}  ${m[0]}`);
+          }
+        });
+    }
+    expect(found, `\n${found.join("\n")}\n`).toEqual([]);
+  });
+
+  it("is actually reading the React view, and would notice a word left in it", () => {
+    // The scan above passes on an empty list, and an empty list is what a
+    // regex that stopped matching returns. So: it sees the files, and it still
+    // catches the thing it was written for.
+    const files = tsFiles(join(ROOT, "games", "salvor", "src", "ui", "react"));
+    expect(files.filter((f) => f.endsWith(".tsx")).length).toBeGreaterThan(5);
+
+    const sample = code(['<span style={{ color: "red" }}>', "  nothing in here", "</span>"].join("\n"));
+    expect(/>\s*nothing in here\s*</.test(sample)).toBe(true);
   });
 });

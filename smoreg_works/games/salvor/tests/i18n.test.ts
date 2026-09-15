@@ -689,7 +689,7 @@ describe("the widths hold in all three languages", () => {
 
   /**
    * The lines G88 wrote that no fresh screen draws: a module back from the
-   * hold, the jump with systems raised, the board as the only debt, the
+   * hold, the board as the only debt, the
    * scuttle's countdown, the father's tug, the airlock's missed charters and
    * the jump's dropped ones. Each at its widest, in the column it is drawn in.
    */
@@ -706,8 +706,13 @@ describe("the widths hold in all three languages", () => {
 
       for (const label of [
         tIn(lang, "action.fit", { module: widest, integrity: 13, max: 14 }),
-        tIn(lang, "action.jump.drop", { up: 2, of: 3, cr: 360 }),
-        tIn(lang, "action.undock.todo", { left: tIn(lang, "undock.left.board") }),
+        // The voyage's two rows, at their widest (G92 B1).
+        tIn(lang, "action.pick.jump", { price: 40 }),
+        tIn(lang, "action.pick.berthHere"),
+        // The row that goes aboard fits on its own; what the visit home has
+        // left undone rides after it in brackets, which `fitLabel` moves to the
+        // row below the moment the two together are over budget (G92 B2).
+        tIn(lang, "action.undock"),
       ]) {
         expect(label.length, `${lang}: ${label}`).toBeLessThanOrEqual(ACTION_WIDTH);
       }

@@ -5,7 +5,9 @@ import { cycleLang, t } from "../i18n.js";
 import {
   ACTION_KEYS,
   doorStands,
+  lessonGateOf,
   roomActions,
+  tugOnce,
   tugRowIndex,
   swapStands,
   tugStands,
@@ -21,8 +23,13 @@ import { rigOf } from "../twist/rig.js";
 import { HISTORY_ROWS, historyPages } from "./logline.js";
 import { airlockRoom, dangerAhead, passableForPlayer, safeForPlayer, travelRoute } from "./auto.js";
 import { doorLevel, doorWays, doorWaysStand, doorsStand, sealBehind, soleWay } from "./doorlist.js";
+import { gateRefuses } from "./lessongate.js";
 import { lessonStatus } from "../systems/tutorial.js";
+import { briefing } from "./lessoncard.js";
+import { isTraining } from "../content/tutorial.js";
 import { voyageRecord } from "../systems/voyage.js";
+import { systemsUp } from "../systems/shipstate.js";
+import { OBJECTIVE_COUNT } from "../content/objectives.js";
 import { SCREEN_WIDTH } from "./theme.js";
 import { virusOf } from "../systems/virus.js";
 import {
@@ -68,6 +75,19 @@ export type Overlay =
    * it away, and none of that is a turn.
    */
   | "virus"
+  /**
+   * What the job is, on the first frame of a training run (G96, 2): three
+   * sentences before step one. Any key puts it away, and none of that is a
+   * turn.
+   */
+  | "brief"
+  /**
+   * The third system is up and the hull is worth its price the moment it is
+   * under tow — which it is not until the drone is out through the airlock
+   * (docs/tasks/G95-smoreg-wave.md, B2). Once a run, raised by itself on the
+   * turn the last system starts, and any key puts it away.
+   */
+  | "airlock"
   | "crash";
 
 /** Overlays that mean the run, or this sortie, is over: they outrank the board. */
@@ -298,11 +318,16 @@ export interface AppState {
    */
   readonly hover?: RoomId | undefined;
   /**
-   * The lesson's window folded down to its head (G90 E). `Esc` with nothing
-   * else to close flips it, and nothing about the lesson moves: the step is
-   * the run's (`systems/tutorial.ts`), this is only whether it is being read.
+   * Whether this run has already been shown the airlock card.
+   *
+   * Once a run and not once a hull: the rule it states does not change, and the
+   * second telling is a card in the way of a player who already walked out with
+   * the money once. Here rather than on the drone because it is about what has
+   * been *read*, and because a fresh run is a fresh state (`newRunState`) — a
+   * save reloaded mid-hull never sees it twice either, since the marks are read
+   * afresh off the game and the edge it is raised on is already behind them.
    */
-  readonly lessonFolded: boolean;
+  readonly airlockTold: boolean;
   /** The last transition's output. Recomputed on every step; never history. */
   readonly effect: AppEffect;
 }
@@ -318,9 +343,16 @@ export interface SortieMarks {
    * edge from clean to infected, however the last one was got rid of.
    */
   readonly infected: boolean;
+  /**
+   * Every system of the hull the drone is standing in is up. False at home and
+   * on a hull with work left, so the edge into it is the turn the third system
+   * starts — the moment the whole price of the hull becomes a thing that can
+   * still be lost by staying aboard.
+   */
+  readonly online: boolean;
 }
 
-const NO_MARKS: SortieMarks = { lost: 0, sold: 0, infected: false };
+const NO_MARKS: SortieMarks = { lost: 0, sold: 0, infected: false, online: false };
 
 /**
  * What the run has to show for itself, counted off the voyage record.
@@ -331,25 +363,33 @@ const NO_MARKS: SortieMarks = { lost: 0, sold: 0, infected: false };
  */
 function marksOf(game: RoomGame): SortieMarks {
   const infected = virusOf(game.player) !== undefined;
+  // Aboard only, and off the ship's own record rather than the voyage's copy of
+  // it: the copy is written when the drone leaves (`systems/voyage.ts`,
+  // `returnToTug`), which is a turn too late for a card about not leaving yet.
+  const online = !isTug(game) && systemsUp(game) >= OBJECTIVE_COUNT;
   const voyage = voyageRecord(game);
-  if (!voyage) return { ...NO_MARKS, infected };
+  if (!voyage) return { ...NO_MARKS, infected, online };
   return {
     lost: voyage.state.reduce((n, s) => n + s.deaths.length, 0),
     sold: voyage.state.filter((s) => s.sold).length,
     infected,
+    online,
   };
 }
 
 const IDLE: AppEffect = { kind: "idle" };
 const PASS: AppEffect = { kind: "pass" };
 
-/** Leaving the title: the same state whichever line was pressed. */
+/**
+ * Leaving the title: the same state whichever line was pressed — and, over a
+ * training run that has not moved, the card that says what the job is.
+ */
 function started(state: AppState, game: RoomGame): AppState {
   return {
     ...state,
     seedText: undefined,
     titleHelp: false,
-    overlay: "none",
+    overlay: briefing(game) ? "brief" : "none",
     exploring: false,
     ask: undefined,
     warned: undefined,
@@ -364,7 +404,7 @@ function started(state: AppState, game: RoomGame): AppState {
     codex: [],
     codexAt: 0,
     seen: marksOf(game),
-    lessonFolded: false,
+    airlockTold: false,
     effect: IDLE,
   };
 }
@@ -396,7 +436,7 @@ export function initialState(settings: TitleSettings = DEFAULT_TITLE): AppState 
     codex: [],
     codexAt: 0,
     seen: NO_MARKS,
-    lessonFolded: false,
+    airlockTold: false,
     effect: IDLE,
   };
 }
@@ -707,9 +747,10 @@ function reduce(state: AppState, intent: UiIntent, game: RoomGame): AppState {
   if (state.overlay === "lost" || state.overlay === "sold") {
     return synced({ ...state, overlay: "none", effect: IDLE }, game);
   }
-  // The virus window is the same kind of card: read, and any key — `Esc`, the
-  // `v` that opened it, a click — puts it away without doing anything else.
-  if (state.overlay === "virus") {
+  // The virus window, the lesson's opening card and the airlock card are the
+  // same kind of card: read, and any key — `Esc`, the `v` that opened one, a
+  // click — puts it away without doing anything else.
+  if (state.overlay === "virus" || state.overlay === "brief" || state.overlay === "airlock") {
     return synced({ ...state, overlay: "none", effect: IDLE }, game);
   }
 
@@ -753,12 +794,9 @@ function reduce(state: AppState, intent: UiIntent, game: RoomGame): AppState {
       if (state.overlay === "codex") return synced(codexClosed(state), game);
       if (state.overlay === "history") return synced(closedHistory(state), game);
       if (state.menu !== undefined || state.moves || state.doors) return upALevel(state, game);
-      // With nothing in front of the board and no level to leave, the lesson's
-      // window folds to its head, or opens again — and the lesson itself does
-      // not move a step either way (G90 E3).
-      if (lessonStatus(game) !== undefined) {
-        return synced({ ...state, lessonFolded: !state.lessonFolded, effect: IDLE }, game);
-      }
+      // With nothing in front of the board and no level to leave, the key does
+      // nothing. The lesson's window used to fold on it; the window is the
+      // lesson, and hiding it taught nothing (G96, 5).
       return synced({ ...state, effect: IDLE }, game);
     case "restart":
       return newRunState(state);
@@ -1195,7 +1233,16 @@ function chosen(state: AppState, game: RoomGame, index: number): AppState {
   if (line?.step !== undefined && line.step !== null) {
     return synced({ ...state, menu: line.step, cursor: 0, effect: IDLE }, game);
   }
-  return act(state, game, () => picked(line), true);
+  // A group that asks one question is answered by the line that is about to be
+  // spent, so the list it came out of goes with it and the highlight lands back
+  // on the row that opened it. Only when the line is one the game will take: a
+  // refusal costs no turn, and a level that shuts on a greyed line takes the
+  // reasons with it (`TugRow.once`).
+  const closing = line?.enabled === true && tugOnce(state.menu);
+  const from = closing
+    ? { ...state, menu: undefined, cursor: leftBehind(state, state.at, undefined) }
+    : state;
+  return act(from, game, () => picked(line), true);
 }
 
 /**
@@ -1224,6 +1271,11 @@ function act(state: AppState, game: RoomGame, effect: () => AppEffect, exploring
   const stop = stopped(state, game);
   if (stop) return stop;
   const asked = effect();
+  // The lesson's gate (G96, 1): a key that would spend a turn on something the
+  // open step is not about prints the step's own line instead, and spends
+  // nothing — the same refusal a greyed row gives when it is pressed.
+  const refused = lessonRefusal(game, asked);
+  if (refused !== undefined) return synced({ ...state, effect: { kind: "log", text: refused } }, game);
   // A walk whose first and only door is into a known hazard is answered here,
   // not by a walk: see `hazardAsked`.
   if (asked.kind === "travel") {
@@ -1255,6 +1307,21 @@ function act(state: AppState, game: RoomGame, effect: () => AppEffect, exploring
     }
   }
   return synced({ ...state, exploring: walking, ask, warned: undefined, effect: asked }, game);
+}
+
+/**
+ * What the lesson's gate says to an effect that would move the world: a walk
+ * of either kind is the `walk` move, closing in is `attack`, a command is
+ * whatever `moveOf` calls it. Nothing in an ordinary run, and nothing for an
+ * effect that spends no turn.
+ */
+function lessonRefusal(game: RoomGame, effect: AppEffect): string | undefined {
+  const gate = lessonGateOf(game);
+  if (gate === undefined) return undefined;
+  if (effect.kind === "explore" || effect.kind === "travel") return gateRefuses(gate, game, { kind: "go", door: 0 });
+  if (effect.kind === "fight") return gateRefuses(gate, game, { kind: "attack", target: 0 });
+  if (effect.kind === "command") return gateRefuses(gate, game, effect.cmd);
+  return undefined;
 }
 
 /**
@@ -1430,6 +1497,17 @@ export function syncStatus(state: AppState, game: RoomGame): AppState {
 }
 
 /** The walk ended on its own: a stop, a refused command, or a run that is over. */
+/**
+ * A run the shell has just built, in place of the one the reducer was looking
+ * at: over a training run the card that says what the job is comes up first
+ * (G96, 2). The reducer cannot raise it itself — the row that asks for a
+ * training run is answered by the shell, which builds the game after the
+ * reducer has returned — so the shell asks here once the run exists.
+ */
+export function runBegun(state: AppState, game: RoomGame): AppState {
+  return briefing(game) && state.overlay === "none" ? { ...state, overlay: "brief" } : state;
+}
+
 export function walkEnded(state: AppState): AppState {
   return { ...state, exploring: false, effect: IDLE };
 }
@@ -1612,7 +1690,7 @@ function newRunState(state: AppState): AppState {
     codex: [],
     codexAt: 0,
     seen: NO_MARKS,
-    lessonFolded: false,
+    airlockTold: false,
     effect: { kind: "newRun" },
   };
 }
@@ -1648,6 +1726,18 @@ function synced(state: AppState, game: RoomGame): AppState {
   // The virus window only ever lands on a clear board: a card already in front
   // of it is what the player is reading, and the infection is on the panel.
   if (raised === "virus") return state.overlay === "none" ? ending(state, raised) : state;
+  // The same rule for the airlock card, with one more: it is shown once a run,
+  // and the flag is set when it is *shown* rather than when it is earned — a
+  // card that never reached the screen has told nobody anything.
+  if (raised === "airlock") {
+    if (state.airlockTold || state.overlay !== "none") return state;
+    // Silent for a training run, and ticked off with the silence: the lesson's
+    // last two steps are this card in other words, in a window that is already
+    // on the screen, and the rule against saying one thing twice is the one
+    // `content/hints.ts` keeps for `objective` and `payout` (`LESSON_SAYS`).
+    if (isTraining(game.player)) return { ...state, airlockTold: true };
+    return { ...ending(state, raised), airlockTold: true };
+  }
   if (raised !== undefined) return ending(state, raised);
   // A sortie's own ending stands until a key puts it away (`appReducer`).
   if (ENDINGS.has(state.overlay) && state.overlay !== "dead" && state.overlay !== "won") return state;
@@ -1666,6 +1756,9 @@ function raisedBy(was: SortieMarks, now: SortieMarks): Overlay | undefined {
   // Last, so a sortie's ending outranks it: the drone that caught something on
   // the turn it was lost is not the news.
   if (now.infected && !was.infected) return "virus";
+  // And after that: a hull finished by a drone that then died on the way out is
+  // a loss, and the card about the way out would be reading it the news.
+  if (now.online && !was.online) return "airlock";
   return undefined;
 }
 
@@ -1673,7 +1766,7 @@ function raisedBy(was: SortieMarks, now: SortieMarks): Overlay | undefined {
 
 /**
  * The lesson's window, as either renderer draws it: the head, what to press,
- * the fold hint, and the instruction under them.
+ * and the instruction under them.
  *
  * Everything on it is decided here and worded in `content/i18n`; the page puts
  * it in a card over a corner of the map and the terminal puts it on the rows
@@ -1687,32 +1780,24 @@ export interface LessonView {
   readonly head: string;
   /** The key or the line to press; empty once the lesson is over. */
   readonly press: string;
-  /** `esc hides`: how the window folds. */
-  readonly fold: string;
-  /** The instruction, or the closing line. Empty while folded. */
+  /** The instruction, or the closing line. */
   readonly lines: readonly string[];
   readonly done: boolean;
   readonly over: boolean;
-  readonly folded: boolean;
 }
 
-export function lessonView(game: RoomGame, state: AppState): LessonView | undefined {
+export function lessonView(game: RoomGame): LessonView | undefined {
   const status = lessonStatus(game);
   if (status === undefined) return undefined;
-  const folded = state.lessonFolded;
-  const fold = t("lesson.head.fold");
   if (status.over || status.text === undefined || status.press === undefined) {
-    const lines = folded ? [] : [t("lesson.over")];
-    return { head: t("lesson.over.head"), press: "", fold, lines, done: status.done, over: true, folded };
+    return { head: t("lesson.over.head"), press: "", lines: [t("lesson.over")], done: status.done, over: true };
   }
   return {
     head: t("lesson.head", { n: status.step + 1, of: status.of }),
     press: t(status.press),
-    fold,
-    lines: folded ? [] : [t(status.text)],
+    lines: [t(status.text)],
     done: status.done,
     over: false,
-    folded,
   };
 }
 
@@ -1724,13 +1809,13 @@ export const LESSON_ROWS = 3;
 
 /**
  * The window as rows for the terminal: the head line — the tick for a step
- * just done, the step, the key, the fold hint — and the instruction wrapped to
- * the log's width under it. Empty in a run that has no lesson.
+ * just done, the step, the key — and the instruction wrapped to the log's
+ * width under it. Empty in a run that has no lesson.
  */
-export function lessonRows(game: RoomGame, state: AppState): string[] {
-  const view = lessonView(game, state);
+export function lessonRows(game: RoomGame): string[] {
+  const view = lessonView(game);
   if (view === undefined) return [];
-  const head = [view.done ? t("lesson.done") : "", view.head, view.press, view.fold]
+  const head = [view.done ? t("lesson.done") : "", view.head, view.press]
     .filter((part) => part.length > 0)
     .join(HEAD_SEP);
   return [head, ...view.lines.flatMap((line) => wrapTo(line, LESSON_WIDTH))].slice(0, LESSON_ROWS);

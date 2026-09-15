@@ -102,7 +102,8 @@ function polygonsOf(d: string): Polygon[] {
 /** The hull layer of a picture, cut out of the document. */
 function layerOf(svg: string): string {
   const start = svg.indexOf('<g class="hull-art');
-  const end = svg.indexOf('<line class="duct') >= 0 ? svg.indexOf('<line class="duct') : svg.indexOf('<line class="hall-wall');
+  const marks = ['<g class="link"', '<line class="hall-wall'].map((s) => svg.indexOf(s)).filter((i) => i >= 0);
+  const end = marks.length > 0 ? Math.min(...marks) : -1;
   return svg.slice(start, end < 0 ? svg.indexOf('<g class="room ') : end);
 }
 
@@ -501,7 +502,7 @@ describe("the hull stays under the map", () => {
       // The layer closes with its wash and the map begins: no amber mark can
       // be under a plate, because every plate was drawn before every mark.
       const map = Math.min(
-        ...['<line class="duct', '<line class="hall-wall', '<g class="room ', '<g class="door']
+        ...['<g class="link"', '<line class="hall-wall', '<g class="room ', '<g class="door']
           .map((s) => svg.indexOf(s))
           .filter((i) => i >= 0),
       );

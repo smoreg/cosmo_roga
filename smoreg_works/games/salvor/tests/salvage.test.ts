@@ -98,7 +98,7 @@ describe("a dead machine leaves its module in the compartment", () => {
     expect(wreck.glyph).toBe("%");
     expect(wreck.id).toBeGreaterThan(0);
     expect(game.log.tail(20).map((m) => m.text)).toContain(
-      "The maintenance bot collapses into scrap: PLATING.",
+      "Maintenance bot dies. Scrap: PLATING.",
     );
   });
 
@@ -139,7 +139,7 @@ describe("taking a wreck apart", () => {
     expect(rig(game).slots[5]).toEqual({ kind: "welder", integrity: 2 });
     expect(wrecksIn(game, room(game, "r1"))).toHaveLength(0);
     expect(game.log.tail(20).map((m) => m.text)).toContain(
-      `You pull a WELDER (2/${MODULES.welder.integrity}) from the wreck.`,
+      `WELDER 2/${MODULES.welder.integrity} off the wreck.`,
     );
   });
 
@@ -218,7 +218,7 @@ describe("grafting: scrap on a module the rack already carries", () => {
     expect(capOf(slot)).toBe(base + 1);
     expect(slot.integrity).toBe(base - 1);
     expect(game.log.tail(5).map((m) => m.text)).toContain(
-      `You graft the CUTTER on. It is better than new (${base - 1}/${base + 1}).`,
+      `Grafted: CUTTER ${base - 1}/${base + 1}.`,
     );
   });
 
@@ -240,7 +240,7 @@ describe("grafting: scrap on a module the rack already carries", () => {
     expect(capOf(rig(game).slots[cutter]!)).toBe(base + MAX_GRAFT);
     expect(rig(game).slots[cutter]!.integrity).toBe(base + 1);
     expect(game.log.tail(5).map((m) => m.text)).toContain(
-      `You work the scrap into your CUTTER (${base + 1}/${base + MAX_GRAFT}).`,
+      `Scrap into CUTTER: ${base + 1}/${base + MAX_GRAFT}.`,
     );
   });
 

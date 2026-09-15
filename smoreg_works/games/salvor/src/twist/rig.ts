@@ -1330,6 +1330,33 @@ function weld(game: RoomGame, rig: Rig, self: number): Outcome {
 
 // ---------------------------------------------------------------- the twist
 
+/**
+ * The line that said the machine died, taken back before the scrap line says it
+ * better.
+ *
+ * A kill wrote three rows — `You hit the scout for 6 (0/3).`, `The scout
+ * dies.`, `The scout collapses into scrap: SCANNER.` — and the middle one is
+ * the last two said twice by two files (docs/gui-guides.md, §5a, rule 5). The
+ * scrap line already names the machine, says it came apart and adds the one
+ * thing neither of the others has, so it is the line that stays; the death is
+ * folded into it.
+ *
+ * Taken back rather than never written because the death is the engine's to
+ * announce and the salvage is the game's: `packages/` may not know that this
+ * game turns a wreck into a module, and `rooms/actions.ts` writes its line and
+ * then calls the hook. The twist runs first of the systems, so the line it is
+ * looking at is the last one in the log and is still on this turn — anything
+ * else is a death nobody has narrated yet (a compartment blown up, a hull
+ * scuttled) and nothing is dropped.
+ */
+function dropDeathLine(game: RoomGame): void {
+  const lines = game.log.lines;
+  const last = lines[lines.length - 1];
+  if (last === undefined || last.turn !== game.schedule.time) return;
+  if (last.key !== "engine.dies" && last.key !== "log.machine.dies") return;
+  lines.pop();
+}
+
 export const RIG: Twist<RoomGame> = {
   name: "rig",
 
@@ -1345,8 +1372,9 @@ export const RIG: Twist<RoomGame> = {
     const kind = machineByName(victim.name)?.salvage;
     if (!kind) return;
     addWreck(game, victim.room, kind, game.rng.int(SCRAP_INTEGRITY[0], SCRAP_INTEGRITY[1]));
+    dropDeathLine(game);
     game.log.add(
-      t("log.scrap.drop", { machine: machineName(victim.name), module: moduleName(kind) }),
+      t("log.scrap.drop", { machine: capitalize(machineName(victim.name)), module: moduleName(kind) }),
       game.schedule.time,
       "plain",
       "log.scrap.drop",
