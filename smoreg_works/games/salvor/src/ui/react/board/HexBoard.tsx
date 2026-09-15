@@ -25,12 +25,23 @@ import * as FX from "../../fx/derelict-fx.js";
  * the engine's business and a second opinion here is a second implementation.
  */
 
-export type Knows = "undetected" | "detected" | "monitored" | "current";
+export type Knows = "undetected" | "detected" | "monitored" | "current" | "wrecked";
 
 const STATE: Record<
   Knows,
   { line: string; fill: string; band: string | null; shows: boolean; strong?: boolean }
 > = {
+  /**
+   * Hull, and nowhere.
+   *
+   * Not a thing the drone does not know about — a thing there is nothing to
+   * know about. A compartment the ship no longer has, drawn so the hull comes
+   * out symmetric about its keel without the graph being touched (`hull.ts`).
+   * It takes no pointer, offers no verb and never holds anything, so it cannot
+   * be mistaken for somewhere to go: it is the darkest thing on the board and
+   * the only one with no outline at all.
+   */
+  wrecked: { line: "transparent", fill: "var(--sv-void)", band: null, shows: false },
   undetected: { line: "var(--sv-rule)", fill: "var(--sv-knock)", band: null, shows: false },
   detected: {
     line: "var(--sv-bulkhead)",
@@ -141,6 +152,9 @@ export interface BoardDoor {
  * has not revealed it — it was never hidden.
  */
 const RANK: Record<Knows, number> = {
+  /* Wreckage is not a rung of the ladder: there is nothing to learn about it,
+     so it can never be revealed and never triggers the reveal. */
+  wrecked: -1,
   undetected: 0,
   detected: 1,
   monitored: 2,
@@ -526,13 +540,15 @@ function HexTile({
       }}
     >
       {/* The shaped hit area. Everything visible is painted by siblings; this
-          exists only so the hexagon — not its bounding box — takes the pointer. */}
+          exists only so the hexagon — not its bounding box — takes the pointer.
+          Wreckage has none: it is hull, not anywhere, and a cell that lit under
+          the pointer would be offering something it does not have. */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           clipPath: HEX,
-          pointerEvents: "auto",
+          pointerEvents: room.knows === "wrecked" ? "none" : "auto",
           cursor: "pointer",
           zIndex: 5,
         }}

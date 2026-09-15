@@ -608,8 +608,8 @@ describe("a compartment that stops being a rumour says so", () => {
     const after = boardOf(game);
     const gained = after.rooms.filter((r) => {
       const was = before.rooms.find((b) => b.id === r.id);
-      const rank = { undetected: 0, detected: 1, monitored: 2, current: 2 };
-      return was !== undefined && rank[r.knows] > rank[was.knows];
+      const rank: Record<string, number> = { wrecked: -1, undetected: 0, detected: 1, monitored: 2, current: 2 };
+      return was !== undefined && (rank[r.knows] ?? 0) > (rank[was.knows] ?? 0);
     });
     /* Whatever the walk turned up, the board's own reading of it is what the
        animation keys off — so the two agree by construction, and this pins

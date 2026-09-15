@@ -20,6 +20,7 @@ import { codexFor } from "../../content/codex.js";
 import { helpHeadings, helpPages } from "../input.js";
 import { t } from "../../i18n.js";
 import type { BoardDoor, BoardRoom, BoardThing, Knows, Route } from "./board/HexBoard.js";
+import { keelOf, wreckage } from "./hull.js";
 import type { RackSlot } from "./meters/Rack.js";
 import type { LogEntry } from "./action/Log.js";
 
@@ -232,6 +233,35 @@ export function boardOf(game: RoomGame): BoardModel {
    * compartment's list instead — the menu is the only place a door's verbs are
    * offered now that there is no numbered list beside the map.
    */
+  /**
+   * And the hull the ship no longer has.
+   *
+   * `hexLayout` lays out a graph, and a graph grown along its spanning tree
+   * comes out lopsided — which is right for a diagram and wrong for a ship,
+   * because the first fact anyone knows about a ship is that it is the same on
+   * both sides of its keel. So the cells with no opposite number get one, and
+   * it is wreckage: hull that is still part of the vessel and no longer part of
+   * anywhere you can go.
+   *
+   * Negative ids, because these are not rooms and must never be mistaken for
+   * one by anything that indexes by id. Nothing is told to the engine and
+   * nothing can be walked into; a run replays identically with the wreckage
+   * drawn or not.
+   */
+  const keel = keelOf(cells.values());
+  for (const [i, cell] of wreckage(cells.values(), keel).entries()) {
+    rooms.push({
+      id: -1 - i,
+      label: "",
+      name: "",
+      knows: "wrecked",
+      q: cell.q,
+      r: cell.r,
+      things: [],
+      props: [],
+    });
+  }
+
   const placed = new Set(rooms.map((r) => r.id));
   const doors: BoardDoor[] = ship.doors
     .filter((d) => d.a !== d.b && placed.has(d.a) && placed.has(d.b))
