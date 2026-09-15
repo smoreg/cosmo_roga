@@ -2,14 +2,20 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { RoomGame, type Twist } from "@jamrog/engine";
+import { RoomGame, spawnMonsterIn, type Twist } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { undock } from "../src/systems/voyage.js";
 import { Screen } from "../src/ui/react/Screen.js";
 import { alertModelOf, boardOf, hullMovedDoor } from "../src/ui/react/model.js";
 import { raiseAlert } from "../src/systems/alert.js";
+import { isStop, makeExplorer, makeTraveller } from "../src/ui/auto.js";
+import { MONSTERS } from "../src/content/monsters.js";
+
+/** The scout, by the id the bestiary files it under. */
+const SCOUT = MONSTERS.find((m) => m.id === "scout")!;
 import * as FX from "../src/ui/fx/derelict-fx.js";
+import { DECK_INK } from "../src/ui/react/board/HexBoard.js";
 import { sfx, soundFor, swingOf } from "../src/ui/react/sfx.js";
 import { DOORS } from "../src/systems/doors.js";
 import { RIG, findSlot, pulseWait, rigOf, PULSE_COOLDOWN } from "../src/twist/rig.js";
@@ -411,5 +417,92 @@ describe("the sound never breaks the press it decorates", () => {
     /* Almost everything is silent, which is the point of having seven. */
     expect(soundFor("log.credit", game)).toBeUndefined();
     expect(soundFor(undefined, game)).toBeUndefined();
+  });
+});
+
+describe("walking away from something standing next to you", () => {
+  const SHIP = `
+    TUG -a1- r1
+    r1 -d1- r2 -d2- r3
+    r1: docking
+    r2: corridor
+    r3: armory
+  `;
+
+  function aboard(): RoomGame {
+    return new RoomGame({
+      ...GAME_CONFIG,
+      seed: 7,
+      systems: [RIG, DOORS],
+      content: { ...SALVOR, monsterChance: () => 0 },
+      firstShip: () => shipFromText(SHIP).ship,
+      firstShipId: "1",
+    });
+  }
+
+  /**
+   * The bug: the stop list was asked before a single step was taken, and it
+   * answered "there is a machine in sight" about the machine in the drone's
+   * own compartment. So naming a destination moved the drone not at all — and
+   * a drone sharing a compartment with a scout could not walk out of it, which
+   * is the one moment you most want to.
+   */
+  it("lets travel take the first step past a machine in the same compartment", () => {
+    const game = aboard();
+    const scout = spawnMonsterIn(SCOUT, game.roomOf(game.player).id);
+    game.schedule.admit(scout);
+    game.entities.push(scout);
+    game.refreshSight();
+
+    const step = makeTraveller(game.ship.room("r3").id).step(game);
+    expect(isStop(step), "travel refused to leave the compartment").toBe(false);
+  });
+
+  it("still hands the ship back for one a compartment away", () => {
+    const game = aboard();
+    const scout = spawnMonsterIn(SCOUT, game.ship.room("r2").id);
+    game.schedule.admit(scout);
+    game.entities.push(scout);
+    game.refreshSight();
+
+    expect(isStop(makeTraveller(game.ship.room("r3").id).step(game))).toBe(true);
+  });
+
+  it("does not give auto-explore the same exemption", () => {
+    /* Explore means "keep going while nothing needs me", and a machine an
+       arm's length away needs you. Measured, not argued: without the stop the
+       careful bot walks past the fight and dies of it. */
+    const game = aboard();
+    const scout = spawnMonsterIn(SCOUT, game.roomOf(game.player).id);
+    game.schedule.admit(scout);
+    game.entities.push(scout);
+    game.refreshSight();
+
+    expect(isStop(makeExplorer().step(game))).toBe(true);
+  });
+});
+
+describe("the plating is drawn where it can be seen", () => {
+  /**
+   * The bug this pins: the ink was a third and a fifth, and the art is thin
+   * light line work on mostly-transparent ground — so a compartment nobody had
+   * been in drew its floor at about six per cent of a pale line over the
+   * darkest colour in the palette, which is nothing at all. Three screenshots
+   * of "I don't see the tiles" were this number, not the assets, not the
+   * fetch, and not the paint order — all three of which had already been fixed
+   * and tested.
+   */
+  it("keeps every state above the floor where a pale line stops reading", () => {
+    const ink = DECK_INK as Record<string, number>;
+    for (const state of ["current", "monitored", "detected", "undetected"]) {
+      expect(ink[state], `${state} is too faint to read`).toBeGreaterThanOrEqual(0.35);
+    }
+    /* And the order still says what has been established: the floor underfoot
+       is the one the drone has actually stood on. */
+    expect(ink.current).toBeGreaterThan(ink.monitored!);
+    expect(ink.monitored).toBeGreaterThan(ink.detected!);
+    expect(ink.detected).toBeGreaterThan(ink.undetected!);
+    /* Hull is not a floor. */
+    expect(ink.wrecked).toBe(0);
   });
 });

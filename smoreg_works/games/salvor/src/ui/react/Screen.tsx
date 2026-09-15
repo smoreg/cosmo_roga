@@ -7,7 +7,7 @@ import { Panel, Rail } from "./chrome/Panel.js";
 import { AlertDial, CoreRack, SegmentMeter } from "./meters/Rack.js";
 import { LogStrip } from "./action/Log.js";
 import * as FX from "../fx/derelict-fx.js";
-import { motionNow } from "./settings.js";
+import { FRAME_MS, motionNow } from "./settings.js";
 import { sfx, soundFor } from "./sfx.js";
 import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf, workingOf, alertModelOf, hullMovedDoor } from "./model.js";
 import type { Offer } from "./model.js";
@@ -333,37 +333,70 @@ export function Screen({
   const log = useMemo(() => logOf(game), [game, turn]);
   const here = board.rooms.find((r) => r.id === board.drone);
 
-  /** Walk it. The board has already played the hops; this spends the turns. */
   /**
-   * Walk it, the engine's way.
+   * Walk it, one compartment at a time, at the speed of the animation.
    *
-   * This used to be a loop over the path, spending a `go` per step until it ran
-   * out. That is not a walk, it is a teleport with extra turns: the drone went
-   * through a compartment with a machine standing in it, through a hazard it
-   * had been told about, and through a blow that landed on the way, and only
-   * stopped when the list did.
+   * It used to spend the whole route inside one frame: the loop ran until the
+   * traveller said stop and the screen was told once, at the end. Every rule
+   * was obeyed and none of it could be watched — five compartments of walking,
+   * five turns of machines moving and whatever happened on the way, all
+   * resolved between two paints. The drone simply appeared somewhere else.
    *
-   * `makeTraveller` is the rule and has been all along. It hands back a command
-   * or a reason to stop — something in the room, something on the door,
-   * something that just happened to the drone — and a reason to stop is where
-   * the walk ends and the player takes over. The line it gives is said, because
-   * a walk that halts without saying why reads as a refusal.
+   * So the loop is a clock now, and the order inside one tick is the order the
+   * turn actually has: the drone takes one step, the world takes its turn with
+   * it, and only then is the question asked again — is there a reason to stop?
+   * If there is, the walk ends there and the player has it back. If there is
+   * not, the next tick is scheduled. One frame a compartment, which is the
+   * frame everything else in this interface is cut to.
+   *
+   * `makeTraveller` is still the rule and is untouched: it hands back a command
+   * or a reason, and a reason is where the walk ends. What changed is only who
+   * is holding the stopwatch.
    */
+  const walking = useRef<{ cancel: () => void } | null>(null);
+  useEffect(
+    () => () => {
+      walking.current?.cancel();
+    },
+    [],
+  );
+
   const walk = (to: RoomId): void => {
     sfx.click();
+    /* A second destination replaces the first rather than racing it. */
+    walking.current?.cancel();
     const traveller = makeTraveller(to);
-    /* Bounded, because a traveller that is asked for one more step forever is
-       a page that stops answering. No hull has this many compartments. */
-    for (let step = 0; step < 200; step++) {
+
+    let timer: number | undefined;
+    let stopped = false;
+    const tick = (): void => {
+      if (stopped) return;
       const next = traveller.step(game);
       if (isStop(next)) {
         if (next.stop !== "") game.log.add(next.stop, game.schedule.time, "warn");
-        break;
+        again();
+        walking.current = null;
+        return;
       }
-      if (!game.playerCommand(next.cmd).ok) break;
-      if (game.status !== "playing") break;
-    }
-    again();
+      /* The step, and the world's answer to it — `playerCommand` runs the
+         schedule, so the machines have already moved by the time this returns
+         and the next question is asked of the ship as it now stands. */
+      const done = game.playerCommand(next.cmd);
+      again();
+      if (!done.ok || game.status !== "playing") {
+        walking.current = null;
+        return;
+      }
+      timer = window.setTimeout(tick, motionNow() === "instant" ? 0 : FRAME_MS[motionNow()]);
+    };
+
+    walking.current = {
+      cancel: () => {
+        stopped = true;
+        if (timer !== undefined) window.clearTimeout(timer);
+      },
+    };
+    tick();
   };
 
   /**
@@ -559,35 +592,6 @@ export function Screen({
         </Panel>
         )}
 
-        {/* A sheet is dismissed by a click anywhere that is not the sheet. On the
-          main menu there is nowhere else — the menu *is* the screen — so only
-          here does the scrim take a click. */}
-      {sheet === "none" ? null : (
-        <div
-          onClick={() => setSheet("none")}
-          style={{
-            gridColumn: "2 / -1",
-            gridRow: 1,
-            position: "relative",
-            zIndex: 50,
-            background: "color-mix(in oklab, var(--sv-deep) 66%, transparent)",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ position: "absolute", left: 0, top: 0, bottom: 0, display: "flex" }}
-          >
-            {sheet === "about" ? <AboutSheet onClose={() => setSheet("none")} /> : null}
-            {sheet === "settings" ? (
-              <SettingsSheet
-                settings={settings}
-                onSettings={onSettings ?? (() => undefined)}
-                onClose={() => setSheet("none")}
-              />
-            ) : null}
-          </div>
-        </div>
-      )}
 
       </div>
 
@@ -680,6 +684,42 @@ export function Screen({
           the card was, so a compartment card opened *underneath* the thing it
           was explaining. A card is modal: it belongs to the screen. Below the
           log alone, which is the one thing nothing covers. */}
+      {/* A sheet is dismissed by a click anywhere that is not the sheet. On the
+          main menu there is nowhere else — the menu *is* the screen — so only
+          here does the scrim take a click.
+
+          A direct child of the grid, which it has to be and was not: it was
+          nested inside the board's own column, where `gridColumn` means
+          nothing at all and the block collapses to no height behind whatever
+          the column is already drawing. On the tug — where the column is full
+          — pressing About or Settings opened a scrim nobody could see. */}
+      {sheet === "none" ? null : (
+        <div
+          onClick={() => setSheet("none")}
+          style={{
+            gridColumn: "2 / -1",
+            gridRow: 1,
+            position: "relative",
+            zIndex: 50,
+            background: "color-mix(in oklab, var(--sv-deep) 66%, transparent)",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: "absolute", left: 0, top: 0, bottom: 0, display: "flex" }}
+          >
+            {sheet === "about" ? <AboutSheet onClose={() => setSheet("none")} /> : null}
+            {sheet === "settings" ? (
+              <SettingsSheet
+                settings={settings}
+                onSettings={onSettings ?? (() => undefined)}
+                onClose={() => setSheet("none")}
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
+
       {card === "none" ? null : (
         <div style={{ gridColumn: "1 / -1", gridRow: "1 / -1", position: "relative", zIndex: 95 }}>
           <Cards

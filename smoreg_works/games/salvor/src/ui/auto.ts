@@ -147,6 +147,8 @@ interface Seen {
   alert: number;
   /** Hazards the drone has been told about this sortie (`systems/hazards.ts`, `signsGiven`). */
   signs: Set<string>;
+  /** Ids of every machine the drone could see. A machine already in sight is not news. */
+  machines: Set<number>;
 }
 
 export interface Explorer {
@@ -411,34 +413,64 @@ function hullName(game: RoomGame): string {
  * rather than facts about one, and the first call only records — the crate the
  * drone is already standing over is not news.
  */
-function makeWatch(): (game: RoomGame) => { stop: string } | undefined {
+function makeWatch(leaving = false): (game: RoomGame) => { stop: string } | undefined {
   let before: Seen | undefined;
 
   return (game: RoomGame) => {
     if (game.isOver()) return { stop: t("stop.over") };
 
-    const machine = nearestVisible(game);
-    if (machine) {
-      return {
-        stop: t("stop.machine", {
-          machine: entityLabel(game, machine),
-          room: roomName(game.roomOf(machine)),
-        }),
-      };
-    }
-
     const room = game.roomOf(game.player);
     const things = thingsIn(room);
     const signs = signsGiven(game);
+    const seen = [...game.visibleMonsters()];
     const now: Seen = {
       room: room.id,
       things: new Set(things.map((t) => t.id)),
       durability: durability(game),
       alert: alertState(game).level,
       signs: new Set(signs),
+      /* Everything in sight, plus everything sharing this compartment: the
+         two differ only on the first call, which is exactly where it counts. */
+      machines: new Set(seen.map((m) => m.id)),
     };
     const last = before;
     before = now;
+
+    /*
+     * A machine that has just come into sight.
+     *
+     * On the first call — the moment the key is pressed — anything already in
+     * sight is news and hands the ship back. That is `o`'s whole contract and
+     * it is why this check runs before the rest of the list, which works the
+     * other way round: the crate the drone is already standing over is not
+     * news, but a machine is.
+     *
+     * `leaving` is the one exception, and it belongs to travel alone. A walk
+     * begun beside a scout used to return a stop before a single step was
+     * taken: pressing a compartment on the board moved the drone not at all
+     * while the route ring sat there as though it had, and a drone sharing a
+     * compartment with a machine could not walk away from it — which is the
+     * one moment you most want to. Naming a destination means "go there", and
+     * the thing you are standing next to is what you are trying to leave.
+     *
+     * `o` does not get it, and that is not an oversight. Explore means "keep
+     * going while nothing needs me", and a machine an arm's length away needs
+     * you; without the stop the careful bot walks past the fight it should
+     * have taken and dies of it, which is how this came back measured rather
+     * than argued (`tests/hazards.test.ts`, the two hundred voyages).
+     */
+    const woke = seen.find((m) =>
+      last === undefined ? !(leaving && m.room === room.id) : !last.machines.has(m.id),
+    );
+    if (woke !== undefined) {
+      return {
+        stop: t("stop.machine", {
+          machine: entityLabel(game, woke),
+          room: roomName(game.roomOf(woke)),
+        }),
+      };
+    }
+
     if (!last) return undefined;
 
     // A red line the step just earned is the stop the whole hazard design is
@@ -510,7 +542,7 @@ function signParts(sign: string): [string, string, string] {
  * only the first.
  */
 export function makeTraveller(goal: RoomId, through?: DoorId): Explorer {
-  const watch = makeWatch();
+  const watch = makeWatch(true);
   let confirmed = through;
 
   return {

@@ -62,11 +62,25 @@ const DECK_SCALE = 1.2;
  * Doing it once at bake time costs nothing per frame and makes the asset
  * honest about the interface it is for (`tools/deck/bake.mjs`).
  */
-const DECK_INK: Record<Knows, number> = {
-  current: 0.5,
-  monitored: 0.36,
-  detected: 0.3,
-  undetected: 0.22,
+/*
+ * How much of the plating each state shows.
+ *
+ * These were a third to a half, and a third was nothing: the art is thin light
+ * line work on transparent, and most of a tile is transparent — so a third of
+ * a fifth is about six per cent of a pale line over `--sv-knock`, the darkest
+ * colour in the palette. Every number here was measured against a composite of
+ * the real baked tiles rather than guessed, and the floor of a compartment
+ * nobody has been in still has to be visible as a floor.
+ *
+ * The order is still the whole point: what the drone is standing on is the
+ * only floor it has actually seen, and a compartment that is only a rumour is
+ * drawn as a rumour.
+ */
+export const DECK_INK: Record<Knows, number> = {
+  current: 0.78,
+  monitored: 0.62,
+  detected: 0.5,
+  undetected: 0.38,
   wrecked: 0,
 };
 
