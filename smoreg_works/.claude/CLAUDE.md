@@ -113,6 +113,10 @@ node tools/sfx/bake.mjs          # из games/salvor: семь эффектов 
 node tools/cover/shoot.mjs       # из games/salvor: обложка 630x500 в assets/cover.png
                                  #   при запущенном npm run dev; нужен playwright
                                  #   (PLAYWRIGHT=..., CHROME=/usr/bin/chromium)
+
+# Иконка в растре — из того же svg, что и фавикон. rsvg-convert подключён к
+# ImageMagick делегатом, так что рендерит его же движок, что и браузер.
+magick -background none public/favicon.svg -resize 256x256 -strip assets/icon-256.png
 npm run zip -w games/salvor      # dist + проверка + derelict-rogue-web.zip
 npm run publish:itch -w games/salvor   # то же + butler push на itch
 ```
