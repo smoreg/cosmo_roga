@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, RefObject } from "react";
 import * as FX from "../../fx/derelict-fx.js";
 import { Panel, Tag } from "../chrome/Panel.js";
 import type { Offer, TugModel } from "../model.js";
@@ -31,8 +31,10 @@ export function TugOrders({
   onPick: (offer: Offer) => void;
   onLevel: (level: string | null) => void;
 }): ReactElement {
+  const ref = useLines([tug.callsign, tug.derelict.name, tug.account.credits]);
   return (
     <div
+      ref={ref}
       style={{
         position: "absolute",
         inset: 0,
@@ -123,6 +125,40 @@ export function TugOrders({
   );
 }
 
+/**
+ * Resolve every line of a panel, the way the record resolves when it opens.
+ *
+ * `PRESETS.all` rather than a stagger: the tug is not news arriving, it is a
+ * readout already written, and a readout that types itself out row by row is a
+ * readout you wait through. Every line scrambles, all of them at once, and the
+ * whole thing settles in three held frames.
+ *
+ * Every leaf that holds text is taken rather than hand-marked with `data-sc`,
+ * so a panel that grows a row does not need remembering to — the same rule the
+ * design system's own `MenuSheet` falls back on.
+ */
+function useLines(deps: readonly unknown[]): RefObject<HTMLDivElement> {
+  const ref = useRef<HTMLDivElement>(null as unknown as HTMLDivElement);
+  useEffect(
+    function resolve() {
+      const host: HTMLDivElement | null = ref.current;
+      if (host === null) return;
+      const leaves = Array.from(host.querySelectorAll("div,span")).filter(
+        (el) =>
+          el.textContent !== null &&
+          el.textContent.trim() !== "" &&
+          Array.from(el.childNodes).every((n) => n.nodeType === 3),
+      );
+      const running = FX.scrambleReveal(leaves, FX.PRESETS.all);
+      return () => {
+        running.cancel();
+      };
+    },
+    deps,
+  );
+  return ref;
+}
+
 function Figure({ label, value, big = false }: { label: string; value: number; big?: boolean }): ReactElement {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
@@ -171,7 +207,7 @@ function OfferList({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(function resolve() {
     if (ref.current === null) return;
-    const running = FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"), FX.PRESETS.list);
+    const running = FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"), FX.PRESETS.all);
     return () => {
       running.cancel();
     };
@@ -374,7 +410,9 @@ export function DockPreview({
 }): ReactElement {
   return (
     <Panel title="Dock" stencil="drones">
-      <Drones hulls={tug.hulls} onLook={onLook} />
+      <div ref={useLines([tug.hulls.length])}>
+        <Drones hulls={tug.hulls} onLook={onLook} />
+      </div>
     </Panel>
   );
 }

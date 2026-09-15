@@ -100,6 +100,7 @@ export function LogStrip({
             background: "var(--sv-knock)",
             borderTop: "1px solid var(--sv-line)",
             zIndex: 30,
+            boxShadow: "var(--sv-cast)",
           }}
         >
           <div

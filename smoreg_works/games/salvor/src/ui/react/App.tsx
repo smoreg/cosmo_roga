@@ -28,7 +28,17 @@ export function App({ seed }: { seed: number }): ReactElement {
   const [page, setPage] = useState(0);
 
   if (game !== null) {
-    return <Screen game={game} onNewVoyage={() => setGame(null)} />;
+    return (
+      <Screen
+        game={game}
+        sound={settings.sound}
+        onSound={(on) => {
+          rememberSound(on);
+          setSettings({ ...settings, sound: on });
+        }}
+        onNewVoyage={() => setGame(null)}
+      />
+    );
   }
 
   return (

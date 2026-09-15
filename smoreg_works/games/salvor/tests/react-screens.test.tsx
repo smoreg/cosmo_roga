@@ -131,19 +131,6 @@ describe("the tug is a decision, and says what the engine says", () => {
 describe("the cards are read, never played", () => {
   beforeAll(stillFrames);
 
-  it("puts the controls up on `?` and takes no turn doing it", () => {
-    const game = newGame(4242);
-    const before = game.schedule.time;
-    const { host, unmount } = mount(<Screen game={game} />);
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }));
-    });
-    const first = helpOf(game).pages[0] ?? [];
-    for (const line of first.filter((l) => l !== "")) expect(text(host)).toContain(line);
-    expect(game.schedule.time).toBe(before);
-    unmount();
-  });
-
   it("puts the record up on PageUp, newest first", () => {
     const game = newGame(4242);
     const { host, unmount } = mount(<Screen game={game} />);
@@ -160,7 +147,7 @@ describe("the cards are read, never played", () => {
     const game = newGame(4242);
     const { host, unmount } = mount(<Screen game={game} />);
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp" }));
     });
     expect(text(host)).toContain("close");
     act(() => {
@@ -388,6 +375,101 @@ describe("the dock is read before it is spent", () => {
     });
     /* The rack above now names that hull's modules, not the flying one's. */
     for (const m of other?.modules ?? []) expect(text(host)).toContain(m);
+    unmount();
+  });
+});
+
+describe("the rail is three keys, and one of them is not a menu", () => {
+  beforeAll(stillFrames);
+
+  it("offers the menu, the controls and the sound, and nothing else", () => {
+    const game = newGame(4242);
+    const { host, unmount } = mount(<Screen game={game} />);
+    const keys = Array.from(host.querySelectorAll("[title]"))
+      .map((el) => el.getAttribute("title"))
+      .filter((t) => t === "menu" || t === "controls" || t?.startsWith("sound"));
+    expect(keys).toEqual(["menu", "controls", "sound on"]);
+    unmount();
+  });
+
+  it("flips the sound where it stands, without a menu to open", () => {
+    const game = newGame(4242);
+    let on = true;
+    const { host, unmount } = mount(
+      <Screen
+        game={game}
+        sound={on}
+        onSound={(next) => {
+          on = next;
+        }}
+      />,
+    );
+    const key = Array.from(host.querySelectorAll("[title]")).find(
+      (el) => el.getAttribute("title") === "sound on",
+    );
+    expect(key).toBeDefined();
+    act(() => {
+      key?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    /* One press, one setting — not a menu, a page and a row. */
+    expect(on).toBe(false);
+    unmount();
+  });
+
+  it("opens the system menu as a drawer, and the run is untouched under it", () => {
+    const game = newGame(4242);
+    const before = game.schedule.time;
+    const { host, unmount } = mount(<Screen game={game} />);
+    const key = Array.from(host.querySelectorAll("[title]")).find(
+      (el) => el.getAttribute("title") === "menu",
+    );
+    act(() => {
+      key?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(text(host)).toContain("New voyage");
+    expect(text(host)).toContain("Settings");
+    expect(text(host)).toContain("Credits");
+    expect(game.schedule.time).toBe(before);
+    unmount();
+  });
+
+  it("puts the controls in a drawer too, and takes no turn doing it", () => {
+    const game = newGame(4242);
+    const before = game.schedule.time;
+    const { host, unmount } = mount(<Screen game={game} />);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }));
+    });
+    const first = helpOf(game).pages[0] ?? [];
+    for (const line of first.filter((l) => l !== "")) expect(text(host)).toContain(line);
+    expect(game.schedule.time).toBe(before);
+    unmount();
+  });
+
+  it("steps into settings and back out without leaving the stack", () => {
+    const game = newGame(4242);
+    const { host, unmount } = mount(<Screen game={game} />);
+    const key = Array.from(host.querySelectorAll("[title]")).find(
+      (el) => el.getAttribute("title") === "menu",
+    );
+    act(() => {
+      key?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const row = Array.from(host.querySelectorAll("span")).find(
+      (el) => el.textContent === "Settings",
+    );
+    act(() => {
+      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(text(host)).toContain("Sound");
+    expect(text(host)).toContain("Reduced motion");
+    const back = Array.from(host.querySelectorAll("span")).find((el) => el.textContent === "back");
+    expect(back).toBeDefined();
+    act(() => {
+      back?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    /* Back is a page turn inside the housing, not a shut and an open. */
+    expect(text(host)).toContain("New voyage");
     unmount();
   });
 });
