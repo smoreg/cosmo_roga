@@ -23,12 +23,13 @@ import {
   rackOfHull,
   routeIn,
   tugOf,
+  whoOf,
 } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
 import { deckVersion, watchDeck } from "./deckindex.js";
 import { CodexCardView, EndingCard, HistoryCard } from "./screens/Cards.js";
-import { ThingIcon } from "./board/Icon.js";
+import { DroneIcon, ThingIcon } from "./board/Icon.js";
 import { DockPreview, TugOrders } from "./screens/Tug.js";
 import { roomActions } from "../actions.js";
 import { codexQueue, readCodex } from "../../systems/codex.js";
@@ -200,6 +201,9 @@ export function Screen({
   const things = useMemo(() => hereOf(game), [game, turn]);
   const commands = useMemo(() => commandsOf(game), [game, turn]);
   const goal = useMemo(() => goalOf(game), [game, turn]);
+  /* Which machine this drone was built as. A fact about the sortie, so it is
+     read once and not per cell. */
+  const who = useMemo(() => whoOf(game), [game, turn]);
   /**
    * The rack shows the drone that exists, unless the dock is pointing it at
    * one that does not yet. A preview says so by being a preview: nothing has
@@ -322,6 +326,7 @@ export function Screen({
             onWalk={walk}
             onAct={act}
             onDoorAct={doorAct}
+            who={who}
           />
         )}
 
@@ -416,6 +421,25 @@ export function Screen({
         }}
       >
         <Panel title="Rack" stencil={preview === undefined ? "drone" : "preview"}>
+          {/* Whose rack this is, drawn as the machine it belongs to — the one
+              flying, or whichever the dock is pointing at. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
+            <DroneIcon
+              who={looking === null ? who : `hull:${looking}`}
+              size={26}
+              tone={looking === null ? "var(--sv-amber)" : "var(--sv-soft)"}
+            />
+            <span
+              style={{
+                font: "var(--sv-stencil)",
+                letterSpacing: "var(--sv-stencil-track)",
+                textTransform: "uppercase",
+                color: "var(--sv-soft)",
+              }}
+            >
+              {looking === null ? "on the rails" : "not built yet"}
+            </span>
+          </div>
           <CoreRack
             core={(preview ?? rack).core}
             coreMax={(preview ?? rack).coreMax}

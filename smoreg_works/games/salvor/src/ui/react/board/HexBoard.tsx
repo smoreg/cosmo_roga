@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { linesOf, reveal } from "../reveal.js";
-import { ThingIcon } from "./Icon.js";
+import { DroneIcon, ThingIcon } from "./Icon.js";
 import * as FX from "../../fx/derelict-fx.js";
 import { tileUrl } from "../deckindex.js";
 
@@ -408,10 +408,13 @@ function Readout({ chip }: { chip: Chip }): ReactElement {
  *  for the middle. `data-fx-face` is the child a move scrambles. */
 export function DroneMark({
   size = 40,
+  who,
   style,
   innerRef,
 }: {
   size?: number;
+  /** Which drone this is, so it is drawn as the machine it was built as. */
+  who?: string;
   style?: CSSProperties;
   innerRef?: React.Ref<HTMLDivElement>;
 }): ReactElement {
@@ -437,7 +440,9 @@ export function DroneMark({
           color: "var(--sv-amber)",
         }}
       >
-        ◆
+        {/* The lozenge is what a move scrambles to and back from, so it is
+            still what `data-fx-face` holds when there is no drone to name. */}
+        {who === undefined ? "◆" : <DroneIcon who={who} size={Math.round(size * 0.52)} />}
       </div>
     </div>
   );
@@ -818,6 +823,7 @@ export function HexBoard({
   onWalk,
   onAct,
   onDoorAct,
+  who,
   style,
 }: {
   rooms: readonly BoardRoom[];
@@ -830,6 +836,8 @@ export function HexBoard({
   onWalk?: (to: number, path: readonly number[]) => void;
   onAct?: (room: BoardRoom, thing: BoardThing) => void;
   onDoorAct?: (door: BoardDoor, index: number) => void;
+  /** Which drone is aboard, so the mark is drawn as the machine it is. */
+  who?: string;
   style?: CSSProperties;
 }): ReactElement {
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1217,6 +1225,7 @@ export function HexBoard({
       >
         {here === undefined ? null : (
           <DroneMark
+            who={drone === null ? undefined : who}
             innerRef={droneRef}
             style={{
               position: "absolute",

@@ -33,20 +33,49 @@ const ICONS = [
   { ch: "A", id: "arc-sentinel", author: "delapouite", slug: "mecha-mask" },
 ];
 
-const rows = [];
-for (const icon of ICONS) {
+/**
+ * The drone's own hulls. Five, rolled per drone rather than per class, so two
+ * sorties in the same hull are not the same machine — a drone is built for a
+ * sortie and lost on it, and the rack is what carries over.
+ */
+const DRONES = [
+  { id: "tracked", author: "delapouite", slug: "tracked-robot" },
+  { id: "spider", author: "delapouite", slug: "spider-bot" },
+  { id: "curiosity", author: "delapouite", slug: "mars-curiosity" },
+  { id: "monowheel", author: "delapouite", slug: "mono-wheel-robot" },
+  { id: "mech", author: "delapouite", slug: "battle-mech" },
+];
+
+/**
+ * One icon, as a path.
+ *
+ * Two paths come back: the site's black backing square first, the drawing
+ * second. The square is not part of the icon and would paint over whatever is
+ * under it, so only the last one is kept.
+ */
+async function pathOf(icon) {
   const url = `https://game-icons.net/icons/ffffff/000000/1x1/${icon.author}/${icon.slug}.svg`;
   const svg = await fetch(url).then((r) => {
     if (!r.ok) throw new Error(`${url}: ${String(r.status)}`);
     return r.text();
   });
-  /* Two paths: the site's black backing square first, the icon second. The
-     square is not part of the drawing and would paint over the deck. */
   const paths = [...svg.matchAll(/<path[^>]*\sd="([^"]+)"/g)].map((m) => m[1]);
   const d = paths.at(-1);
   if (d === undefined || paths.length < 2) throw new Error(`${icon.slug}: unexpected svg shape`);
+  return d;
+}
+
+const rows = [];
+const drones = [];
+for (const icon of ICONS) {
+  const d = await pathOf(icon);
   rows.push({ ...icon, d });
   console.log(`${icon.id.padEnd(16)} ${String(d.length).padStart(5)} chars`);
+}
+for (const icon of DRONES) {
+  const d = await pathOf(icon);
+  drones.push({ ...icon, d });
+  console.log(`${icon.id.padEnd(16)} ${String(d.length).padStart(5)} chars  · drone`);
 }
 
 const body = rows
@@ -82,6 +111,19 @@ export const MACHINE_BOX = 512;
 export const MACHINE_ICON: Readonly<Record<string, string>> = {
 ${body}
 };
+
+/**
+ * The drone's own, rolled per drone rather than per class.
+ *
+ * A drone is built for a sortie and lost on it, and what carries over is the
+ * rack — so two sorties in a SPARK are two machines, and looking different is
+ * the cheapest way of saying so. Which one a drone gets is decided from its
+ * own identity and never from a roll, so it does not change under the player
+ * between one frame and the next (\`Icon.tsx\`, \`droneIcon\`).
+ */
+export const DRONE_ICON: readonly string[] = [
+${drones.map((r) => `  /** ${r.author}/${r.slug} */\n  ${JSON.stringify(r.d)},`).join("\n")}
+];
 `,
 );
 console.log(`\n→ src/ui/react/board/machines.ts`);

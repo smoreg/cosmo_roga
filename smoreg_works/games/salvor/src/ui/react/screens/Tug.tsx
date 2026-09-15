@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import * as FX from "../../fx/derelict-fx.js";
 import { linesOf, reveal } from "../reveal.js";
+import { DroneIcon } from "../board/Icon.js";
 import { Panel, Tag } from "../chrome/Panel.js";
 import type { Offer, TugModel } from "../model.js";
 
@@ -355,7 +356,14 @@ function Drones({
               borderLeft: `2px solid ${hull.on ? "var(--sv-amber)" : open ? "var(--sv-rim)" : "var(--sv-line)"}`,
             }}
           >
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              {/* The machine it is, or would be. The one on the rails is this
+                  sortie's drone and is drawn as the board draws it. */}
+              <DroneIcon
+                who={hull.who}
+                size={20}
+                tone={hull.on ? "var(--sv-amber)" : "var(--sv-soft)"}
+              />
               <span
                 style={{
                   font: "var(--sv-title)",

@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactElement } from "react";
 import type { BoardThing } from "./HexBoard.js";
-import { MACHINE_BOX, MACHINE_ICON } from "./machines.js";
+import { DRONE_ICON, MACHINE_BOX, MACHINE_ICON } from "./machines.js";
 
 /**
  * What a thing looks like, once, for everywhere it is drawn.
@@ -122,5 +122,52 @@ export function ThingIcon({
         ...style,
       }}
     />
+  );
+}
+
+
+/**
+ * Which of the five hulls a drone was built as.
+ *
+ * From the drone's own identity and never from a roll: `game.rng` is the run,
+ * and a picture that spent one would change what happens next the moment
+ * somebody looked at it. The same string always gives the same machine, so a
+ * drone does not turn into a different one between two frames of one turn.
+ *
+ * Keyed rather than fixed per class because a drone is built for a sortie and
+ * lost on it — two sorties in a SPARK are two machines, and the rack is the
+ * only thing that carries over.
+ */
+export function droneIcon(key: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return DRONE_ICON[(h >>> 0) % DRONE_ICON.length] as string;
+}
+
+/** The drone itself, drawn wherever it is being talked about. */
+export function DroneIcon({
+  who,
+  size = 22,
+  tone = "var(--sv-amber)",
+  style,
+}: {
+  who: string;
+  size?: number;
+  tone?: string;
+  style?: CSSProperties;
+}): ReactElement {
+  return (
+    <svg
+      viewBox={`0 0 ${String(MACHINE_BOX)} ${String(MACHINE_BOX)}`}
+      width={size}
+      height={size}
+      aria-hidden
+      style={{ flex: "none", color: tone, display: "block", ...style }}
+    >
+      <path d={droneIcon(who)} fill="currentColor" />
+    </svg>
   );
 }

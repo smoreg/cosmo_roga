@@ -6,7 +6,9 @@ import { undock } from "../src/systems/voyage.js";
 import { hexLayout } from "@jamrog/engine";
 import { keelOf, mirror } from "../src/ui/react/hull.js";
 import { bleedScale, deckOf } from "../src/ui/react/deck.js";
-import { MACHINE_ICON } from "../src/ui/react/board/machines.js";
+import { whoOf } from "../src/ui/react/model.js";
+import { DRONE_ICON, MACHINE_ICON } from "../src/ui/react/board/machines.js";
+import { droneIcon } from "../src/ui/react/board/Icon.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import type { DeckIndex } from "../src/ui/react/deck.js";
 
@@ -209,5 +211,58 @@ describe("the machines the board draws as faces", () => {
     /* And the geomorphs, whose licence asks for more than a notice. */
     expect(credits).toContain("CC BY-NC 4.0");
     expect(credits).toContain("некоммерческим");
+  });
+});
+
+describe("the drone is drawn as the machine it was built as", () => {
+  it("has five to be built as, and picks one without a roll", () => {
+    expect(DRONE_ICON).toHaveLength(5);
+    /* `game.rng` is the run. A picture that spent a roll would change what
+       happens next the moment somebody looked at it, and the whole of
+       `(seed, inputs)` rests on that not being possible. */
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const before = game.rng.next();
+    droneIcon(whoOf(game));
+    droneIcon(whoOf(game));
+    const again = newGame(2026);
+    expect(undock(again).ok).toBe(true);
+    expect(again.rng.next()).toBe(before);
+  });
+
+  it("is the same machine every time the same drone is looked at", () => {
+    const a = newGame(2026);
+    const b = newGame(2026);
+    expect(undock(a).ok).toBe(true);
+    expect(undock(b).ok).toBe(true);
+    expect(whoOf(a)).toBe(whoOf(b));
+    expect(droneIcon(whoOf(a))).toBe(droneIcon(whoOf(b)));
+  });
+
+  it("spreads across the five rather than favouring one", () => {
+    /* A hash that pushed most drones onto one hull would be five icons and one
+       drawing. Every one of them has to come up. */
+    const seen = new Set<string>();
+    for (let seed = 1; seed < 60; seed++) {
+      for (let sortie = 1; sortie < 4; sortie++) {
+        seen.add(droneIcon(`${String(seed)}:${String(sortie)}:scrapper`));
+      }
+    }
+    expect(seen.size).toBe(DRONE_ICON.length);
+  });
+
+  it("tells two sorties in one hull apart", () => {
+    /* A drone is built for a sortie and lost on it; the rack is what carries
+       over. Two runs in a SPARK are two machines. */
+    const runs = ["4242:1:spark", "4242:2:spark", "4242:3:spark"];
+    expect(new Set(runs.map(droneIcon)).size).toBeGreaterThan(1);
+  });
+
+  it("carries the drawing and not the site's backing square", () => {
+    for (const d of DRONE_ICON) {
+      expect(d.startsWith("M0 0h512v512H0z")).toBe(false);
+      expect(d).toMatch(/^[MmZzLlHhVvCcSsQqTtAa\s\d.,+\-eE]+$/);
+      expect(d.length).toBeGreaterThan(300);
+    }
   });
 });

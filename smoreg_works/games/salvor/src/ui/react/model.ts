@@ -477,6 +477,8 @@ export interface TugModel {
     trait: string;
     price: number;
     on: boolean;
+    /** Which machine this one would be built as, for the icon. */
+    who: string;
     core: number;
     slots: number;
     speed?: number;
@@ -519,6 +521,11 @@ export function tugOf(game: RoomGame): TugModel {
       trait: hullTrait(hull),
       price: hull.price,
       on: voyage.hull === hull.id,
+      /* The one on the rails is *this* drone, so it is drawn as the machine
+         the board is drawing. The other two are hulls and not drones yet, so
+         they are keyed on themselves — enough to tell them apart on the shelf
+         without pretending a drone exists that does not. */
+      who: voyage.hull === hull.id ? whoOf(game) : `hull:${hull.id}`,
       core: hull.core,
       slots: hull.slots,
       ...(hull.speed === undefined ? {} : { speed: hull.speed }),
@@ -745,4 +752,19 @@ function workOn(game: RoomGame, id: number): { work: { done: number; of: number 
   const job = spec?.jobs.find((j) => j.tool === work.tool);
   if (job === undefined) return undefined;
   return { work: { done: job.turns - work.left, of: job.turns } };
+}
+
+
+/**
+ * Who this drone is.
+ *
+ * A drone is built for a sortie and lost on it — the rack is what carries over
+ * — so the thing that identifies one is the voyage it flew on and which sortie
+ * of it that was. Two runs in a SPARK are two machines and are drawn as two
+ * machines; the same drone is drawn the same way every time the board is
+ * opened, because none of this is a roll (`board/Icon.tsx`, `droneIcon`).
+ */
+export function whoOf(game: RoomGame): string {
+  const voyage = voyageOf(game);
+  return `${String(game.seed)}:${String(voyage.sortie)}:${voyage.hull ?? "none"}`;
 }

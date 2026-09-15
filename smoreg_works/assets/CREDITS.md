@@ -8,7 +8,7 @@
 | `audio/sfx/{system,dead,sold}.ogg` | этот проект | паттерны Strudel `games/salvor/music/src/stingers/`, рендер `music/scripts/render.mjs` | как у репозитория |
 | `audio/sfx/*.ogg` (остальные 10) | ElevenLabs Sound Effects, сгенерировано для этого проекта | text-to-sound-effects API, промпты — в `music/scripts/sfx.mjs` | по условиям ElevenLabs на сгенерированное аудио |
 | `games/salvor/assets/tiles/*` и `games/salvor/src/tiles/sprites.ts` | этот проект | маски `#`/`.` в `games/salvor/tools/tiles/sprites.mjs`, рендер `npm run tiles -w games/salvor`; маски текстом — `tiles.txt` | как у репозитория |
-| `games/salvor/src/ui/react/board/machines.ts` — иконки восьми машин | Lorc, Delapouite, Lord Berandas | [game-icons.net](https://game-icons.net), забираются `games/salvor/tools/machines/fetch.mjs`; перекрашены в `currentColor`, подложка сайта убрана | **CC BY 3.0** — нужна атрибуция |
+| `games/salvor/src/ui/react/board/machines.ts` — иконки восьми машин и пяти корпусов дрона | Lorc, Delapouite, Lord Berandas | [game-icons.net](https://game-icons.net), забираются `games/salvor/tools/machines/fetch.mjs`; перекрашены в `currentColor`, подложка сайта убрана | **CC BY 3.0** — нужна атрибуция |
 | `games/salvor/public/deck/*` — палуба под отсеками | Robert Pearce, экранная раскраска Eric B. Smith | *RPG Mobius Geomorphs*, <https://rpgmobius.com/geomorphs>; уменьшены и инвертированы `games/salvor/tools/deck/bake.mjs` | **CC BY-NC 4.0** — атрибуция и **только некоммерческое** |
 
 **Здесь раньше было написано, что чужих файлов в сборке нет. Теперь есть, и
