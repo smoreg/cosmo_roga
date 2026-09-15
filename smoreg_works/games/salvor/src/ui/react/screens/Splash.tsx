@@ -51,14 +51,19 @@ const STENCIL = {
  * the first draw to decode three megabytes at once. A tile that fails is
  * counted as done: a hull missing one section of plating is a smaller problem
  * than a loading screen that never finishes.
+ *
+ * Cancelling stops the *counting* and never the loading. Clearing `src` was
+ * the obvious way to abort and is the wrong one twice over: the point of this
+ * is to fill the cache, so a tile abandoned a frame before the board asks for
+ * it is work thrown away — and an empty `src` is read by browsers as the
+ * document's own url, which turns two hundred and fifty-nine aborts into two
+ * hundred and fifty-nine requests for the page.
  */
 function preloadTiles(ids: readonly string[], onStep: (done: number) => void): () => void {
   let live = true;
   let done = 0;
-  const images: HTMLImageElement[] = [];
   for (const id of ids) {
     const img = new Image();
-    images.push(img);
     const tick = (): void => {
       if (!live) return;
       done++;
@@ -70,7 +75,6 @@ function preloadTiles(ids: readonly string[], onStep: (done: number) => void): (
   }
   return () => {
     live = false;
-    for (const img of images) img.src = "";
   };
 }
 
@@ -136,7 +140,6 @@ export function Splash({ onStart }: { onStart: () => void }): ReactElement {
       return () => {
         live = false;
         stopTiles?.();
-        audio.src = "";
         window.clearTimeout(deadline);
       };
     },
