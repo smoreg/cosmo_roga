@@ -824,6 +824,12 @@ function Drawers({
                    files; `assets/CREDITS.md` is the long form. */
                 ["icons", "game-icons.net — Lorc, Delapouite, Lord Berandas, DarkZaitzev (CC BY 3.0)"],
                 ["deck plating", "RPG Mobius Geomorphs — Pearce & Smith (CC BY-NC 4.0)"],
+                /* Eric Matyas asks for the credit wherever the game appears,
+                   and the menu track is used by the artist's own permission on
+                   the same condition. `public/audio/ATTRIBUTION.md` is the long
+                   form and the record of the grant. */
+                ["music", "Eric Matyas · soundimage.org"],
+                ["menu music", "3D63 — Analog Hack"],
                 ["owes a debt to", "Cogmind, by Grid Sage Games"],
               ].map(([k, v]) => (
                 <div

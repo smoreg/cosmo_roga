@@ -15,3 +15,11 @@ assets/audio/**/*.mp3
 # downscaled set from vuvko_works. A tree without it draws the flat board,
 # which is what this game had before the tiles and still a whole game.
 games/salvor/public/deck/
+
+# The music. Twenty-three megabytes of somebody else's work, one track of it
+# under a personal grant — carried the way the deck art is, out of the tree and
+# into the build. `games/salvor/public/audio/ATTRIBUTION.md` is the record.
+games/salvor/public/audio/music/
+
+# The upload itself.
+games/salvor/*.zip

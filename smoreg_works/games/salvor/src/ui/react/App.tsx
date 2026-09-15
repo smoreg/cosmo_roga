@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { newGame } from "../../game.js";
 import type { SalvorGame } from "../../game.js";
@@ -8,6 +8,8 @@ import { TitleScreen } from "./screens/Title.js";
 import { Screen } from "./Screen.js";
 import { HelpCard } from "./screens/Cards.js";
 import { helpOf } from "./model.js";
+import { Splash } from "./screens/Splash.js";
+import { MENU_MUSIC, missionTrackFor, music } from "./audio.js";
 
 /**
  * The whole of the game, which is two states: a menu, and a run.
@@ -18,6 +20,11 @@ import { helpOf } from "./model.js";
  * screen, and ending is putting the menu back in front of it.
  */
 export function App({ seed }: { seed: number }): ReactElement {
+  /* Nothing plays and nothing is fetched until somebody has pressed the door:
+     a browser will not let a page make noise before it is touched, and the
+     deck art is three megabytes that should not arrive under the first frame
+     of the board (`screens/Splash.tsx`). */
+  const [started, setStarted] = useState(false);
   const [settings, setSettings] = useState<TitleSettings>({
     ...DEFAULT_TITLE,
     sound: storedSound() ?? DEFAULT_TITLE.sound,
@@ -26,6 +33,23 @@ export function App({ seed }: { seed: number }): ReactElement {
   const [game, setGame] = useState<SalvorGame | null>(null);
   const [help, setHelp] = useState(false);
   const [page, setPage] = useState(0);
+
+  /* The music follows where the run is: the menu track until a voyage starts,
+     a mission track chosen by its seed after — so a seed sounds the same every
+     time it is played, the same rule the board and the drone follow. */
+  useEffect(
+    function score() {
+      if (!started) return;
+      if (!settings.sound) {
+        music.stop();
+        return;
+      }
+      music.play(game === null ? MENU_MUSIC : missionTrackFor(String(game.seed)));
+    },
+    [started, settings.sound, game],
+  );
+
+  if (!started) return <Splash onStart={() => setStarted(true)} />;
 
   if (game !== null) {
     return (

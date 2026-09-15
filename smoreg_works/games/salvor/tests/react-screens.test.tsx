@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { StrictMode, act } from "react";
 import { createRoot } from "react-dom/client";
 import { newGame } from "../src/game.js";
@@ -194,8 +194,39 @@ describe("the cards are read, never played", () => {
 describe("the title is in front of a run, not instead of one", () => {
   beforeAll(stillFrames);
 
+  /**
+   * Past the door.
+   *
+   * The game opens on a splash, because a browser will not let a page make
+   * noise until it has been touched and the deck art should not arrive under
+   * the board's first frame. A player presses it; so does this.
+   */
+  const past = (host: HTMLElement): void => {
+    const door = Array.from(host.querySelectorAll("div")).find(
+      (d) => d.textContent === "click to start",
+    );
+    act(() => {
+      door?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    /* jsdom has no audio and no server, so every step either fails fast or
+       never fires; the loader's own deadline is what opens the door either
+       way, and here it is reached by hand rather than waited out. */
+    /* The deadline, then the beat between the last step landing and the door
+       opening — which is there so the bars are seen full rather than vanishing
+       on the frame they fill. Each is scheduled by the render the one before
+       it caused, so they are run out rather than counted. */
+    for (let pass = 0; pass < 4; pass++) {
+      act(() => {
+        vi.runOnlyPendingTimers();
+      });
+    }
+    vi.useRealTimers();
+  };
+
   it("draws every row the menu has, in the menu's order", () => {
+    vi.useFakeTimers();
     const { host, unmount } = mount(<App seed={4242} />);
+    past(host);
     const screen = titleScreen({ ...DEFAULT_TITLE, seed: 4242 });
     expect(text(host)).toContain(screen.name);
     for (const item of screen.items) expect(text(host)).toContain(item.label);
@@ -203,7 +234,9 @@ describe("the title is in front of a run, not instead of one", () => {
   });
 
   it("starts a run on the first row, and the run is the seed on the screen", () => {
+    vi.useFakeTimers();
     const { host, unmount } = mount(<App seed={4242} />);
+    past(host);
     const screen = titleScreen({ ...DEFAULT_TITLE, seed: 4242 });
     const label = screen.items[0]?.label ?? "";
     const row = Array.from(host.querySelectorAll("span")).find((el) => el.textContent === label);

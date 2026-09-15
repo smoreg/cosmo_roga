@@ -14,7 +14,16 @@ import type { DeckIndex } from "./deck.js";
  * URL inside an itch zip as well as from a server.
  */
 let index: DeckIndex | null = null;
-let asked = false;
+/**
+ * The request in flight, if one is.
+ *
+ * It used to be a bare `asked` flag, which meant a load that *failed* could
+ * never be tried again: the splash asks once on the way in, and if that came
+ * back empty the board had no way of ever getting its plating. Now a second
+ * caller joins the first if it is still going, and starts a fresh one if the
+ * last came to nothing.
+ */
+let flight: Promise<void> | null = null;
 
 /**
  * Bumped when the index lands, and watched by the board.
@@ -59,17 +68,27 @@ export function watchDeck(fn: () => void): () => void {
   };
 }
 
-/** Ask for it. Safe to call repeatedly; the second call does nothing. */
+/**
+ * Ask for it.
+ *
+ * Safe to call repeatedly: once it has arrived this is free, while it is on
+ * its way the second caller waits on the first, and after a failure the next
+ * caller tries again.
+ */
 export function loadDeckIndex(): Promise<void> {
-  if (asked) return Promise.resolve();
-  asked = true;
+  if (index !== null) return Promise.resolve();
+  if (flight !== null) return flight;
   if (typeof fetch !== "function") return Promise.resolve();
-  return fetch("deck/deck.json")
+  flight = fetch("deck/deck.json")
     .then((r) => (r.ok ? (r.json() as Promise<DeckIndex>) : null))
     .then((got) => {
       if (got !== null) applyDeckIndex(got);
     })
-    .catch(() => undefined);
+    .catch(() => undefined)
+    .finally(() => {
+      flight = null;
+    });
+  return flight;
 }
 
 /** Where a baked tile is served from. */

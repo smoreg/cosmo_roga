@@ -103,6 +103,9 @@ npm run zip -w games/fortnight2   # dist + zip для itch.io
 npm run new-game -- <id> "Имя"    # новая игра из шаблона
 
 node tools/deck/bake.mjs          # из games/salvor: палубная графика в public/deck
+node tools/audio/copy.mjs        # из games/salvor: музыка в public/audio
+node tools/machines/fetch.mjs    # из games/salvor: иконки машин и дрона (сеть)
+npm run zip -w games/salvor      # dist + проверка + derelict-rogue-web.zip
 ```
 
 **Палуба под отсеками — сборка, а не содержимое репозитория.** `public/deck/`
@@ -110,6 +113,15 @@ node tools/deck/bake.mjs          # из games/salvor: палубная граф
 набора в `vuvko_works`. Без неё доска рисуется плоской — это ровно то, что
 было до плитки, и это по-прежнему целая игра. Всё, что собрано с этими
 плитками, остаётся некоммерческим (`games/salvor/public/deck/LICENCE.md`).
+
+**Музыка — тоже сборка.** Шесть треков, 23 МБ, уже лежат в этом репозитории
+один раз — в `vuvko_works/game/public/audio/music`, — поэтому вторая копия под
+`smoreg_works` не коммитится: её кладёт `tools/audio/copy.mjs`. Пять треков
+Eric Matyas (soundimage.org) требуют указания авторства везде, где появляется
+игра; шестой — «Soft Millenium» 3D63 — по личному разрешению автора на том же
+условии. Уведомление едет вместе с файлами
+(`games/salvor/public/audio/ATTRIBUTION.md`) и стоит на экране титров. **Условия
+Matyas со временем менялись — перечитать перед релизом.**
 
 ## Два известных пробела игры (найдены тестами; решения — в GDD: модули и тревога, задачи G2/G6)
 

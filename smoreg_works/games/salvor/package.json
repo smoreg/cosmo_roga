@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "tiles": "node tools/tiles/tiles.mjs",
-    "zip": "npm run build && cd dist && zip -r ../salvor-web.zip . && cd .. && echo 'dist -> salvor-web.zip ready for an itch.io HTML5 upload'"
+    "zip": "npm run build && cd dist && zip -qr ../derelict-rogue-web.zip . && cd .. && node tools/itch/check.mjs && echo 'dist -> derelict-rogue-web.zip ready for an itch.io HTML5 upload'"
   },
   "dependencies": {
     "@jamrog/audio": "*",
