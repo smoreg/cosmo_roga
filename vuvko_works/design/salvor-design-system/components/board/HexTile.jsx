@@ -41,18 +41,23 @@ const KIND={
   machine: {shape:"circle(50%)",                                                   name:"machine",     at:"strip",  near:null,    note:"2 turns"}
 };
 
-/**
- * How much a given state lets you know: "nothing", "name", or "all".
- * Exported because readouts must not out-know the board — every caller that
- * decides whether to print a name or its contents asks this.
- */
-export function knows(state){ return (STATE[state]||STATE.monitored).knows; }
+function knowsOf(state){ return (STATE[state]||STATE.monitored).knows; }
 
-/** The room's name, or null when the drone has no business knowing it. */
-export function knownName(room){
-  if(!room) return null;
-  return knows(room.state)==="nothing"?null:(room.name||null);
-}
+/**
+ * The knowledge model, exposed so nothing has to re-derive it — a readout must
+ * never out-know the board. Capitalised because that is what the design system
+ * puts on its namespace.
+ *
+ *   Knowledge.of(state)    "nothing" | "name" | "all"
+ *   Knowledge.name(room)   the room's name, or null if it is not yours to know
+ */
+export const Knowledge={
+  of:knowsOf,
+  name(room){
+    if(!room) return null;
+    return knowsOf(room.state)==="nothing"?null:(room.name||null);
+  }
+};
 
 const RATIO=1.1547; // pointy-top: point-to-point height over flat-to-flat width
 const HEX="var(--sv-hex)";
@@ -159,7 +164,7 @@ export function HexTile({name,id,contents=[],props=[],state="monitored",size=118
   const h=Math.round(size*RATIO);
   const here=state==="current";
   const shows=s.knows==="all";
-  const named=knows(state)!=="nothing"&&name;
+  const named=knowsOf(state)!=="nothing"&&name;
   const rings=(shows?props:[]).slice(0,1).map(p=>PROP[p]).filter(Boolean);
   const wash=rings.map(r=>r.fill).filter(Boolean)[0];
   const fill=wash||s.fill;
@@ -226,6 +231,17 @@ export function HexTile({name,id,contents=[],props=[],state="monitored",size=118
   );
 }
 
+/* A body in transit. Same silhouette as its chip, so the thing that arrives is
+   recognisably the thing that left. */
+export const MoverMark=React.forwardRef(function MoverMark({kind="scout",size=19,style},ref){
+  const k=KIND[kind]||KIND.machine;
+  return (
+    <div ref={ref} data-face="▪" style={{position:"relative",width:size,height:size,...style}}>
+      <div data-fx-face style={{width:"100%",height:"100%",background:k.hostile?"var(--sv-bad)":"var(--sv-amber)",clipPath:k.shape||undefined,display:"flex",alignItems:"center",justifyContent:"center",font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,lineHeight:1,color:"var(--sv-knock)"}}></div>
+    </div>
+  );
+});
+
 /* The drone it WOULD be, at the end of a previewed route. Hollow rather than
    solid so it never reads as where the drone actually is, and struck through
    when the route cannot be walked. */
@@ -272,7 +288,7 @@ const DOOR={
 
 /* Owns the geometry, the camera and the board's interactions: pointy-top hexes
    on offset rows, corridors centre to centre beneath them, right-drag pan. */
-export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="rungs",hint=true,plan=null,onSelect,onHoverRoom,onAct,onDoorAct,renderHover,style}){
+export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="rungs",hint=true,plan=null,moves=null,onSelect,onHoverRoom,onAct,onDoorAct,onMovesDone,renderHover,style}){
   const [pan,setPan]=React.useState({x:0,y:0});
   const [hover,setHover]=React.useState(null);
   const [door,setDoor]=React.useState(null);
@@ -280,9 +296,43 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
   const [moving,setMoving]=React.useState(null);
   const droneRef=React.useRef(null);
   const moveFx=React.useRef(null);
+  const movers=React.useRef({});
+  const moveKey=(moves||[]).map(m=>(m.id||"")+m.from+">"+m.to).join("|");
   React.useEffect(()=>()=>{ if(moveFx.current) moveFx.current.cancel(); },[]);
+
+  /* Play every reported relocation at once — a watch passes for all of them
+     together, so they should not queue up one after another. */
+  React.useEffect(()=>{
+    if(!moves||!moves.length) return;
+    const FX=window.FX||window.DerelictFX;
+    if(!FX){ if(onMovesDone) onMovesDone(); return; }
+    let left=moves.length, cancelled=false;
+    const hs=moves.map((m,i)=>{
+      const el=movers.current[m.id||i];
+      const to=byId[m.to];
+      if(!el||!to){ left--; return null; }
+      const c=centre(to);
+      return FX.teleport(el,{left:c.x-9,top:c.y-9},{
+        faceEl:el.querySelector("[data-fx-face]"),
+        label:"",
+        onDone:()=>{ if(!cancelled&&--left<=0&&onMovesDone) onMovesDone(); }
+      });
+    }).filter(Boolean);
+    if(!left&&onMovesDone) onMovesDone();
+    return ()=>{ cancelled=true; hs.forEach(x=>x&&x.cancel()); };
+  },[moveKey]);
   const [dseq,setDseq]=React.useState(0);
-  const openDoor=(i)=>{ setDoor(i); setDseq(n=>n+1); };
+  const hoverTimer=React.useRef(null);
+  const holdHover=()=>{ if(hoverTimer.current){ clearTimeout(hoverTimer.current); hoverTimer.current=null; } };
+  const dropHover=()=>{ holdHover(); hoverTimer.current=setTimeout(()=>{ setHover(null); setBarred(null); if(onHoverRoom)onHoverRoom(null); },450); };
+  const doorTimer=React.useRef(null);
+  const holdDoor=()=>{ if(doorTimer.current){ clearTimeout(doorTimer.current); doorTimer.current=null; } };
+  const openDoor=(i)=>{ holdDoor(); setDoor(i); setDseq(n=>n+1); };
+  /* A menu offset clear of its door leaves a gap the pointer must cross, and
+     leaving the door was closing the menu before the pointer arrived. Two
+     frames of grace: long enough to cross, short enough never to feel stuck. */
+  const dropDoor=()=>{ holdDoor(); doorTimer.current=setTimeout(()=>setDoor(null),450); };
+  React.useEffect(()=>()=>{ holdDoor(); holdHover(); },[]);
   const drag=React.useRef(null);
 
   const W=size*spread, H=size*RATIO*spread, ROW=H*0.75;
@@ -339,9 +389,24 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
   /* Where a board point lands once the pan is applied. */
   const at=(x,y)=>({left:"calc(50% + "+(pan.x+x-bw/2)+"px)",top:"calc(50% + "+(pan.y+y-bh/2)+"px)"});
 
-  /* Walk the drone along a cleared route, one compartment per frame. The pip
-     is placed imperatively while it travels so React is not fighting the
-     animation; the parent commits the new position when it lands. */
+  /* Move the drone along a cleared route, one teleport per compartment: it
+     dissolves out of each room and reassembles in the next, so a three-room
+     move reads as three hops and the path is still legible. The pip is placed
+     imperatively while it plays so React is not fighting the animation; the
+     parent commits the new position when it lands. */
+  const hop=(el,ids,i,onEnd)=>{
+    const FX=window.FX||window.DerelictFX;
+    const c=centre(byId[ids[i]]);
+    return FX.teleport(el,{left:c.x-20,top:c.y-hexH/2-24},{
+      faceEl:el.querySelector("[data-fx-face]"),
+      label:el.dataset.face||"◆",
+      onDone:()=>{
+        if(i+1<ids.length){ moveFx.current=hop(el,ids,i+1,onEnd); return; }
+        onEnd();
+      }
+    });
+  };
+
   const move=(path)=>{
     const FX=typeof window!=="undefined"?(window.FX||window.DerelictFX):null;
     const el=droneRef.current;
@@ -349,14 +414,9 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
     if(!FX||!el){ if(onSelect) onSelect(dest); return; }
     if(moveFx.current) moveFx.current.cancel();
     setMoving(path);
-    const stops=path.map(id=>{
-      const c=centre(byId[id]);
-      return {left:c.x-20,top:c.y-hexH/2-24};
-    });
-    moveFx.current=FX.wake(el,stops,{
-      faceEl:el.querySelector("[data-fx-face]"),
-      label:"◆",
-      onDone:()=>{ setMoving(null); if(onSelect) onSelect(dest); }
+    moveFx.current=hop(el,path,0,()=>{
+      setMoving(null);
+      if(onSelect) onSelect(dest);
     });
   };
 
@@ -400,7 +460,7 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
           const reach=l.a===drone||l.b===drone;
           return (
             <React.Fragment key={i}>
-              <div onMouseEnter={()=>openDoor(i)} onMouseLeave={()=>setDoor(null)}
+              <div onMouseEnter={()=>openDoor(i)} onMouseLeave={dropDoor}
                 style={{position:"absolute",left:p.x,top:p.y-9,width:len,height:18,transform:`rotate(${ang}deg)`,transformOrigin:"0 50%",zIndex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:4,cursor:"help"}}>
                 <div style={{position:"absolute",left:0,right:0,top:"50%",height:11,transform:"translateY(-50%)",background:"var(--sv-deck)"}}></div>
                 <div style={{position:"absolute",left:0,right:0,top:"50%",height:2,transform:"translateY(-50%)",background:d.c,opacity:d.bars?.7:.9}}></div>
@@ -433,8 +493,8 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
           const n=step(r.id);
           return <HexTile key={r.id} {...r} size={size} hot={hover===r.id}
             step={n<0?null:{n:n+1,last:n===route.length-1}}
-            onMouseEnter={()=>{ if(moving)return; setHover(r.id); if(onHoverRoom)onHoverRoom(r.id);}}
-            onMouseLeave={()=>{ if(moving)return; setHover(null); setBarred(null); if(onHoverRoom)onHoverRoom(null);}}
+            onMouseEnter={()=>{ if(moving)return; holdHover(); setHover(r.id); if(onHoverRoom)onHoverRoom(r.id);}}
+            onMouseLeave={()=>{ if(moving)return; dropHover(); }}
             onAct={onAct?(verb,item)=>onAct(r,verb,item):undefined}
             onClick={()=>{
               const intent=intentFor(r.id);
@@ -445,18 +505,30 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
             }}
             style={{position:"absolute",left:c.x-size/2,top:c.y-hexH/2,zIndex:r.state==="current"?5:4}}/>;
         })}
+      </div>
 
-
+      {/* The drone, outside the panned wrapper so pinned chrome cannot cover
+          it. Positioned with left/top rather than a transform so board pixels
+          stay board pixels for the movement animation. */}
+      <div style={{position:"absolute",left:"calc(50% + "+(pan.x-bw/2)+"px)",top:"calc(50% + "+(pan.y-bh/2)+"px)",width:bw,height:bh,zIndex:65,pointerEvents:"none"}}>
         {route&&route.length&&!moving?(()=>{
           const end=byId[route[route.length-1]]; if(!end) return null;
           const c=centre(end);
-          const shut=blockedDoor!=null;
-          return <DroneGhost key="ghost" blocked={shut}
-            style={{position:"absolute",left:c.x-20,top:shut?c.y-Math.round(20*RATIO):c.y-hexH/2-24,zIndex:48,pointerEvents:"none",animation:"sv-step-in var(--sv-frame) var(--sv-step) "+(route.length*112)+"ms 1 both"}}/>;
+          const blocked=blockedDoor!=null;
+          return <DroneGhost key="ghost" blocked={blocked}
+            style={{position:"absolute",left:c.x-20,top:blocked?c.y-Math.round(20*RATIO):c.y-hexH/2-24,animation:"sv-step-in var(--sv-frame) var(--sv-step) "+(route.length*112)+"ms 1 both"}}/>;
         })():null}
 
         {here?(()=>{const c=centre(here);return <DroneMark key="drone" ref={droneRef}
-          style={{position:"absolute",left:c.x-20,top:c.y-hexH/2-24,zIndex:50}}/>;})():null}
+          style={{position:"absolute",left:c.x-20,top:c.y-hexH/2-24}}/>;})():null}
+
+        {(moves||[]).map((m,i)=>{
+          const from=byId[m.from]; if(!from) return null;
+          const c=centre(from);
+          return <MoverMark key={m.id||i} kind={m.kind}
+            ref={(el)=>{ movers.current[m.id||i]=el; }}
+            style={{position:"absolute",left:c.x-9,top:c.y-9}}/>;
+        })}
       </div>
 
       {/* Live readouts, outside the panned wrapper so pinned chrome cannot
@@ -464,9 +536,15 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
       {renderHover&&hover&&byId[hover]?(()=>{
         const r=byId[hover], c=centre(r), p=at(c.x+size/2+12,c.y-hexH/2);
         const flip=pan.x+c.x+size/2+12+250>bw;
-        return <div onMouseEnter={()=>setHover(r.id)}
-          style={{position:"absolute",...(flip?at(c.x-size/2-12,c.y-hexH/2):p),transform:flip?"translateX(-100%)":"none",zIndex:70,minWidth:220}}>
-          {renderHover(r,{intent:intentFor(r.id),path:route,blocked:blockedDoor!=null?links[blockedDoor]:null,steps:route?route.length:0})}
+        const intent=intentFor(r.id);
+        return <div onMouseEnter={holdHover} onMouseLeave={dropHover}
+          onClick={()=>{
+            if(intent==="blocked"){ setBarred(blockedDoor); return; }
+            if(intent==="move"){ move(route); return; }
+            if(onSelect) onSelect(r.id);
+          }}
+          style={{position:"absolute",...(flip?at(c.x-size/2-12,c.y-hexH/2):p),transform:flip?"translateX(-100%)":"none",zIndex:70,minWidth:220,cursor:intent==="move"?"pointer":"default"}}>
+          {renderHover(r,{intent,path:route,blocked:blockedDoor!=null?links[blockedDoor]:null,steps:route?route.length:0})}
         </div>;
       })():null}
 
@@ -488,7 +566,7 @@ export function HexMap({rooms=[],links=[],drone,size=118,spread=1.3,doorStyle="r
         return (
           <Popover key={dseq} tone={d.c}
             style={{position:"absolute",...at(mx+dx,my+dy),transform:anchor,zIndex:70,minWidth:200}}>
-            <div onMouseEnter={()=>openDoor(door)} onMouseLeave={()=>setDoor(null)}>
+            <div onMouseEnter={holdDoor} onMouseLeave={dropDoor}>
               <div style={{display:"flex",alignItems:"center",gap:9,padding:"4px 9px",background:d.c}}>
                 <span data-sc style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-knock)"}}>{l.label||"door"}</span>
                 <span data-sc style={{marginLeft:"auto",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-knock)",opacity:.8}}>{l.state}</span>

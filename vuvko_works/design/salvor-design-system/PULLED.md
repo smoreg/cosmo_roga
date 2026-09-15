@@ -1,7 +1,45 @@
 # What is here, and what is still in the project
 
 Pulled from the Claude Design project **SALVOR — Screens as Built**
-(`2b77ba4c-f54c-445d-a245-0224024bee1a`) on 2026-09-15.
+(`2b77ba4c-f54c-445d-a245-0224024bee1a`) on 2026-09-15, twice: the system
+itself at 05:25 and a second pass at 05:46.
+
+## The second pull
+
+Three components appeared and two changed their minds about something.
+
+**`SlashMeter`** writes stability the way the machine prints it — one struck
+mark per step of capacity, lit where the module holds it and dim where it has
+been lost. Left aligned and never stretched, so two modules of different size
+are directly comparable and no number has to restate the count. `CoreRack` now
+builds out of it rather than out of `SegmentMeter`, and has dropped both the
+slot numbers and the "N slots gone" tally.
+
+**A burned slot and an empty slot are now the same thing to look at**: a dotted
+bay reading `empty`. The note in the source says why — naming what used to be
+in it is a fact for the log, not a permanent label on the rack.
+
+**`Knowledge`** replaces the loose `knows()` / `knownName()` pair with a named
+model (`Knowledge.of(state)`, `Knowledge.name(room)`), so nothing has to
+re-derive how much the drone is allowed to know. A readout must never out-know
+the board.
+
+**`MoverMark`** is a body in transit, drawn with the same silhouette as its
+chip so the thing that arrives is recognisably the thing that left. `HexMap`
+takes a `moves` array and plays every reported relocation **at once** rather
+than in sequence, because a watch passes for all of them together.
+
+**Movement changed idiom.** The drone no longer walks with `wake()`; it hops
+with one `teleport()` per compartment, dissolving out of each room and
+reassembling in the next, so a three-room move reads as three hops. The drone
+also moved out of the panned wrapper into its own layer, positioned with
+`left`/`top` rather than a transform, so board pixels stay board pixels while
+the animation plays.
+
+**Hover and door menus grew grace timers.** A menu offset clear of its door
+leaves a gap the pointer has to cross, and leaving the door was closing the
+menu before the pointer got there. Two frames of grace, and the hover readout
+is now clickable — it carries the same intent the cell does.
 
 ## Here
 

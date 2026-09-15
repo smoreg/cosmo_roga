@@ -21,6 +21,24 @@ export function SegmentMeter({label,value=0,max=8,burned=0,tone="good",shape="bl
   );
 }
 
+/* Stability written the way the machine prints it: one struck mark per step of
+   capacity, lit while the module holds it, dim where it has been lost. Left
+   aligned and never stretched, so two modules of different size are directly
+   comparable and no number has to restate the count. */
+export function SlashMeter({label,value=0,max=8,tone="good",style}){
+  const c=TONE[tone]||TONE.good;
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:10,...style}}>
+      {label?<div style={{width:78,flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-soft)"}}>{label}</div>:null}
+      <div style={{flex:1,minWidth:0,display:"flex",gap:1,font:"var(--sv-value)",fontSize:17,lineHeight:1,letterSpacing:0,whiteSpace:"nowrap",overflow:"hidden"}}>
+        {Array.from({length:max}).map((_,i)=>(
+          <span key={i} style={{color:i<value?c:"var(--sv-plate-lit)"}}>/</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* The core's stability, read as pips: ●●○. The last one is the run. */
 export function CorePips({value=1,max=3,size=15,style}){
   const tone=value<=1?"var(--sv-bad)":value<max?"var(--sv-warn)":"var(--sv-good)";
@@ -37,29 +55,25 @@ export function CorePips({value=1,max=3,size=15,style}){
    with a stability bar; when it burns out the slot is empty for the rest of
    the sortie. This is where damage lands — there is no hull bar anywhere. */
 export function CoreRack({core=1,coreMax=3,slots=[],title="Core",style}){
-  const gone=slots.filter(s=>s.burned||s.empty).length;
   return (
     <div style={{...style}}>
       <div style={{display:"flex",alignItems:"center",gap:12,paddingBottom:11,borderBottom:"1px solid var(--sv-line)"}}>
         <div style={{font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:core<=1?"color-mix(in oklab, var(--sv-bad) 30%, var(--sv-ink))":"var(--sv-ink)"}}>{title}</div>
         <CorePips value={core} max={coreMax}/>
-        <div style={{marginLeft:"auto",font:"var(--sv-stencil)",letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-soft)"}}>{gone?gone+" slots gone":"rack whole"}</div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:11}}>
         {slots.map((s,i)=>{
+          /* A burned slot and an empty slot are the same thing to look at: the
+             bay is there and nothing is in it. Naming what used to be in it is
+             a fact for the log, not a permanent label on the rack. */
           const dead=s.burned||s.empty;
-          return (
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{width:14,flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,color:"var(--sv-soft)"}}>{i+1}</div>
-              {dead?(
-                <div style={{flex:1,display:"flex",alignItems:"center",gap:9}}>
-                  <div style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-soft)"}}>{s.burned?"-- burned --":"-- empty --"}</div>
-                  <div style={{flex:1,height:4,background:s.burned?"var(--sv-burned)":"var(--sv-plate)"}}></div>
-                </div>
-              ):(
-                <SegmentMeter label={s.name} value={s.value} max={s.max} tone={s.tone||(s.value<=s.max*0.34?"bad":s.value<s.max*0.7?"warn":"good")} height={11} style={{flex:1}}/>
-              )}
+          return dead?(
+            <div key={i} style={{display:"flex",alignItems:"center",height:19,padding:"0 9px",border:"1px dotted var(--sv-rule)",boxSizing:"border-box"}}>
+              <div style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-faint)"}}>empty</div>
             </div>
+          ):(
+            <SlashMeter key={i} label={s.name} value={s.value} max={s.max}
+              tone={s.tone||(s.value<=s.max*0.34?"bad":s.value<s.max*0.7?"warn":"good")}/>
           );
         })}
       </div>
