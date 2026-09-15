@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import * as FX from "../../fx/derelict-fx.js";
 import { Panel, Tag } from "../chrome/Panel.js";
-import { AlertDial } from "../meters/Rack.js";
 import type { Offer, TugModel } from "../model.js";
 
 /**
@@ -45,15 +44,55 @@ export function TugOrders({
       }}
     >
         <Panel title={tug.callsign} stencil="tug">
-          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-            <AlertDial value={tug.derelict.alert} max={5} label="alert" size={66} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 18, alignItems: "stretch" }}>
+            {/* What the tug has. The account is the tug's, so it is under the
+                tug's name, and nothing about the hull alongside is mixed into
+                it — a credit and an alarm are not two readings of one thing. */}
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+              <Figure label="banked" value={tug.account.credits} big />
+              <Figure label="carried" value={tug.account.loot} />
+              <Figure label="keycards" value={tug.account.keys} />
+              <Figure label="in the hold" value={tug.account.hold} />
+              <Figure label="sortie" value={tug.account.sortie} />
+            </div>
+
+            {/* And what it is tied to, while that is still a question. A hull
+                under tow is finished — what its alarm stood at and how many of
+                its systems were up are the history of a decision already made,
+                and a screen that keeps printing them is asking the player to
+                re-read an answer.
+
+                The alarm went with them. It was the hull's own, as the last
+                drone left it, and it is also what the next sortie re-enters
+                at — so if the tug ever needs to say "this one will be harder
+                than last time", this is the line it goes back on. */}
+            <div
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 7,
+                paddingLeft: 18,
+                borderLeft: "1px solid var(--sv-line)",
+              }}
+            >
+              <div
+                style={{
+                  font: "var(--sv-stencil)",
+                  letterSpacing: "var(--sv-stencil-track)",
+                  textTransform: "uppercase",
+                  color: "var(--sv-soft)",
+                }}
+              >
+                alongside
+              </div>
               <div
                 style={{
                   font: "var(--sv-display)",
-                  fontSize: 26,
+                  fontSize: 24,
                   letterSpacing: "var(--sv-display-track)",
-                  color: "var(--sv-ink)",
+                  color: tug.derelict.sold ? "var(--sv-soft)" : "var(--sv-ink)",
                 }}
               >
                 {tug.derelict.name}
@@ -230,47 +269,6 @@ function OfferList({
   );
 }
 
-/**
- * A section of the dock, which opens and shuts.
- *
- * Three panels stacked down the side of the tug was three headers, three
- * borders and three sets of scanlines for what is one readout, and the third
- * of them was always below the fold. One housing, three sections, and the ones
- * a player is not looking at cost a line each.
- */
-function Fold({
-  head,
-  open = false,
-  children,
-}: {
-  head: string;
-  open?: boolean;
-  children?: ReactNode;
-}): ReactElement {
-  const [on, setOn] = useState(open);
-  return (
-    <div style={{ borderTop: "1px solid var(--sv-line)", paddingTop: 7, marginTop: 7 }}>
-      <div
-        onClick={() => setOn(!on)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          cursor: "pointer",
-          font: "var(--sv-stencil)",
-          letterSpacing: "var(--sv-stencil-track)",
-          textTransform: "uppercase",
-          color: on ? "var(--sv-amber)" : "var(--sv-soft)",
-          marginBottom: on ? 6 : 0,
-        }}
-      >
-        <span style={{ width: 11 }}>{on ? "▾" : "▸"}</span>
-        {head}
-      </div>
-      {on ? children : null}
-    </div>
-  );
-}
 
 /**
  * The three drones, and whichever one is being looked at.
@@ -358,11 +356,12 @@ function Drones({
 }
 
 /**
- * The readout: what the dock is, rather than what can be done about it.
+ * The rack the tug keeps, which is three drones and a choice between them.
  *
- * One housing with folds, because three panels down one side was three
- * headers, three borders and three sets of scanlines for one readout, and the
- * third was always below the fold. Picking a drone here does not buy it — it
+ * The account used to be folded in above it and is now under the tug's own
+ * name, where it belongs: what the tug *has* is one reading and what it can
+ * *fly* is another, and stacking them made a readout that answered two
+ * questions nobody asks together. Picking a drone here does not buy it — it
  * points the rack above at that hull instead, so two racks can be compared
  * where the rack already is, rather than in a summary beside it.
  */
@@ -374,20 +373,8 @@ export function DockPreview({
   onLook: (id: string | null) => void;
 }): ReactElement {
   return (
-    <Panel title="Dock" stencil="preview">
-      <Fold head="account" open>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <Figure label="banked" value={tug.account.credits} big />
-          <Figure label="carried" value={tug.account.loot} />
-          <Figure label="keycards" value={tug.account.keys} />
-          <Figure label="in the hold" value={tug.account.hold} />
-          <Figure label="sortie" value={tug.account.sortie} />
-        </div>
-      </Fold>
-
-      <Fold head="drones" open>
-        <Drones hulls={tug.hulls} onLook={onLook} />
-      </Fold>
+    <Panel title="Dock" stencil="drones">
+      <Drones hulls={tug.hulls} onLook={onLook} />
     </Panel>
   );
 }

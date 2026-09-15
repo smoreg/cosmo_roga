@@ -17,6 +17,7 @@ import {
   tugOf,
 } from "../src/ui/react/model.js";
 import { roomActions } from "../src/ui/actions.js";
+import { currentDerelict } from "../src/systems/voyage.js";
 import { CODEX_IDS } from "../src/content/codex.js";
 import { titleScreen, DEFAULT_TITLE } from "../src/ui/title.js";
 
@@ -314,18 +315,36 @@ describe("the dock is read before it is spent", () => {
     }
   });
 
-  it("puts the account and the three drones under one housing, and only one", () => {
+  it("says the account under the tug's own name, and the drones in the dock", () => {
     const game = newGame(4242);
+    const tug = tugOf(game);
     const { host, unmount } = mount(<Screen game={game} />);
-    expect(text(host)).toContain("account");
-    expect(text(host)).toContain("drones");
-    for (const hull of tugOf(game).hulls) expect(text(host)).toContain(hull.name);
+    /* The account is the tug's, so it is under the tug's callsign. */
+    expect(text(host)).toContain(tug.callsign);
+    expect(text(host)).toContain("banked");
+    for (const hull of tug.hulls) expect(text(host)).toContain(hull.name);
     /* The dock was being drawn twice — the readout, and an empty compartment
        panel behind it wearing the same name. One housing, one title. */
     const docks = Array.from(host.querySelectorAll("div")).filter(
       (d) => d.textContent === "Dock",
     );
     expect(docks.length).toBeLessThanOrEqual(1);
+    unmount();
+  });
+
+  it("carries no alarm, because the tug has none and the hull's is history", () => {
+    const game = newGame(4242);
+    const tug = tugOf(game);
+    const { host, unmount } = mount(<Screen game={game} />);
+    /* The tug is the half of the game with no alarm and no corridors
+       (`ui/tugboard.ts`). The number the dial used to show was the derelict's,
+       as the last drone left it — a reading of a decision already made, and a
+       gauge under the tug's own name reads as the tug's however it is
+       labelled. The hull alongside keeps only what is still a question. */
+    expect(tug.derelict.alert).toBe(currentDerelict(game).alert);
+    expect(text(host)).toContain("alongside");
+    expect(text(host)).not.toContain("alert");
+    expect(text(host)).toContain(tug.derelict.name);
     unmount();
   });
 
