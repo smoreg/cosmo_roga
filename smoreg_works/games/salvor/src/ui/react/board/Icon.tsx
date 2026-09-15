@@ -1,6 +1,13 @@
 import type { CSSProperties, ReactElement } from "react";
 import type { BoardThing } from "./HexBoard.js";
-import { DRONE_ICON, MACHINE_BOX, MACHINE_ICON } from "./machines.js";
+import {
+  CRATE_ICON,
+  DRONE_ICON,
+  LOOT_ICON,
+  MACHINE_BOX,
+  MACHINE_ICON,
+  SYSTEM_ICON,
+} from "./machines.js";
 
 /**
  * What a thing looks like, once, for everywhere it is drawn.
@@ -88,6 +95,42 @@ export function toneOf(thing: { glyph: string; hostile?: true }): string {
  * Both are drawn in the same tone and at the same size, so a row of them lines
  * up whichever a thing turns out to be.
  */
+/**
+ * Which drawing a thing that is not a machine gets, if it gets one.
+ *
+ * Three of the four buckets are drawn now. A crate is always a crate and a
+ * ship's system is always a rack — both are one thing wherever they stand — and
+ * a pile of scrap is rolled out of seven, because a pile is a pile and what is
+ * in it is what the line beside it says. Seven drawings cannot name fourteen
+ * modules and do not pretend to: they vary so two piles in one compartment can
+ * be told apart, and nothing more.
+ *
+ * Bodies keep their silhouette. A cross is already the clearest thing it could
+ * be, and the one object on the board that is not machinery should not start
+ * looking like more of it.
+ */
+function lootPath(thing: BoardThing): string | undefined {
+  if (thing.glyph === "X") return CRATE_ICON;
+  if (thing.glyph === "+" || thing.glyph === "✓") return SYSTEM_ICON;
+  if (thing.glyph === "%") return LOOT_ICON[bucket(thing.id, LOOT_ICON.length)];
+  return undefined;
+}
+
+/**
+ * A number from a string, and always the same one.
+ *
+ * Not `game.rng`: the rng is the run, and a picture that spent a roll would
+ * change what happens next the moment somebody looked at it.
+ */
+function bucket(key: string, of: number): number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % of;
+}
+
 export function ThingIcon({
   thing,
   size = 15,
@@ -97,7 +140,7 @@ export function ThingIcon({
   size?: number;
   style?: CSSProperties;
 }): ReactElement {
-  const drawn = thing.hostile === true ? MACHINE_ICON[thing.glyph] : undefined;
+  const drawn = thing.hostile === true ? MACHINE_ICON[thing.glyph] : lootPath(thing);
   if (drawn !== undefined) {
     return (
       <svg
@@ -139,12 +182,7 @@ export function ThingIcon({
  * only thing that carries over.
  */
 export function droneIcon(key: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < key.length; i++) {
-    h ^= key.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return DRONE_ICON[(h >>> 0) % DRONE_ICON.length] as string;
+  return DRONE_ICON[bucket(key, DRONE_ICON.length)] as string;
 }
 
 /** The drone itself, drawn wherever it is being talked about. */

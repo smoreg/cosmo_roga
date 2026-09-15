@@ -65,8 +65,34 @@ async function pathOf(icon) {
   return d;
 }
 
+/**
+ * Salvage. Seven, rolled per pile, because a pile of scrap is a pile of scrap
+ * and what is *in* it is what the line beside it says — a shape that promised
+ * to name the module would be promising fourteen things with seven drawings.
+ */
+const LOOT = [
+  { id: "arm", author: "lorc", slug: "mechanical-arm" },
+  { id: "gear", author: "darkzaitzev", slug: "big-gear" },
+  { id: "chip", author: "lorc", slug: "microchip" },
+  { id: "disc", author: "delapouite", slug: "compact-disc" },
+  { id: "cpu", author: "delapouite", slug: "cpu" },
+  { id: "led", author: "delapouite", slug: "led" },
+  { id: "cannister", author: "lorc", slug: "cannister" },
+];
+
+/** The ones that are always themselves: a crate is a crate, a rack is a rack. */
+const FIXED = [
+  { id: "crate", author: "delapouite", slug: "wooden-crate" },
+  { id: "system", author: "delapouite", slug: "server-rack" },
+];
+
+/** The mark on the tab. */
+const MARK = { id: "mark", author: "lorc", slug: "metal-scales" };
+
 const rows = [];
 const drones = [];
+const loot = [];
+const fixed = {};
 for (const icon of ICONS) {
   const d = await pathOf(icon);
   rows.push({ ...icon, d });
@@ -77,6 +103,31 @@ for (const icon of DRONES) {
   drones.push({ ...icon, d });
   console.log(`${icon.id.padEnd(16)} ${String(d.length).padStart(5)} chars  · drone`);
 }
+
+for (const icon of LOOT) {
+  const d = await pathOf(icon);
+  loot.push({ ...icon, d });
+  console.log(`${icon.id.padEnd(16)} ${String(d.length).padStart(5)} chars  · loot`);
+}
+for (const icon of FIXED) {
+  fixed[icon.id] = { ...icon, d: await pathOf(icon) };
+  console.log(`${icon.id.padEnd(16)} ${String(fixed[icon.id].d.length).padStart(5)} chars  · fixed`);
+}
+
+/* The favicon is written straight out rather than imported: it is one file the
+   page links, not something the bundle ever sees. Amber on the same near-black
+   the interface is grounded in, with the corner the panels have. */
+const mark = await pathOf(MARK);
+writeFileSync(
+  join(here, "..", "..", "public", "favicon.svg"),
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>SALVOR</title>
+  <rect width="512" height="512" rx="80" fill="#0a0d10"/>
+  <path d="${mark}" fill="#e0a458"/>
+</svg>
+`,
+);
+console.log(`${"favicon".padEnd(16)} ${String(mark.length).padStart(5)} chars  → public/favicon.svg`);
 
 const body = rows
   .map(
@@ -124,6 +175,21 @@ ${body}
 export const DRONE_ICON: readonly string[] = [
 ${drones.map((r) => `  /** ${r.author}/${r.slug} */\n  ${JSON.stringify(r.d)},`).join("\n")}
 ];
+
+/**
+ * Salvage, rolled per pile.
+ *
+ * A pile of scrap is a pile of scrap; what is in it is what the line beside it
+ * says. Seven drawings cannot name fourteen modules and should not pretend to,
+ * so these vary to be told apart and nothing more.
+ */
+export const LOOT_ICON: readonly string[] = [
+${loot.map((r) => `  /** ${r.author}/${r.slug} */\n  ${JSON.stringify(r.d)},`).join("\n")}
+];
+
+/** A crate is a crate and a system is a rack, wherever either of them stands. */
+export const CRATE_ICON = ${JSON.stringify(fixed.crate.d)};
+export const SYSTEM_ICON = ${JSON.stringify(fixed.system.d)};
 `,
 );
 console.log(`\n→ src/ui/react/board/machines.ts`);

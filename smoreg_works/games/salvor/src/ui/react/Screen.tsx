@@ -807,7 +807,7 @@ function Drawers({
                 /* Both licences ask for a notice, so both get one where a
                    player can actually find it. The full text travels with the
                    files; `assets/CREDITS.md` is the long form. */
-                ["machine icons", "game-icons.net — Lorc, Delapouite, Lord Berandas (CC BY 3.0)"],
+                ["icons", "game-icons.net — Lorc, Delapouite, Lord Berandas, DarkZaitzev (CC BY 3.0)"],
                 ["deck plating", "RPG Mobius Geomorphs — Pearce & Smith (CC BY-NC 4.0)"],
                 ["owes a debt to", "Cogmind, by Grid Sage Games"],
               ].map(([k, v]) => (

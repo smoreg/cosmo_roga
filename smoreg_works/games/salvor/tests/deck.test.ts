@@ -6,8 +6,15 @@ import { undock } from "../src/systems/voyage.js";
 import { hexLayout } from "@jamrog/engine";
 import { keelOf, mirror } from "../src/ui/react/hull.js";
 import { bleedScale, deckOf } from "../src/ui/react/deck.js";
-import { whoOf } from "../src/ui/react/model.js";
-import { DRONE_ICON, MACHINE_ICON } from "../src/ui/react/board/machines.js";
+import { hereOf, whoOf } from "../src/ui/react/model.js";
+import { addWreck } from "../src/twist/rig.js";
+import {
+  CRATE_ICON,
+  DRONE_ICON,
+  LOOT_ICON,
+  MACHINE_ICON,
+  SYSTEM_ICON,
+} from "../src/ui/react/board/machines.js";
 import { droneIcon } from "../src/ui/react/board/Icon.js";
 import { MONSTERS } from "../src/content/monsters.js";
 import type { DeckIndex } from "../src/ui/react/deck.js";
@@ -264,5 +271,56 @@ describe("the drone is drawn as the machine it was built as", () => {
       expect(d).toMatch(/^[MmZzLlHhVvCcSsQqTtAa\s\d.,+\-eE]+$/);
       expect(d.length).toBeGreaterThan(300);
     }
+  });
+});
+
+describe("salvage, crates and the ship's own systems", () => {
+  it("rolls a pile out of seven, and always the same one for the same pile", () => {
+    expect(LOOT_ICON).toHaveLength(7);
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const here = game.player.room as number;
+    const wreck = addWreck(game, here, "cutter", 4);
+    const a = hereOf(game).find((t) => t.id === `s${String(wreck.id)}`);
+    const b = hereOf(game).find((t) => t.id === `s${String(wreck.id)}`);
+    expect(a?.glyph).toBe("%");
+    /* The same pile is the same drawing every time the board is read. */
+    expect(a?.id).toBe(b?.id);
+  });
+
+  it("spreads salvage across all seven rather than favouring one", () => {
+    const seen = new Set<number>();
+    for (let id = 1000; id < 1200; id++) seen.add(id % LOOT_ICON.length);
+    expect(seen.size).toBe(LOOT_ICON.length);
+  });
+
+  it("gives a crate and a system one drawing each, wherever they stand", () => {
+    /* A crate is a crate. A pile is rolled because a pile is anonymous; these
+       two are not, and a crate that looked different in two compartments would
+       be saying something untrue about them. */
+    expect(CRATE_ICON.length).toBeGreaterThan(300);
+    expect(SYSTEM_ICON.length).toBeGreaterThan(300);
+    expect(CRATE_ICON).not.toBe(SYSTEM_ICON);
+  });
+
+  it("carries the drawing and not the site's backing square", () => {
+    for (const d of [...LOOT_ICON, CRATE_ICON, SYSTEM_ICON]) {
+      expect(d.startsWith("M0 0h512v512H0z")).toBe(false);
+      expect(d).toMatch(/^[MmZzLlHhVvCcSsQqTtAa\s\d.,+\-eE]+$/);
+    }
+  });
+
+  it("puts the mark on the tab in the game's own two colours", () => {
+    const svg = readFileSync(
+      join(import.meta.dirname, "..", "public", "favicon.svg"),
+      "utf8",
+    );
+    /* Amber on the near-black the whole interface is grounded in, with the
+       corner the panels have. Generated with the icons, so it cannot drift
+       from them. */
+    expect(svg).toContain('rx="80"');
+    expect(svg).toContain("#0a0d10");
+    expect(svg).toContain("#e0a458");
+    expect(svg.match(/<path/g)).toHaveLength(1);
   });
 });
