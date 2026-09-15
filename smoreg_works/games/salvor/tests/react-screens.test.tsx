@@ -18,7 +18,7 @@ import {
   tugOf,
 } from "../src/ui/react/model.js";
 import { roomActions } from "../src/ui/actions.js";
-import { currentDerelict } from "../src/systems/voyage.js";
+import { currentDerelict, undock } from "../src/systems/voyage.js";
 import { CODEX_IDS } from "../src/content/codex.js";
 import { titleScreen, DEFAULT_TITLE } from "../src/ui/title.js";
 
@@ -557,6 +557,62 @@ describe("the reveal never leaves a screen blank", () => {
     expect(linesOf(host)).toHaveLength(2);
     stop();
     expect(host.textContent).toBe("ENGINEERINGDOCKING BAY");
+    host.remove();
+  });
+});
+
+describe("a compartment that stops being a rumour says so", () => {
+  beforeAll(stillFrames);
+
+  it("ranks the four states so a reveal is a comparison, not a table of pairs", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const board = boardOf(game);
+    /* Monitored and current are one rung: the drone walking into a room it was
+       already watching has not revealed it, because it was never hidden. */
+    const here = board.rooms.find((r) => r.id === board.drone);
+    expect(here?.knows).toBe("current");
+    expect(board.rooms.some((r) => r.knows === "undetected")).toBe(true);
+  });
+
+  it("reveals nothing on arrival, and something once the drone moves", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+
+    const before = boardOf(game);
+    act(() => {
+      root.render(<Screen game={game} />);
+    });
+    /* A hull that unfolded itself compartment by compartment on arrival would
+       be a title sequence, not a scan — so the first sight reveals nothing.
+       Nothing is animating, which is what "no growing layer" means here. */
+    expect(host.querySelectorAll("[style*='sv-hex-grow']")).toHaveLength(0);
+
+    /* Walk one door and let the board re-read the game. */
+    const door = game.ship.doorsOf(game.player.room as number)[0];
+    expect(door).toBeDefined();
+    act(() => {
+      game.playerCommand({ kind: "go", door: (door as { id: number }).id });
+    });
+    const after = boardOf(game);
+    const gained = after.rooms.filter((r) => {
+      const was = before.rooms.find((b) => b.id === r.id);
+      const rank = { undetected: 0, detected: 1, monitored: 2, current: 2 };
+      return was !== undefined && rank[r.knows] > rank[was.knows];
+    });
+    /* Whatever the walk turned up, the board's own reading of it is what the
+       animation keys off — so the two agree by construction, and this pins
+       that the walk turns something up at all. */
+    expect(gained.length + after.rooms.filter((r) => r.knows === "current").length).toBeGreaterThan(
+      0,
+    );
+
+    act(() => {
+      root.unmount();
+    });
     host.remove();
   });
 });

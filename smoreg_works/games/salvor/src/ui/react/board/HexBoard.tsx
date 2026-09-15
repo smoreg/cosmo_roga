@@ -115,6 +115,21 @@ export interface BoardDoor {
   verbs: readonly { index: number; verb: string; note: string; enabled: boolean }[];
 }
 
+/**
+ * Knowledge as a number, so "did this cell just learn something" is a
+ * comparison rather than a table of pairs.
+ *
+ * Monitored and current are the same rung on purpose: both show what is in
+ * the compartment, and the drone walking into a room it was already watching
+ * has not revealed it — it was never hidden.
+ */
+const RANK: Record<Knows, number> = {
+  undetected: 0,
+  detected: 1,
+  monitored: 2,
+  current: 2,
+};
+
 interface DoorInk {
   c: string;
   bars: number;
@@ -348,6 +363,7 @@ function HexTile({
   size,
   hot,
   step,
+  fresh,
   onClick,
   onEnter,
   onLeave,
@@ -358,6 +374,12 @@ function HexTile({
   size: number;
   hot: boolean;
   step: { n: number; last: boolean } | null;
+  /**
+   * Set on the frame a compartment stops being a rumour, and bumped each time
+   * it happens again, so remounting the layer replays the animation. Undefined
+   * on every other cell and on every other frame.
+   */
+  fresh?: number;
   onClick: () => void;
   onEnter: () => void;
   onLeave: () => void;
@@ -366,6 +388,18 @@ function HexTile({
 }): ReactElement {
   const s = STATE[room.knows];
   const [tip, setTip] = useState<Chip | null>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+
+  /* The name arrives the way a name arrives anywhere else in this game —
+     scrambled, then resolved. It is the third of the three things a reveal
+     does, and the only one that is text rather than geometry. */
+  useEffect(
+    function resolveName() {
+      if (fresh === undefined || labelRef.current === null) return;
+      return reveal([labelRef.current], FX.PRESETS.name);
+    },
+    [fresh],
+  );
 
   /* A hovered thing that dies unmounts its own chip, so no pointer ever leaves
      it and the readout stands there naming something that is not on the ship
@@ -469,6 +503,22 @@ function HexTile({
           zIndex: 5,
         }}
       />
+      {/* Everything painted, wrapped so a reveal can open it out of its own
+          waist. The wrapper is keyed on the reveal, because a CSS animation
+          replays when the element is new and not when a property changes back
+          to a value it already had. Nothing here takes the pointer that the
+          layers inside it did not already take. */}
+      <div
+        key={fresh ?? "still"}
+        style={{
+          position: "absolute",
+          inset: 0,
+          animation:
+            fresh === undefined
+              ? undefined
+              : "sv-hex-grow var(--sv-frame) var(--sv-step) 1 both",
+        }}
+      >
       <div
         style={{
           position: "absolute",
@@ -550,9 +600,27 @@ function HexTile({
         {s.band === null ? (
           <div style={{ height: 20 }} />
         ) : (
-          <div style={{ alignSelf: "stretch", background: s.band, padding: "3px 0", textAlign: "center" }}>
+          <div
+            style={{
+              alignSelf: "stretch",
+              background: s.band,
+              padding: "3px 0",
+              textAlign: "center",
+              /* Out from the middle, the way every other border in this system
+                 is drawn — the housing's on hover, the popover's on arrival. A
+                 band that wiped in from one end would be the only thing on the
+                 screen with a reading direction. */
+              transformOrigin: "center",
+              animation:
+                fresh === undefined
+                  ? undefined
+                  : "sv-draw-x var(--sv-frame) var(--sv-step) 1 both",
+            }}
+          >
             <span
+              ref={labelRef}
               style={{
+                display: "inline-block",
                 font: "var(--sv-stencil)",
                 fontSize: 14,
                 letterSpacing: 0,
@@ -568,6 +636,7 @@ function HexTile({
         <div style={{ height: 22, display: "flex", alignItems: "center", gap: 5 }}>
           {foes.map((c) => chip(c, 17))}
         </div>
+      </div>
       </div>
 
       {tip === null ? null : (
@@ -643,6 +712,42 @@ export function HexBoard({
   /* A menu offset clear of its door leaves a gap the pointer has to cross, and
      leaving the door was closing the menu before the pointer got there. Two
      frames of grace: long enough to cross, short enough never to feel stuck. */
+  /**
+   * Which compartments stopped being a rumour on this turn.
+   *
+   * Worked out in an effect rather than while rendering, because it is a
+   * comparison with the last frame and a render that remembers things is a
+   * render that lies the second time it runs — which is every time under
+   * StrictMode. Running it twice on the same rooms finds nothing the second
+   * time, which is the correct answer and the reason it is safe.
+   *
+   * The first sight of a ship reveals nothing: everything is new then, and a
+   * hull that unfolds itself compartment by compartment on arrival is a title
+   * sequence, not a scan. A ship swapped underneath — undocking into a hull —
+   * is the same case, and is caught by the ids not matching.
+   */
+  const seen = useRef<Map<number, number> | null>(null);
+  const [fresh, setFresh] = useState<{ ids: ReadonlySet<number>; n: number }>({
+    ids: new Set<number>(),
+    n: 0,
+  });
+  useEffect(
+    function noticeReveals() {
+      const now = new Map(rooms.map((r) => [r.id, RANK[r.knows]]));
+      const was = seen.current;
+      seen.current = now;
+      if (was === null || was.size !== now.size) return;
+      const ids = new Set<number>();
+      for (const [id, rank] of now) {
+        const before = was.get(id);
+        if (before === undefined) return;
+        if (rank > before) ids.add(id);
+      }
+      if (ids.size > 0) setFresh((f) => ({ ids, n: f.n + 1 }));
+    },
+    [rooms],
+  );
+
   const doorTimer = useRef<number | null>(null);
   const holdDoor = (): void => {
     if (doorTimer.current !== null) window.clearTimeout(doorTimer.current);
@@ -926,6 +1031,7 @@ export function HexBoard({
               room={room}
               size={size}
               hot={hover === room.id}
+              fresh={fresh.ids.has(room.id) ? fresh.n : undefined}
               step={n < 0 || path === null ? null : { n: n + 1, last: n === path.length - 1 }}
               onEnter={() => {
                 if (!moving) setHover(room.id);
