@@ -8,7 +8,7 @@ import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { DERELICTS, buildDerelict } from "../src/content/derelicts.js";
 import { schematicInputOf } from "../src/ui/schematic-input.js";
 import { hexSvgOf } from "../src/ui/web/hex-svg.js";
-import { WEB_CSS } from "../src/ui/web/styles.js";
+import { TOKENS, WEB_CSS } from "../src/ui/web/styles.js";
 import { t } from "../src/i18n.js";
 
 /**
@@ -171,6 +171,123 @@ describe("the honeycomb drawing", () => {
   });
 });
 
+// --------------------------------------------------------- and the cell's face
+
+/** WCAG relative luminance of a `#rrggbb`, and the ratio between two of them. */
+function luminance(hex: string): number {
+  const parts = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
+  const linear = parts.map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+}
+
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+/**
+ * The partner's board, adopted (G91 B). The rule it turns on is that **how much
+ * is printed on a cell is how much the drone knows of it** — so the test is
+ * about what each state does and does not put on the face, not about colours.
+ *
+ * Our five states against his four: `unknown` is his undetected (no plate at
+ * all), `scanned` his detected (a striped plate — a label and not a look),
+ * and `explored`, `visible`, `current` are three grades of his monitored, which
+ * is first-hand knowledge on a solid plate.
+ */
+describe("the face of a compartment", () => {
+  /** The markup of one hexagon's group, by its id. */
+  function cellOf(svg: string, label: string): string {
+    const head = svg.indexOf(`>${label}</text>`);
+    const open = svg.lastIndexOf("<g class=\"room ", head);
+    return svg.slice(open, svg.indexOf("</g>", head) + 4);
+  }
+
+  it("gives a plate to every state but the one nobody has found", () => {
+    const svg = svgOfGame(gameIn());
+    // r5 is behind a welded bulkhead: a shape in the dark, and the absence of
+    // the plate is the whole of what it says.
+    expect(cellOf(svg, "r5")).not.toContain("room-band");
+    for (const label of ["r1", "r2", "r3", "r4"]) {
+      expect(cellOf(svg, label), label).toContain('<rect class="room-band"');
+    }
+  });
+
+  it("stripes the plate while the knowledge is second-hand, and only then", () => {
+    const svg = svgOfGame(gameIn());
+    // r3 was pinged and never entered; the rest were walked through or are in sight.
+    expect(cellOf(svg, "r3")).toContain('<line class="band-hatch"');
+    for (const label of ["r1", "r2", "r4"]) {
+      expect(cellOf(svg, label), label).not.toContain("band-hatch");
+    }
+    expect(count(svg, "band-hatch")).toBe(1);
+    expect(WEB_CSS).toContain(".hexmap .room.is-scanned .band-hatch{stroke:var(--fg);}");
+    // And the ink is knocked out of the plate, in every state that has one.
+    expect(WEB_CSS).toContain(".hexmap .room:not(.is-unknown) .room-name{fill:var(--bg);");
+  });
+
+  /**
+   * The one thing the plate can get wrong, and the reason its ladder is hue and
+   * pattern rather than brightness. Ink knocked out of the dim end of this
+   * palette gives two to one: a plate the width of the compartment that the name
+   * cannot be read off, which is a worse place for a name than the dark floor it
+   * came from. Both tones of the stripe count — half a name is no name.
+   */
+  it("keeps every plate light enough to read the knocked-out name off", () => {
+    const tones = [...WEB_CSS.matchAll(
+      /\.hexmap \.room\.is-\w+ \.(?:room-band|band-hatch)\{(?:fill|stroke):var\(--([\w-]+)\)/g,
+    )].map((m) => m[1]!);
+    expect(tones.length).toBeGreaterThanOrEqual(5);
+    for (const tone of tones) {
+      const plate = TOKENS[tone];
+      expect(plate, tone).toBeDefined();
+      expect(contrast(plate!, TOKENS.bg!), `${tone} ${plate!} against the knocked-out ink`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("puts the plate inside the outline, on the name's own line", () => {
+    const svg = svgOfGame(gameIn());
+    const plate = /<rect class="room-band" x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="(\d+)"\/>/;
+    const [, x, , w] = plate.exec(cellOf(svg, "r1"))!;
+    // The hexagon of r1 is centred on 0 and its outline reaches ±39.8.
+    expect(Number(x)).toBeGreaterThan(-39.8);
+    expect(Number(x) + Number(w)).toBeLessThan(39.8);
+  });
+
+  it("squeezes a name too wide for its plate instead of letting it run out of one", () => {
+    const svg = svgOfGame(gameIn());
+    // CARGO BAY is nine characters; DOCKING is seven and is set at its own width.
+    expect(cellOf(svg, "r2")).toContain('lengthAdjust="spacingAndGlyphs"');
+    expect(cellOf(svg, "r1")).not.toContain("lengthAdjust");
+    for (const [, fit] of svg.matchAll(/textLength="([\d.]+)"/g)) {
+      expect(Number(fit)).toBeLessThan(73.7);
+    }
+  });
+
+  it("crowns the drone's cell with a hexagon, drawn last on the deck", () => {
+    const svg = svgOfGame(gameIn());
+    const mark = svg.slice(svg.indexOf('<g class="drone-mark"'));
+    expect(mark).toContain('<polygon class="drone-disc"');
+    expect(mark).toContain('<polygon class="drone-pip"');
+    for (const [, points] of mark.matchAll(/class="drone-(?:disc|core)" points="([^"]+)"/g)) {
+      expect(points!.split(" ")).toHaveLength(6);
+    }
+  });
+
+  it("hollows the corridor: two rails, the deck between them, the door down the middle", () => {
+    const game = gameIn();
+    const layout = hexLayout(game.ship);
+    const svg = svgOfGame(game);
+    expect(count(svg, '<line class="hall-floor')).toBe(layout.corridors.size);
+    // The three strokes run along the same segment, widest first, and every one
+    // of them answers a click on the corridor.
+    const first = /<line class="hall-wall is-\w+" data-door="(\d+)"( x1="[-\d.]+" y1="[-\d.]+" x2="[-\d.]+" y2="[-\d.]+"\/>)/.exec(svg)!;
+    expect(svg).toContain(`<line class="hall-floor is-open" data-door="${first[1]}"${first[2]}`);
+    expect(WEB_CSS).toContain(".hexmap .hall-floor{stroke:var(--bg); stroke-width:7;");
+  });
+});
+
 // ------------------------------------------------------------ and its hazards
 
 /**
@@ -238,6 +355,28 @@ describe("the honeycomb's hazards", () => {
     expect(svg).toMatch(/<g class="door is-\w+ has-trap hz-mine" data-door="\d+">/);
   });
 
+  it("says which property on a rhythm and not only on a hue", () => {
+    const game = hazardGame();
+    game.ship.room("r3").scanned = true;
+    game.ship.room("r4").scanned = true;
+    const svg = hexSvgOf(schematicInputOf(game), hexLayout(game.ship), "");
+    // One ring per compartment that has something to say about itself, and none
+    // on the two that have not (G91 B, his PROP table). The rhythm is the
+    // channel: two cells tinted the same dark still read apart, and it survives
+    // a reader who does not separate the two blues.
+    expect(count(svg, '<polygon class="prop-ring"')).toBe(2);
+    expect(WEB_CSS).toContain(".hexmap .hz-frost .prop-ring{stroke:var(--zone); stroke-dasharray:15 7;}");
+    expect(WEB_CSS).toContain(".hexmap .hz-smoke .prop-ring{stroke:var(--soft); stroke-dasharray:3 10;}");
+    // Four rhythms and no two alike, or the channel says nothing.
+    const beats = [...WEB_CSS.matchAll(/\.prop-ring\{[^}]*stroke-dasharray:([\d ]+);/g)].map((m) => m[1]);
+    expect(beats).toHaveLength(4);
+    expect(new Set(beats).size).toBe(4);
+    // Inside the outline, which is the state's, and outside nothing.
+    for (const [, points] of svg.matchAll(/class="prop-ring" points="([^"]+)"/g)) {
+      expect(points!.split(" ")).toHaveLength(6);
+    }
+  });
+
   it("gives the tint the one floor no state uses, and leaves red to the machines", () => {
     expect(WEB_CSS).toContain(".hexmap .room.hz-frost:not(.is-alarmed) .room-box{fill:#101c22;");
     expect(WEB_CSS).toContain(".hexmap .room.hz-smoke:not(.is-alarmed) .room-box{fill:#1a1a18;");
@@ -280,6 +419,9 @@ describe("the honeycomb without a hull", () => {
     // first child of every hexagon's group, the tooltip under a pointer.
     // And again on 14.09 (G90 D2, D3) for two: the drone's amber mark after
     // everything else on the deck, and `data-door` on every corridor and tag.
+    // And again on 15.09 (G91 B) for the partner's board: the plate the name is
+    // now printed on, the corridor's third stroke that hollows it out, and the
+    // drone's mark as a hexagon rather than a disc.
     const config: Omit<RoomGameConfig, "seed"> = {
       ...GAME_CONFIG,
       content: { ...SALVOR, monsterChance: () => 0 },

@@ -129,8 +129,8 @@ describe("the page's card", () => {
     // Over the map's bottom-left corner — the top-left is the alert's — and
     // in the map's own cell, so it can never cover the panel or the log.
     expect(html.indexOf('class="web-lesson')).toBeLessThan(html.indexOf('<div class="web-panel">'));
-    expect(WEB_CSS).toMatch(/\.web-lesson\{grid-column:1; grid-row:2; align-self:end; justify-self:start;/);
-    expect(WEB_CSS).toMatch(/\.web-corner\{grid-column:1; grid-row:2; align-self:start;/);
+    expect(WEB_CSS).toMatch(/\.web-lesson\{grid-column:2; grid-row:1; align-self:end; justify-self:start;/);
+    expect(WEB_CSS).toMatch(/\.web-corner\{grid-column:2; grid-row:1; align-self:start;/);
     expect(WEB_CSS).toMatch(/\.web-lesson\{[^}]*pointer-events:none/);
   });
 

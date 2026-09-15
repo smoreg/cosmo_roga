@@ -92,12 +92,16 @@ export function htmlOf(
   // stack of counters it stood in closes up behind it rather than keeping a hole.
   const body = blocks.filter((line) => alertLevelOf(line.text) === undefined);
   const groups = ordered(groupsOf(body), heading);
-  const out = groups.map((group) => {
-    const rows = group.map((line, j) => lineHtml(line, flash, lit, j === 0));
+  const out = groups.map(({ kind, lines }) => {
+    const rows = lines.map((line, j) => lineHtml(line, flash, lit, j === 0));
     // The list belongs to the block its heading is in, under that heading —
     // which is where `panelBlocks` puts it for the terminal too.
-    if (group.some((line) => line.text.trim() === heading)) rows.push(actionsHtml(actions, cursor));
-    return `<section class="pb">${rows.join("")}</section>`;
+    if (lines.some((line) => line.text.trim() === heading)) rows.push(actionsHtml(actions, cursor));
+    // What the block *is*, for the stylesheet to pick a housing by (G91 A).
+    // An attribute and not a second class: the class is what every test and
+    // every other rule in the sheet already looks the block up by, and a
+    // `class="pb pb-rack"` quietly stops being `class="pb"` for all of them.
+    return `<section class="pb" data-pb="${kind}">${rows.join("")}</section>`;
   });
   // The key row, pinned to the corner of the panel — the owner's "подсказки по
   // хоткеям всегда снизу справа". Handed in rather than taken off the end of
@@ -130,15 +134,28 @@ export function htmlOf(
  * entity id, and the list is under the one heading this file already has to
  * know. Nothing here needs translating, and a block reworded upstairs keeps
  * its place.
+ *
+ * The same three answers name the housing each block is drawn in (G91 A), which
+ * is why they are carried out of here rather than thrown away: the sheet picks
+ * a material per block by what the block *is* — the rack is hardware, the
+ * contacts are a warning, the list is the interface — and a block nobody has
+ * classified is a `rest`, in the house style, without a rule to add.
  */
-function ordered(groups: PanelLine[][], heading: string): PanelLine[][] {
+type Housing = "rack" | "contacts" | "acts" | "rest";
+
+function ordered(groups: PanelLine[][], heading: string): { kind: Housing; lines: PanelLine[] }[] {
   const rack = groups.filter((g) => g.some((l) => slotNumberOf(l.text) !== undefined));
   const seen = groups.filter((g) => !rack.includes(g) && g.some((l) => l.id !== undefined));
   const acts = groups.filter(
     (g) => !rack.includes(g) && !seen.includes(g) && g.some((l) => l.text.trim() === heading),
   );
   const rest = groups.filter((g) => !rack.includes(g) && !seen.includes(g) && !acts.includes(g));
-  return [...rack, ...seen, ...acts, ...rest];
+  return [
+    ...rack.map((lines) => ({ kind: "rack" as const, lines })),
+    ...seen.map((lines) => ({ kind: "contacts" as const, lines })),
+    ...acts.map((lines) => ({ kind: "acts" as const, lines })),
+    ...rest.map((lines) => ({ kind: "rest" as const, lines })),
+  ];
 }
 
 /**
@@ -363,10 +380,17 @@ function actionsHtml(actions: readonly Action[], cursor: number): string {
     if (!action.enabled) classes.push("is-off");
     const extra = action.extra === undefined ? "" : `<span class="extra">${esc(action.extra)}</span>`;
     const mark = i === cursor ? '<span class="cursor">▸</span>' : "";
+    // A row past the tenth wears no digit at all (`keyed`), and an empty chip
+    // is a stamp of nothing: the cell keeps the cursor's place and no more.
+    const chip = action.key.length === 0 ? "" : `<span class="kc">${esc(action.key)}</span>`;
     return [
       head,
       `<button type="button" class="${classes.join(" ")}" data-line="${i}">`,
-      `<span class="key">${mark}${esc(action.key)}</span>`,
+      // The key on a chip of its own inside the cursor's cell (G91 A): the
+      // stamp is what the eye is looking for on a keyed list, and it cannot be
+      // the cell itself — the cursor mark shares it, and a chip around both
+      // would stamp a mark that is not a key.
+      `<span class="key">${mark}${chip}</span>`,
       `<span class="label">${esc(action.label)}</span>`,
       extra,
       "</button>",

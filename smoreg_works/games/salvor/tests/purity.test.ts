@@ -196,6 +196,12 @@ const ALLOWED_TEXT = new Set([
   // markup, and every word it shows comes from the terminal view's functions.
   "ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace",
   "DejaVu Sans Mono",
+  // The two faces the graphic view is set in, vendored into `assets/fonts` and
+  // declared by `@font-face` (G91 A). A family name is what a font calls
+  // itself: the same string in every language, and matched on by the browser
+  // rather than read by a player (`assets/CREDITS.md`).
+  "Barlow Condensed",
+  "IBM Plex Mono",
   "glyph hostile",
   // A media query, which is CSS the app asks a question with rather than
   // anything the player reads: whether this browser wants less motion, which

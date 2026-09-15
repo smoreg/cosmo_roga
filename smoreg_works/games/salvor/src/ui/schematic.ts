@@ -119,6 +119,31 @@ export interface SchematicRoom {
    * none, which is what a fixture says.
    */
   charge?: number;
+  /**
+   * What walking here would cost, for the readout the honeycomb draws beside
+   * this compartment (`ui/web/hex-svg.ts`). Three answers, and every word of
+   * them one the game already had:
+   *
+   *   `2 doors`      a walk, and how long it is (`dist.doors`)
+   *   `locked · d4`  a walk with a door in it that has to be dealt with first
+   *   `no way`       nothing reaches it at all (`dist.none`)
+   *
+   * `blocked` is the second and third — the two the click will not simply spend
+   * — so the plate can be red for them and amber for the one that is a move.
+   *
+   * The partner's popover offers `move here` / `no route`; ours says how far
+   * instead, because that number is the one the numbered list is showing at the
+   * same moment, and the two screens quoting one number is worth more than the
+   * imperative. Which door is in the way is his, and it is the half of the
+   * readout that tells a player what to do next.
+   *
+   * Only ever on the compartment `target` is on, and never on the one underfoot:
+   * there is no walk to where you already are. Assembled here and not in the
+   * drawing, so `hexSvgOf` stays a function of its input alone — a picture that
+   * called `t()` itself would draw differently in three languages while the
+   * golden file remembers one of them.
+   */
+  reach?: { line: string; blocked?: true };
 }
 
 export interface SchematicDoor {

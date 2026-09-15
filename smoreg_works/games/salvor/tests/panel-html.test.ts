@@ -359,10 +359,19 @@ describe("the screen by artboard 3a", () => {
   const playing = { ...initialState(), overlay: "none" as const };
 
   it("lays out the strip, the map over the log, and the panel down the whole right side", () => {
-    expect(WEB_CSS).toContain("grid-template-rows:38px 1fr 132px;");
-    expect(WEB_CSS).toMatch(/grid-template-columns:1fr clamp\(3\d0px, \d+vw, 4\d0px\);/);
-    expect(WEB_CSS).toMatch(/\.web-panel\{grid-column:2; grid-row:2 \/ span 2;/);
-    expect(WEB_CSS).toMatch(/\.web-log\{grid-column:1; grid-row:3;/);
+    // The strip across the top is gone: what it said floats over the board as a
+    // housing (G91 A), and the band it cost is the board's again. What is left
+    // fixed is the log, counted in log lines and not in pixels: seven of them,
+    // which is what the terminal shows (`LAYOUT.logHeight`) and what the box
+    // has to go on showing now that the type has a 14px floor under it. It
+    // still lands inside the itch viewport's 764 (docs/itch-page.md).
+    expect(WEB_CSS).toContain("grid-template-rows:minmax(0,1fr) 144px;");
+    expect(144 - 10).toBeGreaterThanOrEqual(7 * 14 * 1.35);
+    expect(144).toBeLessThan(764 / 2);
+    // A rail for the mouse, the board, the panel — and the log across the foot.
+    expect(WEB_CSS).toMatch(/grid-template-columns:\d\dpx 1fr clamp\(3\d0px, \d+vw, 4\d0px\);/);
+    expect(WEB_CSS).toMatch(/\.web-panel\{grid-column:3; grid-row:1;/);
+    expect(WEB_CSS).toMatch(/\.web-log\{grid-column:1 \/ -1; grid-row:2;/);
     // The newest line on the floor of the box, and the key row on the floor of the panel.
     expect(WEB_CSS).toContain(".web-log > div:first-child{margin-top:auto;}");
     expect(WEB_CSS).toMatch(/\.pb\.foot\{[^}]*position:sticky; bottom:0;/);

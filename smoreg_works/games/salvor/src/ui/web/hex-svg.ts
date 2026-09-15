@@ -29,6 +29,24 @@ import type { SchematicDoor, SchematicInput, SchematicRoom } from "../schematic.
  * machine counts and the door states are the same facts the terminal draws, so
  * the three screens cannot disagree about the ship.
  *
+ * ## The face of a cell, and why it is the encoding
+ *
+ * The partner's rework of the board (G91 B, his `HexTile.jsx`) turns on one
+ * idea, and this file now does too: **how much is printed on a compartment is
+ * how much the drone knows of it**, with colour backing that up rather than
+ * carrying it. A cell nobody has found has no plate at all, which is why it
+ * reads as a shape in the dark. A cell that was pinged has its name on a
+ * *striped* plate — a label and not a look. A cell the drone has walked through
+ * has it on a solid one: grey while that is memory, steel while the drone is
+ * looking at it, amber while it is standing in it. Five states of ours against
+ * his four, but the grammar is his, and it survives being printed in one colour.
+ *
+ * Everything else about a compartment — a hazard, an alarm — is a *property*
+ * rather than knowledge, so it takes a channel of its own: a dashed ring inside
+ * the outline whose rhythm says which one. A rhythm because the outline is the
+ * state's, the floor is the hazard's tint and red is the machines'; there was
+ * no hue left that meant anything, and there is always another rhythm.
+ *
  * ## The hull under it
  *
  * Given `art`, a drawn ship goes **under** the honeycomb (`hullart.ts`): the
@@ -106,9 +124,58 @@ const TILE_BOTTOM = 29;
 const ZONE_SIZE = 14;
 const ZONE_TOP = -30;
 
+/**
+ * The band the compartment's name is printed on.
+ *
+ * The partner's board (`design/salvor-design-system/components/board/HexTile.jsx`,
+ * G91) turns on one idea: **the amount of information on a cell's face is the
+ * encoding**, and the band is what carries it. A hexagon with no band has not
+ * been found; a striped band means the drone has a label and not a look; a solid
+ * one means it has been in there. The ink is knocked out of the plate, which is
+ * the printed language the rest of the screen is already in.
+ *
+ * Sized off the lattice rather than chosen: a pointy-top hexagon is full width
+ * for the whole `±R/2` about its centre, so a band sixteen units tall on the
+ * name's own line is inside the outline by construction, whatever the cell.
+ *
+ * It is wider than the property ring is, and drawn after it, so on a cell that
+ * has both the plate crosses the ring's two upright edges. That is his layering
+ * and it is the right way round: the ring keeps its four slanted runs and its
+ * lower halves — enough of a rhythm to read — and the name never has to give
+ * width back to a decoration.
+ */
+const BAND_HALF = INRADIUS - 3;
+const BAND_TOP = -15;
+const BAND_H = 16;
+
+/**
+ * What one character of a name costs on the band: `font-size:13` in a monospace
+ * face is 0.6em of advance, plus the tracking the honeycomb sets.
+ *
+ * Used to decide whether the name needs squeezing, not to lay it out — the
+ * squeeze is `textLength`, so the browser's own metrics do the work and the
+ * estimate only has to be close enough to catch the names that overflow.
+ * His board clips a long name to the band's character budget; ours squeezes it,
+ * because our names are translated and "ИНЖЕНЕРНЫЙ" cut to nine characters is a
+ * different word in a way "ENGINEERIN" is not.
+ */
+const NAME_CHAR_W = 8.3;
+const NAME_FIT = BAND_HALF * 2 - 6;
+
+/** The ring a compartment's properties are said on: inside the outline, dashed. */
+const PROP_RING_R = R - 7;
+
 interface Point {
   x: number;
   y: number;
+}
+
+/** The drawing's own viewBox, for whatever has to stay inside it. */
+interface Frame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /**
@@ -159,6 +226,9 @@ export function hexSvgOf(
     // floor, the target's dashes, the tiles and any chip that strays onto the
     // cell, so one amber mark is never covered by anything the map draws.
     ...input.rooms.map((room) => (room.state === "current" ? droneMark(at.get(room.id)) : "")),
+    // And over even that: what the compartment being aimed at is, what is
+    // unusual in it, and what walking there would cost.
+    ...input.rooms.map((room) => readout(room, at.get(room.id), box)),
     banner.length > 0 ? text(box.x + 14, box.y + 26, banner, "banner") : "",
     input.shipLine.length > 0
       ? text(box.x + 14, box.y + box.h - 12, input.shipLine, "ship-line")
@@ -202,7 +272,7 @@ export const HEX_R = R;
  * a frame guessed from the cells cut the exhausts off every ship in the
  * sandbox that had engines. The hexagons' own margins are not changed by it.
  */
-function extent(points: readonly Point[], hull?: Box): { x: number; y: number; w: number; h: number } {
+function extent(points: readonly Point[], hull?: Box): Frame {
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
   let x = Math.min(...xs) - INRADIUS - PAD.x;
@@ -262,11 +332,18 @@ function hex(room: SchematicRoom, c: Point | undefined, tiles: boolean): string 
     `<polygon class="room-box" points="${points}"/>`,
     // Machines in sight in there: a red ring outside the outline, over whatever
     // state the compartment is in — the outline itself stays the state's.
-    !unknown && (room.hostiles ?? 0) > 0 ? ring(c) : "",
+    !unknown && (room.hostiles ?? 0) > 0 ? ring(c, R + 6, "room-ring") : "",
     // A known hazard takes the one channel no state uses — the floor — and a
     // rim along the two upper edges, the side nearest the reader (3b). The
     // outline is left to the state, and red is left to the machines.
     room.hazard === undefined ? "" : rim(c),
+    // And whatever else is true of the compartment gets its own channel: a
+    // dashed ring inside the outline whose *rhythm* says which (G91, his `PROP`
+    // table). Frost is the long slow dash, smoke the sparse one, a blown
+    // compartment the hazard beat, an alarmed one the fast beat — so two cells
+    // tinted the same dark still read apart, and a colourblind reader has a
+    // channel that is not a hue.
+    propRing(room) ? ring(c, PROP_RING_R, "prop-ring") : "",
     // What the compartment is for, over its name. Never on an unknown one:
     // that is precisely the fact the drone has not found out, and a reactor
     // drawn on a dashed cell would say otherwise.
@@ -274,7 +351,10 @@ function hex(room: SchematicRoom, c: Point | undefined, tiles: boolean): string 
     // Its name over the compartment's, where the pictogram would otherwise go:
     // with tiles on, the tint and the tile say it between them.
     room.hazard === undefined || tiles ? "" : text(c.x, c.y - HAZARD_WORD, room.hazard.word, "hz-word", "middle"),
-    text(c.x, c.y - 4, unknown ? UNKNOWN : room.name, "room-name", "middle"),
+    // The name on its band, knocked out of it. Not on an unknown cell: the
+    // absence of the plate is the whole of what that cell has to say.
+    unknown ? "" : band(c, room.state === "scanned"),
+    text(c.x, c.y - 4, unknown ? UNKNOWN : room.name, "room-name", "middle", unknown ? undefined : NAME_FIT),
     text(c.x, c.y + 12, room.label, "room-id", "middle"),
   ];
   // Glyphs on an unknown hexagon are a known hazard's mark and nothing else
@@ -358,12 +438,49 @@ const SKULL = [
   [6, 7], [6, 12], [-6, 12], [-6, 7], [-7, 7], [-10, 4],
 ].map(([x, y]) => `${x},${y}`).join(" ");
 
-/** The ring round a compartment with machines in sight: outside the outline, in red. */
-function ring(c: Point): string {
-  const points = corners(c, R + 6)
+/**
+ * A hexagon concentric with a cell's own, for whatever has to be said around it:
+ * the red ring outside the outline when machines are in sight, and the dashed
+ * ring inside it when the compartment is alarmed or full of something.
+ */
+function ring(c: Point, r: number, cls: string): string {
+  const points = corners(c, r)
     .map((p) => `${round(p.x)},${round(p.y)}`)
     .join(" ");
-  return `<polygon class="room-ring" points="${points}"/>`;
+  return `<polygon class="${cls}" points="${points}"/>`;
+}
+
+/**
+ * Whether the compartment has a property worth a ring at all.
+ *
+ * One ring and never two, as on his board: a cell that is both alarmed and full
+ * of frost has one thing worth knowing, and the stylesheet's last rule — the
+ * alarm's — is the one that paints it. A machine in there outranks the weather,
+ * which is the same rule that gives red to the machines and nothing else.
+ */
+function propRing(room: SchematicRoom): boolean {
+  if (room.state === "unknown") return room.hazard !== undefined;
+  return room.hazard !== undefined || room.alarm === true || room.threat === true;
+}
+
+/**
+ * The plate the name is printed on: a solid rectangle in the state's own colour,
+ * and — while the knowledge is second-hand — one dashed line as wide as the band
+ * is tall, which is a stripe in a single element.
+ *
+ * The stripe is a stroke and not a `<pattern>` on purpose. A pattern would want
+ * a `<defs>` entry, and `tileDefs` reads the finished markup back to decide what
+ * goes in `<defs>`; a second producer of definitions is a second thing that can
+ * disagree with it.
+ */
+function band(c: Point, striped: boolean): string {
+  const x = round(c.x - BAND_HALF);
+  const y = round(c.y + BAND_TOP);
+  const w = round(BAND_HALF * 2);
+  const mid = round(c.y + BAND_TOP + BAND_H / 2);
+  const plate = `<rect class="room-band" x="${x}" y="${y}" width="${w}" height="${BAND_H}"/>`;
+  if (!striped) return plate;
+  return `${plate}<line class="band-hatch" x1="${x}" y1="${mid}" x2="${round(x + w)}" y2="${mid}"/>`;
 }
 
 /**
@@ -380,21 +497,90 @@ function glyphRow(room: SchematicRoom, c: Point, unknown: boolean): string {
 }
 
 /**
- * The drone, on the compartment it stands in: an amber disc on the cell's
- * bottom point. The halo says "here" to an eye already looking; this is what
- * finds the cell for one that is not («иногда тяжело увидеть, где дрон»).
+ * The drone, crowning the compartment it stands in: a small amber hexagon
+ * straddling the cell's bottom point, with the ink knocked out of it and the
+ * drone's own mark inside. The halo says "here" to an eye already looking; this
+ * is what finds the cell for one that is not («иногда тяжело увидеть, где дрон»).
+ *
+ * A hexagon and no longer a disc, because his `DroneMark` is the board's shape
+ * at a smaller size — the thing standing in a cell is made of the same geometry
+ * as the cell. It stays on the bottom point rather than the top one his board
+ * crowns: the top point is the machine count's skull, and the two of them
+ * together is the commonest cell on the map to be looking at.
  */
 function droneMark(c: Point | undefined): string {
   if (c === undefined) return "";
   const x = round(c.x);
   const y = round(c.y + R);
+  const at = { x: 0, y: 0 };
+  const shell = corners(at, 11).map((p) => `${round(p.x)},${round(p.y)}`).join(" ");
+  const core = corners(at, 7.5).map((p) => `${round(p.x)},${round(p.y)}`).join(" ");
   return [
     `<g class="drone-mark" transform="translate(${x},${y})">`,
-    `<circle class="drone-disc" cx="0" cy="0" r="9"/>`,
-    `<polygon class="drone-core" points="-4,0 0,-4 4,0 0,4"/>`,
+    `<polygon class="drone-disc" points="${shell}"/>`,
+    `<polygon class="drone-core" points="${core}"/>`,
+    `<polygon class="drone-pip" points="-4,0 0,-4 4,0 0,4"/>`,
     "</g>",
   ].join("");
 }
+
+/**
+ * The readout beside the compartment the pointer or the highlighted line is
+ * aiming at: what it is, what is unusual in it, and what walking there costs.
+ *
+ * The partner's popover (G91 B, `renderHover` in his `04-hex` screen), on a
+ * board that cannot have one. His is a React element mounted beside the hex on
+ * mouseover; ours is part of the same string the rest of the map is, drawn for
+ * whichever compartment `schematicInputOf` was told to aim at — which is the
+ * hovered one, and equally the one the highlighted row of the list points at.
+ * That is not a workaround: it means the readout answers the keyboard too, and
+ * `m` down the travel list narrates itself on the map as it goes.
+ *
+ * It never says more than the cell does. An unnamed compartment reads `····`
+ * here as it does on its own face, and its contents line is empty, because not
+ * knowing is exactly the fact the map is drawing.
+ */
+function readout(room: SchematicRoom, c: Point | undefined, box: Frame): string {
+  if (c === undefined || room.reach === undefined) return "";
+  const unknown = room.state === "unknown";
+  const head = `${unknown ? UNKNOWN : room.name} ${room.label}`;
+  // The same words the tooltip uses, and no others: a readout that out-knew the
+  // pointer resting on the same cell would be a second answer to one question.
+  const said = unknown ? "" : (room.things ?? []).map((thing) => thing.name).join(" · ");
+  const lines = said.length > READ_CHARS ? `${said.slice(0, READ_CHARS - 1)}…` : said;
+  const cost = room.reach.line;
+  const costW = cost.length * READ_CHAR + 12;
+  const w = round(Math.max(head.length * READ_CHAR + costW + 14, lines.length * READ_CHAR + 14, 120));
+  const h = lines.length > 0 ? 36 : 22;
+  // Beside the cell, on the side with room for it, and clamped into the frame
+  // so a readout can never be the one thing that grows the drawing. It may lie
+  // over the compartments next door — it is a readout, and it is drawn last.
+  const right = c.x + INRADIUS + 10;
+  const left = c.x - INRADIUS - 10 - w;
+  const wanted = right + w < box.x + box.w - 6 ? right : left;
+  const x = round(Math.min(Math.max(wanted, box.x + 6), box.x + box.w - w - 6));
+  const y = round(Math.min(Math.max(c.y - h / 2, box.y + 6), box.y + box.h - h - 6));
+  const chipX = x + w - 7 - costW;
+  return [
+    // Amber when the click is a move and red when it is not: the chip and the
+    // plate's rule both take it off the group, so the readout cannot say "go"
+    // in one colour and "you cannot" in the other.
+    `<g class="room-readout${room.reach.blocked === true ? " is-shut" : ""}">`,
+    `<rect class="readout-plate" x="${x}" y="${y}" width="${w}" height="${h}" rx="2"/>`,
+    text(x + 7, y + 15, head, "readout-head"),
+    `<rect class="readout-chip" x="${round(chipX)}" y="${y + 4}" width="${round(costW)}" height="14" rx="2"/>`,
+    text(chipX + costW / 2, y + 15, cost, "readout-cost", "middle"),
+    lines.length > 0 ? text(x + 7, y + 30, lines, "readout-body") : "",
+    "</g>",
+  ]
+    .filter((s) => s.length > 0)
+    .join("");
+}
+
+/** How wide the readout's second line may get before it is cut. */
+const READ_CHARS = 30;
+/** What one character of it costs: the plate's two sizes average out to this. */
+const READ_CHAR = 6.4;
 
 /**
  * The charge the ship set in here: the turns left, red, on the hexagon's
@@ -425,15 +611,29 @@ function corridor(door: SchematicDoor, at: ReadonlyMap<number, Point>): string {
   const ends = trimmed(door, at);
   if (!ends) return "";
   const [from, to] = ends;
-  // `data-door` on both strokes: a click on the corridor is a click on its door
+  // `data-door` on every stroke: a click on the corridor is a click on its door
   // (`mount.ts`), and `is-route` is the door on the way to where the drone is
-  // aiming (`SchematicDoor.route`).
+  // aiming (`SchematicDoor.route`). The rails carry it as well as the door's own
+  // line does, so the way reads as a lit corridor rather than as a brighter door
+  // in a dark one — his bracket down both edges of the run, said in the strokes
+  // that are already there.
   const route = door.route === true ? " is-route" : "";
+  // The one segment all three strokes run along: the same line, drawn wide, then
+  // narrow, then narrower.
+  const run = ` x1="${round(from.x)}" y1="${round(from.y)}" x2="${round(to.x)}" y2="${round(to.y)}"/>`;
   return [
-    `<line class="hall-wall is-${door.state}" data-door="${door.id}"`,
-    ` x1="${round(from.x)}" y1="${round(from.y)}" x2="${round(to.x)}" y2="${round(to.y)}"/>`,
+    `<line class="hall-wall is-${door.state}${route}" data-door="${door.id}"`,
+    run,
+    // The deck between the two rails, so the corridor is hollow rather than a
+    // solid brown bar (G91, his corridor): what is left of the wall is a rail
+    // down each side, and an open door is then a gap you can see through
+    // instead of a stroke painted the colour of the floor. It carries
+    // `data-door` too — it is the middle of the corridor, and a click on the
+    // middle of a corridor is a click on its door.
+    `<line class="hall-floor is-${door.state}" data-door="${door.id}"`,
+    run,
     `<line class="door-wire is-${door.state}${door.target === true ? " is-goal" : ""}${route}" data-door="${door.id}"`,
-    ` x1="${round(from.x)}" y1="${round(from.y)}" x2="${round(to.x)}" y2="${round(to.y)}"/>`,
+    run,
   ].join("");
 }
 
@@ -580,9 +780,19 @@ function chevron(mid: Point): string {
 
 // -------------------------------------------------------------------- bits
 
-function text(x: number, y: number, body: string, cls: string, anchor?: string): string {
+/**
+ * A line of text, and — given `fit` — one that is never wider than that.
+ *
+ * `textLength` is asked for only when the string would overflow, so an ordinary
+ * name is set at its natural width and nothing is squeezed for the sake of a
+ * rule. `spacingAndGlyphs` rather than `spacing`: at eleven characters the
+ * tracking alone runs out and the letters have to give.
+ */
+function text(x: number, y: number, body: string, cls: string, anchor?: string, fit?: number): string {
   const at = anchor === undefined ? "" : ` text-anchor="${anchor}"`;
-  return `<text class="${cls}" x="${round(x)}" y="${round(y)}"${at}>${esc(body)}</text>`;
+  const wide = fit !== undefined && body.length * NAME_CHAR_W > fit;
+  const squeeze = wide ? ` textLength="${round(fit)}" lengthAdjust="spacingAndGlyphs"` : "";
+  return `<text class="${cls}" x="${round(x)}" y="${round(y)}"${at}${squeeze}>${esc(body)}</text>`;
 }
 
 function round(n: number): number {

@@ -99,6 +99,9 @@ export function screenHtml(
   // and a harder shake, over whatever the map shows now (`systems/alert.ts`).
   const boom = blastThisTurn(game) ? " is-boom" : "";
   return [
+    // The rail down the left edge (G91 A2): the mouse's way into the three
+    // windows a key opens, and nothing a key cannot already do.
+    railHtml(),
     headHtml(game, blocks),
     `<div class="web-map${hit}${boom}">${mapHtml(game, state, lit, map, hull, tiles)}</div>`,
     // Laid over the map's top-left corner: the codex chip (G72), the alert as
@@ -110,12 +113,45 @@ export function screenHtml(
     // the alert's (G90 E3). Empty in every run that is not a training one.
     lessonHtml(game, state),
     `<div class="web-panel">${htmlOf(body, foot, actions, state.cursor, flash, lit.ids)}</div>`,
-    `<div class="web-log">${logHtml(game.log.tail(LOG_LINES))}</div>`,
+    // The strip is the way into the record, as the ticker on his screen is: a
+    // click is `PageUp`, which is the key that already opens it.
+    `<div class="web-log" data-key="${LOG_KEY}" title="${esc(cardTitles().history)}">${logHtml(game.log.tail(LOG_LINES))}</div>`,
     // The debug overlay (G68): the owner's flag, drawn under the log and
     // nowhere else — `debugHtml` already answers "" when it is off.
     debugHtml(debugBlockLines(game, debug)),
     overlayHtml(game, state),
   ].join("");
+}
+
+/**
+ * The rail down the left edge: three buttons, and every one of them is a key
+ * this game already has.
+ *
+ * `mount.ts` presses a `data-key` exactly as the keyboard presses it, so this
+ * adds no command, no rule and no state — a player who never touches the rail
+ * plays the identical game. What it adds is a way in for the mouse: the owner
+ * plays the graphic view with one, and the three windows worth opening (the
+ * controls, the codex, the record) were reachable only by knowing a key
+ * beforehand, which is the one thing a jam voter will not do.
+ *
+ * The glyph on a button is the key itself where the key is a character, and the
+ * name under the pointer is the name the help card gives it — so there is not a
+ * word here that is not already in the table, in whatever language is on.
+ */
+const LOG_KEY = "PageUp";
+
+const RAIL: ReadonlyArray<readonly [string, string, Key]> = [
+  ["?", "?", "help.name.help"],
+  ["i", "i", "help.name.codex"],
+  ["≡", LOG_KEY, "help.name.log"],
+];
+
+function railHtml(): string {
+  const keys = RAIL.map(
+    ([glyph, key, name]) =>
+      `<button type="button" class="rail-key" data-key="${esc(key)}" title="${esc(t(name))}">${esc(glyph)}</button>`,
+  );
+  return `<div class="web-rail">${keys.join("")}</div>`;
 }
 
 /**

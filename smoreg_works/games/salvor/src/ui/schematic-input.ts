@@ -95,15 +95,60 @@ export function schematicInputOf(
   const docked = dockedHull(game);
   const input = docked ? remoteInput(docked.ship, docked.data) : aboardInput(game, alarm);
   if (target === undefined) return input;
+  // What walking to the aimed compartment would cost, for the readout beside it
+  // (`SchematicRoom.reach`). Aboard only, and never for the compartment the
+  // drone is standing in: there is no walk to where you already are, and a cell
+  // that answered "no way" about itself would be the map calling the drone
+  // stranded on its own deck.
+  const reach = docked || target === game.player.room
+    ? undefined
+    : reachOf(input.doors, route);
   return {
     ...input,
-    rooms: input.rooms.map((room) => (room.id === target ? { ...room, target: true as const } : room)),
+    rooms: input.rooms.map((room) =>
+      room.id === target ? { ...room, target: true as const, ...(reach === undefined ? {} : { reach }) } : room,
+    ),
     // Only aboard: the tug's picture of the hull ahead is memory, with nobody
     // on it to walk anywhere.
     doors: docked || route.size === 0
       ? input.doors
       : input.doors.map((door) => (route.has(door.id) ? { ...door, route: true as const } : door)),
   };
+}
+
+/**
+ * The two door states a walk cannot simply spend a turn on.
+ *
+ * `Ship.passable` lets the drone through `open`, `closed` and `broken` — a
+ * closed door is opened by walking into it — and asks for a cutter at a
+ * `locked` or a `sealed` one. Those two are what the readout names, because
+ * they are the two the player has to do something about before the walk the
+ * map is drawing is a walk at all. The airlock is not among them: it is the
+ * way out, and the drone is the one thing that may use it.
+ */
+const SHUT = { locked: "state.locked", sealed: "state.sealed" } as const;
+
+/**
+ * What the readout says about walking to the aimed compartment: how far, which
+ * door is in the way, or that nothing reaches it.
+ *
+ * `route` is in the order a walk would take the doors (`ui/appstate.ts`,
+ * `mapAim`), so the first shut one in it is the first one the drone would meet
+ * — which is the one worth naming. Naming the last would send the player to
+ * deal with a door they cannot reach yet.
+ */
+function reachOf(
+  doors: readonly SchematicDoor[],
+  route: ReadonlySet<number>,
+): { line: string; blocked?: true } {
+  if (route.size === 0) return { line: t("dist.none"), blocked: true };
+  const by = new Map(doors.map((door) => [door.id, door]));
+  for (const id of route) {
+    const door = by.get(id);
+    const word = door === undefined ? undefined : SHUT[door.state as keyof typeof SHUT];
+    if (word !== undefined) return { line: `${t(word)} · ${door!.label}`, blocked: true };
+  }
+  return { line: t("dist.doors", { n: route.size }) };
 }
 
 /**

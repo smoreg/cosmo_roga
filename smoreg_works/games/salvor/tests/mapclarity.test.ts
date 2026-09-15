@@ -100,6 +100,43 @@ describe("machines on the honeycomb", () => {
   });
 });
 
+/**
+ * The partner's board puts a compartment's properties on a channel of their own
+ * (G91 B): a dashed ring inside the outline whose rhythm says which. The alarm
+ * is one of them, and it is the one that moves — on the kit's own budget, which
+ * is discrete frames of 225ms and nothing in between.
+ */
+describe("a compartment with a machine just in sight", () => {
+  it("rings on the fast beat, over any hazard, and stands still for less motion", () => {
+    const game = run();
+    const smoke = game.ship.room("r3").id;
+    const svg = hexSvgOf(schematicInputOf(game, new Set([smoke])), hexLayout(game.ship));
+    const cell = svg.slice(svg.indexOf(`data-room="${smoke}"`));
+    expect(cell.slice(0, cell.indexOf("</g>"))).toContain('<polygon class="prop-ring"');
+    // The ring is the compartment's, not its state's: r3 is still a shape in
+    // the dark — no plate, no name — and it still says the two things about
+    // itself the drone does know.
+    expect(svg).toContain('<g class="room is-unknown is-alarmed hz-smoke"');
+    expect(cell.slice(0, cell.indexOf("</g>"))).not.toContain("room-band");
+
+    // The alarm's rule is last, so a cell that is both smoke-filled and watched
+    // rings red for the machine rather than grey for the weather — which is the
+    // map's standing rule that red belongs to the machines.
+    const alarmed = WEB_CSS.indexOf(".hexmap .room.is-alarmed .prop-ring{");
+    expect(alarmed).toBeGreaterThan(WEB_CSS.indexOf(".hexmap .hz-smoke .prop-ring{"));
+    expect(WEB_CSS.slice(alarmed)).toMatch(/^\.hexmap \.room\.is-alarmed \.prop-ring\{stroke:var\(--bad\)/);
+
+    // Discrete frames on the 225ms grid, never an interpolation, and nothing at
+    // all for a reader who asked their system for less of it.
+    const beats = [...WEB_CSS.matchAll(/\.hexmap [^{}]*\{[^}]*animation:(salvor-\w+ [^;]+);/g)].map((m) => m[1]!);
+    expect(beats.length).toBeGreaterThanOrEqual(2);
+    for (const spec of beats) {
+      expect(spec, spec).toMatch(/^salvor-\w+ var\(--sv-frame(-\d)?\) steps\(\d,end\) (1 both|infinite)$/);
+    }
+    expect(WEB_CSS).toContain(".hexmap .room.is-alarmed .prop-ring{animation:none;");
+  });
+});
+
 describe("where the drone is", () => {
   it("is an amber mark on the cell underfoot, drawn after everything else on the deck", () => {
     const game = run();
@@ -223,11 +260,108 @@ describe("the way a walk will take", () => {
     expect(count(svg, "is-route")).toBeGreaterThanOrEqual(2);
     expect(WEB_CSS).toMatch(/\.hexmap \.door-wire\.is-route\{stroke:var\(--accent\)/);
 
+    // And the whole corridor lights, not only the door in it: the rails carry
+    // `is-route` too, which is his bracket down both edges of the run (G91 B).
+    expect(count(svg, '<line class="hall-wall is-open is-route"')).toBeGreaterThanOrEqual(2);
+    expect(WEB_CSS).toContain(".hexmap .hall-wall.is-route{stroke:var(--accent);}");
+
     // Nothing is spent by aiming, and the next key takes the aim back.
     expect(game.inputs).toEqual([]);
     expect(key(state, press("ArrowDown", "ArrowDown"), game).hover).toBeUndefined();
     // In front of a card there is no map to aim at.
     expect(hovered({ ...state, overlay: "help" }, lab).hover).toBeUndefined();
+  });
+});
+
+/**
+ * The partner's popover (G91 B, `renderHover` in his `04-hex`), on a board that
+ * cannot have one: the readout is part of the same drawing as the rest of the
+ * map, keyed on the compartment `schematicInputOf` was told to aim at. Which
+ * means it answers the keyboard as well as the pointer — `m` down the travel
+ * list narrates itself on the map — and that is the half of his idea we want,
+ * since the numbered list stays.
+ */
+describe("the readout beside the compartment being aimed at", () => {
+  function aimed(game: RoomGame, room: number): string {
+    const state = hovered(playing(game), room);
+    const aim = mapAim(game, state);
+    return hexSvgOf(schematicInputOf(game, undefined, aim.room, aim.route), hexLayout(game.ship));
+  }
+
+  it("says what it is, what is in it, and what the walk costs — in the list's own words", () => {
+    const game = run();
+    game.ship.room("r6").explored = true;
+    game.refreshSight();
+    const svg = aimed(game, game.ship.room("r6").id);
+    expect(count(svg, '<g class="room-readout">')).toBe(1);
+    expect(svg).toContain(`>LAB r6</text>`);
+    // Two doors away, said with the key the travel list already uses — so the
+    // map and the numbered row are quoting one number, not two.
+    expect(svg).toContain(`>${t("dist.doors", { n: 2 })}</text>`);
+  });
+
+  it("names the first shut door on the way rather than pricing a walk nobody can take", () => {
+    const game = run();
+    // The way to the lab runs d4 then d6. Weld the first of them: the number of
+    // doors is no longer the useful sentence — which door, and what is wrong
+    // with it, is (G91 B, his blocked branch).
+    game.ship.door("d4").state = "sealed";
+    game.refreshSight();
+    const svg = aimed(game, game.ship.room("r6").id);
+    expect(svg).toContain(`>${t("state.sealed")} · d4</text>`);
+    expect(svg).not.toContain(`>${t("dist.doors", { n: 2 })}</text>`);
+    // And the whole readout goes to the colour of trouble, not just the chip.
+    expect(svg).toContain('<g class="room-readout is-shut">');
+    expect(WEB_CSS).toContain(".hexmap .room-readout.is-shut .readout-chip{fill:var(--bad);}");
+  });
+
+  it("says no way when nothing reaches it, and nothing at all about where the drone stands", () => {
+    const cut = shipFromText(`
+      TUG -a1- r1
+      r1 -d1- r2
+      r1: docking explored
+      r2: cargo explored
+      r3: lab
+    `).ship;
+    const game = new RoomGame({
+      ...GAME_CONFIG,
+      content: { ...SALVOR, monsterChance: () => 0 },
+      firstShip: () => cut,
+      firstShipId: "1",
+      seed: 3,
+    });
+    game.player.room = game.ship.room("r2").id;
+    game.refreshSight();
+    expect(aimed(game, game.ship.room("r3").id)).toContain(`>${t("dist.none")}</text>`);
+    // There is no walk to where you already are.
+    expect(aimed(game, game.ship.room("r2").id)).not.toContain("room-readout");
+  });
+
+  it("never knows more than the cell it stands beside does", () => {
+    const game = run();
+    const svg = aimed(game, game.ship.room("r6").id);
+    // r6 has never been found: the readout reads it the way its face does.
+    expect(svg).toContain(">···· r6</text>");
+    expect(svg).not.toContain(">LAB r6</text>");
+  });
+
+  it("stays inside the frame, whichever edge of the hull it is asked for", () => {
+    const game = run();
+    for (const label of ["r1", "r3", "r4", "r6", "r7"]) {
+      const svg = aimed(game, game.ship.room(label).id);
+      const [, bx, by, bw, bh] = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(svg)!.map(Number);
+      const plate = /class="readout-plate" x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="(\d+)"/.exec(svg);
+      if (!plate) continue;
+      const [, x, y, w, h] = plate.map(Number);
+      expect(x!, label).toBeGreaterThanOrEqual(bx!);
+      expect(y!, label).toBeGreaterThanOrEqual(by!);
+      expect(x! + w!, label).toBeLessThanOrEqual(bx! + bw!);
+      expect(y! + h!, label).toBeLessThanOrEqual(by! + bh!);
+    }
+  });
+
+  it("takes no clicks, so the compartment under it is still the thing you press", () => {
+    expect(WEB_CSS).toContain(".hexmap .room-readout{pointer-events:none;}");
   });
 });
 

@@ -9,8 +9,21 @@
 | `audio/sfx/*.ogg` (следующие 10) | ElevenLabs Sound Effects, сгенерировано для этого проекта | text-to-sound-effects API, промпты — в `music/scripts/sfx.mjs` | по условиям ElevenLabs на сгенерированное аудио |
 | `audio/sfx/{explode,fuse,purge}.ogg` | этот проект | синтез `sox` (шум, синус, фильтры) скриптом `games/salvor/music/scripts/synth-sfx.sh`, без моделей и сети | как у репозитория |
 | `games/salvor/assets/tiles/*` и `games/salvor/src/tiles/sprites.ts` | этот проект | маски `#`/`.` в `games/salvor/tools/tiles/sprites.mjs`, рендер `npm run tiles -w games/salvor`; маски текстом — `tiles.txt` | как у репозитория |
+| `fonts/barlow-condensed-{600,700}-latin.woff2` | Jeremy Tribby | Barlow Condensed, подмножество latin с Google Fonts | SIL Open Font License 1.1 |
+| `fonts/plex-mono-{400,600}-{latin,cyrillic}.woff2` | IBM (Mike Abbink, Bold Monday) | IBM Plex Mono, подмножества latin и cyrillic с Google Fonts | SIL Open Font License 1.1 |
 
-Чужого файла — сэмпла, трека, шрифта, спрайта — в сборке нет: всё аудио либо
+## Шрифты
+
+Два чужих шрифта в сборке есть, и лежат они в репозитории, а не тянутся из сети:
+сборка для itch.io открывается с `file://` внутри zip, где сети нет вовсе.
+Подмножеств взято ровно два — latin и cyrillic, всего 72 КБ. У Barlow Condensed
+кириллицы нет, поэтому он стоит только в ролях display и title, а русский в этих
+ролях подхватывает IBM Plex Mono из того же стека
+(`games/salvor/src/ui/web/styles.ts`). Оба шрифта под OFL 1.1: она требует
+сохранять уведомление об авторстве и не продавать шрифты отдельно — две строки
+выше и есть это уведомление; файлы не переименованы и не изменены.
+
+Чужого файла — сэмпла, трека, спрайта — в сборке больше нет: всё аудио либо
 сгенерировано для этого проекта, либо написано его автором. Но «всё написано
 кодом» про музыку сказать нельзя, и раньше здесь было сказано именно это.
 Честная раскладка такая:
