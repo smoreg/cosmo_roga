@@ -1,55 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { t } from "../src/i18n.js";
+
 import type { Key } from "../src/content/i18n/keys.js";
-import {
-  Rng,
-  RoomGame,
-  validateShip,
-  type CardContext,
-  type Room,
-  type RoomCommand,
-  type Ship,
-  type System,
-} from "@jamrog/engine";
+import { Rng, RoomGame, validateShip, type CardContext, type Room, type RoomCommand, type Ship, type System } from "@jamrog/engine";
 import { GAME_CONFIG, type SalvorGame } from "../src/game.js";
 import { gatedOffers } from "../src/systems/tug.js";
 import { VOYAGE, currentDerelict, voyageOf } from "../src/systems/voyage.js";
 import { shipFromText } from "@jamrog/engine/testing";
 import { ZONE_KINDS, ENTRY_KIND } from "../src/content/zones.js";
-import {
-  DERELICTS,
-  FATHERS_TUG,
-  FREIGHTER,
-  LABORATORY,
-  MILITARY,
-  QUARANTINE,
-  buildChartered,
-  shipSpecOf,
-  type DerelictSpec,
-} from "../src/content/derelicts.js";
-import {
-  CHARTER_KINDS,
-  MIN_CHARTER_DEPTH,
-  UPLOAD_FLAG,
-  retrieveFlag,
-  seatCharterMarks,
-  uploadFlag,
-} from "../src/content/cards-derelicts.js";
-import {
-  CHARTER_PAY,
-  CLAUSES,
-  CLAUSE_BONUS,
-  charterFlags,
-  charterKinds,
-  contractsFor,
-  doneBy,
-  offerCharters,
-  salvageTarget,
-  withClause,
-  type Charter,
-  type CharterState,
-  type ClauseId,
-} from "../src/content/charters.js";
+import { DERELICTS, FATHERS_TUG, FREIGHTER, LABORATORY, MILITARY, QUARANTINE, buildChartered, shipSpecOf, type DerelictSpec } from "../src/content/derelicts.js";
+import { CHARTER_KINDS, MIN_CHARTER_DEPTH, UPLOAD_FLAG, retrieveFlag, seatCharterMarks, uploadFlag } from "../src/content/cards-derelicts.js";
+import { CHARTER_PAY, CLAUSES, CLAUSE_BONUS, charterFlags, charterKinds, contractsFor, doneBy, offerCharters, salvageTarget, withClause, type Charter, type CharterState, type ClauseId } from "../src/content/charters.js";
 import { HOT_STEPS, QUIET_AT, charterTag, stationTargets } from "../src/systems/voyage.js";
 import { alertState, raiseAlert } from "../src/systems/alert.js";
 import { newGame } from "../src/game.js";
@@ -441,7 +401,6 @@ describe("seating a mark the deck left in the shallows", () => {
  */
 describe("a charter, from the board to the account", () => {
   /** The bulkheads of the tug, by id: DOCK -1- HOLD -2- BENCH -3- HELM. */
-  const TO_HELM = [1, 2, 3];
 
   /** A voyage of exactly one hull, so a test can say which one. */
   function only(spec: DerelictSpec): System<RoomGame> {

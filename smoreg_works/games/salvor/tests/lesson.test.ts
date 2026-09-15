@@ -1,10 +1,10 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { newGame } from "../src/game.js";
 import { LESSON_STEPS, TUTORIAL_SEED, lessonOf } from "../src/content/tutorial.js";
 import { t } from "../src/i18n.js";
 import { LESSON_ROWS, LESSON_WIDTH, appReducer, initialState, lessonRows, lessonView, runBegun, type AppState } from "../src/ui/appstate.js";
-import { CODEX_WIDTH } from "../src/ui/input.js";
-import { briefing, lessonBrief } from "../src/ui/lessoncard.js";
+
+import { briefing } from "../src/ui/lessoncard.js";
 import { LAYOUT, SCREEN_WIDTH } from "../src/ui/theme.js";
 
 /**

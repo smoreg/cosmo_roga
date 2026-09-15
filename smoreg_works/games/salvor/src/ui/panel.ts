@@ -6,7 +6,7 @@ import { machineName } from "../content/monsters.js";
 import { OBJECTIVE_COUNT, OBJECTIVES, SYSTEM_GLYPH, objectiveName, toolName, type ObjectiveSpec } from "../content/objectives.js";
 import { isTug } from "../content/tug.js";
 import { roomName, zoneName } from "../content/zones.js";
-import { t, tId } from "../i18n.js";
+import { t } from "../i18n.js";
 import { codexUnread } from "../systems/codex.js";
 import { DOORS, keysHeld } from "../systems/doors.js";
 import { dangerWord } from "../systems/contacts.js";

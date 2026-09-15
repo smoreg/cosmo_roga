@@ -1,13 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { flavourCallsign, flavourLine } from "../src/content/derelicts.js";
-import {
-  RoomGame,
-  replayRooms,
-  type RoomCommand,
-  type RoomGameConfig,
-  type RoomId,
-  type System,
-} from "@jamrog/engine";
+import { flavourLine } from "../src/content/derelicts.js";
+import { RoomGame, replayRooms, type RoomCommand, type RoomGameConfig, type RoomId, type System } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { t } from "../src/i18n.js";
@@ -26,22 +19,8 @@ import { TUG, gatedOffers } from "../src/systems/tug.js";
 import { OBJECTIVES, OBJECTIVE_COUNT } from "../src/content/objectives.js";
 import { startRival } from "../src/systems/rival.js";
 import { rivalState } from "../src/systems/rivalstate.js";
-import {
-  JUMP_PRICE,
-  TUG_ID,
-  VOYAGE,
-  choiceHeads,
-  credit,
-  currentDerelict,
-  jumpRowLabel,
-  modulePrice,
-  rowsAt,
-  spend,
-  stationTargets,
-  voyageOf,
-  voyageProgress,
-} from "../src/systems/voyage.js";
-import { BENCH_CURE_PRICE, virusOf } from "../src/systems/virus.js";
+import { JUMP_PRICE, TUG_ID, VOYAGE, choiceHeads, credit, currentDerelict, jumpRowLabel, modulePrice, rowsAt, spend, stationTargets, voyageOf, voyageProgress } from "../src/systems/voyage.js";
+
 import { capOf, findSlot, rigOf, type Rig } from "../src/twist/rig.js";
 
 /**

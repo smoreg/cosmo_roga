@@ -91,8 +91,8 @@ function strandedAboard(game: RoomGame): boolean {
   if (isTug(game) || game.isOver()) return false;
 
   const here = game.roomOf(game.player).id;
-  const rig = rigOf(game.player);
-  const keys = keysHeld(game.player);
+  const _rig = rigOf(game.player);
+  const _keys = keysHeld(game.player);
   const openable = (door: Door): boolean => {
     switch (door.state) {
       case "open":

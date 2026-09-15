@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { DOOR_USE, charterHelp, dockHelp, voyageHelp, HELP_ROWS, helpFooter, helpHeadings, helpPages, isChord, keyHelp, listHelp, missingModuleLine, ruleHelp, shipHelp, tugHelp, toIntent, urlHelp, type KeyLike } from "../src/ui/input.js";
-import { t } from "../src/i18n.js";
+import { DOOR_USE, isChord, keyHelp, listHelp, missingModuleLine, toIntent, type KeyLike } from "../src/ui/input.js";
+
 import { findSlot, makeStartingRig, type Rig } from "../src/twist/rig.js";
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
 
 /**
  * The key table is the whole interface: every rule in the game is reached

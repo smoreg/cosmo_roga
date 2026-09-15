@@ -6,8 +6,8 @@ import { TUTORIAL_SEED } from "../src/content/tutorial.js";
 
 import { appReducer, initialState, withSettings, type AppState } from "../src/ui/appstate.js";
 import { toIntent, type KeyLike } from "../src/ui/input.js";
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
-import { BUILD_VERSION, DEFAULT_TITLE, SEED_DIGITS, SOUND_STORAGE_KEY, TITLE_PICKS, TITLE_ROWS, isSoundKey, itemText, rememberSound, seedFromUrl, seedOf, seedTyped, storedSound, titleLines, titleRowAt, titleRowOfPick, titleScreen, type TitleSettings } from "../src/ui/title.js";
+
+import { BUILD_VERSION, DEFAULT_TITLE, SEED_DIGITS, TITLE_PICKS, TITLE_ROWS, itemText, rememberSound, seedFromUrl, seedOf, seedTyped, storedSound, titleScreen, type TitleSettings } from "../src/ui/title.js";
 
 /**
  * The start screen (docs/tasks/G84-title-screen.md).
@@ -39,15 +39,6 @@ function key(state: AppState, e: KeyLike): AppState {
 /** A run of key presses from the title, in order. */
 function keys(state: AppState, ...events: KeyLike[]): AppState {
   return events.reduce(key, state);
-}
-
-/** As much of `localStorage` as the settings use, and nothing that persists. */
-function store(): { getItem: (k: string) => string | null; setItem: (k: string, v: string) => void } {
-  const map = new Map<string, string>();
-  return {
-    getItem: (k) => map.get(k) ?? null,
-    setItem: (k, v) => void map.set(k, v),
-  };
 }
 
 // --------------------------------------------------------------- what it says

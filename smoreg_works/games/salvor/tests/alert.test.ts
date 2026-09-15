@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { Rng, RoomDistance, RoomGame, hexLayout, isAlive, rememberRoom, replayRooms, spawnMonsterIn, type Door, type Entity, type MonsterKind, type RoomContentPack, type RoomId, type Ship } from "@jamrog/engine";
-import { BOTS_ROOMS, formatSummary, runBatchOn, runBotOn, roomPlay, seedRange, shipFromText } from "@jamrog/engine/testing";
+import { Rng, RoomDistance, RoomGame, isAlive, rememberRoom, replayRooms, spawnMonsterIn, type Door, type Entity, type MonsterKind, type RoomContentPack, type RoomId, type Ship } from "@jamrog/engine";
+import { BOTS_ROOMS, formatSummary, runBatchOn, roomPlay, seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
 import { stampClass } from "../src/content/derelicts.js";
 import { CROWD, ENFORCER, MONSTERS, type Machine } from "../src/content/monsters.js";
 import { TUG_ID, isTug } from "../src/content/tug.js";
 import { TUTORIAL_SPEC } from "../src/content/tutorial.js";
-import { ALERT, ARM_TURNS, BLOWN, CHARGE_LEVEL, CHARGE_PERIOD, DETONATION_TURNS, DOOR_PERIOD, FUSE_TURNS, HUNTER_LEVEL, LOCK_LEVEL, MAX_LEVEL, PERIOD, alertState, detonated, fuseIn, isBlown, raiseAlert, standDown, type AlertState } from "../src/systems/alert.js";
+import { ALERT, ARM_TURNS, CHARGE_LEVEL, CHARGE_PERIOD, DETONATION_TURNS, DOOR_PERIOD, FUSE_TURNS, HUNTER_LEVEL, LOCK_LEVEL, MAX_LEVEL, PERIOD, alertState, detonated, fuseIn, isBlown, raiseAlert, standDown, type AlertState } from "../src/systems/alert.js";
 import { voyageOf } from "../src/systems/voyage.js";
 import { addWreck, hostilesIn, install, rigOf } from "../src/twist/rig.js";
 import { t } from "../src/i18n.js";
@@ -189,13 +189,6 @@ function enforcers(game: RoomGame): Entity[] {
 
 function doorsAway(ship: Ship, from: RoomId, to: RoomId): number {
   return RoomDistance.from(ship, [from], (d) => ship.passable(d, { breacher: true })).at(to);
-}
-
-/** What the rack and the core add up to: the number a blast takes from. */
-function durability(game: RoomGame): number {
-  const rig = rigOf(game.player);
-  const rack = rig ? rig.slots.reduce((n, s) => n + (s?.integrity ?? 0), 0) : 0;
-  return rack + game.player.hp;
 }
 
 function logged(game: RoomGame, text: string): number {

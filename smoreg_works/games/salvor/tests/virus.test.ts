@@ -1,18 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { RoomGame, TURN_COST, dealDamage, replayRooms, spawnMonsterIn, type Entity, type RoomCommand, type RoomGameConfig, type System } from "@jamrog/engine";
+import { RoomGame, TURN_COST, dealDamage, spawnMonsterIn, type Entity, type RoomGameConfig, type System } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
-import { FREIGHTER, QUARANTINE, type DerelictSpec } from "../src/content/derelicts.js";
+
 import { moduleKind, type ModuleId } from "../src/content/modules.js";
 import { LEASH, LEECH, ROT, SPASM, type StrainId } from "../src/content/viruses.js";
-import { addWreck, findSlot, rigOf, type Rig, type WreckSource } from "../src/twist/rig.js";
+import { findSlot, rigOf, type Rig, type WreckSource } from "../src/twist/rig.js";
 import { voyageOf } from "../src/systems/voyage.js";
 
-import { panelBlocks } from "../src/ui/panel.js";
-import { CURE_TURNS, SPIKE_CURE_TURNS, SPREAD_TURNS, TWITCH_NOISE, TWITCH_PERIOD, VIRUS, VIRUS_HINT_KEY, harmLine, infectChance, tryInfect, turnsToBeat, turnsToSpread, virusHint, type VirusState,
-  virusOf,
-} from "../src/systems/virus.js";
+import { CURE_TURNS, SPIKE_CURE_TURNS, SPREAD_TURNS, TWITCH_NOISE, TWITCH_PERIOD, VIRUS, harmLine, infectChance, tryInfect, turnsToBeat, turnsToSpread, virusHint, type VirusState, virusOf } from "../src/systems/virus.js";
 
 /**
  * The virus on a hand-drawn ship. Same twist and same content pack the UI
@@ -93,13 +90,6 @@ function fit(game: RoomGame, kind: ModuleId): number {
 /** The starting rack carries no SPIKE; the fast purge needs one in the empty slot. */
 function fitSpike(game: RoomGame): number {
   return fit(game, "spike");
-}
-
-/** A purge's worth of turns, by whatever speed the rack gets. */
-function purgeFor(game: RoomGame, slot: number, turns: number): void {
-  for (let n = 0; n < turns; n++) {
-    expect(game.playerCommand({ kind: "act", verb: "cure", slot }).ok).toBe(true);
-  }
 }
 
 function put(game: RoomGame, room: string, id: string): Entity {

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { newGame } from "../src/game.js";
-import { appReducer, initialState, type AppEffect, type AppState } from "../src/ui/appstate.js";
+
+import { initialState, type AppEffect, type AppState } from "../src/ui/appstate.js";
 import type { UiIntent } from "../src/ui/input.js";
 import { SFX_VOLUME } from "../src/ui/sfx.js";
-import { BLIPS, REPEAT_GAP_MS, UI_MAX_GAIN, UiSound, blipFor, type BlipContext, type BlipId, type Press, type Turn } from "../src/ui/uisound.js";
+import { BLIPS, REPEAT_GAP_MS, UI_MAX_GAIN, UiSound, blipFor, type BlipContext, type BlipId, type Press } from "../src/ui/uisound.js";
 
 /**
  * The interface's blips (docs/tasks/G89-festival.md, D2): the table of what each

@@ -7,10 +7,10 @@ import { HINT_LINE_KEYS, ONBOARDING_HINTS, saidHint, soldLine, tugOpening } from
 import { t } from "../src/i18n.js";
 import { CHEAPEST_HULL, STARTING_CREDITS } from "../src/content/hulls.js";
 import { moduleKind } from "../src/content/modules.js";
-import { STARTER_HULLS, classOfShip, derelictName, flavourCallsign } from "../src/content/derelicts.js";
+import { derelictName } from "../src/content/derelicts.js";
 import { CHARTER_PAY } from "../src/content/charters.js";
 import { OBJECTIVES } from "../src/content/objectives.js";
-import { TUG_ID, TUG_ROOMS, isTug } from "../src/content/tug.js";
+import { TUG_ID, isTug } from "../src/content/tug.js";
 import { GHOST_HINT_KEY } from "../src/systems/ghost.js";
 import { shipState } from "../src/systems/shipstate.js";
 import { lessonStatus } from "../src/systems/tutorial.js";
@@ -248,11 +248,6 @@ describe("the first thing a player ever does", () => {
     expect(said()).toBe(1);
   });
 });
-
-function nameBeyond(game: RoomGame, door: number): string {
-  const here = game.roomOf(game.player).id;
-  return game.ship.roomAt(game.ship.other(game.ship.doorAt(door), here)).name;
-}
 
 // ------------------------------------------------------- the first derelict
 

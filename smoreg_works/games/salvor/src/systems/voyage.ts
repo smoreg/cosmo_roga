@@ -1,59 +1,14 @@
-import {
-  Ship,
-  TURN_COST,
-  layoutShip,
-  type ActionOffer,
-  type Door,
-  type Entity,
-  type LevelId,
-  type Outcome,
-  type Room,
-  type RoomCommand,
-  type RoomGame,
-  type RoomId,
-  type System,
-} from "@jamrog/engine";
-import {
-  buildChartered,
-  derelictName,
-  derelictSpec,
-  flavourCallsign,
-  flavourLine,
-  rollFlavour,
-  stopsForVoyage,
-  type DerelictSpec,
-  type FlavourRoll,
-} from "../content/derelicts.js";
+import { TURN_COST, type ActionOffer, type Entity, type LevelId, type Outcome, type Room, type RoomCommand, type RoomGame, type RoomId, type System } from "@jamrog/engine";
+import { buildChartered, derelictName, derelictSpec, flavourCallsign, flavourLine, rollFlavour, stopsForVoyage, type DerelictSpec, type FlavourRoll } from "../content/derelicts.js";
 import type { Key } from "../content/i18n/keys.js";
 import { t, tId } from "../i18n.js";
 import { CHARTER_FLAG } from "../content/cards-derelicts.js";
 import { TUTORIAL_SPEC, isTraining } from "../content/tutorial.js";
-import {
-  CLAUSES,
-  charterFlags,
-  contractsFor,
-  doneBy,
-  offerCharters,
-  salvageTarget,
-  type Charter,
-  type CharterId,
-  type ClauseId,
-} from "../content/charters.js";
+import { CLAUSES, charterFlags, contractsFor, doneBy, offerCharters, salvageTarget, type Charter, type CharterId, type ClauseId } from "../content/charters.js";
 import { TUG_OPENING_KEY, hint, soldLine, tugCallsign, tugOpening, voyageOpening } from "../content/hints.js";
 import { TUG_ID, isTug, tugShip } from "../content/tug.js";
-import {
-  CHEAPEST_HULL,
-  HULLS,
-  STARTING_CREDITS,
-  STARTING_HULL,
-  hullKind,
-  hullName,
-  hullSlots,
-  hullTrait,
-  type HullId,
-  type HullKind,
-  startingSlots,} from "../content/hulls.js";
-import { MAX_GRAFT, MODULES, isRelic, moduleKind, moduleName, type ModuleId } from "../content/modules.js";
+import { CHEAPEST_HULL, HULLS, STARTING_CREDITS, STARTING_HULL, hullKind, hullName, hullSlots, hullTrait, type HullId, type HullKind, startingSlots } from "../content/hulls.js";
+import { MAX_GRAFT, isRelic, moduleKind, moduleName, type ModuleId } from "../content/modules.js";
 import { OBJECTIVE_COUNT, type ObjectiveId } from "../content/objectives.js";
 import { MAX_LEVEL, alertState, detonated, raiseAlert } from "./alert.js";
 import { rivalState } from "./rivalstate.js";
@@ -61,21 +16,7 @@ import { keysHeld } from "./doors.js";
 import { roomList, type Crate, type RoomItem } from "./populate.js";
 import { shipState } from "./shipstate.js";
 import { BENCH_CURE_PRICE, INFECTED_SELL_SHARE, clearVirus, virusOf } from "./virus.js";
-import {
-  applyDerived,
-  capOf,
-  graft as graftOn,
-  install,
-  installAt,
-  removeSlot,
-  rigFrom,
-  rigOf,
-  type Rig,
-  type Slot,
-  findSlot,
-  carriedBy,
-  carriedFrom,
-  setCarried,} from "../twist/rig.js";
+import { applyDerived, capOf, graft as graftOn, install, installAt, removeSlot, rigFrom, rigOf, type Rig, type Slot, findSlot, carriedBy, carriedFrom, setCarried } from "../twist/rig.js";
 
 /**
  * The voyage: one account, one drone at a time, and the two ways a run ends.
@@ -541,7 +482,6 @@ function freshDerelict(game: RoomGame, spec: DerelictSpec, shipId: string): Dere
 function rollStock(_game: RoomGame): ModuleId[] {
   return [...SHELF];
 }
-
 
 /**
  * The dock's shelf: three modules, always listed, live only for a module the
@@ -2282,7 +2222,6 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
   // verb, drawn on the `fit` row (`TugRow.also`, ui/actions.ts) — everything
   // that puts a module on the drone belongs in one place, and the panel at home
   // has no eleventh row to give it.
-
 
   if (verb === "sell") {
     rig.slots.forEach((slot, i) => {

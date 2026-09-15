@@ -1,17 +1,15 @@
-import { isAlive, portsOf, type Entity, type Room, type RoomGame, type RoomId, type Ship } from "@jamrog/engine";
-import { derelictNameOf } from "../content/derelicts.js";
-import { tugCallsign } from "../content/hints.js";
+import { isAlive, type Entity, type Room, type RoomGame, type RoomId, type Ship } from "@jamrog/engine";
+
 import { moduleKind, moduleName } from "../content/modules.js";
 import { machineName } from "../content/monsters.js";
-import { roomName } from "../content/zones.js";
+
 import { t } from "../i18n.js";
-import { codexFor } from "../content/codex.js";
+
 import { hazardKind, type HazardKind } from "../content/hazards.js";
 import { isTug } from "../content/tug.js";
-import { BLOWN, alertState, fuseIn, isBlown } from "../systems/alert.js";
-import { doorHazard, hazardKnown, hazardsOf, roomHazard, signsFresh, type HazardRecord } from "../systems/hazardstate.js";
+import { BLOWN } from "../systems/alert.js";
+import { doorHazard, hazardKnown, hazardsOf, roomHazard, type HazardRecord } from "../systems/hazardstate.js";
 import { hostilesIn, wrecksOn } from "../twist/rig.js";
-import { strikersNear } from "./strikers.js";
 
 /**
  * What is in a compartment, in words.
@@ -96,65 +94,6 @@ export function bucketName(key: (typeof CONTENT_KEYS)[number], raw: unknown): st
   if (key === "crates") return t(kind === "contraband" ? "thing.contraband" : "thing.cargo");
   if (key === "items") return t(kind === "console" ? "thing.console" : "thing.package");
   return t("thing.system");
-}
-
-/**
- * The two door states a walk cannot simply spend a turn on.
- *
- * `Ship.passable` lets the drone through `open`, `closed` and `broken` — a
- * closed door is opened by walking into it — and asks for a cutter at a
- * `locked` or a `sealed` one. Those two are what the readout names, because
- * they are the two the player has to do something about before the walk the
- * map is drawing is a walk at all. The airlock is not among them: it is the
- * way out, and the drone is the one thing that may use it.
- */
-const SHUT = { locked: "state.locked", sealed: "state.sealed" } as const;
-
-/**
- * Compartments flashing on this frame, when nothing is: the ordinary case, and
- * a shared empty set rather than a fresh one per frame.
- */
-const NO_ALARM: ReadonlySet<RoomId> = new Set();
-const NO_DOORS: ReadonlySet<number> = new Set();
-
-/**
- * The compartments and doors this turn's red lines name, read the way the
- * line was worded (`systems/hazards.ts`, `hazardLine`): a compartment hazard
- * is the compartment and the door from here into it, a door trap is the door.
- */
-function signsNamed(game: RoomGame, here: RoomId | undefined): { rooms: Set<RoomId>; doors: Set<number> } {
-  const rooms = new Set<RoomId>();
-  const doors = new Set<number>();
-  if (here === undefined) return { rooms, doors };
-  const ship = game.ship;
-  for (const rec of signsFresh(game)) {
-    if (rec.door !== undefined) {
-      doors.add(rec.door);
-      continue;
-    }
-    if (rec.room === undefined || rec.room === here) continue;
-    rooms.add(rec.room);
-    const door = ship
-      .doorsOf(here)
-      .filter((d) => ship.other(d, here) === rec.room)
-      .sort((a, b) => a.id - b.id)[0];
-    if (door) doors.add(door.id);
-  }
-  return { rooms, doors };
-}
-
-/**
- * `BRIGHT ANCHOR · your tug · docked to freighter`.
- *
- * Four rooms and no name is what the caption used to say — `DERELICT · 4 rooms
- * · 4 seen` — while the player stood in the DOCK asking where the tug was. The
- * picture was right and the words under it named somebody else's ship.
- */
-function tugLine(game: RoomGame): string {
-  const parts = [tugCallsign(game.seed), t("ship.yourTug")];
-  const docked = derelictNameOf(tagOf(game.currentShip.data, "docked"));
-  if (docked) parts.push(t("ship.dockedTo", { hull: docked }));
-  return parts.join(" · ");
 }
 
 /** Everything lying in a compartment, in the order the panel lists it. */

@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { MODULES, moduleName } from "../src/content/modules.js";
 import type { ModuleId } from "../src/content/modules.js";
 import { DERELICTS, derelictName } from "../src/content/derelicts.js";

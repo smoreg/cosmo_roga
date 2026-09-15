@@ -1,16 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { RoomGame } from "@jamrog/engine";
 import { newGame } from "../src/game.js";
-import { derelictName } from "../src/content/derelicts.js";
+
 import { OBJECTIVES } from "../src/content/objectives.js";
-import { t } from "../src/i18n.js";
+
 import { shipState } from "../src/systems/shipstate.js";
-import { derelictAboard } from "../src/systems/voyage.js";
+
 import { rigOf } from "../src/twist/rig.js";
 import { airlockCard } from "../src/ui/airlockcard.js";
 import { appReducer, initialState, syncStatus, type AppState } from "../src/ui/appstate.js";
-import { CODEX_WIDTH, toIntent } from "../src/ui/input.js";
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
+import { toIntent } from "../src/ui/input.js";
 
 /**
  * The airlock card (docs/tasks/G95-smoreg-wave.md, B2): the turn the third

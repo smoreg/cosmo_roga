@@ -1,20 +1,4 @@
-import {
-  RoomDistance,
-  Rng,
-  dealDamage,
-  isAlive,
-  rememberRoom,
-  spawnMonsterIn,
-  type Door,
-  type DoorFilter,
-  type Entity,
-  type MonsterKind,
-  type Room,
-  type RoomGame,
-  type RoomId,
-  type Ship,
-  type System,
-} from "@jamrog/engine";
+import { RoomDistance, Rng, isAlive, rememberRoom, spawnMonsterIn, type Door, type DoorFilter, type Entity, type MonsterKind, type Room, type RoomGame, type RoomId, type Ship, type System } from "@jamrog/engine";
 import { classOfShip, specOfShip } from "../content/derelicts.js";
 import type { Key } from "../content/i18n/keys.js";
 import { CROWD, ENFORCER, MAX_MACHINES, machineName } from "../content/monsters.js";
@@ -24,7 +8,7 @@ import { TUG_ID, isTug } from "../content/tug.js";
 import { TUTORIAL_ID } from "../content/tutorial.js";
 import { roomName } from "../content/zones.js";
 import { t } from "../i18n.js";
-import { blamedOn, hostilesIn } from "../twist/rig.js";
+import { hostilesIn } from "../twist/rig.js";
 import { canSeeDrone } from "./sight.js";
 
 /**
