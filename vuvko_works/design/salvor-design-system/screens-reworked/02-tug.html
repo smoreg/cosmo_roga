@@ -1,0 +1,123 @@
+<!-- @dsCard group="Screens — reworked" viewport="1366x768" name="02 · The tug" subtitle="Between sorties — the rack on the left, the action list on the right, no map at all" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>SALVOR — the tug</title>
+<link rel="stylesheet" href="../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../_ds_bundle.js"></script>
+<script type="module">import * as FX from "../derelict-fx.js";window.FX=FX;</script>
+<style>html{overflow:hidden}body{margin:0;background:var(--sv-deep);color:var(--sv-fg);font-family:var(--sv-font-mono);overflow:hidden}#root{width:1366px;height:768px;overflow:hidden}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const {Panel,Tag,Rail,SegmentMeter,CorePips,CoreRack,Lever,ActionList,LogStrip}=window.SALVORScreensAsBuilt_2b77ba;
+
+/* The tug's rack, patched between sorties: a burned slot stays empty, so the
+   only way back to six working systems is to buy one into the empty slot. */
+const SLOTS=[
+  {name:"Cutter",value:11,max:11},
+  {name:"Thrusters",value:4,max:12,tone:"bad"},
+  {name:"Scanner",value:8,max:8},
+  {empty:true},
+  {name:"Cell",value:8,max:8},
+  {name:"Plating",value:9,max:16,tone:"warn"}
+];
+
+const ACTIONS=[
+  {label:"repair THRUSTERS  4/12",note:"16 cr"},
+  {label:"repair PLATING  9/16",note:"14 cr"},
+  {label:"fit MANIPULATORS into slot 4",note:"40 cr",disabled:true},
+  {label:"mend core  1 pip",note:"60 cr",disabled:true},
+  {label:"sell scrap  3 crates",note:"+24 cr"},
+  {label:"launch sortie 2",note:"osprey ready"}
+];
+
+const LOG=[
+  {tag:"tug",text:"Docked at the tug. Four systems standing, one slot empty."},
+  {tag:"core",text:"The feral drone hits you for 2.",tone:"bad"},
+  {tag:"burn",text:"Your PLATING burns out. Nothing stands between the next hit and your core.",tone:"bad"},
+  {tag:"burn",text:"A burned module is gone. Its slot is empty now.",tone:"warn"},
+  {tag:"run",text:"Left the OSPREY with 25 CR and the terminal read.",tone:"warn"}
+];
+
+const row=(k,v,tone)=><div style={{display:"flex",justifyContent:"space-between",gap:10,font:"var(--sv-body)"}} key={k}>
+  <span style={{color:"var(--sv-soft)"}}>{k}</span><span style={{color:tone||"var(--sv-ink)"}}>{v}</span></div>;
+
+const VARIANT="readout";
+
+function Screen(){
+  const [cursor,setCursor]=React.useState(0);
+  const [logOpen,setLogOpen]=React.useState(false);
+  const ref=React.useRef(null);
+  React.useEffect(()=>{
+    const t=setInterval(()=>{
+      if(!window.FX||!ref.current)return;
+      clearInterval(t);
+      window.FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"),window.FX.PRESETS.list);
+    },60);
+    return ()=>clearInterval(t);
+  },[]);
+
+  return <div ref={ref} style={{width:1366,height:768,display:"grid",gridTemplateColumns:"46px minmax(0,1fr) 520px",gridTemplateRows:"44px minmax(0,1fr) auto",background:"radial-gradient(ellipse 80% 70% at 36% 28%, var(--sv-deck) 0%, var(--sv-deep) 76%)",overflow:"hidden",userSelect:"none",boxSizing:"border-box"}}>
+
+    <div style={{gridColumn:"1 / -1",gridRow:1,display:"flex",alignItems:"center",gap:18,padding:"0 16px",background:"linear-gradient(180deg,var(--sv-plate) 0%,var(--sv-deck) 100%)",borderBottom:"1px solid var(--sv-line)"}}>
+      <div data-sc style={{font:"var(--sv-title)",letterSpacing:"var(--sv-title-track)",textTransform:"uppercase",color:"var(--sv-ink)"}}>Salvor · the tug</div>
+      <Tag tone="neutral">between sorties</Tag>
+      <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:9,font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-soft)"}}>core <CorePips value={1} max={3} size={13}/></div>
+        <div style={{font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-soft)"}}>credits <span style={{color:"var(--sv-amber-hi)"}}>49</span></div>
+      </div>
+    </div>
+
+    <Rail items={[{id:"sys",glyph:"≡"},{id:"orders",glyph:"?"},{id:"log",glyph:"▤"},{id:"sound",glyph:"◁"}]} active="sys"
+      style={{gridColumn:1,gridRow:"2 / 4"}}/>
+
+    {/* No map on this screen: while the drone is home there is nothing to walk. */}
+    <div style={{gridColumn:2,gridRow:2,minWidth:0,minHeight:0,overflow:"auto",padding:"12px 20px 0",display:"flex",flexDirection:"column",gap:10}}>
+      <Panel variant={VARIANT} title="Rack" stencil="osprey" mount="left">
+        <CoreRack core={1} coreMax={3} slots={SLOTS}/>
+        <div data-sc style={{font:"var(--sv-body)",color:"var(--sv-warn)",marginTop:12,paddingTop:11,borderTop:"1px solid var(--sv-line)"}}>Slot 4 is empty — PLATING burned out on the OSPREY and the slot went with it. Repairs bring a standing system back up; only a fitting fills a slot.</div>
+      </Panel>
+
+      <Panel variant={VARIANT} title="Last sortie" stencil="osprey" mount="left" tone="neutral">
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2, minmax(0,1fr))",gap:"5px 34px"}}>
+          {row("compartments walked","7 of 12")}
+          {row("hostiles down","2")}
+          {row("crates out","3")}
+          {row("alert peaked","2 of 5","var(--sv-warn)")}
+          {row("credits taken","25 cr","var(--sv-amber-hi)")}
+          {row("goal","not met","var(--sv-soft)")}
+        </div>
+      </Panel>
+    </div>
+
+    <div style={{gridColumn:3,gridRow:2,minHeight:0,overflowY:"auto",backgroundImage:"var(--sv-scan)",backgroundColor:"var(--sv-void)",borderLeft:"1px solid var(--sv-line)",padding:"12px 20px 0",display:"flex",flexDirection:"column",gap:10}}>
+      <Panel variant={VARIANT} title="Yard" stencil="49 cr" mount="none" tone="amber">
+        <ActionList title="Actions" actions={ACTIONS} cursor={cursor} onPick={setCursor}/>
+      </Panel>
+
+      <Panel variant={VARIANT} title="Next hull" stencil="in reach" mount="none">
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {row("name","the KESTREL")}
+          {row("class","hauler, stripped once")}
+          {row("compartments","14")}
+          {row("bounty","150 cr","var(--sv-amber-hi)")}
+          {row("goal","neutralize")}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:14,paddingTop:12,borderTop:"1px solid var(--sv-line)"}}>
+          <SegmentMeter label="scanned" value={3} max={14} tone="warn" height={11}/>
+        </div>
+      </Panel>
+
+      <div style={{marginTop:"auto",display:"flex",justifyContent:"flex-end"}}>
+        <Lever label="Launch" hint="space" ready width={200} height={62}/>
+      </div>
+    </div>
+
+    <LogStrip entries={LOG} expanded={logOpen} onToggle={()=>setLogOpen(!logOpen)}
+      style={{gridColumn:"1 / -1",gridRow:3}}/>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Screen/>);
+</script>
+</body></html>

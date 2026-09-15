@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>SALVOR — design previews</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body{margin:0;padding:34px 30px;background:var(--sv-deep);color:var(--sv-fg);font-family:var(--sv-font-mono)}
+  h1{font:var(--sv-display);letter-spacing:var(--sv-display-track);text-transform:uppercase;color:var(--sv-ink);margin:0}
+  p{max-width:62ch;line-height:1.7;color:var(--sv-soft)}
+  h2{font:var(--sv-stencil);letter-spacing:var(--sv-stencil-track);text-transform:uppercase;
+     color:var(--sv-amber);margin:30px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--sv-line)}
+  ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+  li a{display:flex;gap:14px;align-items:baseline;padding:7px 10px;border-bottom:none}
+  li a:hover{background:color-mix(in oklab, var(--sv-amber) 14%, transparent)}
+  .name{color:var(--sv-ink);min-width:20ch}
+  .note{color:var(--sv-soft);font-size:13px}
+  .miss{opacity:.45;pointer-events:none}
+  code{color:var(--sv-amber-hi)}
+</style>
+</head><body>
+<h1>Salvor · design previews</h1>
+<p>
+  The reworked screens, running locally. They are React pages compiled in the
+  browser, so this wants a server rather than <code>file://</code> — the FX
+  library is loaded as an ES module and the browser will not fetch one off the
+  filesystem. React and Babel come from unpkg, so it also wants a network.
+</p>
+<p>
+  <code>python3 -m http.server</code> from this folder, then open
+  <code>localhost:8000</code>.
+</p>
+
+<h2>Screens — reworked</h2>
+<ul>
+  <li><a href="screens-reworked/04-hex.html"><span class="name">04 · Aboard</span>
+    <span class="note">one hex per compartment, one drone, the core and its slots</span></a></li>
+  <li><a href="screens-reworked/02-tug.html"><span class="name">02 · The tug</span>
+    <span class="note">between sorties — the rack left, the action list right, no map</span></a></li>
+</ul>
+
+<h2>Not pulled yet</h2>
+<ul>
+  <li class="miss"><a><span class="name">chrome-variants</span>
+    <span class="note">the same three surfaces in three materials</span></a></li>
+  <li class="miss"><a><span class="name">door-map</span>
+    <span class="note">rungs vs stencilled, and a cell at nine hostiles</span></a></li>
+  <li class="miss"><a><span class="name">cards · palette, type, motion, cogmind</span>
+    <span class="note">the foundations</span></a></li>
+  <li class="miss"><a><span class="name">component cards</span>
+    <span class="note">board, chrome, meters, actions</span></a></li>
+</ul>
+<p>
+  Those still live only in the Claude Design project. See
+  <code>PULLED.md</code> for what came down and what did not.
+</p>
+</body></html>

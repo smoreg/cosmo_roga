@@ -1,0 +1,384 @@
+<!-- @dsCard group="Screens — reworked" viewport="1366x768" name="04 · Aboard, honeycomb" subtitle="SALVOR's own screen — one hex per compartment, one drone, the core and its slots" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>SALVOR — aboard</title>
+<link rel="stylesheet" href="../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../_ds_bundle.js"></script>
+<script type="module">import * as FX from "../derelict-fx.js";window.FX=FX;</script>
+<style>html{overflow:hidden}body{margin:0;background:var(--sv-deep);color:var(--sv-fg);font-family:var(--sv-font-mono);overflow:hidden}#root{width:1366px;height:768px;overflow:hidden}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const {Panel,Rail,MenuSheet,AlertDial,CoreRack,HexMap,LogStrip}=window.SALVORScreensAsBuilt_2b77ba;
+/* Ask the board what the drone is allowed to know. No local fallback on
+   purpose — a second copy of this rule is what let the readout name a room the
+   board was hiding, twice. */
+const {Knowledge}=window.SALVORScreensAsBuilt_2b77ba;
+
+/* The shapes are shared with the board, so the names have to be too. */
+const NAMES={scout:"scout",feral:"feral drone",sentry:"sentry",crate:"cargo crate",terminal:"terminal",machine:"machine"};
+const SHAPE={
+  scout:"polygon(50% 0,100% 100%,0 100%)",
+  feral:"polygon(50% 0,100% 50%,50% 100%,0 50%)",
+  sentry:"polygon(50% 0,100% 35%,82% 100%,18% 100%,0 35%)",
+  crate:null,
+  terminal:"polygon(0 0,100% 0,100% 72%,62% 72%,62% 100%,38% 100%,38% 72%,0 72%)",
+  machine:"circle(50%)"
+};
+const FOE={scout:1,feral:1,sentry:1};
+/* Prefer the system's own icon; fall back locally so a lagging bundle cannot
+   take the screen down. */
+const ContentIcon=window.SALVORScreensAsBuilt_2b77ba.ContentIcon||function({kind,size=15,style}){
+  return <div style={{width:size,height:size,flex:"none",background:FOE[kind]?"var(--sv-bad)":"var(--sv-amber)",clipPath:SHAPE[kind]||undefined,...style}}></div>;
+};
+const NOTE={scout:"melee · 3/3",feral:"melee · 3/3",sentry:"fixed · 5/5",crate:"8 cr",terminal:"1 turn",machine:"2 turns"};
+const AT={scout:"attack",feral:"attack",sentry:"attack",crate:"take",terminal:"read",machine:"strip"};
+const Popover=window.SALVORScreensAsBuilt_2b77ba.Popover||function({tone="var(--sv-amber)",children,style}){
+  const ref=React.useRef(null);
+  React.useEffect(()=>{
+    const FX=window.FX||window.DerelictFX;
+    if(!FX||!ref.current)return;
+    const h=FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"),FX.PRESETS.hover);
+    return ()=>h.cancel();
+  },[]);
+  const line=(o)=>({position:"absolute",background:tone,zIndex:3,pointerEvents:"none",transformOrigin:"center",animation:"sv-draw-"+(o.height?"x":"y")+" var(--sv-frame) var(--sv-step) 1 both",...o});
+  return <div ref={ref} style={{position:"relative",background:"var(--sv-knock)",...style}}>
+    <div style={line({left:0,right:0,top:0,height:2})}></div>
+    <div style={line({left:0,right:0,bottom:0,height:2})}></div>
+    <div style={line({top:0,bottom:0,left:0,width:2})}></div>
+    <div style={line({top:0,bottom:0,right:0,width:2})}></div>
+    {children}
+  </div>;
+};
+const ObjectRow=window.SALVORScreensAsBuilt_2b77ba.ObjectRow||function({item,here=true,onAct,style}){
+  const [hot,setHot]=React.useState(false);
+  const foe=!!FOE[item.kind], verb=here?AT[item.kind]:(foe?"watch":null);
+  return <div onMouseEnter={()=>setHot(true)} onMouseLeave={()=>setHot(false)}
+    onClick={verb&&onAct?()=>onAct(verb,item):undefined}
+    style={{display:"flex",alignItems:"center",gap:9,padding:"4px 8px",cursor:verb&&onAct?"pointer":"help",background:hot?"color-mix(in oklab, var(--sv-amber) 12%, transparent)":"transparent",...style}}>
+    <ContentIcon kind={item.kind} size={15}/>
+    <div style={{font:"var(--sv-body)",color:"var(--sv-ink)"}}>{(item.name||NAMES[item.kind])+(item.n>1?" ×"+item.n:"")}</div>
+    {hot?<div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:9}}>
+      <span style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".1em",textTransform:"uppercase",color:"var(--sv-soft)"}}>{NOTE[item.kind]}</span>
+      {verb?<span style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",background:foe?"var(--sv-bad)":"var(--sv-amber)",color:"var(--sv-knock)",padding:"2px 6px"}}>{verb}</span>:null}
+    </div>:foe?<div style={{marginLeft:"auto",display:"flex",gap:3}}>
+      {[0,1,2].map(n=><span key={n} style={{width:7,height:12,background:n<(item.threat||1)?"var(--sv-bad)":"var(--sv-plate-lit)"}}></span>)}
+    </div>:null}
+  </div>;
+};
+
+/* One hex per compartment, on the four-state model: the state is how much the
+   drone knows, so the amount of information on the face is the encoding. */
+const ROOMS=[
+  {id:"r0",name:"Docking",q:1,r:0,state:"monitored",contents:[{kind:"crate"}]},
+  {id:"r5",name:"Bridge",q:2,r:0,state:"detected"},
+  {id:"r10",name:"Stores",q:3,r:0,state:"undetected",contents:[{id:"c9",kind:"crate"}]},
+  {id:"r3",name:"Cargo hold",q:0,r:1,state:"monitored",contents:[{kind:"crate"},{kind:"crate"},{kind:"crate"}],props:["vacuum"]},
+  {id:"r2",name:"Sensor bay",q:1,r:1,state:"current",contents:[
+    {id:"c1",kind:"crate"},
+    {id:"s1",kind:"scout",name:"scout 1",threat:2},
+    {id:"s2",kind:"scout",name:"scout 2",threat:1},
+    {id:"f1",kind:"feral",name:"feral 1",threat:1}
+  ]},
+  {id:"r4",name:"Conduit",q:2,r:1,state:"undetected"},
+  {id:"r9",name:"Aft lock",q:3,r:1,state:"undetected",contents:[{id:"m2",kind:"machine"}]},
+  {id:"r8",name:"Thruster bay",q:0,r:2,state:"monitored",contents:[{kind:"machine"}],props:["hazard","dark"]},
+  {id:"r1",name:"Engineering",q:1,r:2,state:"monitored",contents:[{kind:"machine"},{kind:"sentry",threat:3}]},
+  {id:"r6",name:"Crew qtrs",q:2,r:2,state:"monitored",contents:[{kind:"scout",threat:2},{kind:"scout",threat:2}],props:["alarmed"]},
+  {id:"r7",name:"Medbay",q:3,r:2,state:"detected"},
+  {id:"r11",name:"Terminal",q:1,r:3,state:"monitored",contents:[{kind:"terminal"}]}
+];
+const LINKS=[
+  {a:"r2",b:"r0",label:"d1",state:"open"},
+  {a:"r2",b:"r1",label:"d2",state:"open"},
+  {a:"r2",b:"r3",label:"d5",state:"open"},
+  {a:"r2",b:"r4",label:"d3",state:"closed"},
+  {a:"r2",b:"r6",label:"d4",state:"locked"},
+  {a:"r0",b:"r5",label:"d6",state:"open"},
+  {a:"r3",b:"r8",label:"d7",state:"open"},
+  {a:"r6",b:"r7",label:"d8",state:"sealed"},
+  {a:"r1",b:"r11",label:"a1",state:"airlock"},
+  {a:"r5",b:"r10",label:"d9",state:"open"}
+];
+
+const SLOTS=[
+  {name:"Cutter",value:11,max:11},
+  {burned:true},
+  {name:"Scanner",value:8,max:8},
+  {burned:true},
+  {name:"Cell",value:8,max:8},
+  {empty:true}
+];
+
+const LOG=[
+  {tag:"core",text:"The feral drone hits you for 2.",tone:"bad"},
+  {tag:"burn",text:"Your PLATING burns out. Nothing stands between the next hit and your core.",tone:"bad"},
+  {tag:"hit",text:"The scout hits your PLATING (0/13).",tone:"bad"},
+  {tag:"hit",text:"The scout hits your PLATING (1/16).",tone:"bad"},
+  {tag:"burn",text:"A burned module is gone. Its slot is empty now.",tone:"warn"},
+  {tag:"burn",text:"Your THRUSTERS burn out. You crawl on manipulators.",tone:"bad"},
+  {tag:"here",text:"In here: feral drone 3/3, melee.",tone:"warn"}
+];
+
+const stat=(k,v,tone)=><div style={{display:"flex",alignItems:"baseline",gap:7,font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-soft)"}} key={k}>
+  {k} <span style={{color:tone||"var(--sv-ink)"}}>{v}</span></div>;
+
+
+const VARIANT="readout";
+
+function Screen(){
+  const [sel,setSel]=React.useState("r2");
+  const [drone,setDrone]=React.useState("r2");
+  const [seen,setSeen]=React.useState(()=>new Set(["r2"]));
+  const [where,setWhere]=React.useState({});   // enemy id -> room it has moved to
+  const [moves,setMoves]=React.useState(null); // relocations currently playing
+  const [cursor,setCursor]=React.useState(0);
+  const [logOpen,setLogOpen]=React.useState(false);
+  const [menu,setMenu]=React.useState(null);
+  const [leaving,setLeaving]=React.useState(false);
+  const [sound,setSound]=React.useState(true);
+  /* One frame of exit animation has to play before the sheet unmounts. */
+  const closeMenu=React.useCallback(()=>{
+    setLeaving(true);
+    setTimeout(()=>{ setMenu(null); setLeaving(false); },225);
+  },[]);
+  const go=(id)=>{ setLeaving(false); setMenu(id); };
+  const [log,setLog]=React.useState(LOG);
+  const say=(tag,text,tone)=>setLog(l=>[{tag,text,tone},...l].slice(0,14));
+  const act=(room,verb,item)=>{
+    const what=item.name||NAMES[item.kind];
+    if(verb==="attack") say("hit","You swing the cutter at the "+what+".","bad");
+    else if(verb==="watch") say("watch","Holding on the "+what+" in "+(room.name||room.id)+".","warn");
+    else if(verb==="take") say("hold","Sealed the "+what+" into the hold.");
+    else if(verb==="read") say("data","Read the "+what+". The manifest is aboard.");
+    else say("rack","Stripped the "+what+" for parts.");
+  };
+  /* The hulk takes its own turn: the nearest hostile steps one compartment
+     toward the drone, drawn with the same teleport the drone uses. */
+  const answer=(droneRoom)=>{
+    const from=placed.find(r=>(r.contents||[]).some(c=>FOE[c.kind]&&!where[c.id]&&r.id!==droneRoom));
+    if(!from) return;
+    const body=(from.contents||[]).find(c=>FOE[c.kind]&&!where[c.id]);
+    const step=LINKS.filter(l=>(l.a===from.id||l.b===from.id)&&(l.state==="open"||l.state==="airlock"))
+      .map(l=>l.a===from.id?l.b:l.a)[0];
+    if(!body||!step) return;
+    setMoves([{id:body.id,kind:body.kind,from:from.id,to:step}]);
+    say("wake",(body.name||NAMES[body.kind])+" moved out of "+(from.name||from.id)+".","warn");
+  };
+  const movesDone=()=>{
+    if(!moves) return;
+    setWhere(w=>{ const n={...w}; moves.forEach(m=>{ n[m.id]=m.to; }); return n; });
+    setMoves(null);
+  };
+  const doorAct=(link,verb)=>say("door",verb.replace(/^\w/,c=>c.toUpperCase())+" "+(link.label||"the door")+".",verb==="force"?"warn":undefined);
+  const ref=React.useRef(null);
+  React.useEffect(()=>{
+    const t=setInterval(()=>{
+      if(!window.FX||!ref.current)return;
+      clearInterval(t);
+      window.FX.scrambleReveal(ref.current.querySelectorAll("[data-sc]"),window.FX.PRESETS.list);
+    },60);
+    return ()=>clearInterval(t);
+  },[]);
+  const here=ROOMS.find(r=>r.id===sel)||ROOMS[4];
+  /* `current` means "the drone is in it", so it has to follow the drone rather
+     than stay on the room the map was authored around. */
+  const placed=React.useMemo(()=>{
+    const moved=Object.entries(where);
+    if(!moved.length) return ROOMS;
+    const gone=new Set(moved.map(([id])=>id));
+    const extra={};
+    moved.forEach(([id,room])=>{
+      const body=ROOMS.flatMap(r=>r.contents||[]).find(c=>c.id===id);
+      if(body) (extra[room]=extra[room]||[]).push(body);
+    });
+    return ROOMS.map(r=>{
+      const kept=(r.contents||[]).filter(c=>!gone.has(c.id));
+      const added=extra[r.id]||[];
+      return (kept.length!==(r.contents||[]).length||added.length)
+        ?{...r,contents:[...kept,...added]}:r;
+    });
+  },[where]);
+
+  const rooms=React.useMemo(()=>placed.map(r=>
+    r.id===drone?{...r,state:"current"}
+    :seen.has(r.id)?{...r,state:r.state==="current"?"monitored":(r.state==="undetected"||r.state==="detected")?"monitored":r.state}
+    :r.state==="current"?{...r,state:"monitored"}:r
+  ),[placed,drone,seen]);
+  /* The panel answers to the room's LIVE state, not its authored one, or a
+     compartment the drone has since walked into still reads as unscanned. */
+  const hereRoom=rooms.find(r=>r.id===sel)||here;
+
+  return <div ref={ref} style={{width:1366,height:768,display:"grid",gridTemplateColumns:"46px minmax(0,1fr) 420px",gridTemplateRows:"minmax(0,1fr) auto",background:"var(--sv-deep)",overflow:"hidden",userSelect:"none",boxSizing:"border-box"}}>
+
+    <Rail style={{gridColumn:1,gridRow:1,zIndex:8}}
+      active={menu==="settings"||menu==="credits"?"sys":menu}
+      items={[
+        {id:"sys",glyph:"≡",title:"menu"},
+        {id:"help",glyph:"?",title:"controls"},
+        {id:"sound",glyph:sound?"◀":"◁",title:sound?"sound on":"sound off"}
+      ]}
+      onSelect={(id)=>{
+        if(id==="sound"){ setSound(v=>!v); return; }
+        if(menu===id){ closeMenu(); return; }
+        go(id);
+      }}/>
+
+    <div style={{gridColumn:2,gridRow:1,position:"relative",minWidth:0,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",background:"radial-gradient(ellipse 66% 60% at 46% 48%, var(--sv-deck) 0%, var(--sv-deep) 78%)"}}>
+      <HexMap rooms={rooms} links={LINKS} drone={drone} size={118} spread={1.3}
+        onSelect={(id)=>{
+          setSel(id);
+          if(id===drone) return;
+          const room=ROOMS.find(r=>r.id===id)||{};
+          const fresh=!seen.has(id)&&room.state!=="monitored";
+          setDrone(id); setSeen(v=>new Set(v).add(id));
+          say("move","Moved to "+(room.name||id)+"."+(fresh?" Logged what is in it.":""));
+          answer(id);
+        }}
+        moves={moves} onMovesDone={movesDone}
+        onAct={act} onDoorAct={doorAct}
+        renderHover={(room,walk)=>{
+          if(room.id===sel) return null;
+          const shut=walk&&walk.blocked;
+          /* One value decides the verb and the click alike — HexMap hands it
+             over, so the readout cannot offer something the click won't do. */
+          const intent=walk&&walk.intent;
+          const verb=intent==="blocked"?(shut.state+" · "+shut.label)
+                    :intent==="move"?"move here"
+                    :"no route";
+          const tone=intent==="move"?"var(--sv-amber)":"var(--sv-bad)";
+          return <Popover tone={tone} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",whiteSpace:"nowrap"}}>
+            <span data-sc style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".12em",textTransform:"uppercase",color:"var(--sv-ink)"}}>{Knowledge.name(room)||"unscanned"}</span>
+            <span data-sc style={{font:"var(--sv-body)",color:"var(--sv-soft)"}}>{shut?"no way through":Knowledge.of(room.state)==="all"?((room.props||[]).join(" · ")||"nothing unusual"):room.state}</span>
+            <span data-sc style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",background:tone,color:"var(--sv-knock)",padding:"2px 6px"}}>{verb}</span>
+          </Popover>;
+        }}/>
+
+      {/* Menus arrive over the board, never beside it. */}
+      {menu?(
+        <div style={{position:"absolute",inset:0,zIndex:80,background:"color-mix(in oklab, var(--sv-deep) 66%, transparent)"}}
+          onClick={closeMenu}>
+          <div onClick={(e)=>e.stopPropagation()} style={{position:"absolute",left:0,top:0,bottom:0,display:"flex"}}>
+            {menu==="sys"?(
+              <MenuSheet drawer leaving={leaving} width={360} title="Salvor" stencil="paused" onClose={closeMenu} rows={[
+                {key:"1",label:"New game",note:"abandons this sortie",onPick:closeMenu},
+                {key:"2",label:"Settings",onPick:()=>go("settings")},
+                {key:"3",label:"Credits",onPick:()=>go("credits")}
+              ]}/>
+            ):null}
+
+            {menu==="settings"?(
+              <MenuSheet drawer leaving={leaving} title="Settings" stencil="salvor" width={380} onBack={()=>go("sys")} onClose={closeMenu}>
+                <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  <div onClick={()=>setSound(v=>!v)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 9px",cursor:"pointer"}}>
+                    <span style={{width:13,flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,color:"var(--sv-amber)"}}>s</span>
+                    <span style={{font:"var(--sv-body)",color:"var(--sv-ink)"}}>Sound</span>
+                    <span style={{marginLeft:"auto",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",background:sound?"var(--sv-amber)":"transparent",border:sound?"none":"1px solid var(--sv-rule)",color:sound?"var(--sv-knock)":"var(--sv-soft)",padding:"2px 7px"}}>{sound?"on":"off"}</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 9px"}}>
+                    <span style={{width:13,flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,color:"var(--sv-amber)"}}>m</span>
+                    <span style={{font:"var(--sv-body)",color:"var(--sv-ink)"}}>Reduced motion</span>
+                    <span style={{marginLeft:"auto",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-soft)"}}>system</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 9px"}}>
+                    <span style={{width:13,flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:0,color:"var(--sv-amber)"}}>c</span>
+                    <span style={{font:"var(--sv-body)",color:"var(--sv-ink)"}}>Confirm risky orders</span>
+                    <span style={{marginLeft:"auto",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",background:"var(--sv-amber)",color:"var(--sv-knock)",padding:"2px 7px"}}>on</span>
+                  </div>
+                </div>
+              </MenuSheet>
+            ):null}
+
+            {menu==="credits"?(
+              <MenuSheet drawer leaving={leaving} title="Credits" stencil="salvor" width={380} onBack={()=>go("sys")} onClose={closeMenu}>
+                <div style={{display:"flex",flexDirection:"column",gap:11}}>
+                  <div style={{font:"var(--sv-body)",color:"var(--sv-fg)"}}>A turn-based salvage game about sending one drone into a hulk and getting it back out.</div>
+                  {[["design & code","the crew"],["typefaces","Barlow Condensed · IBM Plex Mono"],["owes a debt to","Cogmind, by Grid Sage Games"]].map(([k,v],i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"baseline",gap:10,paddingTop:9,borderTop:"1px solid var(--sv-line)"}}>
+                      <span style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-soft)"}}>{k}</span>
+                      <span style={{marginLeft:"auto",font:"var(--sv-body)",color:"var(--sv-ink)",textAlign:"right"}}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </MenuSheet>
+            ):null}
+
+            {menu==="help"?(
+              <MenuSheet drawer leaving={leaving} title="Controls" stencil="how to fly it" width={430} onClose={closeMenu}>
+                <div style={{display:"flex",flexDirection:"column",gap:13}}>
+                  {[
+                    ["The board",[["hover a room","the route the drone would walk"],["click a room","send it there"],["right-drag","pan the board"],["double-click","re-centre"]]],
+                    ["Things in a room",[["hover a shape","what it is, and the one verb"],["click a shape","spend that verb"],["hover a door","every verb that door offers"]]],
+                    ["Keys",[["1 – 9","the numbered row in a panel"],["space","end the watch"],["l","open the log"],["esc","this menu"]]]
+                  ].map(([group,lines],g)=>(
+                    <div key={g}>
+                      <div style={{font:"var(--sv-stencil)",fontSize:14,letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-amber)",paddingBottom:7,borderBottom:"1px solid var(--sv-line)"}}>{group}</div>
+                      <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:8}}>
+                        {lines.map(([k,v],i)=>(
+                          <div key={i} style={{display:"flex",alignItems:"baseline",gap:12}}>
+                            <span style={{width:152,flex:"none",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".1em",textTransform:"uppercase",color:"var(--sv-ink)"}}>{k}</span>
+                            <span style={{font:"var(--sv-body)",color:"var(--sv-soft)"}}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </MenuSheet>
+            ):null}
+          </div>
+        </div>
+      ):null}
+
+      {/* Who you are and what you came for, mounted to the map's top-left. */}
+      <Panel variant={VARIANT} title="Hollow Tide" stencil="sortie 1" mount="left" width={300} style={{position:"absolute",left:14,top:14,zIndex:5}}>
+        <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+          <div style={{font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-amber)"}}>goal</div>
+          <div data-sc style={{font:"var(--sv-body)",color:"var(--sv-ink)"}}>neutralize</div>
+          <div style={{marginLeft:"auto",font:"var(--sv-value)",color:"var(--sv-amber-hi)"}}>150 <span style={{color:"var(--sv-soft)"}}>cr</span></div>
+        </div>
+        <div style={{display:"flex",gap:20,marginTop:9,paddingTop:9,borderTop:"1px solid var(--sv-line)"}}>
+          {stat("keys","0")}
+          {stat("held","25 cr","var(--sv-amber-hi)")}
+        </div>
+      </Panel>
+
+      {/* The clock: alert, and the turn it is on. */}
+      <Panel variant={VARIANT} mount="none" notch={9} width={196} style={{position:"absolute",left:"50%",top:14,transform:"translateX(-50%)",zIndex:5}}>
+        <div style={{display:"flex",alignItems:"center",gap:18}}>
+          <AlertDial value={0} max={5} label="alert" size={66}/>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            <div style={{font:"var(--sv-stencil)",letterSpacing:"var(--sv-stencil-track)",textTransform:"uppercase",color:"var(--sv-soft)"}}>turn</div>
+            <div style={{font:"var(--sv-display)",fontSize:38,letterSpacing:"var(--sv-display-track)",color:"var(--sv-ink)"}}>18</div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+
+    <div style={{gridColumn:3,gridRow:1,minHeight:0,overflowY:"auto",backgroundImage:"var(--sv-scan)",backgroundColor:"var(--sv-void)",borderLeft:"1px solid var(--sv-line)",padding:"10px 16px 0",display:"flex",flexDirection:"column",gap:8}}>
+
+      <Panel variant={VARIANT} title="Rack" stencil="Osprey" mount="none">
+        <CoreRack core={1} coreMax={3} slots={SLOTS}/>
+      </Panel>
+
+      <Panel variant={VARIANT} title={Knowledge.name(hereRoom)||"unscanned"} stencil={here.id} mount="none">
+        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          {Knowledge.of(hereRoom.state)==="all"?(here.contents||[]).map((c,i)=>(
+            <ObjectRow key={c.id||i} item={c} here onAct={(verb,item)=>act(here,verb,item)}/>
+          )):null}
+          {Knowledge.of(hereRoom.state)!=="all"?<div style={{padding:"4px 8px",font:"var(--sv-body)",color:"var(--sv-soft)"}}>{Knowledge.of(hereRoom.state)==="name"?"Scanned from outside. No look inside it yet.":"Nothing has been through this hatch."}</div>
+           :!(here.contents||[]).length?<div style={{padding:"4px 8px",font:"var(--sv-body)",color:"var(--sv-soft)"}}>Nothing in here.</div>:null}
+        </div>
+        <div style={{marginTop:9,paddingTop:9,borderTop:"1px solid var(--sv-line)",font:"var(--sv-stencil)",fontSize:14,letterSpacing:".14em",textTransform:"uppercase",color:"var(--sv-soft)"}}>one row per thing · click one to pick it</div>
+      </Panel>
+
+    </div>
+
+    <LogStrip entries={log} expanded={logOpen} onToggle={()=>setLogOpen(!logOpen)}
+      style={{gridColumn:"1 / -1",gridRow:2}}/>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Screen/>);
+</script>
+</body></html>

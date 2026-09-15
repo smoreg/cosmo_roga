@@ -67,17 +67,33 @@ is now clickable — it carries the same intent the cell does.
 | `components/action/Lever.jsx` | `Lever`, `ActionList`, `LogStrip` |
 | `components/meters/SegmentMeter.jsx` | `SegmentMeter`, `CorePips`, `CoreRack`, `AlertDial` |
 
+## Running them locally
+
+    cd vuvko_works/design/salvor-design-system
+    python3 -m http.server
+    # localhost:8000
+
+`index.html` lists what is here. It wants a **server**, not `file://` — the
+screens load the FX library as an ES module and a browser will not fetch one
+off the filesystem — and it wants a **network**, because React, ReactDOM and
+Babel are fetched from unpkg rather than bundled.
+
+`_ds_bundle.js` is the compiled components and the screens will not start
+without it. It is build output, so it goes stale the moment a `.jsx` here
+changes: **re-pull it alongside any component change**, or the preview will
+keep showing the previous build.
+
 ## Still in the project, not pulled
 
 Renderings rather than sources, and each is a large HTML file that can be
 fetched on demand:
 
-- `screens-reworked/` — `02-tug`, `04-hex`, `chrome-variants`, `door-map`
+- `screens-reworked/chrome-variants.html`, `screens-reworked/door-map.html`
 - `cards/` — `palette`, `type`, `motion`, `cogmind`
 - `components/**/​*-card.html` — the component demo cards
 - `templates/salvor-screen/` — the starting point for a new in-run screen
 - `components/**/​*.d.ts` — generated from the JSX beside them
-- `_ds_bundle.js`, `_ds_manifest.json`, `thumbnail.html` — build output
+- `_ds_manifest.json`, `thumbnail.html`, `_adherence.oxlintrc.json` — build output
 - `uploads/` — copies of the kit files this repo already holds in
   `vuvko_works/extra_design/`
 
