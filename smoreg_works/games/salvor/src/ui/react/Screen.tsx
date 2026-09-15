@@ -28,7 +28,7 @@ import {
 } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
-import { deckVersion, watchDeck } from "./deckindex.js";
+import { deckVersion, loadDeckIndex, watchDeck } from "./deckindex.js";
 import { CodexCardView, EndingCard, HistoryCard } from "./screens/Cards.js";
 import { DroneIcon, ThingIcon } from "./board/Icon.js";
 import { DockPreview, TugOrders } from "./screens/Tug.js";
@@ -197,6 +197,17 @@ export function Screen({
      read the index while it was empty would never read it again — so the
      arrival is a store the board subscribes to, like any other change. */
   const art = useSyncExternalStore(watchDeck, deckVersion, deckVersion);
+
+  /* And ask for it, rather than trusting that something already did.
+     The splash fetches it on the way in and the mount asks before that, which
+     covers a player opening the game — and covers nothing else. A board
+     reached any other way had no plating and no way of getting any: a module
+     reloaded under a running page, a test that renders the screen on its own,
+     a future screen that skips the door. Asking is free once it has arrived
+     and retries if the last attempt came back empty. */
+  useEffect(function art_() {
+    void loadDeckIndex();
+  }, []);
 
   const board = useMemo(() => boardOf(game), [game, turn, art]);
   const things = useMemo(() => hereOf(game), [game, turn]);

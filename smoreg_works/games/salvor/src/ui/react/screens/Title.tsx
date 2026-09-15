@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { linesOf, reveal } from "../reveal.js";
 import * as FX from "../../fx/derelict-fx.js";
-import { Panel } from "../chrome/Panel.js";
 import { SEED_DIGITS, seedTyped, titleScreen } from "../../title.js";
 import type { TitleSettings } from "../../title.js";
 
@@ -60,6 +59,8 @@ export function TitleScreen({
       ][i] ?? ((): void => undefined),
     }));
 
+  const eyebrow = screen.hints[0] ?? "";
+
   return (
     <div
       ref={ref}
@@ -81,12 +82,28 @@ export function TitleScreen({
         outline: "none",
       }}
     >
-      <div style={{ width: 620, maxWidth: "94vw" }}>
+      {/* The other half's arrangement in this half's materials: an eyebrow, the
+          name at display size, one line about what the game is, and the choices
+          stacked full width underneath — the first solid, the rest ghosted.
+          A menu of five things does not need five key hints and a rule between
+          them; it needs one obvious way in and four quieter ones. */}
+      <div style={{ width: 460, maxWidth: "92vw" }}>
+        <div
+          data-sc
+          style={{
+            ...STENCIL,
+            color: "var(--sv-soft)",
+            marginBottom: 12,
+          }}
+        >
+          {screen.tagline}
+        </div>
+
         <div
           data-sc
           style={{
             font: "var(--sv-display)",
-            fontSize: 72,
+            fontSize: 62,
             letterSpacing: "var(--sv-display-track)",
             textTransform: "uppercase",
             color: "var(--sv-amber)",
@@ -95,145 +112,161 @@ export function TitleScreen({
         >
           {screen.name}
         </div>
+
         <div
           data-sc
           style={{
-            font: "var(--sv-stencil)",
-            letterSpacing: "var(--sv-stencil-track)",
-            textTransform: "uppercase",
-            color: "var(--sv-soft)",
-            margin: "6px 0 18px",
+            font: "var(--sv-body)",
+            color: "var(--sv-fg)",
+            margin: "12px 0 24px",
+            maxWidth: "48ch",
           }}
         >
-          {screen.tagline}
+          {eyebrow}
         </div>
 
-        <Panel title={screen.menuHead} stencil={`seed ${String(settings.seed)}`}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {rows.map((row) => (
-              <div
-                key={row.key}
-                onClick={row.act}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background =
-                    "color-mix(in oklab, var(--sv-amber) 15%, transparent)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  gap: 12,
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                }}
-              >
-                <span
-                  style={{
-                    width: 15,
-                    flex: "none",
-                    font: "var(--sv-stencil)",
-                    color: "var(--sv-amber)",
-                  }}
-                >
-                  {row.key}
-                </span>
-                <span data-sc style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>
-                  {row.label}
-                </span>
-                <span
-                  data-sc
-                  style={{
-                    marginLeft: "auto",
-                    font: "var(--sv-stencil)",
-                    letterSpacing: "var(--sv-stencil-track)",
-                    textTransform: "uppercase",
-                    color: "var(--sv-soft)",
-                  }}
-                >
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {typing === undefined ? null : (
-            <div
-              style={{
-                marginTop: 10,
-                paddingTop: 10,
-                borderTop: "1px solid var(--sv-line)",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 4,
-              }}
-            >
-              {"0123456789".split("").map((d) => (
-                <span
-                  key={d}
-                  onClick={() => digit(d)}
-                  style={{
-                    width: 30,
-                    textAlign: "center",
-                    padding: "4px 0",
-                    font: "var(--sv-stencil)",
-                    background: "var(--sv-plate)",
-                    color: "var(--sv-ink)",
-                    cursor: "pointer",
-                  }}
-                >
-                  {d}
-                </span>
-              ))}
-              <span
-                onClick={commit}
-                style={{
-                  marginLeft: "auto",
-                  padding: "4px 10px",
-                  font: "var(--sv-stencil)",
-                  letterSpacing: "var(--sv-stencil-track)",
-                  textTransform: "uppercase",
-                  background: "var(--sv-amber)",
-                  color: "var(--sv-knock)",
-                  cursor: "pointer",
-                }}
-              >
-                set · {SEED_DIGITS} digits
-              </span>
-            </div>
-          )}
-        </Panel>
-
-        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 3 }}>
-          {[...screen.hints, screen.keysHead, ...screen.keys].map((line, i) => (
-            <div
-              key={i}
-              data-sc
-              style={{
-                font: i === 0 ? "var(--sv-body)" : "var(--sv-stencil)",
-                letterSpacing: i === 0 ? undefined : "var(--sv-stencil-track)",
-                textTransform: i === 0 ? undefined : "uppercase",
-                color: i === 0 ? "var(--sv-fg)" : "var(--sv-soft)",
-              }}
-            >
-              {line}
-            </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {rows.map((row, i) => (
+            <Choice
+              key={row.key}
+              label={row.label}
+              value={row.value}
+              first={i === 0}
+              onPick={row.act}
+            />
           ))}
+        </div>
+
+        {typing === undefined ? null : (
           <div
-            data-sc
             style={{
-              marginTop: 10,
-              font: "var(--sv-stencil)",
-              letterSpacing: "var(--sv-stencil-track)",
-              textTransform: "uppercase",
-              color: "var(--sv-line)",
+              marginTop: 12,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              alignItems: "center",
             }}
           >
-            {screen.foot}
+            {"0123456789".split("").map((d) => (
+              <span
+                key={d}
+                onClick={() => digit(d)}
+                style={{
+                  width: 34,
+                  textAlign: "center",
+                  padding: "6px 0",
+                  font: "var(--sv-stencil)",
+                  background: "var(--sv-plate)",
+                  color: "var(--sv-ink)",
+                  cursor: "pointer",
+                }}
+              >
+                {d}
+              </span>
+            ))}
+            <span
+              onClick={commit}
+              style={{
+                marginLeft: "auto",
+                padding: "6px 12px",
+                ...STENCIL,
+                background: "var(--sv-amber)",
+                color: "var(--sv-knock)",
+                cursor: "pointer",
+              }}
+            >
+              set · {SEED_DIGITS} digits
+            </span>
           </div>
+        )}
+
+        <div
+          data-sc
+          style={{
+            marginTop: 26,
+            ...STENCIL,
+            color: "var(--sv-line)",
+          }}
+        >
+          {screen.foot}
         </div>
       </div>
+    </div>
+  );
+}
+
+const STENCIL = {
+  font: "var(--sv-stencil)",
+  letterSpacing: "var(--sv-stencil-track)",
+  textTransform: "uppercase",
+} as const;
+
+/**
+ * One way in, full width.
+ *
+ * The first is solid and the rest are ghosted, which is the whole of the
+ * hierarchy: a title screen has one thing almost everybody came to do. The
+ * corner is the one every pressable thing in this game has, and the row keeps
+ * its answer on the right — a seed, an on or an off — because a choice that
+ * cannot say what it is currently set to is a choice you have to open to read.
+ */
+function Choice({
+  label,
+  value,
+  first,
+  onPick,
+}: {
+  label: string;
+  value: string;
+  first: boolean;
+  onPick: () => void;
+}): ReactElement {
+  return (
+    <div
+      onClick={onPick}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = first
+          ? "var(--sv-amber-hi)"
+          : "color-mix(in oklab, var(--sv-amber) 14%, transparent)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = first ? "var(--sv-amber)" : "transparent";
+      }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "13px 16px",
+        cursor: "pointer",
+        clipPath: "var(--sv-cut-bl)",
+        background: first ? "var(--sv-amber)" : "transparent",
+        border: first ? "none" : "1px solid var(--sv-line)",
+        color: first ? "var(--sv-knock)" : "var(--sv-ink)",
+      }}
+    >
+      <span
+        data-sc
+        style={{
+          font: "var(--sv-title)",
+          letterSpacing: "var(--sv-title-track)",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+      {value === "" ? null : (
+        <span
+          data-sc
+          style={{
+            marginLeft: "auto",
+            ...STENCIL,
+            opacity: first ? 0.8 : 1,
+            color: first ? "var(--sv-knock)" : "var(--sv-soft)",
+          }}
+        >
+          {value}
+        </span>
+      )}
     </div>
   );
 }
