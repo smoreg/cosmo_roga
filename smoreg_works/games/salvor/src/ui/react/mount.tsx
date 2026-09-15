@@ -1,0 +1,22 @@
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { Screen } from "./Screen.js";
+import type { RoomGame } from "@jamrog/engine";
+import "./styles.css";
+
+/**
+ * The React view's only contact with the page: one element, one root.
+ *
+ * Everything above it is a function of the game, which is why this file is the
+ * one part of the view no test covers and why it is kept short enough to read
+ * in full.
+ */
+export function mountReact(host: HTMLElement, game: RoomGame): () => void {
+  const root = createRoot(host);
+  root.render(
+    <StrictMode>
+      <Screen game={game} />
+    </StrictMode>,
+  );
+  return () => root.unmount();
+}

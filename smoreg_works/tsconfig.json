@@ -1,7 +1,8 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "types": ["vite/client", "vitest/globals", "node"]
+    "types": ["vite/client", "vitest/globals", "node"],
+    "jsx": "react-jsx"
   },
   "include": ["packages/*/src", "packages/*/tests", "games/*/src", "games/*/tests", "scripts"],
   "exclude": ["games/_template", "**/node_modules", "**/dist"]
