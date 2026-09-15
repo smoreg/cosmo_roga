@@ -1338,19 +1338,6 @@ export function HexBoard({
           );
         })()
       )}
-
-      <div
-        style={{
-          position: "absolute",
-          right: 12,
-          bottom: 10,
-          ...STENCIL,
-          color: "var(--sv-soft)",
-          pointerEvents: "none",
-        }}
-      >
-        right-drag to pan · hover a room for the route
-      </div>
     </div>
   );
 }

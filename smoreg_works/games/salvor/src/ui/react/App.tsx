@@ -2,115 +2,97 @@ import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { newGame } from "../../game.js";
 import type { SalvorGame } from "../../game.js";
-import { DEFAULT_TITLE, rememberSound, storedSound } from "../title.js";
-import type { TitleSettings } from "../title.js";
-import { TitleScreen } from "./screens/Title.js";
-import { Screen } from "./Screen.js";
-import { HelpCard } from "./screens/Cards.js";
-import { helpOf } from "./model.js";
+import { Menu, type MenuPage, type MenuSettings } from "./screens/Menu.js";
 import { Splash } from "./screens/Splash.js";
+import { Screen } from "./Screen.js";
+import { BUILD_VERSION } from "../title.js";
 import { MENU_MUSIC, missionTrackFor, music } from "./audio.js";
+import {
+  rememberMotion,
+  rememberVolume,
+  setMotion,
+  storedMotion,
+  storedVolume,
+} from "./settings.js";
 
 /**
  * The whole of the game, which is two states: a menu, and a run.
  *
- * The title sits *in front of* a run rather than configuring a future one —
- * the seed exists before the first key, which is what makes `?seed=N` and the
- * menu the same mechanism. Starting is therefore replacing the game behind the
- * screen, and ending is putting the menu back in front of it.
+ * The menu is not a screen of its own — it is the game's own chrome with the
+ * system drawer open, which is what a player sees after pressing the hamburger
+ * mid-run. So arriving and pausing are one picture, and there is nothing to
+ * keep in step.
+ *
+ * The seed is the page's, never the menu's. `?seed=N` reproduces a voyage
+ * exactly and is the cheapest bug report there is; without one every new game
+ * rolls its own. Neither is shown or editable here: a seed on a menu is an
+ * invitation to fish for a good one, which is a different game.
  */
 export function App({ seed }: { seed: number }): ReactElement {
-  /* Nothing plays and nothing is fetched until somebody has pressed the door:
-     a browser will not let a page make noise before it is touched, and the
-     deck art is three megabytes that should not arrive under the first frame
-     of the board (`screens/Splash.tsx`). */
   const [started, setStarted] = useState(false);
-  const [settings, setSettings] = useState<TitleSettings>({
-    ...DEFAULT_TITLE,
-    sound: storedSound() ?? DEFAULT_TITLE.sound,
-    seed,
-  });
+  const [page, setPage] = useState<MenuPage>("root");
   const [game, setGame] = useState<SalvorGame | null>(null);
-  const [help, setHelp] = useState(false);
-  const [page, setPage] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [settings, setSettings] = useState<MenuSettings>(() => ({
+    volume: storedVolume(),
+    motion: storedMotion(),
+  }));
 
-  /* The music follows where the run is: the menu track until a voyage starts,
-     a mission track chosen by its seed after — so a seed sounds the same every
-     time it is played, the same rule the board and the drone follow. */
+  /* What was set last session, applied before the first frame is drawn. */
+  useEffect(function first() {
+    setMotion(storedMotion());
+    music.setVolume(storedVolume());
+  }, []);
+
+  const change = (next: MenuSettings): void => {
+    setSettings(next);
+    rememberVolume(next.volume);
+    rememberMotion(next.motion);
+    setMotion(next.motion);
+    music.setVolume(next.volume);
+  };
+
+  /* The music follows where the run is: the menu track while the menu is up, a
+     mission track chosen by its seed once a voyage starts — so a seed sounds
+     the same every time it is played, the rule the board and the drone follow. */
   useEffect(
     function score() {
       if (!started) return;
-      if (!settings.sound) {
-        music.stop();
-        return;
-      }
-      music.play(game === null ? MENU_MUSIC : missionTrackFor(String(game.seed)));
+      music.play(running && game !== null ? missionTrackFor(String(game.seed)) : MENU_MUSIC);
     },
-    [started, settings.sound, game],
+    [started, running, game],
   );
 
   if (!started) return <Splash onStart={() => setStarted(true)} />;
 
-  if (game !== null) {
+  if (running && game !== null) {
     return (
       <Screen
         game={game}
-        sound={settings.sound}
-        onSound={(on) => {
-          rememberSound(on);
-          setSettings({ ...settings, sound: on });
+        onMenu={() => setRunning(false)}
+        onNewVoyage={() => {
+          setGame(null);
+          setRunning(false);
         }}
-        onNewVoyage={() => setGame(null)}
       />
     );
   }
 
   return (
-    <>
-      <TitleScreen
-        settings={settings}
-        onVoyage={(s) => setGame(newGame(s))}
-        onTraining={(s) => setGame(newGame(s, true))}
-        onHelp={() => {
-          setPage(0);
-          setHelp(true);
-        }}
-        onSeed={(s) => setSettings({ ...settings, seed: s })}
-        onSound={(on) => {
-          rememberSound(on);
-          setSettings({ ...settings, sound: on });
-        }}
-      />
-      {help ? <HelpOnTitle page={page} onPage={setPage} onClose={() => setHelp(false)} /> : null}
-    </>
-  );
-}
-
-/**
- * The controls, before there is a run to read them off.
- *
- * `helpOf` wants a game because the list changes with where the drone is
- * standing, so the menu asks about a throwaway one at seed zero. It is read
- * and dropped on the same frame and never advances, which is the one use a
- * game that is not the run may be put to.
- */
-function HelpOnTitle({
-  page,
-  onPage,
-  onClose,
-}: {
-  page: number;
-  onPage: (n: number) => void;
-  onClose: () => void;
-}): ReactElement {
-  const help = helpOf(newGame(0));
-  return (
-    <HelpCard
-      pages={help.pages}
-      headings={help.headings}
+    <Menu
       page={page}
-      onPage={onPage}
-      onClose={onClose}
+      canContinue={game !== null}
+      settings={settings}
+      foot={`build ${BUILD_VERSION}`}
+      onPage={setPage}
+      onContinue={() => setRunning(true)}
+      onNewGame={() => {
+        /* A fresh voyage. The page's seed where one was asked for, so a bug
+           report reproduces; a new roll otherwise. */
+        setGame(newGame(game === null ? seed : (Math.random() * 0xffffffff) >>> 0));
+        setRunning(true);
+      }}
+      onSettings={change}
     />
   );
 }

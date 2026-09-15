@@ -3,31 +3,21 @@ import type { ReactElement } from "react";
 import type { RoomGame, RoomId } from "@jamrog/engine";
 import { HexBoard } from "./board/HexBoard.js";
 import type { BoardDoor, BoardRoom, BoardThing } from "./board/HexBoard.js";
-import { MenuSheet, Panel, Rail } from "./chrome/Panel.js";
+import { Panel, Rail } from "./chrome/Panel.js";
 import { AlertDial, CoreRack } from "./meters/Rack.js";
 import { LogStrip } from "./action/Log.js";
-import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, helpOf, historyOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf } from "./model.js";
+import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
 import { deckVersion, loadDeckIndex, watchDeck } from "./deckindex.js";
-import { CodexCardView, EndingCard, HistoryCard } from "./screens/Cards.js";
+import { CodexCardView, EndingCard } from "./screens/Cards.js";
 import { DroneIcon, ThingIcon } from "./board/Icon.js";
 import { DockPreview, TugOrders } from "./screens/Tug.js";
 import { roomActions } from "../actions.js";
 import { codexQueue, readCodex } from "../../systems/codex.js";
 
 /** The cards that can stand over the run. One at a time, and never a turn. */
-type Card = "none" | "codex" | "history" | "ending";
-
-/**
- * The drawers the rail opens: the system menu and what it leads to, and the
- * controls. One at a time, sliding in from the left edge of the play area.
- *
- * Separate from `Card` because they are a different kind of thing. A card is
- * the game talking — something happened, here is what it was. A drawer is the
- * player talking to the shell, and the run is paused underneath it.
- */
-type Drawer = "none" | "sys" | "settings" | "credits" | "help";
+type Card = "none" | "codex" | "ending";
 
 /**
  * The screen, and the only thing that talks to the game.
@@ -39,13 +29,12 @@ type Drawer = "none" | "sys" | "settings" | "credits" | "help";
  */
 export function Screen({
   game,
-  sound = true,
-  onSound,
+  onMenu,
   onNewVoyage,
 }: {
   game: RoomGame;
-  sound?: boolean;
-  onSound?: (on: boolean) => void;
+  /** Out to the menu, which is this same chrome with the drawer open. */
+  onMenu?: () => void;
   onNewVoyage?: () => void;
 }): ReactElement {
   const [turn, setTurn] = useState(0);
@@ -57,10 +46,6 @@ export function Screen({
   const [level, setLevel] = useState<string | null>(null);
   /* Which drone the dock is pointing the rack at. Null is the one on the
      rails, which is the drone that actually exists. */
-  const [drawer, setDrawer] = useState<Drawer>("none");
-  /* A sheet on its way out is still on screen, so which one is leaving is a
-     fact the layer needs and the animation is the only thing that ends it. */
-  const [leaving, setLeaving] = useState(false);
   const again = useCallback(() => setTurn((n) => n + 1), []);
 
   const home = isHome(game);
@@ -75,65 +60,31 @@ export function Screen({
     [over, card],
   );
 
+  /* And the same for the codex: the ship shows you a thing, the card says what
+     it is. Only when nothing else is up, so it never lands on top of an
+     ending. */
+  useEffect(
+    function explain() {
+      if (over || card !== "none") return;
+      if (codexQueue(game).length > 0) openCodex();
+    },
+    [game, turn, card, over],
+  );
+
   /**
-   * Opening and shutting a drawer, with the slide it leaves on.
+   * What is going on here, shown when there is something to show.
    *
-   * `go` between two sheets does not slide — the housing stays and its
-   * contents change, which is what makes Settings feel like a page of the menu
-   * rather than a second menu. Only leaving the stack altogether slides.
-   */
-  const go = (to: Drawer): void => {
-    setLeaving(false);
-    setDrawer(to);
-  };
-  const shut = (): void => {
-    if (drawer === "none") return;
-    setLeaving(true);
-    window.setTimeout(() => {
-      setDrawer("none");
-      setLeaving(false);
-    }, 240);
-  };
-
-  /**
-   * `?` the controls, `i` what is going on here, `PageUp` the record, `Esc`
-   * out of whichever is up. The four keys the terminal had that were never
-   * about a terminal — a card is a thing to open, not a thing to draw.
-   */
-  useEffect(function keys() {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        if (drawer !== "none") shut();
-        else setCard(over ? "ending" : "none");
-      } else if (e.key === "?") go(drawer === "help" ? "none" : "help");
-      else if (e.key === "i") openCodex();
-      else if (e.key === "PageUp") {
-        setPage(0);
-        setCard("history");
-      } else return;
-      e.preventDefault();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-    };
-  });
-
-  /**
-   * What is going on here: the cards this voyage has turned up and not shown.
-   * With nothing waiting it is the controls, which is where the list of
-   * everything already read lives.
+   * It was a key, and there are no keys now. That is not a loss: the queue is
+   * the engine's own list of things this voyage has turned up and not
+   * explained yet, so a card that waits to be asked for is a card most players
+   * never see. It comes up on the turn the ship first shows them the thing.
    */
   const openCodex = (): void => {
     const waiting = codexQueue(game);
     setPage(0);
-    if (waiting.length === 0) {
-      /* Nothing waiting, so the key does the next most useful thing: the
-         controls, where the list of everything already read lives. It is a
-         drawer now rather than a card, which is the only change. */
-      go("help");
-      return;
-    }
+    /* Nothing waiting is nothing to say. It used to fall through to the
+       controls, which were a drawer and are now the menu's business. */
+    if (waiting.length === 0) return;
     readCodex(game, waiting[0] as never);
     setQueue(waiting);
     setCard("codex");
@@ -256,35 +207,17 @@ export function Screen({
         userSelect: "none",
       }}
     >
-      {/* Three keys, and one of them is not a menu at all. Sound is the one
-          setting a player reaches for mid-turn — someone walks in, the room
-          goes quiet — and making that a menu to open, a page to find and a row
-          to press is three presses for a thing that is one. */}
+      {/* One key. Everything that used to be behind the other two is in the
+          menu now, and the menu is this same chrome with its drawer open. */}
       <Rail
         style={{ gridColumn: 1, gridRow: 1, zIndex: 90 }}
-        active={
-          drawer === "none"
-            ? undefined
-            : drawer === "settings" || drawer === "credits"
-              ? "sys"
-              : drawer
-        }
         onSelect={(id) => {
-          if (id === "sound") {
-            onSound?.(!sound);
-            return;
-          }
-          if (drawer === id || (id === "sys" && (drawer === "settings" || drawer === "credits"))) {
-            shut();
-            return;
-          }
-          go(id as Drawer);
+          /* One key, and it leaves. The menu is this chrome with its drawer
+             open, so going to it is going out rather than opening something
+             over the top of the run. */
+          if (id === "sys") onMenu?.();
         }}
-        items={[
-          { id: "sys", glyph: "≡", title: "menu" },
-          { id: "help", glyph: "?", title: "controls" },
-          { id: "sound", glyph: sound ? "◀" : "◁", title: sound ? "sound on" : "sound off" },
-        ]}
+        items={[{ id: "sys", glyph: "≡", title: "menu" }]}
       />
 
       <div
@@ -456,19 +389,6 @@ export function Screen({
         )}
       </div>
 
-      {drawer === "none" ? null : (
-        <Drawers
-          drawer={drawer}
-          leaving={leaving}
-          game={game}
-          sound={sound}
-          onSound={onSound}
-          onGo={go}
-          onShut={shut}
-          onNewVoyage={onNewVoyage}
-        />
-      )}
-
       <LogStrip
         entries={log}
         expanded={logOpen}
@@ -506,9 +426,6 @@ function Cards({
   onClose: () => void;
   onAgain?: () => void;
 }): ReactElement | null {
-  if (card === "history") {
-    return <HistoryCard entries={historyOf(game)} page={page} onPage={onPage} onClose={onClose} />;
-  }
   if (card === "ending") {
     return <EndingCard ending={endingOf(game)} onAgain={onAgain} onClose={onClose} />;
   }
@@ -686,262 +603,6 @@ export function Lines({
         </div>
       ))}
     </div>
-  );
-}
-
-/**
- * The drawers, and the one layer they all arrive in.
- *
- * They come in from the left edge of the play area and stand its full height,
- * stopping at the log — the log is the one thing that is never covered,
- * because it is the game still talking while the player is in a menu, and its
- * record opens over the top of whatever is up.
- *
- * The rail stays outside the scrim and stays live, so one key goes straight to
- * another without a shut and an open in between.
- */
-function Drawers({
-  drawer,
-  leaving,
-  game,
-  sound,
-  onSound,
-  onGo,
-  onShut,
-  onNewVoyage,
-}: {
-  drawer: Exclude<Drawer, "none">;
-  leaving: boolean;
-  game: RoomGame;
-  sound: boolean;
-  onSound?: (on: boolean) => void;
-  onGo: (to: Drawer) => void;
-  onShut: () => void;
-  onNewVoyage?: () => void;
-}): ReactElement {
-  return (
-    <div
-      onClick={onShut}
-      style={{
-        gridColumn: "2 / -1",
-        gridRow: 1,
-        position: "relative",
-        zIndex: 50,
-        background: "color-mix(in oklab, var(--sv-deep) 66%, transparent)",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ position: "absolute", left: 0, top: 0, bottom: 0, display: "flex" }}
-      >
-        {drawer === "sys" ? (
-          <MenuSheet
-            leaving={leaving}
-            width={360}
-            title="Salvor"
-            stencil="paused"
-            onClose={onShut}
-            rows={[
-              {
-                key: "1",
-                label: "New voyage",
-                note: "abandons this one",
-                onPick: () => {
-                  onShut();
-                  onNewVoyage?.();
-                },
-              },
-              { key: "2", label: "Settings", onPick: () => onGo("settings") },
-              { key: "3", label: "Credits", onPick: () => onGo("credits") },
-            ]}
-          />
-        ) : null}
-
-        {drawer === "settings" ? (
-          <MenuSheet
-            leaving={leaving}
-            width={380}
-            title="Settings"
-            stencil="salvor"
-            onBack={() => onGo("sys")}
-            onClose={onShut}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Switch
-                letter="s"
-                label="Sound"
-                on={sound}
-                onFlip={onSound === undefined ? undefined : () => onSound(!sound)}
-              />
-              {/* Not ours to flip. The browser is asked and the answer is
-                  obeyed — `derelict-fx.js` resolves text straight away under
-                  it — so the row reports rather than offers. */}
-              <Switch letter="m" label="Reduced motion" value="system" />
-            </div>
-          </MenuSheet>
-        ) : null}
-
-        {drawer === "credits" ? (
-          <MenuSheet
-            leaving={leaving}
-            width={380}
-            title="Credits"
-            stencil="salvor"
-            onBack={() => onGo("sys")}
-            onClose={onShut}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-              <div data-sc style={{ font: "var(--sv-body)", color: "var(--sv-fg)" }}>
-                A turn-based salvage game about sending one drone into a hulk and getting it
-                back out.
-              </div>
-              {[
-                ["seed", `?seed=${String(game.seed)}`],
-                ["typefaces", "Barlow Condensed · IBM Plex Mono"],
-                /* Both licences ask for a notice, so both get one where a
-                   player can actually find it. The full text travels with the
-                   files; `assets/CREDITS.md` is the long form. */
-                ["icons", "game-icons.net — Lorc, Delapouite, Lord Berandas, DarkZaitzev (CC BY 3.0)"],
-                ["deck plating", "RPG Mobius Geomorphs — Pearce & Smith (CC BY-NC 4.0)"],
-                /* Eric Matyas asks for the credit wherever the game appears,
-                   and the menu track is used by the artist's own permission on
-                   the same condition. `public/audio/ATTRIBUTION.md` is the long
-                   form and the record of the grant. */
-                ["music", "Eric Matyas · soundimage.org"],
-                ["menu music", "3D63 — Analog Hack"],
-                ["owes a debt to", "Cogmind, by Grid Sage Games"],
-              ].map(([k, v]) => (
-                <div
-                  key={k}
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: 10,
-                    paddingTop: 9,
-                    borderTop: "1px solid var(--sv-line)",
-                  }}
-                >
-                  <span
-                    data-sc
-                    style={{
-                      font: "var(--sv-stencil)",
-                      letterSpacing: "var(--sv-stencil-track)",
-                      textTransform: "uppercase",
-                      color: "var(--sv-soft)",
-                    }}
-                  >
-                    {k}
-                  </span>
-                  <span
-                    data-sc
-                    style={{
-                      marginLeft: "auto",
-                      font: "var(--sv-body)",
-                      color: "var(--sv-ink)",
-                      textAlign: "right",
-                    }}
-                  >
-                    {v}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </MenuSheet>
-        ) : null}
-
-        {drawer === "help" ? <Controls game={game} leaving={leaving} onShut={onShut} /> : null}
-      </div>
-    </div>
-  );
-}
-
-/** A setting: a letter, a name, and either a state to flip or one to report. */
-function Switch({
-  letter,
-  label,
-  on,
-  value,
-  onFlip,
-}: {
-  letter: string;
-  label: string;
-  on?: boolean;
-  value?: string;
-  onFlip?: () => void;
-}): ReactElement {
-  return (
-    <div
-      onClick={onFlip}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "7px 9px",
-        cursor: onFlip === undefined ? "default" : "pointer",
-      }}
-    >
-      <span style={{ width: 13, flex: "none", font: "var(--sv-stencil)", color: "var(--sv-amber)" }}>
-        {letter}
-      </span>
-      <span data-sc style={{ font: "var(--sv-body)", color: "var(--sv-ink)" }}>
-        {label}
-      </span>
-      <span
-        style={{
-          marginLeft: "auto",
-          font: "var(--sv-stencil)",
-          letterSpacing: "var(--sv-stencil-track)",
-          textTransform: "uppercase",
-          padding: "2px 7px",
-          background: on === true ? "var(--sv-amber)" : "transparent",
-          border: on === true ? "none" : "1px solid var(--sv-line)",
-          color: on === true ? "var(--sv-knock)" : "var(--sv-soft)",
-        }}
-      >
-        {value ?? (on === true ? "on" : "off")}
-      </span>
-    </div>
-  );
-}
-
-/** The controls, as a sheet rather than a card: it is the shell, not the game. */
-function Controls({
-  game,
-  leaving,
-  onShut,
-}: {
-  game: RoomGame;
-  leaving: boolean;
-  onShut: () => void;
-}): ReactElement {
-  const help = helpOf(game);
-  return (
-    <MenuSheet leaving={leaving} width={430} title="Controls" stencil="how to fly it" onClose={onShut}>
-      <div style={{ display: "flex", flexDirection: "column", overflowY: "auto" }}>
-        {help.pages.flat().map((line, i) =>
-          line === "" ? (
-            <div key={i} style={{ height: 8 }} />
-          ) : (
-            <div
-              key={i}
-              data-sc
-              style={{
-                font: help.headings.has(line.trim()) ? "var(--sv-stencil)" : "var(--sv-body)",
-                letterSpacing: help.headings.has(line.trim())
-                  ? "var(--sv-stencil-track)"
-                  : undefined,
-                textTransform: help.headings.has(line.trim()) ? "uppercase" : undefined,
-                color: help.headings.has(line.trim()) ? "var(--sv-amber)" : "var(--sv-fg)",
-                marginTop: help.headings.has(line.trim()) ? 7 : 0,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {line}
-            </div>
-          ),
-        )}
-      </div>
-    </MenuSheet>
   );
 }
 

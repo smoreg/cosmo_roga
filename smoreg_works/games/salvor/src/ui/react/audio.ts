@@ -71,6 +71,20 @@ export interface MusicPlayer {
   readonly stop: () => void;
   readonly setVolume: (volume: number) => void;
   readonly nowPlaying: () => MusicTrack | null;
+  /**
+   * What the element is actually set to, not what it was asked for.
+   *
+   * Two different things, and only one of them can be heard: a volume set
+   * before the element exists lives in a variable until something plays. This
+   * answers for the element, so a test can hold the chain from the stored
+   * setting to the sound rather than trusting the middle of it.
+   */
+  readonly volumeNow: () => number;
+}
+
+/** Slider position to amplitude. Squared, so the middle sounds like a middle. */
+function gain(position: number): number {
+  return position * position;
 }
 
 function createPlayer(): MusicPlayer {
@@ -92,7 +106,7 @@ function createPlayer(): MusicPlayer {
     if (current?.id === track.id && !audio.paused) return;
     current = track;
     if (!audio.src.endsWith(track.url)) audio.src = track.url;
-    audio.volume = volume;
+    audio.volume = gain(volume);
     /* `play()` returns a promise in every current browser, but not in older
        Safari and not in jsdom, so the result is checked before it is used.
        A refusal is normal and not worth an error: the splash exists to get the
@@ -111,16 +125,34 @@ function createPlayer(): MusicPlayer {
     element.pause();
   }
 
+  /**
+   * Where the slider is, which is not what the element is set to.
+   *
+   * `HTMLAudioElement.volume` is linear amplitude: a half is six decibels
+   * down, which the ear hears as about seven tenths as loud rather than a
+   * half. A slider at the middle that sounds nearly as loud as the top is a
+   * slider nobody trusts, so the position is squared on the way through —
+   * a half of the slider is a quarter of the amplitude, which is what a half
+   * sounds like.
+   *
+   * The curve lives here and not in the settings, because what is stored is
+   * where the player put the slider. That is the thing they chose and the
+   * thing the interface has to show them again.
+   */
   function setVolume(next: number): void {
     volume = Math.min(1, Math.max(0, next));
-    if (element !== null) element.volume = volume;
+    if (element !== null) element.volume = gain(volume);
   }
 
   function nowPlaying(): MusicTrack | null {
     return current;
   }
 
-  return { play, stop, setVolume, nowPlaying };
+  function volumeNow(): number {
+    return element === null ? gain(volume) : element.volume;
+  }
+
+  return { play, stop, setVolume, nowPlaying, volumeNow };
 }
 
 /** One player for the page: two tracks at once is never what anyone wants. */

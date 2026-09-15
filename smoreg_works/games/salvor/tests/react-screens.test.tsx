@@ -11,7 +11,7 @@ import { applyDeckIndex, loadDeckIndex } from "../src/ui/react/deckindex.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { doorWays } from "../src/ui/doorlist.js";
-import { codexOf, endingOf, helpOf, historyOf, isHome, offersOf, tugOf } from "../src/ui/react/model.js";
+import { codexOf, endingOf, isHome, offersOf, tugOf } from "../src/ui/react/model.js";
 import { roomActions } from "../src/ui/actions.js";
 import { currentDerelict, undock } from "../src/systems/voyage.js";
 import { CONTENT_KEYS } from "../src/ui/contents.js";
@@ -23,7 +23,6 @@ import { voyageOf } from "../src/systems/voyage.js";
 import { shipState } from "../src/systems/shipstate.js";
 import { systemsAboard } from "../src/systems/ship.js";
 import { CODEX_IDS } from "../src/content/codex.js";
-import { titleScreen, DEFAULT_TITLE } from "../src/ui/title.js";
 
 /**
  * The screens that are not the board, against a real game.
@@ -125,33 +124,6 @@ describe("the tug is a decision, and says what the engine says", () => {
 describe("the cards are read, never played", () => {
   beforeAll(stillFrames);
 
-  it("puts the record up on PageUp, newest first", () => {
-    const game = newGame(4242);
-    const { host, unmount } = mount(<Screen game={game} />);
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp" }));
-    });
-    const entries = historyOf(game);
-    expect(entries.length).toBe(game.log.lines.length);
-    if (entries[0] !== undefined) expect(text(host)).toContain(entries[0].text);
-    unmount();
-  });
-
-  it("closes on Esc, and the game is where it was", () => {
-    const game = newGame(4242);
-    const { host, unmount } = mount(<Screen game={game} />);
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp" }));
-    });
-    expect(text(host)).toContain("close");
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    });
-    expect(text(host)).not.toContain("close [esc]");
-    expect(game.status).toBe("playing");
-    unmount();
-  });
-
   it("reads a codex card out of the table and marks what the rack answers with", () => {
     const game = newGame(4242);
     const id = CODEX_IDS[0] as string;
@@ -170,66 +142,6 @@ describe("the cards are read, never played", () => {
     expect(end.seed).toBe(game.seed);
     expect(end.won).toBe(false);
     expect(end.turns).toBe(game.schedule.time);
-  });
-});
-
-describe("the title is in front of a run, not instead of one", () => {
-  beforeAll(stillFrames);
-
-  /**
-   * Past the door.
-   *
-   * The game opens on a splash, because a browser will not let a page make
-   * noise until it has been touched and the deck art should not arrive under
-   * the board's first frame. A player presses it; so does this.
-   */
-  const past = (host: HTMLElement): void => {
-    const door = Array.from(host.querySelectorAll("div")).find(
-      (d) => d.textContent === "click to start",
-    );
-    act(() => {
-      door?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    /* jsdom has no audio and no server, so every step either fails fast or
-       never fires; the loader's own deadline is what opens the door either
-       way, and here it is reached by hand rather than waited out. */
-    /* The deadline, then the beat between the last step landing and the door
-       opening — which is there so the bars are seen full rather than vanishing
-       on the frame they fill. Each is scheduled by the render the one before
-       it caused, so they are run out rather than counted. */
-    for (let pass = 0; pass < 4; pass++) {
-      act(() => {
-        vi.runOnlyPendingTimers();
-      });
-    }
-    vi.useRealTimers();
-  };
-
-  it("draws every row the menu has, in the menu's order", () => {
-    vi.useFakeTimers();
-    const { host, unmount } = mount(<App seed={4242} />);
-    past(host);
-    const screen = titleScreen({ ...DEFAULT_TITLE, seed: 4242 });
-    expect(text(host)).toContain(screen.name);
-    for (const item of screen.items) expect(text(host)).toContain(item.label);
-    unmount();
-  });
-
-  it("starts a run on the first row, and the run is the seed on the screen", () => {
-    vi.useFakeTimers();
-    const { host, unmount } = mount(<App seed={4242} />);
-    past(host);
-    const screen = titleScreen({ ...DEFAULT_TITLE, seed: 4242 });
-    const label = screen.items[0]?.label ?? "";
-    const row = Array.from(host.querySelectorAll("span")).find((el) => el.textContent === label);
-    expect(row).toBeDefined();
-    act(() => {
-      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    /* The title is gone and the tug is up: a voyage opens docked. */
-    expect(text(host)).not.toContain(screen.foot);
-    expect(text(host)).toContain(tugOf(newGame(4242)).derelict.name);
-    unmount();
   });
 });
 
@@ -349,101 +261,6 @@ describe("the dock is read before it is spent", () => {
     unmount();
   });
 
-});
-
-describe("the rail is three keys, and one of them is not a menu", () => {
-  beforeAll(stillFrames);
-
-  it("offers the menu, the controls and the sound, and nothing else", () => {
-    const game = newGame(4242);
-    const { host, unmount } = mount(<Screen game={game} />);
-    const keys = Array.from(host.querySelectorAll("[title]"))
-      .map((el) => el.getAttribute("title"))
-      .filter((t) => t === "menu" || t === "controls" || t?.startsWith("sound"));
-    expect(keys).toEqual(["menu", "controls", "sound on"]);
-    unmount();
-  });
-
-  it("flips the sound where it stands, without a menu to open", () => {
-    const game = newGame(4242);
-    let on = true;
-    const { host, unmount } = mount(
-      <Screen
-        game={game}
-        sound={on}
-        onSound={(next) => {
-          on = next;
-        }}
-      />,
-    );
-    const key = Array.from(host.querySelectorAll("[title]")).find(
-      (el) => el.getAttribute("title") === "sound on",
-    );
-    expect(key).toBeDefined();
-    act(() => {
-      key?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    /* One press, one setting — not a menu, a page and a row. */
-    expect(on).toBe(false);
-    unmount();
-  });
-
-  it("opens the system menu as a drawer, and the run is untouched under it", () => {
-    const game = newGame(4242);
-    const before = game.schedule.time;
-    const { host, unmount } = mount(<Screen game={game} />);
-    const key = Array.from(host.querySelectorAll("[title]")).find(
-      (el) => el.getAttribute("title") === "menu",
-    );
-    act(() => {
-      key?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(text(host)).toContain("New voyage");
-    expect(text(host)).toContain("Settings");
-    expect(text(host)).toContain("Credits");
-    expect(game.schedule.time).toBe(before);
-    unmount();
-  });
-
-  it("puts the controls in a drawer too, and takes no turn doing it", () => {
-    const game = newGame(4242);
-    const before = game.schedule.time;
-    const { host, unmount } = mount(<Screen game={game} />);
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }));
-    });
-    const first = helpOf(game).pages[0] ?? [];
-    for (const line of first.filter((l) => l !== "")) expect(text(host)).toContain(line);
-    expect(game.schedule.time).toBe(before);
-    unmount();
-  });
-
-  it("steps into settings and back out without leaving the stack", () => {
-    const game = newGame(4242);
-    const { host, unmount } = mount(<Screen game={game} />);
-    const key = Array.from(host.querySelectorAll("[title]")).find(
-      (el) => el.getAttribute("title") === "menu",
-    );
-    act(() => {
-      key?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    const row = Array.from(host.querySelectorAll("span")).find(
-      (el) => el.textContent === "Settings",
-    );
-    act(() => {
-      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(text(host)).toContain("Sound");
-    expect(text(host)).toContain("Reduced motion");
-    const back = Array.from(host.querySelectorAll("span")).find((el) => el.textContent === "back");
-    expect(back).toBeDefined();
-    act(() => {
-      back?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    /* Back is a page turn inside the housing, not a shut and an open. */
-    expect(text(host)).toContain("New voyage");
-    unmount();
-  });
 });
 
 describe("the reveal never leaves a screen blank", () => {
@@ -977,6 +794,97 @@ describe("the dock is what the tug has", () => {
     expect(heads.length).toBeGreaterThanOrEqual(3);
     const { host, unmount } = mount(<Screen game={game} />);
     for (const head of heads) expect(text(host)).toContain(head);
+    unmount();
+  });
+});
+
+describe("the menu is the game with its own menu open", () => {
+  beforeAll(stillFrames);
+
+  const past = (host: HTMLElement): void => {
+    const door = Array.from(host.querySelectorAll("div")).find(
+      (d) => d.textContent === "click to start",
+    );
+    act(() => {
+      door?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    for (let pass = 0; pass < 4; pass++) {
+      act(() => {
+        vi.runOnlyPendingTimers();
+      });
+    }
+    vi.useRealTimers();
+  };
+
+  it("offers the five, with Continue shut until there is a run", () => {
+    vi.useFakeTimers();
+    const { host, unmount } = mount(<App seed={4242} />);
+    past(host);
+    for (const row of ["Continue", "New game", "Settings", "Credits", "About"]) {
+      expect(text(host), row).toContain(row);
+    }
+    /* Nothing to continue to, so the row is there and shut. A menu that hides
+       the option until it works teaches nobody that it exists. */
+    const cont = Array.from(host.querySelectorAll("div")).find(
+      (d) => d.textContent === "Continue",
+    );
+    expect(cont?.getAttribute("style") ?? "").toContain("not-allowed");
+    unmount();
+  });
+
+  it("never shows the seed, and gives no way to choose one", () => {
+    vi.useFakeTimers();
+    const { host, unmount } = mount(<App seed={4242} />);
+    past(host);
+    /* A seed on a menu is an invitation to fish for a good one, which is a
+       different game. `?seed=N` still reproduces a voyage exactly — that is a
+       bug report, and it is in the url where a player does not trip over it. */
+    expect(text(host)).not.toContain("4242");
+    expect(text(host)).not.toContain("seed");
+    expect(host.querySelectorAll('input[type="range"]')).toHaveLength(0);
+    unmount();
+  });
+
+  it("wears the game's own chrome: the rail on the left, the log below", () => {
+    vi.useFakeTimers();
+    const { host, unmount } = mount(<App seed={4242} />);
+    past(host);
+    /* Not a screen of its own. Arriving at the game and pausing it are one
+       picture, so there is nothing to keep in step. */
+    const rail = Array.from(host.querySelectorAll("[title]")).map((e) => e.getAttribute("title"));
+    expect(rail).toEqual(["menu"]);
+    expect(text(host)).toContain("log");
+    unmount();
+  });
+
+  it("opens the settings, and they are volume and motion", () => {
+    vi.useFakeTimers();
+    const { host, unmount } = mount(<App seed={4242} />);
+    past(host);
+    const row = Array.from(host.querySelectorAll("span")).find((e) => e.textContent === "Settings");
+    act(() => {
+      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(text(host)).toContain("volume");
+    expect(text(host)).toContain("motion");
+    for (const one of ["instant", "faster", "normal"]) expect(text(host)).toContain(one);
+    const slider = host.querySelector('input[type="range"]') as HTMLInputElement | null;
+    expect(slider?.value).toBe("50");
+    unmount();
+  });
+
+  it("takes no keys at all", () => {
+    vi.useFakeTimers();
+    const { host, unmount } = mount(<App seed={4242} />);
+    past(host);
+    const before = text(host);
+    for (const key of ["?", "i", "Escape", "PageUp", "l", "1"]) {
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key }));
+      });
+    }
+    /* Every hotkey is out for now, so nothing on the screen answers to one. */
+    expect(text(host)).toBe(before);
     unmount();
   });
 });
