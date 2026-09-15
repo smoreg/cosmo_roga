@@ -5,6 +5,10 @@ import { createRoot } from "react-dom/client";
 import { RoomGame, type Twist } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
+import { undock } from "../src/systems/voyage.js";
+import { Screen } from "../src/ui/react/Screen.js";
+import { boardOf } from "../src/ui/react/model.js";
+import * as FX from "../src/ui/fx/derelict-fx.js";
 import { DOORS } from "../src/systems/doors.js";
 import { RIG, findSlot, pulseWait, rigOf, PULSE_COOLDOWN } from "../src/twist/rig.js";
 import { commandsOf } from "../src/ui/react/model.js";
@@ -215,6 +219,112 @@ describe("the generating screen holds the door for a second", () => {
        is gone is a timer nobody owns. */
     expect(vi.getTimerCount()).toBe(0);
 
+    host.remove();
+    vi.useRealTimers();
+  });
+});
+
+describe("the sweep animates a scan and nothing else", () => {
+  beforeAll(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        onchange: null,
+        dispatchEvent: () => false,
+      }),
+    });
+  });
+
+  /** Compartments the board is drawing as unknown right now. */
+  function dark(host: HTMLElement): number {
+    return host.querySelectorAll('[data-room][data-knows="undetected"]').length;
+  }
+
+  /**
+   * A scan is the one action whose entire output is a change in what the board
+   * shows, so it is the one action that is nothing but an animation: the
+   * compartments it reaches arrive nearest first, inside one budget.
+   *
+   * And nothing else may do that. The first version of this asked "did two or
+   * more compartments become known at once", which is also true of walking
+   * through a door with sight down a corridor — and a board that drops to
+   * unknown and resolves back reads, on compartments painted with deck art, as
+   * the art failing to load rather than as an animation.
+   */
+  it("holds the far compartments back for a frame, and hands them all over", () => {
+    vi.useFakeTimers();
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<Screen game={game} />);
+    });
+    const before = dark(host);
+
+    /* Through the screen's own control, because the sweep is the screen's
+       reaction to the run moving and nothing outside the screen can move it. */
+    const rows = Array.from(host.querySelectorAll("div")).filter(
+      (d) => d.textContent?.includes("reads two doors out") === true,
+    );
+    const row = rows[rows.length - 1];
+    expect(row, "no scan on the orders").toBeDefined();
+    act(() => {
+      row!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    /* The scan has landed in the game — and the board has not caught up yet. */
+    expect(boardOf(game).rooms.filter((r) => r.knows === "undetected").length).toBeLessThan(before);
+    expect(dark(host), "the sweep is still out").toBe(before);
+
+    act(() => {
+      vi.advanceTimersByTime(FX.FRAME * 6);
+    });
+    expect(dark(host), "and everything it reached has arrived").toBe(
+      boardOf(game).rooms.filter((r) => r.knows === "undetected").length,
+    );
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+    vi.useRealTimers();
+  });
+
+  it("does not sweep when the drone merely walks", () => {
+    vi.useFakeTimers();
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<Screen game={game} />);
+    });
+
+    /* Whatever a step reveals is on the board the same frame the step lands. */
+    for (let i = 0; i < 6; i++) {
+      const door = game.ship.doorsOf(game.roomOf(game.player).id).find((d) => d.state === "open");
+      if (door === undefined) break;
+      const to = game.ship.other(door, game.roomOf(game.player).id);
+      const hex = host.querySelector(`[data-room="${String(to)}"]`);
+      if (hex === null) break;
+      act(() => {
+        hex.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(dark(host)).toBe(boardOf(game).rooms.filter((r) => r.knows === "undetected").length);
+    }
+
+    act(() => {
+      root.unmount();
+    });
     host.remove();
     vi.useRealTimers();
   });

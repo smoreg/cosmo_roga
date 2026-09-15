@@ -16,6 +16,7 @@ import {
 } from "@jamrog/engine";
 import { FREIGHTER, derelictSpec } from "../content/derelicts.js";
 import { DEFUSE_NOISE, DEFUSE_TURNS } from "../content/hazards.js";
+import { registerJob, sayBrokenOff } from "./jobs.js";
 import { hint } from "../content/hints.js";
 import type { Key } from "../content/i18n/keys.js";
 import { moduleBurnLine, moduleName, type ModuleId } from "../content/modules.js";
@@ -138,13 +139,26 @@ interface Work {
   turn: number;
 }
 
-/** The line for a job dropped where it stood, by job. */
-const BREAK_LINE: Readonly<Record<Work["verb"], Key>> = {
-  cut: "log.work.break.cut",
-  weld: "log.work.break.weld",
-  defuse: "log.work.break.defuse",
-  ram: "log.work.break.ram",
+/** How long each of the four door jobs takes, for the count the board draws. */
+const WORK_TURNS: Readonly<Record<Work["verb"], number>> = {
+  cut: BREACH_TURNS,
+  weld: WELD_TURNS,
+  defuse: DEFUSE_TURNS,
+  ram: RAM_TURNS,
 };
+
+/**
+ * A bulkhead being worked, as the shared job (`systems/jobs.ts`).
+ *
+ * The door is the target rather than the compartment: a corridor with two
+ * locked ends is one room and two jobs, and only one of them is running.
+ */
+registerJob((game) => {
+  const work = workOf(game.roomOf(game.player));
+  if (work === undefined) return undefined;
+  const of = WORK_TURNS[work.verb];
+  return { target: work.door, what: work.verb, done: of - work.left, of };
+});
 
 /** Defensive: `room.data` round-trips through a save, so nothing in it is trusted. */
 function workOf(room: Room): Work | undefined {
@@ -693,7 +707,7 @@ export const DOORS: System<RoomGame> = {
     const work = workOf(room);
     if (!work || work.turn === game.inputs.length - 1) return;
     delete room.data.work;
-    game.log.add(t(BREAK_LINE[work.verb]), game.schedule.time, "warn", "log.work.break");
+    sayBrokenOff(game, work.verb, WORK_TURNS[work.verb] - work.left, WORK_TURNS[work.verb]);
   },
 
   offerActions(game) {

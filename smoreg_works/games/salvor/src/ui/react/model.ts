@@ -27,6 +27,7 @@ import { deckIndex } from "./deckindex.js";
 import { deckOf } from "./deck.js";
 import type { RackSlot } from "./meters/Rack.js";
 import type { LogEntry } from "./action/Log.js";
+import { jobNow, jobOn } from "../../systems/jobs.js";
 
 /**
  * Everything the React screen is allowed to know about the game.
@@ -198,7 +199,7 @@ export interface BoardModel {
  * time either changed. A compartment it could not place is left out rather
  * than guessed at: a hexagon in the wrong cell is worse than no hexagon.
  */
-export function boardOf(game: RoomGame): BoardModel {
+export function boardOf(game: RoomGame, held?: ReadonlySet<RoomId>): BoardModel {
   const ship = game.ship;
   const layout = hexLayout(ship);
   const cells = new Map<RoomId, { q: number; r: number }>();
@@ -211,7 +212,14 @@ export function boardOf(game: RoomGame): BoardModel {
   for (const room of ship.rooms) {
     const cell = cells.get(room.id);
     if (cell === undefined) continue;
-    const knows = knowsOf(game, room);
+    /* A compartment a sweep has reached but the sweep has not got to yet.
+       A scan is the one action whose entire output is a change in what the
+       board shows, which makes it the one action that is nothing but an
+       animation: reached all at once, it reads as a screen redrawing rather
+       than as something going out from the drone. So the screen holds the far
+       ones back for a frame or two and the board draws them as what they still
+       were (`ui/react/Screen.tsx`, the sweep). */
+    const knows = held?.has(room.id) === true ? "undetected" : knowsOf(game, room);
     const props: string[] = [];
     if (room.hazard === "vented") props.push("vented");
     else if (room.hazard !== "") props.push("hazard");
@@ -816,21 +824,47 @@ function contractsOf(game: RoomGame): Contract[] {
 /**
  * A job already begun, as turns spent out of turns needed.
  *
- * The engine keeps what is *left* — it is what the bots read to know a job
- * moved at all — and a player wants to know how far in they are, so the count
- * is turned round here rather than in the engine. One job at a time is a fact
- * about the ship, not a limitation: `ShipState.work` is a single record
- * because walking away from a splice and starting another abandons the first.
+ * One question to the shared template (`systems/jobs.ts`) rather than one
+ * lookup into the ship's own record, which is what this used to be — and which
+ * is why a five-turn upload drew nothing on its console while a three-turn
+ * splice drew three pips on its reactor. The two are the same mechanic and
+ * there is now one place that says so.
  */
 function workOn(game: RoomGame, id: number): { work: { done: number; of: number } } | undefined {
-  const work = shipState(game).work;
-  if (work === undefined || work.id !== id) return undefined;
-  const system = systemsAboard(game).find((s) => s.id === id);
-  if (system === undefined) return undefined;
-  const spec = objectiveSpec(system.kind);
-  const job = spec?.jobs.find((j) => j.tool === work.tool);
+  const job = jobOn(game, id);
+  return job === undefined ? undefined : { work: { done: job.done, of: job.of } };
+}
+
+/**
+ * The job the drone is in the middle of, as the panel says it.
+ *
+ * Every multi-turn action in the game answers here and they all read the same:
+ * what is being worked, how far in, and — the part that is the whole reason
+ * the panel exists — that walking away loses it. A player who does not know
+ * that reads a job broken off as the game taking something from them.
+ */
+export interface Working {
+  /** `Splicing`, `Cutting`, `Uploading` — the job as a thing in progress. */
+  name: string;
+  done: number;
+  of: number;
+}
+
+/** What each kind of work is called while it is happening. */
+const JOB_NAME: Readonly<Record<string, string>> = {
+  splice: "Splicing",
+  cut: "Cutting",
+  weld: "Welding",
+  defuse: "Defusing",
+  ram: "Ramming",
+  purge: "Purging",
+  upload: "Uploading",
+};
+
+export function workingOf(game: RoomGame): Working | undefined {
+  const job = jobNow(game);
   if (job === undefined) return undefined;
-  return { work: { done: job.turns - work.left, of: job.turns } };
+  return { name: JOB_NAME[job.what] ?? "Working", done: job.done, of: job.of };
 }
 
 /**

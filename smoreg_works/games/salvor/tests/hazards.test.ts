@@ -344,7 +344,7 @@ describe("a mine on a door", () => {
     expect(game.ship.door("d2").trap).toBe("mine");
     // Anything else drops the job.
     game.playerCommand({ kind: "wait" });
-    expect(game.log.lines.some((l) => l.text === t("log.work.break.defuse"))).toBe(true);
+    expect(game.log.lines.some((l) => l.key === "log.work.break")).toBe(true);
     expect(game.playerCommand({ kind: "act", verb: "defuse", target: d2 }).ok).toBe(true);
     expect(game.ship.door("d2").trap).toBe("mine");
     expect(game.playerCommand({ kind: "act", verb: "defuse", target: d2 }).ok).toBe(true);

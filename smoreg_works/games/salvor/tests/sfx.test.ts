@@ -169,7 +169,7 @@ describe("events that are nobody's effect", () => {
     for (const key of [
       "log.opening",
       "log.alert.calm",
-      "log.work.break.cut",
+      "log.work.break",
       "log.contacts.here",
       "log.charter.signed",
       "engine.cover.you",

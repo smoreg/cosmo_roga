@@ -17,6 +17,7 @@ import { roomList, type Crate, type RoomItem } from "./populate.js";
 import { shipState } from "./shipstate.js";
 import { BENCH_CURE_PRICE, INFECTED_SELL_SHARE, clearVirus, virusOf } from "./virus.js";
 import { applyDerived, capOf, graft as graftOn, install, installAt, removeSlot, rigFrom, rigOf, type Rig, type Slot, findSlot, carriedBy, carriedFrom, setCarried } from "../twist/rig.js";
+import { registerJob, sayBrokenOff } from "./jobs.js";
 
 /**
  * The voyage: one account, one drone at a time, and the two ways a run ends.
@@ -1834,6 +1835,21 @@ function upload(game: RoomGame, target: number | undefined): Outcome {
   return DONE();
 }
 
+/**
+ * An upload, as the shared job (`systems/jobs.ts`).
+ *
+ * This registration is the fix for the thing that started all of this: five
+ * turns at a console counted *up* on the item, in a field nothing but the log
+ * ever read. The verb looked, on screen, exactly like a verb that takes one
+ * turn — no pips on the chip, no count on the line — and the only way to find
+ * out otherwise was to press it and read the log.
+ */
+registerJob((game) => {
+  const [console] = openUploads(game);
+  if (console === undefined) return undefined;
+  return { target: console.id, what: "upload", done: console.turns ?? 0, of: UPLOAD_TURNS };
+});
+
 /** Every console aboard with an upload half-finished. Usually none. */
 function openUploads(game: RoomGame): RoomItem[] {
   return game.ship.rooms.flatMap((room) => itemsIn(room, "console").filter((i) => (i.turns ?? 0) > 0));
@@ -2376,8 +2392,9 @@ export const VOYAGE: System<RoomGame> = {
   afterPlayerTurn(game, cmd) {
     for (const console of openUploads(game)) {
       if (cmd.kind === "act" && cmd.verb === "upload" && (cmd.target ?? console.id) === console.id) continue;
+      const done = console.turns ?? 0;
       delete console.turns;
-      game.log.add(t("log.console.away"), game.schedule.time, "warn", "log.console.away");
+      sayBrokenOff(game, "upload", done, UPLOAD_TURNS);
     }
     checkQuiet(game);
     endIfBroke(game);

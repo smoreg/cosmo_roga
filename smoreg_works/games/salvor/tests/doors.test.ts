@@ -284,7 +284,7 @@ describe("the cutter", () => {
     act(game, "cut", "d1");
     act(game, "cut", "d1");
     game.playerCommand({ kind: "wait" });
-    expect(lines(game)).toContain("You break off the cut.");
+    expect(lines(game).some((l) => l.startsWith("You break off the cut."))).toBe(true);
 
     // Two turns of work were spent; the third does not finish what is left.
     act(game, "cut", "d1");
@@ -298,7 +298,7 @@ describe("the cutter", () => {
     const game = gameOn(SHIP);
     act(game, "cut", "d1");
     game.playerCommand({ kind: "go", door: door(game, "d2") });
-    expect(lines(game)).toContain("You break off the cut.");
+    expect(lines(game).some((l) => l.startsWith("You break off the cut."))).toBe(true);
     expect(game.ship.roomAt(game.ship.room("r1").id).data.work).toBeUndefined();
   });
 
@@ -345,7 +345,7 @@ describe("the ram", () => {
     const game = gameOn(SHIP);
     for (let turn = 0; turn < 7; turn++) act(game, "ram", "d1");
     game.playerCommand({ kind: "wait" });
-    expect(lines(game)).toContain("You break off the ramming.");
+    expect(lines(game).some((l) => l.startsWith("You break off the ramming."))).toBe(true);
     act(game, "ram", "d1");
     expect(stateOf(game, "d1")).toBe("locked");
   });
@@ -406,7 +406,7 @@ describe("the welder", () => {
     give(game, "welder");
     act(game, "weld", "d2");
     game.playerCommand({ kind: "wait" });
-    expect(lines(game)).toContain("You break off the weld.");
+    expect(lines(game).some((l) => l.startsWith("You break off the weld."))).toBe(true);
 
     act(game, "weld", "d2");
     expect(stateOf(game, "d2")).toBe("open");
@@ -549,7 +549,7 @@ describe("a mined door", () => {
     // A turn spent on anything else starts the two turns over.
     expect(act(game, "defuse", "d2").ok).toBe(true);
     game.playerCommand({ kind: "wait" });
-    expect(lines(game)).toContain("You break off the defusing.");
+    expect(lines(game).some((l) => l.startsWith("You break off the defusing."))).toBe(true);
     expect(act(game, "defuse", "d2").ok).toBe(true);
     expect(game.ship.door("d2").trap).toBe("mine");
     expect(act(game, "defuse", "d2").ok).toBe(true);

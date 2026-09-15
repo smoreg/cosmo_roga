@@ -576,6 +576,10 @@ function HexTile({
 
   return (
     <div
+      /* Which compartment this is, for anything that has to find one without
+         reading pixels: the screenshot tests, and the board's own sweep. */
+      data-room={String(room.id)}
+      data-knows={room.knows}
       onClick={onClick}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}

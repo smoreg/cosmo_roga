@@ -98,7 +98,7 @@ describe("a dead machine leaves its module in the compartment", () => {
     expect(wreck.glyph).toBe("%");
     expect(wreck.id).toBeGreaterThan(0);
     expect(game.log.tail(20).map((m) => m.text)).toContain(
-      "Maintenance bot dies. Scrap: PLATING.",
+      "Maintenance bot dies, leaving a PLATING in the wreck.",
     );
   });
 

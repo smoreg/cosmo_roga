@@ -74,6 +74,30 @@ export class MessageLog {
     if (this.lines.length > this.max) this.lines.shift();
   }
 
+  /**
+   * Rewrite the line just written, when the caller has more of the same event.
+   *
+   * The engine says what it knows — "the scout dies." — and a game that also
+   * knows the scout left a PLATING behind has two bad options without this:
+   * write a second line about one event, or stay quiet about the salvage. The
+   * first is what SALVOR did, and the log read "the scout dies." / "Scout
+   * dies. Scrap: PLATING." one under the other.
+   *
+   * Only the last line, and only when it carries the key the caller names, so
+   * this can never edit somebody else's sentence: anything at all happening in
+   * between means the amendment is dropped and the caller is told so. The
+   * fold counter is reset, because the line is not the line it was counting.
+   */
+  amend(key: string, text: string, tone?: LogLine["tone"], params?: LogParams): boolean {
+    const last = this.lines[this.lines.length - 1];
+    if (last === undefined || last.key !== key) return false;
+    last.text = text;
+    last.count = 1;
+    if (tone !== undefined) last.tone = tone;
+    if (params !== undefined) last.params = params;
+    return true;
+  }
+
   tail(n: number): LogLine[] {
     return this.lines.slice(Math.max(0, this.lines.length - n));
   }

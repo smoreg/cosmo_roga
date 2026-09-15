@@ -17,6 +17,7 @@ import type { Key } from "../content/i18n/keys.js";
 import { t } from "../i18n.js";
 import { applyDerived, findSlotAs, hitSlot, rigOf, type Rig, type WreckSource } from "../twist/rig.js";
 import { takeCredits } from "./purse.js";
+import { jobNow, registerJob, sayBrokenOff } from "./jobs.js";
 
 /**
  * The ship's virus, carried home in a part you were greedy for.
@@ -418,11 +419,28 @@ function advance(game: RoomGame, v: VirusState, total: number): number {
   return left;
 }
 
+/**
+ * A purge, as the shared job (`systems/jobs.ts`).
+ *
+ * No target: this is work on the drone's own rack, not on anything standing in
+ * the compartment, so it draws on the rack and nowhere on the board. The total
+ * is asked of the rig every time rather than remembered, because fitting a
+ * SPIKE halves it mid-purge and the bar must not lie about what is left.
+ */
+registerJob((game) => {
+  const rig = rigOf(game.player);
+  const v = rig === undefined ? undefined : virusOf(game.player);
+  if (rig === undefined || v?.curing === undefined) return undefined;
+  const of = cureTurns(rig);
+  return { what: "purge", done: Math.max(0, of - v.curing.left), of };
+});
+
 /** Anything but another turn of purging drops the job where it stands. */
 function breakOff(game: RoomGame, v: VirusState): void {
   if (v.curing === undefined || v.curing.turn === game.inputs.length - 1) return;
+  const was = jobNow(game);
   delete v.curing;
-  game.log.add(t("log.work.break.purge"), game.schedule.time, "warn", "log.work.break.purge");
+  if (was !== undefined) sayBrokenOff(game, was.what, was.done, was.of);
 }
 
 // ---------------------------------------------------------------- the system

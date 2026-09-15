@@ -392,6 +392,47 @@ export function wake(el, path, {
 }
 
 /**
+ * Reveal a list one item at a time inside a fixed budget.
+ *
+ * The budget is the point: a sweep over thirty rooms takes exactly as long as
+ * a sweep over three, so what varies with count is the GAP between arrivals
+ * rather than the length of the animation. Every offset is a whole number of
+ * frames, because nothing in this system lands between frames.
+ *
+ * Order the array before calling — for a board sweep that means by distance,
+ * so the reveal reads as something leaving the drone.
+ *
+ *   const h = FX.sweep(roomsByDistance, {
+ *     onItem: (room) => reveal(room.id),
+ *     onDone: () => setRunning(false)
+ *   });
+ *
+ * @param {Array} items        already in the order they should arrive
+ * @param {number} [budget]    total ms for the whole sweep (default 4 frames)
+ * @param {function} onItem    called with (item, index) as each one lands
+ * @param {function} [onDone]  called one frame after the last arrival
+ */
+export function sweep(items, { budget = FRAME * 4, onItem, onDone, skip = prefersReducedMotion() } = {}) {
+  const list = Array.from(items || []);
+  if (!list.length) { if (onDone) onDone(); return handle([]); }
+  if (skip) {
+    list.forEach((it, i) => onItem && onItem(it, i));
+    if (onDone) onDone();
+    return handle([]);
+  }
+  const gaps = Math.max(1, list.length - 1);
+  const timers = [];
+  let last = 0;
+  list.forEach((it, i) => {
+    const at = Math.round((i / gaps) * budget / FRAME) * FRAME;
+    last = Math.max(last, at);
+    timers.push(setTimeout(() => onItem && onItem(it, i), at));
+  });
+  if (onDone) timers.push(setTimeout(onDone, last + FRAME));
+  return handle(timers);
+}
+
+/**
  * Blink-step — the token cuts out and reappears elsewhere, flickering once as
  * the feed re-acquires it. No path is shown, which makes it right for
  * teleports, deploys, and anything that did not physically travel.
@@ -581,7 +622,7 @@ export function clearGhosts(root = document) {
 const API = {
   FRAME, SCRAMBLE_CHARS, TOKEN_CHARS, PRESETS,
   BLOCK_CHARS, randomScramble, scrambleLike, prefersReducedMotion, frames,
-  scrambleReveal, setAndReveal, arrive,
+  scrambleReveal, setAndReveal, arrive, sweep,
   wake, blink, teleport, steppedTransit,
   impact, edgeBurst, exchange, hitStop, clearGhosts
 };

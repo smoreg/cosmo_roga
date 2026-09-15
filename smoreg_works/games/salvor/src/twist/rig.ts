@@ -1286,10 +1286,23 @@ function pulse(game: RoomGame): Outcome {
   }
   (game.player.data ??= {}).pulsedAt = game.schedule.time;
   game.makeNoise(here, PULSE_NOISE);
-  game.log.add(t("log.pulse"), game.schedule.time, "warn", "log.pulse");
-  for (const room of found) {
-    game.log.add(t("log.relic.seen", { room }), game.schedule.time, "warn", "log.relic.seen");
-  }
+  /*
+   * One press, one line — however many compartments come back and whatever is
+   * standing in them.
+   *
+   * A scan that read three sealed crates used to write four lines, and three
+   * of them were the same sentence with a different compartment in it. What a
+   * player needs off a scan is "it worked" and "here is the one thing worth
+   * turning round for", and both fit in a sentence.
+   */
+  game.log.add(
+    found.length === 0
+      ? t("log.pulse")
+      : t("log.pulse.found", { rooms: found.join(", "), n: found.length }),
+    game.schedule.time,
+    "warn",
+    found.length === 0 ? "log.pulse" : "log.relic.seen",
+  );
   return DONE();
 }
 
@@ -1393,12 +1406,20 @@ export const RIG: Twist<RoomGame> = {
     if (!kind) return;
     addWreck(game, victim.room, kind, game.rng.int(SCRAP_INTEGRITY[0], SCRAP_INTEGRITY[1]));
     dropDeathLine(game);
-    game.log.add(
-      t("log.scrap.drop", { machine: capitalize(machineName(victim.name)), module: moduleName(kind) }),
-      game.schedule.time,
-      "plain",
-      "log.scrap.drop",
-    );
+    /*
+     * The engine has just said the machine died. What it could not know is
+     * that this one left something worth carrying, so the line is rewritten
+     * rather than followed — "the scout dies." and "Scout dies. Scrap:
+     * PLATING." one under the other was the same fact twice, and the second
+     * copy was the one carrying the news.
+     */
+    const line = t("log.scrap.drop", {
+      machine: capitalize(machineName(victim.name)),
+      module: moduleName(kind),
+    });
+    if (!game.log.amend("engine.dies", line, "plain")) {
+      game.log.add(line, game.schedule.time, "plain", "log.scrap.drop");
+    }
   },
 
   afterPlayerTurn(game, cmd) {
@@ -1432,15 +1453,23 @@ export const RIG: Twist<RoomGame> = {
       const kind = moduleKind(hit.kind);
       const slot = rig.slots[hit.slot];
       const max = slot && slot.kind === hit.kind ? capOf(slot) : kind.integrity;
-      const line =
-        cause === undefined
+      /*
+       * One blow, one line — including the blow that finishes a module.
+       *
+       * The burn used to be a second line under the hit, so the worst thing
+       * that can happen to a rack arrived as a footnote to the thing that
+       * caused it. It is the same event and it is now the same sentence: the
+       * remainder is dropped because a burned module's remainder is nothing,
+       * and what replaces it is the burn's own line, which is the only half
+       * that changes what the player does next.
+       */
+      const line = hit.burned
+        ? t("log.hit.module.burn", { source: who, burn: moduleBurnLine(kind.id) })
+        : cause === undefined
           ? hitLine(who, kind, hit.remaining, max)
           : t(cause, { module: moduleName(kind.id), left: hit.remaining, max });
-      game.log.add(line, game.schedule.time, "bad", cause ?? "log.hit.module");
-      if (hit.burned) {
-        game.log.add(moduleBurnLine(kind.id), game.schedule.time, "bad", "log.module.burn");
-        burned = true;
-      }
+      game.log.add(line, game.schedule.time, "bad", hit.burned ? "log.module.burn" : (cause ?? "log.hit.module"));
+      if (hit.burned) burned = true;
     }
     if (burned) applyDerived(game.player);
 

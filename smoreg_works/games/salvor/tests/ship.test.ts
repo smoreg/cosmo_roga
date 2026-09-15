@@ -295,7 +295,7 @@ describe("turns in a row", () => {
     expect(shipState(game).work?.left).toBe(1);
 
     game.playerCommand({ kind: "wait" });
-    expect(lastLine(game)).toBe("You break off the splice.");
+    expect(lastLine(game)).toBe("You break off the splice. 1 of 2 turns, gone.");
     expect(shipState(game).work).toBeUndefined();
 
     // And the next turn of it is the first turn again, not the last.
@@ -309,7 +309,7 @@ describe("turns in a row", () => {
     keys(game, 1);
     raiseIn(game, "r4", 1);
 
-    expect(lines(game)).not.toContain("You break off the splice.");
+    expect(lines(game).some((l) => l.startsWith("You break off the splice"))).toBe(false);
     expect(shipState(game).work).toBeUndefined();
   });
 });
@@ -430,7 +430,7 @@ describe("raising a system with nothing in the rack", () => {
     expect(shipState(game).work?.left).toBe(CORE.hands.turns - 1);
 
     game.playerCommand({ kind: "wait" });
-    expect(lastLine(game)).toBe("You break off the splice.");
+    expect(lastLine(game)).toBe("You break off the splice. 1 of 12 turns, gone.");
     expect(shipState(game).work).toBeUndefined();
 
     expect(forceOn(game, "r3").ok).toBe(true);

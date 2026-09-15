@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { RoomGame, RoomId } from "@jamrog/engine";
 import { HexBoard } from "./board/HexBoard.js";
 import type { BoardDoor, BoardRoom, BoardThing } from "./board/HexBoard.js";
 import { Panel, Rail } from "./chrome/Panel.js";
-import { AlertDial, CoreRack } from "./meters/Rack.js";
+import { AlertDial, CoreRack, SegmentMeter } from "./meters/Rack.js";
 import { LogStrip } from "./action/Log.js";
-import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf } from "./model.js";
+import * as FX from "../fx/derelict-fx.js";
+import { motionNow } from "./settings.js";
+import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf, workingOf } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
 import { deckVersion, loadDeckIndex, watchDeck } from "./deckindex.js";
@@ -19,6 +21,23 @@ import { DockPreview, TugOrders } from "./screens/Tug.js";
 import { roomActions } from "../actions.js";
 import { isStop, makeTraveller } from "../auto.js";
 import { codexQueue, readCodex } from "../../systems/codex.js";
+
+/** When this drone last scanned, or nothing if it has not. */
+function pulsedAt(game: RoomGame): number | undefined {
+  const at = (game.player.data ?? {}).pulsedAt;
+  return typeof at === "number" ? at : undefined;
+}
+
+/** Nothing withheld — one value, so "no sweep running" is one identity check. */
+const NONE_HELD: ReadonlySet<RoomId> = new Set<RoomId>();
+
+/** Hex distance, for the order a sweep arrives in: what is near lands first. */
+function reach(from: { q: number; r: number } | undefined, to: { q: number; r: number }): number {
+  if (from === undefined) return 0;
+  const dq = to.q - from.q;
+  const dr = to.r - from.r;
+  return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
+}
 
 /** The cards that can stand over the run. One at a time, and never a turn. */
 type Card = "none" | "codex" | "ending";
@@ -169,9 +188,93 @@ export function Screen({
     void loadDeckIndex();
   }, []);
 
-  const board = useMemo(() => boardOf(game), [game, turn, art]);
+  /**
+   * The sweep: compartments a scan has just reached, arriving one at a time.
+   *
+   * Nothing about the game changes here — the rooms are already scanned, the
+   * turn is already spent. What changes is the order the board admits them in,
+   * nearest first, inside one fixed budget however many there are
+   * (`fx/derelict-fx.js`, `sweep`). A scan is the only action whose whole
+   * output is a change in what the screen shows, and reached all at once it
+   * reads as a redraw rather than as something going out from the drone.
+   */
+  const [held, setHeld] = useState<ReadonlySet<RoomId>>(NONE_HELD);
+  /*
+   * The sweep hangs on the scanner's stamp, not on the turn counter.
+   *
+   * On the turn a scan finds a machine the codex opens itself, and opening a
+   * card ticks the turn — so a sweep keyed on the turn was cancelled by its
+   * own good news, one frame after it started. What a scan did is a fact about
+   * the drone; the number of times the screen has been asked to redraw is not.
+   */
+  const pulseAt = useMemo(() => pulsedAt(game), [game, turn]);
+  const shown = useRef<Set<RoomId>>(new Set());
+  /* The scanner's last stamp as this screen last saw it. `undefined` until the
+     first scan of the sortie, which is also what a fresh drone reports. */
+  const pulse = useRef<number | undefined>(undefined);
+  const board = useMemo(() => boardOf(game, held), [game, turn, art, held]);
+
+  useEffect(
+    function sweep() {
+      const known = boardOf(game).rooms.filter((r) => r.id >= 0 && r.knows !== "undetected");
+      const fresh = known.filter((r) => !shown.current.has(r.id));
+      for (const room of known) shown.current.add(room.id);
+      /*
+       * Only a scan sweeps, and this is how the screen knows one happened:
+       * the stamp the scanner leaves moved (`twist/rig.ts`, `pulsedAt`).
+       *
+       * Asking "did several compartments arrive at once" instead is the
+       * version I wrote first and it is wrong twice over. Boarding a hull is
+       * several compartments at once and is not a sweep — the whole board
+       * would fade down to unknown and resolve every time the drone came
+       * through the airlock, which looks exactly like the deck failing to
+       * load. And walking through a door can reveal two, which would put a
+       * frame between the press and the drone moving.
+       */
+      const swept = pulseAt !== undefined && pulseAt !== pulse.current;
+      pulse.current = pulseAt;
+      if (!swept || fresh.length < 2) {
+        if (held !== NONE_HELD) setHeld(NONE_HELD);
+        return;
+      }
+      const from = board.rooms.find((r) => r.id === board.drone);
+      const order = [...fresh].sort((a, b) => reach(from, a) - reach(from, b));
+      setHeld(new Set(order.map((r) => r.id)));
+      const run = FX.sweep(order, {
+        onItem: (room) =>
+          setHeld((now) => {
+            const next = new Set(now);
+            next.delete((room as { id: RoomId }).id);
+            return next;
+          }),
+        onDone: () => setHeld(NONE_HELD),
+        skip: motionNow() === "instant" || FX.prefersReducedMotion(),
+      });
+      return () => {
+        run.cancel();
+        /* Cancelled halfway would leave compartments the drone has scanned
+           drawn as though it had not. Whatever stops it, everything arrives. */
+        setHeld(NONE_HELD);
+      };
+    },
+    [game, pulseAt],
+  );
+
+  /* And every other way a compartment becomes known — a step, a door opening,
+     something walking into sight — is recorded without ceremony, so the next
+     sweep knows what was already on the board. After the sweep's own effect,
+     because on a scan turn that one has to read this as it was. */
+  useEffect(
+    function noted() {
+      for (const room of boardOf(game).rooms) {
+        if (room.id >= 0 && room.knows !== "undetected") shown.current.add(room.id);
+      }
+    },
+    [game, turn],
+  );
   const things = useMemo(() => hereOf(game), [game, turn]);
   const commands = useMemo(() => commandsOf(game), [game, turn]);
+  const working = useMemo(() => workingOf(game), [game, turn]);
   const goal = useMemo(() => goalOf(game), [game, turn]);
   /* Which machine this drone was built as. A fact about the sortie, so it is
      read once and not per cell. */
@@ -432,17 +535,6 @@ export function Screen({
         </div>
       )}
 
-      {card === "none" ? null : (
-          <Cards
-            card={card}
-            game={game}
-            page={page}
-            queue={queue}
-            onPage={setPage}
-            onClose={() => setCard(over ? "ending" : "none")}
-            onAgain={onNewVoyage}
-          />
-        )}
       </div>
 
       <div
@@ -500,12 +592,53 @@ export function Screen({
               <Manifest things={things} onAct={(t) => act(here as BoardRoom, t)} />
             </Panel>
 
+            {working === undefined ? null : (
+              <Panel title={working.name} stencil="in progress" tone="warn">
+                {/* The template every multi-turn action draws through: how far
+                    in, and that the whole thing is lost if the drone does
+                    anything else. The second half is the one a player cannot
+                    infer and the one the game used to charge them for finding
+                    out — five turns at a console read exactly like a verb that
+                    takes one. */}
+                <SegmentMeter
+                  label="done"
+                  value={working.done}
+                  max={working.of}
+                  tone="warn"
+                  height={13}
+                />
+                <div style={{ marginTop: 9, font: "var(--sv-body)", color: "var(--sv-soft)" }}>
+                  Anything else and it starts again.
+                </div>
+              </Panel>
+            )}
+
             <Panel title="Orders" stencil="drone">
               <Lines lines={commands} empty="nothing to order" onPick={order} />
             </Panel>
           </>
         )}
       </div>
+
+      {/* Over the whole screen, not over the board.
+          It used to live inside the board's own column, which is where the
+          drone token lives too — and the drone is drawn at a higher layer than
+          the card was, so a compartment card opened *underneath* the thing it
+          was explaining. A card is modal: it belongs to the screen. Below the
+          log alone, which is the one thing nothing covers. */}
+      {card === "none" ? null : (
+        <div style={{ gridColumn: "1 / -1", gridRow: "1 / -1", position: "relative", zIndex: 95 }}>
+          <Cards
+            card={card}
+            game={game}
+            page={page}
+            queue={queue}
+            onPage={setPage}
+            onClose={() => setCard(over ? "ending" : "none")}
+            onAgain={onNewVoyage}
+          />
+        </div>
+      )}
 
       <LogStrip
         entries={log}

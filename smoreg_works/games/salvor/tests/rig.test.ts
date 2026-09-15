@@ -466,15 +466,17 @@ describe("burning a module changes what the drone can do", () => {
     expect(game.player.damage).toEqual([...BARE_CHASSIS.damage]);
   });
 
-  it("says so in the log, once per module", () => {
+  it("says so in the log, in the same line as the blow that did it", () => {
     const game = gameOn(PAIR);
     const bot = put(game, "r1", "maintenance-bot");
     rig(game).exposed = slotOf(rig(game), "scanner");
     RIG.onDamage!(game, game.player, moduleKind("scanner").integrity, bot);
 
+    /* One blow, one line: the burn is the end of the sentence the hit starts,
+       not a footnote under it. */
     const lines = game.log.tail(20).map((m) => m.text);
-    expect(lines).toContain(`The maintenance bot: hit, SCANNER (0/${moduleKind("scanner").integrity}).`);
-    expect(lines).toContain(moduleBurnLine("scanner"));
+    expect(lines).toContain(`The maintenance bot: hit. ${moduleBurnLine("scanner")}`);
+    expect(lines.filter((l) => l.includes(moduleBurnLine("scanner")))).toHaveLength(1);
   });
 });
 

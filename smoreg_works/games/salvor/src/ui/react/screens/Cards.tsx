@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { linesOf, reveal } from "../reveal.js";
+import { motionNow } from "../settings.js";
 import * as FX from "../../fx/derelict-fx.js";
 import { Panel, Tag } from "../chrome/Panel.js";
 import type { CodexCard, EndingModel } from "../model.js";
@@ -30,6 +31,7 @@ export function Card({
   children?: ReactNode;
 }): ReactElement {
   const ref = useRef<HTMLDivElement>(null);
+  const open = useOpening();
   useEffect(function resolve() {
     if (ref.current === null) return;
     return reveal(linesOf(ref.current), FX.PRESETS.sheet);
@@ -46,10 +48,13 @@ export function Card({
         alignItems: "center",
         justifyContent: "center",
         background: "color-mix(in oklab, var(--sv-void) 82%, transparent)",
-        animation: "sv-slide-in var(--sv-frame) var(--sv-step) 1 both",
       }}
     >
-      <div ref={ref} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "94vw" }}>
+      <div
+        ref={ref}
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: "94vw", clipPath: open }}
+      >
         <Panel title={title} stencil={stencil} width={width}>
           <div style={{ maxHeight: "68vh", overflowY: "auto" }}>{children}</div>
           <div
@@ -83,6 +88,40 @@ export function Card({
       </div>
     </div>
   );
+}
+
+/**
+ * The four frames a card opens in: a slit at the centre, widening to the plate.
+ *
+ * It used to slide in, and sliding is the one thing this system does not do —
+ * every other moving part of the game is a small number of held frames and
+ * nothing in between (`fx/derelict-fx.js`, "NOTHING INTERPOLATES"). A card
+ * that eased into place was the only smooth motion on the screen, and it read
+ * as a different program's window.
+ *
+ * `clip-path` rather than a width, because it takes the borders with it: what
+ * grows is the plate itself, edges and all, out of the middle to both sides at
+ * once. Horizontal leads vertical, so the card reads as a panel opening rather
+ * than as a box being inflated.
+ */
+const OPENING = ["inset(46% 46%)", "inset(30% 20%)", "inset(12% 6%)", "inset(0)"] as const;
+
+function useOpening(): string {
+  const [step, setStep] = useState(0);
+  useEffect(function widen() {
+    setStep(0);
+    const run = FX.frames(
+      OPENING.map((_, i) => () => setStep(i)),
+      { frame: FX.FRAME / 2, skip: motionNow() === "instant" || FX.prefersReducedMotion() },
+    );
+    return () => {
+      run.cancel();
+      /* Cancelled halfway is a card clipped to a slit for good, which is the
+         blank-screen bug in another costume. Whatever stopped it, it ends open. */
+      setStep(OPENING.length - 1);
+    };
+  }, []);
+  return OPENING[Math.min(step, OPENING.length - 1)] ?? "inset(0)";
 }
 
 /** A row of the controls card. A heading is a heading; everything else is a row. */

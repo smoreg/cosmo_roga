@@ -85,6 +85,22 @@ export function arrive(
   options?: ArriveOptions,
 ): Running;
 
+/**
+ * Reveal a list one item at a time inside a fixed budget.
+ *
+ * What varies with the number of items is the gap between arrivals, never the
+ * length: a sweep over thirty compartments takes exactly as long as one over
+ * three. Order the array before calling — for a board sweep, by distance.
+ */
+export interface SweepOptions<T> {
+  /** Total ms for the whole sweep. Defaults to four frames. */
+  budget?: number;
+  onItem?: (item: T, index: number) => void;
+  onDone?: () => void;
+  skip?: boolean;
+}
+export function sweep<T>(items: readonly T[], options?: SweepOptions<T>): Running;
+
 /** Where a token sits after a step. Only `place` reads it. */
 export type Pos = Readonly<Record<string, number | string | undefined>>;
 

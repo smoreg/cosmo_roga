@@ -3,6 +3,7 @@ import { moduleBurnLine } from "../content/modules.js";
 import { OBJECTIVE_COUNT, needsLine, objectiveName, objectiveOnlineLine, objectiveSpec, toolExposes, toolName, type ObjectiveJob, type ObjectiveSpec } from "../content/objectives.js";
 import { applyDerived, findSlot, registerHackTarget, rigOf, routeDamage, type HackTarget } from "../twist/rig.js";
 import { hint, turnRoom } from "../content/hints.js";
+import { jobNow, registerJob, sayBrokenOff } from "./jobs.js";
 import { t } from "../i18n.js";
 import { raiseAlert, standDown } from "./alert.js";
 import { keysHeld } from "./doors.js";
@@ -49,7 +50,6 @@ const ALERT_PER_SYSTEM = 4;
 const CELL_COST = 1;
 
 /** The one line this file writes on its own account: a splice let go of. */
-const BROKEN_OFF_KEY = "log.work.break.splice";
 
 const FAIL = (reason: string): Outcome => ({ ok: false, cost: 0, reason });
 const DONE = (): Outcome => ({ ok: true, cost: TURN_COST });
@@ -94,6 +94,25 @@ function spendCell(game: RoomGame): void {
   }
   applyDerived(game.player);
 }
+
+/**
+ * The splice, as the shared job the rest of the game draws (`systems/jobs.ts`).
+ *
+ * The record keeps what is *left*, because that is what the bots read to know
+ * a turn moved the job at all; the template wants what is *done*, because that
+ * is the half a player is watching. The turn is here, once, rather than in
+ * every screen that has to show a count.
+ */
+registerJob((game) => {
+  const work = shipState(game).work;
+  if (work === undefined) return undefined;
+  const system = systemsAboard(game).find((s) => s.id === work.id);
+  const spec = system === undefined ? undefined : objectiveSpec(system.kind);
+  if (spec === undefined) return undefined;
+  const job = work.tool === "hands" ? spec.hands : spec.jobs.find((j) => j.tool === work.tool);
+  if (job === undefined) return undefined;
+  return { target: work.id, what: "splice", done: job.turns - work.left, of: job.turns };
+});
 
 // ------------------------------------------------------------------- the work
 
@@ -387,8 +406,9 @@ export const SHIP: System<RoomGame> = {
       return;
     }
     if (cmd.kind === "act" && (cmd.verb === "work" || cmd.verb === "force") && cmd.target === open.id) return;
+    const was = jobNow(game);
     delete state.work;
-    game.log.add(t(BROKEN_OFF_KEY), game.schedule.time, "warn", BROKEN_OFF_KEY);
+    if (was !== undefined) sayBrokenOff(game, was.what, was.done, was.of);
   },
 
   /**
