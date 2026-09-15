@@ -906,3 +906,69 @@ describe("the deck is drawn where it can actually be seen", () => {
     host.remove();
   });
 });
+
+describe("every compartment has a floor, and an unscanned one cannot be read off it", () => {
+  beforeAll(stillFrames);
+
+  const withArt = (): void => {
+    applyDeckIndex(
+      JSON.parse(
+        readFileSync(join(import.meta.dirname, "..", "public", "deck", "deck.json"), "utf8"),
+      ) as Parameters<typeof applyDeckIndex>[0],
+    );
+  };
+
+  it("draws a deck under compartments nobody has looked into", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    withArt();
+    const board = boardOf(game);
+    const unseen = board.rooms.filter((r) => r.knows === "undetected");
+    expect(unseen.length).toBeGreaterThan(0);
+    /* The hull is there whether or not the drone has been down it. A ship
+       whose unvisited half is blank reads as a ship half-built. */
+    for (const room of unseen) expect(room.deck?.id, `room ${String(room.id)}`).toBeDefined();
+
+    const { host, unmount } = mount(<Screen game={game} />);
+    expect(host.querySelectorAll("img").length).toBe(
+      board.rooms.filter((r) => r.knows !== "wrecked").length,
+    );
+    unmount();
+  });
+
+  it("draws every floor sharp, so a hull can be read by somebody who learns it", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    withArt();
+    const board = boardOf(game);
+    const { host, unmount } = mount(<Screen game={game} />);
+
+    /* A tile is chosen from the compartment's kind, so a player who comes to
+       know the catalogue can read an unscanned room off its floor. That is a
+       thing to be learned and not a leak to be plugged: the board is drawing
+       the ship accurately, and what a careful player makes of an accurate
+       drawing is theirs. This test exists so nobody hazes it over later on the
+       grounds that it looks like the board out-knowing the game. */
+    const knowsOfTile = new Map(board.rooms.map((r) => [r.deck?.id, r.knows]));
+    let unscanned = 0;
+    for (const img of Array.from(host.querySelectorAll("img"))) {
+      const id = (img.getAttribute("src") ?? "").replace("deck/t/", "").replace(".webp", "");
+      const knows = knowsOfTile.get(id);
+      const style = img.getAttribute("style") ?? "";
+      expect(style, `${String(knows)} is blurred`).not.toMatch(/blur\(/);
+      if (knows === "undetected") unscanned++;
+    }
+    /* And there is something to read: the unscanned half is drawn, not blank. */
+    expect(unscanned).toBeGreaterThan(0);
+    unmount();
+  });
+
+  it("never draws a floor in wreckage, which has none", () => {
+    const game = newGame(2026);
+    expect(undock(game).ok).toBe(true);
+    withArt();
+    for (const room of boardOf(game).rooms.filter((r) => r.knows === "wrecked")) {
+      expect(room.deck).toBeUndefined();
+    }
+  });
+});

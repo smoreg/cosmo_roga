@@ -35,6 +35,34 @@ export type Knows = "undetected" | "detected" | "monitored" | "current" | "wreck
  */
 const DECK_SCALE = 1.2;
 
+/**
+ * How plainly a compartment's floor is drawn, by how much is known about it.
+ *
+ * The hull is there whether or not the drone has been down it, and a ship
+ * whose unvisited half is blank reads as a ship half-built. So every
+ * compartment wears its deck, and only the light on it changes.
+ *
+ * **Nothing here is blurred, and that is deliberate.** A tile is chosen from
+ * the compartment's kind, so a player who comes to know the catalogue can read
+ * an unscanned room off its floor — a reactor deck looks like machinery from
+ * across the hull. That was very nearly hidden behind a haze on the grounds
+ * that the board must not out-know the game, and it is the wrong rule for this
+ * case: the board is not telling anyone anything, it is drawing the ship
+ * accurately, and what a careful player makes of an accurate drawing is theirs.
+ * A game that hides what is genuinely there to be noticed teaches nobody to
+ * look. Deliberate: `tests/react-screens.test.tsx` fails if a deck is blurred.
+ *
+ * What the light still says is how much has been *established*: the floor the
+ * drone is standing on is the one it has actually seen.
+ */
+const DECK_INK: Record<Knows, number> = {
+  current: 0.42,
+  monitored: 0.3,
+  detected: 0.26,
+  undetected: 0.2,
+  wrecked: 0,
+};
+
 const STATE: Record<
   Knows,
   { line: string; fill: string; band: string | null; shows: boolean; strong?: boolean }
@@ -685,7 +713,7 @@ function HexTile({
           `scaleX(-1)` on the far side of the keel, so the two halves mirror.
           Held well back in opacity: this is the floor, and a floor that
           competes with what is standing on it is a floor nobody reads past. */}
-      {s.shows && room.deck?.id !== undefined ? (
+      {room.deck?.id !== undefined && room.knows !== "wrecked" ? (
         <div
           style={{
             position: "absolute",
@@ -706,7 +734,7 @@ function HexTile({
               width: `${String(DECK_SCALE * 100)}%`,
               height: `${String(DECK_SCALE * 100)}%`,
               transform: `translate(-50%,-50%)${room.deck.flipped ? " scaleX(-1)" : ""}`,
-              opacity: room.knows === "current" ? 0.42 : 0.3,
+              opacity: DECK_INK[room.knows],
               filter: "grayscale(1) contrast(1.2) brightness(1.1)",
             }}
           />
