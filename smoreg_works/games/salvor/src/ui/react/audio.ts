@@ -82,6 +82,9 @@ export interface MusicPlayer {
   readonly volumeNow: () => number;
 }
 
+/** How long one track takes to get out of the way of the next. */
+export const FADE_MS = 500;
+
 /** Slider position to amplitude. Squared, so the middle sounds like a middle. */
 function gain(position: number): number {
   return position * position;
@@ -91,6 +94,7 @@ function createPlayer(): MusicPlayer {
   let element: HTMLAudioElement | null = null;
   let current: MusicTrack | null = null;
   let volume = 0.5;
+  let fading: number | undefined;
 
   function ensure(): HTMLAudioElement | null {
     if (typeof Audio === "undefined") return null;
@@ -100,10 +104,47 @@ function createPlayer(): MusicPlayer {
     return element;
   }
 
+  /**
+   * Turns one track down to nothing over `FADE_MS`, then runs `then`.
+   *
+   * A cut between two pieces of music is heard as a fault — the ear reads a
+   * hard edge as something breaking rather than as something changing. Half a
+   * second is enough for the first to have gone and short enough that the
+   * second is not late.
+   */
+  function fade(then: () => void): void {
+    if (element === null || element.paused) {
+      then();
+      return;
+    }
+    const from = element.volume;
+    const started = Date.now();
+    clearInterval(fading);
+    fading = setInterval(() => {
+      const on = Math.min(1, (Date.now() - started) / FADE_MS);
+      if (element !== null) element.volume = from * (1 - on);
+      if (on < 1) return;
+      clearInterval(fading);
+      fading = undefined;
+      then();
+    }, 16) as unknown as number;
+  }
+
   function play(track: MusicTrack): void {
     const audio = ensure();
     if (audio === null) return;
     if (current?.id === track.id && !audio.paused) return;
+    /* Something else is playing: wind it down first, then come back here. */
+    if (!audio.paused && current !== null) {
+      const next = track;
+      fade(() => {
+        current = null;
+        play(next);
+      });
+      return;
+    }
+    clearInterval(fading);
+    fading = undefined;
     current = track;
     if (!audio.src.endsWith(track.url)) audio.src = track.url;
     audio.volume = gain(volume);

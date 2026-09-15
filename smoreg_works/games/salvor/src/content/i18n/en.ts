@@ -380,6 +380,8 @@ export const EN = {
   "log.salvage.mend": "Scrap into {module}: {left}/{max}.",
   "log.salvage.install": "{module} {left}/{max} off the wreck.",
   "log.weld": "Welded: {module} {left}/{max}.",
+  "action.scan": "scan · reads two doors out",
+  "why.pulse.cooling": "the scanner is cooling · {n, one: # turn, other: # turns}",
   "log.pulse": "Sensor pulse. Two doors of ship come back on the schematic.",
   "log.emp": "The coil discharges. {n, one: One machine seizes, other: # machines seize} up. {left} left.",
   "log.shock": "The {module} arcs. {n, one: One machine seizes, other: # machines seize} up. {left} left.",

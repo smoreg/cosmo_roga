@@ -4,7 +4,7 @@ import { machineName } from "../../content/monsters.js";
 import { moduleKind, moduleName } from "../../content/modules.js";
 import { roomActions } from "../actions.js";
 import { doorWays } from "../doorlist.js";
-import { hostilesIn, rigOf, wrecksOn } from "../../twist/rig.js";
+import { findSlot, hostilesIn, pulseWait, rigOf, wrecksOn } from "../../twist/rig.js";
 import { BUCKET_GLYPH, CONTENT_KEYS, ONLINE_GLYPH, bucketName } from "../contents.js";
 import { alertState } from "../../systems/alert.js";
 import { shipState } from "../../systems/shipstate.js";
@@ -662,13 +662,40 @@ export function hereOf(game: RoomGame): BoardThing[] {
  */
 export function commandsOf(game: RoomGame): Offer[] {
   if (game.status !== "playing") return [];
+  const out: Offer[] = [];
+
+  /**
+   * The scan, while a SCANNER is in the rack — cooling or not.
+   *
+   * A line of the view and not an offer of the engine, and the difference
+   * matters: the engine's list is what a *turn* may spend, read by the bots and
+   * by the fixtures and counted by the tug's own screen, and a permanent extra
+   * row in it moved every numbered line in the game. What the drone may do is
+   * unchanged; this is the board choosing to keep one of those things where it
+   * can be seen instead of only where it can be guessed.
+   *
+   * Shown while it cools rather than hidden, because a line that greys out is
+   * how a player learns there is a cooldown at all. The index is negative so
+   * `order` knows to spend it by slot rather than by looking it up in a list it
+   * was never in.
+   */
+  const rig = rigOf(game.player);
+  const scanner = rig === undefined ? null : findSlot(rig, "scanner");
+  if (scanner !== null && !isTug(game)) {
+    const wait = pulseWait(game);
+    out.push({
+      index: -1 - scanner,
+      label: t("action.scan"),
+      enabled: wait === 0,
+      ...(wait === 0 ? {} : { why: t("why.pulse.cooling", { n: wait }) }),
+    });
+  }
   /* What the compartment is already carrying as an icon. A verb aimed at one
      of those is on the thing itself; a verb aimed at anything else has nowhere
      on the honeycomb to live and belongs here, whatever it is aimed at. The
      point of asking rather than assuming is that nothing can be lost: an
      `act` at a target the board does not draw used to vanish from both. */
   const carried = new Set(hereOf(game).map((t) => Number(t.id.slice(1))));
-  const out: Offer[] = [];
   roomActions(game).forEach((action, index) => {
     const cmd = action.cmd;
     /* Anything aimed at a thing on the board is that thing's own verb, and

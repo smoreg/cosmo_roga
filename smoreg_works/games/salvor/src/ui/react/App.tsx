@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { newGame } from "../../game.js";
 import type { SalvorGame } from "../../game.js";
 import { Menu, type MenuPage, type MenuSettings } from "./screens/Menu.js";
+import { Generating } from "./screens/Generating.js";
 import { Splash } from "./screens/Splash.js";
 import { Screen } from "./Screen.js";
 import { BUILD_VERSION } from "../title.js";
@@ -33,6 +34,10 @@ export function App({ seed }: { seed: number }): ReactElement {
   const [page, setPage] = useState<MenuPage>("root");
   const [game, setGame] = useState<SalvorGame | null>(null);
   const [running, setRunning] = useState(false);
+  /* A voyage that exists but has not been handed over yet: the generating
+     screen is up. Held rather than dropped and rebuilt, so what the player
+     watches appear is the ship they were given. */
+  const [pending, setPending] = useState<SalvorGame | null>(null);
   /* Muting is not a volume of zero: it silences without forgetting where the
      slider was, so unmuting puts it back rather than at nothing. */
   const [muted, setMuted] = useState(false);
@@ -66,12 +71,28 @@ export function App({ seed }: { seed: number }): ReactElement {
          announcing that you have left when you have only paused: the drone is
          where you left it and so is the score. It changes when a voyage starts
          and when one ends, and at no other time. */
-      music.play(game === null ? MENU_MUSIC : missionTrackFor(String(game.seed)));
+      const run = game ?? pending;
+      music.play(run === null ? MENU_MUSIC : missionTrackFor(String(run.seed)));
     },
-    [started, game],
+    [started, game, pending],
   );
 
   if (!started) return <Splash onStart={() => setStarted(true)} />;
+
+  /* The second between asking for a ship and being aboard one. The voyage is
+     already built and waiting — the delay buys the change of place, not the
+     work, and it is also the room the music needs to change over. */
+  if (pending !== null) {
+    return (
+      <Generating
+        onDone={() => {
+          setGame(pending);
+          setPending(null);
+          setRunning(true);
+        }}
+      />
+    );
+  }
 
   if (running && game !== null) {
     return (
@@ -104,8 +125,7 @@ export function App({ seed }: { seed: number }): ReactElement {
       onNewGame={() => {
         /* A fresh voyage. The page's seed where one was asked for, so a bug
            report reproduces; a new roll otherwise. */
-        setGame(newGame(game === null ? seed : (Math.random() * 0xffffffff) >>> 0));
-        setRunning(true);
+        setPending(newGame(game === null ? seed : (Math.random() * 0xffffffff) >>> 0));
       }}
       onSettings={change}
     />

@@ -1251,7 +1251,26 @@ export function shootTarget(game: RoomGame): Entity | undefined {
  * What it shows is a snapshot, not a live feed: the machines are where they
  * were when it went off, and it is loud enough to raise the alert.
  */
+/**
+ * Turns between one pulse and the next.
+ *
+ * A scan reads structure through shut bulkheads and is loud enough to raise
+ * the alert, which is the whole trade — and a trade nobody can take twice in a
+ * row is a trade. Without the wait the answer to every question aboard is
+ * "scan again", and the hull stops being something you learn by walking it.
+ */
+export const PULSE_COOLDOWN = 5;
+
+/** Turns until the scanner will fire again. Zero when it is ready. */
+export function pulseWait(game: RoomGame): number {
+  const at = (game.player.data ?? {}).pulsedAt;
+  if (typeof at !== "number") return 0;
+  return Math.max(0, PULSE_COOLDOWN - (game.schedule.time - at));
+}
+
 function pulse(game: RoomGame): Outcome {
+  const wait = pulseWait(game);
+  if (wait > 0) return FAIL(t("why.pulse.cooling", { n: wait }));
   const here = game.roomOf(game.player).id;
   const found: string[] = [];
   for (const id of scanRooms(game.ship, here, PULSE_DOORS)) {
@@ -1265,6 +1284,7 @@ function pulse(game: RoomGame): Outcome {
     room.scanned = true;
     room.data.snapshot = snapshotOf(game, id);
   }
+  (game.player.data ??= {}).pulsedAt = game.schedule.time;
   game.makeNoise(here, PULSE_NOISE);
   game.log.add(t("log.pulse"), game.schedule.time, "warn", "log.pulse");
   for (const room of found) {

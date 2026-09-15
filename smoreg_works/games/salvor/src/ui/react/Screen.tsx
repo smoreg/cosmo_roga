@@ -134,8 +134,19 @@ export function Screen({
     again();
   };
 
-  /** A command that is about the drone rather than about anything in the room. */
+  /**
+   * A command that is about the drone rather than about anything in the room.
+   *
+   * A negative index is a line the view added rather than one the engine
+   * offered — the scan is the only one — and it names the rack slot to spend
+   * instead of a place in a list it was never in.
+   */
   const order = (offer: Offer): void => {
+    if (offer.index < 0) {
+      game.playerCommand({ kind: "act", verb: "use", slot: -1 - offer.index });
+      again();
+      return;
+    }
     const action = roomActions(game)[offer.index];
     if (action === undefined || !action.enabled) return;
     game.playerCommand(action.cmd);

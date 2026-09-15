@@ -1,4 +1,7 @@
+import { useEffect, useRef } from "react";
 import type { CSSProperties, ReactElement } from "react";
+import { linesOf, reveal } from "../reveal.js";
+import * as FX from "../../fx/derelict-fx.js";
 
 /**
  * The drone's rack, and the pieces it is made of.
@@ -50,17 +53,24 @@ export function SlashMeter({
   max = 8,
   tone = "good",
   style,
+  ...rest
 }: {
   label?: string;
   value?: number;
   max?: number;
   tone?: Tone;
   style?: CSSProperties;
+  /** How the rack finds this row again when this module is the one that was hit. */
+  "data-slot"?: string;
 }): ReactElement {
   const c = TONE[tone];
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, ...style }}>
-      {label === undefined ? null : <div style={LABEL}>{label}</div>}
+    <div {...rest} style={{ display: "flex", alignItems: "center", gap: 10, ...style }}>
+      {label === undefined ? null : (
+        <div data-sc style={LABEL}>
+          {label}
+        </div>
+      )}
       <div
         style={{
           flex: 1,
@@ -188,6 +198,42 @@ export function CoreRack({
   title?: string;
   style?: CSSProperties;
 }): ReactElement {
+  const rows = useRef<HTMLDivElement>(null);
+  /* What each module was worth last time this was drawn. A hit is a number
+     going down, and that is the only way the rack finds out one happened:
+     nothing tells it, and nothing needs to. */
+  const was = useRef<(number | undefined)[]>([]);
+
+  useEffect(function struck() {
+    const now = slots.map((s) => (s.name === undefined ? undefined : (s.value ?? 0)));
+    const last = was.current;
+    was.current = now;
+    if (rows.current === null) return;
+
+    /*
+     * The module that took the blow scrambles, and only that one.
+     *
+     * SALVOR has no hull bar: a hit lands on a *named* system, and the whole
+     * point of that design is lost if the player has to read four numbers to
+     * find out which. The scramble is the rack pointing at itself — the name
+     * that went wrong is the name that breaks up — and it costs nothing when
+     * motion is set to instant, which is the setting for players this would
+     * be noise for.
+     *
+     * A slot that has just been unbolted or burned out reads as `undefined`
+     * rather than as a drop, and is not a hit.
+     */
+    const hit: Element[] = [];
+    now.forEach((value, i) => {
+      const before = last[i];
+      if (before === undefined || value === undefined || value >= before) return;
+      const row = rows.current?.querySelector(`[data-slot="${String(i)}"]`);
+      if (row !== null && row !== undefined) hit.push(...linesOf(row));
+    });
+    if (hit.length === 0) return;
+    return reveal(hit, FX.PRESETS.value);
+  });
+
   return (
     <div style={style}>
       <div
@@ -212,7 +258,7 @@ export function CoreRack({
         </div>
         <CorePips value={core} max={coreMax} />
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 11 }}>
+      <div ref={rows} style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 11 }}>
         {slots.map((slot, i) =>
           /* A burned slot and an empty slot are the same thing to look at: the
              bay is there and nothing is in it. Naming what used to be in it is
@@ -239,6 +285,7 @@ export function CoreRack({
           ) : (
             <SlashMeter
               key={i}
+              data-slot={String(i)}
               label={slot.name}
               value={slot.value ?? 0}
               max={slot.max ?? 0}
