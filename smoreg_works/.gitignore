@@ -21,5 +21,11 @@ games/salvor/public/deck/
 # into the build. `games/salvor/public/audio/ATTRIBUTION.md` is the record.
 games/salvor/public/audio/music/
 
+# Sound effects, baked from the owner's WAVs by `node tools/sfx/bake.mjs`. Sixty
+# kilobytes, so the size is not the reason — the reason is that the sources are
+# not in this repository and what is committed is the recipe, the same
+# arrangement the music and the deck art have.
+games/salvor/public/audio/sfx/
+
 # The upload itself.
 games/salvor/*.zip

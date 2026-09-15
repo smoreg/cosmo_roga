@@ -8,6 +8,7 @@ import { Splash } from "./screens/Splash.js";
 import { Screen } from "./Screen.js";
 import { BUILD_VERSION } from "../title.js";
 import { MENU_MUSIC, missionTrackFor, music } from "./audio.js";
+import { sfx } from "./sfx.js";
 import {
   rememberMotion,
   rememberVolume,
@@ -50,6 +51,7 @@ export function App({ seed }: { seed: number }): ReactElement {
   useEffect(function first() {
     setMotion(storedMotion());
     music.setVolume(storedVolume());
+    sfx.setVolume(storedVolume());
   }, []);
 
   const change = (next: MenuSettings): void => {
@@ -58,6 +60,7 @@ export function App({ seed }: { seed: number }): ReactElement {
     rememberMotion(next.motion);
     setMotion(next.motion);
     music.setVolume(next.volume);
+    sfx.setVolume(next.volume);
   };
 
   /* The music follows where the run is: the menu track while the menu is up, a
@@ -77,7 +80,17 @@ export function App({ seed }: { seed: number }): ReactElement {
     [started, game, pending],
   );
 
-  if (!started) return <Splash onStart={() => setStarted(true)} />;
+  /* The click that starts the audio is also the moment the clips can be
+     fetched: before it the browser will not play anything anyway. */
+  if (!started)
+    return (
+      <Splash
+        onStart={() => {
+          sfx.warm();
+          setStarted(true);
+        }}
+      />
+    );
 
   /* The second between asking for a ship and being aboard one. The voyage is
      already built and waiting — the delay buys the change of place, not the
@@ -103,6 +116,7 @@ export function App({ seed }: { seed: number }): ReactElement {
         onMute={(next) => {
           setMuted(next);
           music.setVolume(next ? 0 : settings.volume);
+          sfx.setMuted(next);
         }}
         onSettings={change}
         onMenu={() => setRunning(false)}

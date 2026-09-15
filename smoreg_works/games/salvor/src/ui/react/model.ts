@@ -485,6 +485,27 @@ export function alertOf(game: RoomGame): number {
   return alertState(game).level;
 }
 
+/**
+ * Did the *hull* move a bulkhead this turn, or did the drone?
+ *
+ * The board marks the two differently and the difference is the whole point:
+ * a door the player threw themselves gets the cut-out alone — they just picked
+ * the verb, and a summons would point at where their cursor already is — while
+ * a door the ladder shut gets a mark as well, because nothing told them.
+ *
+ * Read off the log's keys, which is what a key is for: an opaque id for the
+ * event that survives rewording and translation, where the sentence does not.
+ */
+export function hullMovedDoor(game: RoomGame): boolean {
+  const now = game.schedule.time;
+  for (let i = game.log.lines.length - 1; i >= 0; i--) {
+    const line = game.log.lines[i]!;
+    if (line.turn !== now) return false;
+    if (line.key === "log.alert.door" || line.key === "log.alert.lock") return true;
+  }
+  return false;
+}
+
 /** The gauge with its word and its way back down, as the dial draws it. */
 export interface AlertModel {
   level: number;

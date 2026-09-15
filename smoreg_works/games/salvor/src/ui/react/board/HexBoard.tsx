@@ -862,9 +862,80 @@ export interface Route {
   blocked: BoardDoor | null;
 }
 
+/**
+ * Doors that changed state since the last frame, flickering once.
+ *
+ * This is the event the alert ladder produces most often — from HUNTING the
+ * ship starts shutting bulkheads and from LOCKDOWN it locks them — and until
+ * now a door simply *differed on the next frame*. A player watching the board
+ * would never catch it.
+ *
+ * So a door that changes cuts out and comes back where it stands: it did not
+ * travel, it changed. Several doors moving in the same watch are one event, so
+ * one sequence drives all of them rather than one blink each.
+ */
+function useDoorChanges(doors: readonly BoardDoor[], byHull: boolean): {
+  cutOut: ReadonlySet<number>;
+  mark: ReadonlySet<number>;
+} {
+  const was = useRef<Map<number, string> | null>(null);
+  const [moved, setMoved] = useState<ReadonlySet<number>>(NO_DOORS);
+  const [marked, setMarked] = useState<ReadonlySet<number>>(NO_DOORS);
+  const [dark, setDark] = useState(false);
+
+  useEffect(
+    function changed() {
+      const now = new Map(doors.map((d) => [d.id, d.state]));
+      const last = was.current;
+      was.current = now;
+      /* The first frame is not a change: every door is new on it. */
+      if (last === null) return;
+      const shifted = new Set<number>();
+      for (const [id, state] of now) {
+        const before = last.get(id);
+        if (before !== undefined && before !== state) shifted.add(id);
+      }
+      if (shifted.size === 0) return;
+      setMoved(shifted);
+      /* Whose doing it was decides whether it is also summoned. Same mark a
+         refusal uses, which is right: both mean *look here*, and a mark that
+         clears itself says "this just moved" rather than "this is wrong". */
+      setMarked(byHull ? shifted : NO_DOORS);
+      const run = FX.frames(
+        [
+          () => setDark(true),
+          () => setDark(false),
+          () => setDark(true),
+          () => setDark(false),
+        ],
+        {
+          frame: FX.FRAME / 2,
+          onDone: () => {
+            setMoved(NO_DOORS);
+            setMarked(NO_DOORS);
+          },
+        },
+      );
+      return () => {
+        run.cancel();
+        /* However it ends, the board ends showing the doors it has. */
+        setDark(false);
+        setMoved(NO_DOORS);
+        setMarked(NO_DOORS);
+      };
+    },
+    [doors],
+  );
+
+  return { cutOut: dark ? moved : NO_DOORS, mark: marked };
+}
+
+const NO_DOORS: ReadonlySet<number> = new Set<number>();
+
 export function HexBoard({
   rooms,
   doors,
+  hullMoved,
   drone,
   route,
   size = 118,
@@ -887,9 +958,14 @@ export function HexBoard({
   onDoorAct?: (door: BoardDoor, index: number) => void;
   /** Which drone is aboard, so the mark is drawn as the machine it is. */
   who?: string;
+  /** True when the ship, not the drone, is what moved a bulkhead this turn. */
+  hullMoved?: boolean;
   style?: CSSProperties;
 }): ReactElement {
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  /* Bulkheads that just moved, blinked out on alternate frames so the change
+     is something the player sees happen rather than something that differs. */
+  const { cutOut, mark } = useDoorChanges(doors, hullMoved === true);
   const [hover, setHover] = useState<number | null>(null);
   const [door, setDoor] = useState<number | null>(null);
   /* A menu that only lives while the pointer is on it is a menu you race. A
@@ -1106,7 +1182,25 @@ export function HexBoard({
           const n = onPath(d.a, d.b);
           const shut = blocked?.id === d.id;
           return (
-            <div key={d.id}>
+            <div key={d.id} style={cutOut.has(d.id) ? { visibility: "hidden" } : undefined}>
+              {/* The hull's doing, summoned. A diamond on the bulkhead the
+                  ship just moved, for as long as the cut-out runs and then
+                  gone — the player did not ask for this one. */}
+              {!mark.has(d.id) ? null : (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: (p.x + q.x) / 2 - 5,
+                    top: (p.y + q.y) / 2 - 5,
+                    width: 10,
+                    height: 10,
+                    background: "var(--sv-bad)",
+                    transform: "rotate(45deg)",
+                    zIndex: 8,
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
               <div
                 onMouseEnter={() => {
                   if (pinned) return;

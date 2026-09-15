@@ -7,9 +7,10 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame } from "../src/game.js";
 import { undock } from "../src/systems/voyage.js";
 import { Screen } from "../src/ui/react/Screen.js";
-import { alertModelOf, boardOf } from "../src/ui/react/model.js";
+import { alertModelOf, boardOf, hullMovedDoor } from "../src/ui/react/model.js";
 import { raiseAlert } from "../src/systems/alert.js";
 import * as FX from "../src/ui/fx/derelict-fx.js";
+import { sfx, soundFor, swingOf } from "../src/ui/react/sfx.js";
 import { DOORS } from "../src/systems/doors.js";
 import { RIG, findSlot, pulseWait, rigOf, PULSE_COOLDOWN } from "../src/twist/rig.js";
 import { commandsOf } from "../src/ui/react/model.js";
@@ -362,5 +363,53 @@ describe("what the design asked the screen to say out loud", () => {
     expect(alertModelOf(game).word).not.toBe("QUIET");
     /* The only clock this mechanic has is the way back down. */
     expect(alertModelOf(game).needed).toBeGreaterThan(0);
+  });
+});
+
+describe("a bulkhead that changes says so", () => {
+  it("knows the hull shut it from the log's own key, not from the sentence", () => {
+    const game = gameOn();
+    expect(hullMovedDoor(game)).toBe(false);
+    /* The key is the event; the sentence is for the player and gets rewritten.
+       A door the drone threw itself must never raise the mark — it is the mark
+       for "nothing told you this happened". */
+    game.log.add("You pull d1 shut.", game.schedule.time, "plain", "log.door.close");
+    expect(hullMovedDoor(game)).toBe(false);
+    game.log.add("The ship shuts d1 behind you.", game.schedule.time, "bad", "log.alert.door");
+    expect(hullMovedDoor(game)).toBe(true);
+    /* And it is this turn's news only. */
+    game.playerCommand({ kind: "wait" });
+    expect(hullMovedDoor(game)).toBe(false);
+  });
+});
+
+describe("the sound never breaks the press it decorates", () => {
+  /**
+   * The bug this exists for, found by two other tests going red at once: under
+   * a headless DOM `HTMLMediaElement.play()` throws synchronously rather than
+   * rejecting, and the throw came out of the click handler the sound was
+   * decorating — so a scan and a menu row simply stopped working the moment
+   * they were given a click sound.
+   */
+  it("swallows a media element that cannot play", () => {
+    expect(() => {
+      sfx.setVolume(1);
+      sfx.click();
+      sfx.play("step");
+      sfx.warm();
+    }).not.toThrow();
+  });
+
+  it("names the drone's swing off the same rack the rig swings with", () => {
+    const game = gameOn();
+    /* A starting rack has a CUTTER, which is a swing and not a shot. */
+    expect(swingOf(game)).toBe("melee");
+    /* And what hits the drone is never what the drone is holding. */
+    expect(soundFor("log.hit.module", game)).toBe("incoming");
+    expect(soundFor("log.emitter.hit", game)).toBe("emitter");
+    expect(soundFor("engine.hit.you", game)).toBe(swingOf(game));
+    /* Almost everything is silent, which is the point of having seven. */
+    expect(soundFor("log.credit", game)).toBeUndefined();
+    expect(soundFor(undefined, game)).toBeUndefined();
   });
 });

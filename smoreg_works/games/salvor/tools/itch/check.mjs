@@ -49,6 +49,16 @@ else {
   else ok(`${tracks.length} tracks`);
 }
 
+/* And the effects, which are small enough to forget and loud enough to miss. */
+const sfx = join(dist, "audio", "sfx");
+if (!existsSync(sfx)) {
+  fail.push("no audio/sfx — run `node tools/sfx/bake.mjs`");
+} else {
+  const cuts = readdirSync(sfx).filter((f) => f.endsWith(".ogg"));
+  if (cuts.length < 7) fail.push(`audio/sfx has ${cuts.length} of 7 effects`);
+  else ok(`${cuts.length} effects`);
+}
+
 /* And the notices both sets of art are used under. */
 for (const notice of [join(dist, "deck", "LICENCE.md"), join(dist, "audio", "ATTRIBUTION.md")]) {
   if (!existsSync(notice)) fail.push(`the build is missing ${notice.replace(dist, "dist")}`);

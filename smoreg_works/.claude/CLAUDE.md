@@ -105,6 +105,7 @@ npm run new-game -- <id> "Имя"    # новая игра из шаблона
 node tools/deck/bake.mjs          # из games/salvor: палубная графика в public/deck
 node tools/audio/copy.mjs        # из games/salvor: музыка в public/audio
 node tools/machines/fetch.mjs    # из games/salvor: иконки машин и дрона (сеть)
+node tools/sfx/bake.mjs          # из games/salvor: семь эффектов в public/audio/sfx
 npm run zip -w games/salvor      # dist + проверка + derelict-rogue-web.zip
 npm run publish:itch -w games/salvor   # то же + butler push на itch
 ```

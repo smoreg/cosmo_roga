@@ -5,6 +5,7 @@ import { LogStrip } from "../action/Log.js";
 import { linesOf, reveal } from "../reveal.js";
 import * as FX from "../../fx/derelict-fx.js";
 import { FRAME_MS, type Motion } from "../settings.js";
+import { sfx } from "../sfx.js";
 
 /**
  * The main menu, which is the game with its own menu open.
@@ -41,7 +42,16 @@ function Row({
 }): ReactElement {
   return (
     <div
-      onClick={on ? onPick : undefined}
+      /* Every row of the menu answers the hand the same way the game's own
+         controls do — the click is what says the machine took the press. */
+      onClick={
+        on === false || onPick === undefined
+          ? undefined
+          : () => {
+              sfx.click();
+              onPick();
+            }
+      }
       onMouseEnter={(e) => {
         if (on) e.currentTarget.style.background = "color-mix(in oklab, var(--sv-amber) 16%, transparent)";
       }}
@@ -78,7 +88,10 @@ function Pick<T extends string>({
       {of.map((one) => (
         <span
           key={one}
-          onClick={() => onPick(one)}
+          onClick={() => {
+            sfx.click();
+            onPick(one);
+          }}
           style={{
             flex: 1,
             textAlign: "center",
@@ -201,6 +214,7 @@ export function Menu({
                   ["menu music", "3D63 — Analog Hack"],
                   ["icons", "game-icons.net — Lorc, Delapouite, Lord Berandas, DarkZaitzev"],
                   ["deck plating", "RPG Mobius Geomorphs — Pearce & Smith"],
+                  ["sound", "supplied by the author"],
                   ["typefaces", "Barlow Condensed · IBM Plex Mono"],
                 ].map(([k, v]) => (
                   <div

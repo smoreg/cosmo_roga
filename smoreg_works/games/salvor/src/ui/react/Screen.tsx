@@ -8,7 +8,8 @@ import { AlertDial, CoreRack, SegmentMeter } from "./meters/Rack.js";
 import { LogStrip } from "./action/Log.js";
 import * as FX from "../fx/derelict-fx.js";
 import { motionNow } from "./settings.js";
-import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf, workingOf, alertModelOf } from "./model.js";
+import { sfx, soundFor } from "./sfx.js";
+import { alertOf, boardOf, codexOf, commandsOf, goalOf, hereOf, endingOf, isHome, logOf, offersOf, rackOf, routeIn, nameOfDrone, tugOf, whoOf, workingOf, alertModelOf, hullMovedDoor } from "./model.js";
 import type { Offer } from "./model.js";
 import { doorWays } from "../doorlist.js";
 import { deckVersion, loadDeckIndex, watchDeck } from "./deckindex.js";
@@ -130,6 +131,7 @@ export function Screen({
 
   /** A line of the tug's list, spent. A group opens instead of spending. */
   const pick = (offer: Offer): void => {
+    sfx.click();
     const action = roomActions(game, level ?? undefined)[offer.index];
     if (action === undefined || !action.enabled) return;
     game.playerCommand(action.cmd);
@@ -146,6 +148,7 @@ export function Screen({
    * view never carried the command itself, so it cannot have edited it.
    */
   const doorAct = (door: BoardDoor, index: number): void => {
+    sfx.click();
     const action =
       index >= 0 ? doorWays(game, door.id)?.[index] : roomActions(game)[-1 - index];
     if (action === undefined || !action.enabled) return;
@@ -161,6 +164,7 @@ export function Screen({
    * instead of a place in a list it was never in.
    */
   const order = (offer: Offer): void => {
+    sfx.click();
     if (offer.index < 0) {
       game.playerCommand({ kind: "act", verb: "use", slot: -1 - offer.index });
       again();
@@ -276,6 +280,42 @@ export function Screen({
   const commands = useMemo(() => commandsOf(game), [game, turn]);
   const working = useMemo(() => workingOf(game), [game, turn]);
   const alert = useMemo(() => alertModelOf(game), [game, turn]);
+  /*
+   * The noise a turn made.
+   *
+   * Read off the log after the fact rather than pushed out by whatever caused
+   * it, for the same reason the codex reads the state: there are a dozen paths
+   * to a blow landing, and a sound that needed each of them to remember to
+   * announce itself is a sound that is missing on the path nobody thought of.
+   * Only lines this screen has not already heard, so a re-render is silent.
+   */
+  const heard = useRef(0);
+  const wasIn = useRef<RoomId | null>(null);
+  useEffect(
+    function noise() {
+      const lines = game.log.lines;
+      /* The log is capped, so its length is not a cursor once it is full: what
+         is new is what was written on a turn we have not sounded yet. */
+      const now = game.schedule.time;
+      if (heard.current !== now) {
+        heard.current = now;
+        for (const line of lines) {
+          if (line.turn !== now) continue;
+          const id = soundFor(line.key, game);
+          if (id !== undefined) sfx.play(id);
+        }
+      }
+      /* And the step, which writes no line at all: walking through a door is
+         the most common thing in the game and the quietest. */
+      const here = game.player.room ?? null;
+      if (wasIn.current !== null && here !== null && here !== wasIn.current) sfx.play("step");
+      wasIn.current = here;
+    },
+    [game, turn],
+  );
+
+  /* Whether the bulkhead that just moved was the ship's doing or the drone's. */
+  const hullMoved = useMemo(() => hullMovedDoor(game), [game, turn]);
   const goal = useMemo(() => goalOf(game), [game, turn]);
   /* Which machine this drone was built as. A fact about the sortie, so it is
      read once and not per cell. */
@@ -310,6 +350,7 @@ export function Screen({
    * a walk that halts without saying why reads as a refusal.
    */
   const walk = (to: RoomId): void => {
+    sfx.click();
     const traveller = makeTraveller(to);
     /* Bounded, because a traveller that is asked for one more step forever is
        a page that stops answering. No hull has this many compartments. */
@@ -334,6 +375,7 @@ export function Screen({
    * things, and the wrong one would be spent the first time they collided.
    */
   const act = (_room: BoardRoom, thing: BoardThing): void => {
+    sfx.click();
     const id = Number(thing.id.slice(1));
     const entity = thing.id.startsWith("m");
     const action = roomActions(game).find((a) => {
@@ -370,6 +412,7 @@ export function Screen({
         style={{ gridColumn: 1, gridRow: 1, zIndex: 90 }}
         active={sheet === "none" ? undefined : sheet}
         onSelect={(id) => {
+          sfx.click();
           if (id === "sys") {
             onMenu?.();
             return;
@@ -411,6 +454,7 @@ export function Screen({
           <HexBoard
             rooms={board.rooms}
             doors={board.doors}
+            hullMoved={hullMoved}
             drone={board.drone}
             route={route}
             onWalk={(to) => walk(to)}
