@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "tiles": "node tools/tiles/tiles.mjs",
     "zip": "npm run build && cd dist && zip -qr ../derelict-rogue-web.zip . && cd .. && node tools/itch/check.mjs && echo 'dist -> derelict-rogue-web.zip ready for an itch.io HTML5 upload'",
-    "publish:itch": "npm run zip && butler push dist vuvko/derelict-rogue:html5 --userversion $npm_package_version"
+    "publish:itch": "npm run zip && butler push dist vuvko/derelict-rogue-14drl:html5 --userversion $npm_package_version"
   },
   "dependencies": {
     "@jamrog/audio": "*",

@@ -114,7 +114,10 @@ npm run zip -w games/salvor      # dist + проверка + derelict-rogue-web.
 npm run publish:itch -w games/salvor   # то же + butler push на itch
 ```
 
-**Куда публикуется:** <https://vuvko.itch.io/derelict-rogue>, канал `html5`.
+**Куда публикуется:** <https://vuvko.itch.io/derelict-rogue-14drl>, канал `html5`.
+Старый адрес `/derelict-rogue` отдаёт 302 на этот — браузер по нему пройдёт, а
+API butler'а нет: `butler push vuvko/derelict-rogue:html5` падает с «invalid
+game». Цель — всегда полный slug.
 `butler push` отправляет папку `dist`, а не zip: butler считает разницу, и
 следующая заливка везёт только изменившееся. Zip остаётся для ручной загрузки
 через форму. Перед заливкой отрабатывает `tools/itch/check.mjs`: все ссылки в
