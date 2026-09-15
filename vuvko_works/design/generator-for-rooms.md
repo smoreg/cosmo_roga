@@ -239,6 +239,22 @@ a black break in it:
   step as well, where the one at 25 meets the one at 75. An opening anywhere
   else meets its neighbour's wall.
 
+**Ask the taxonomy, do not infer from it.** Two faults came from reading
+`skin` as if it meant one thing.
+
+`source` says where the plating was read from. "art" means the hull curve is
+actually drawn on those sides; "folder" means it was guessed from the folder
+name because the art showed none — and the taxonomy's own note records that
+this guess "stamped 135 of the 143 fully walled 50 ft rooms as hull corners on
+the strength of their folder name alone". Those were the open rooms turning up
+at the edge of the ship with their walls missing. Folder-sourced plating is now
+refused outright, on the big tiles as well as the small.
+
+`class` is the archive's own word for a piece's shape — cap, corner, edge,
+core, side, loose, island. 211 of the fifty-foot pieces are corners; asking for
+"anything with two plated sides" instead got masts, scoops and an engine block
+used as a chamfer. A drive is not plating: it has its own place at the stern.
+
 **Fifty-foot corners chamfer the steps.** A hundred-foot grid can only change
 beam a hundred feet at a time, so an outline comes out as a flight of stairs.
 145 of the archive's fifty-foot pieces have plating on two adjoining sides and

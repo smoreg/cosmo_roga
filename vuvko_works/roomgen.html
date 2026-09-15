@@ -353,20 +353,45 @@ async function loadTiles(){
          that are edge art: a corner of open deck laid into a hull step reads
          as a hole rather than as plating. */
       if (ft[0] === 50 && ft[1] === 50){
-        /* Corner plating, and only that. Most of the fifty-foot pieces are
-           external fittings — masts, scoops, shuttles — and a notch filled
-           with one of those reads as debris beside the ship rather than as
-           the hull carrying on. A real corner has plating on two adjoining
-           sides and no art spilling off it. */
+        /* Corner plating, and the taxonomy is asked rather than guessed at.
+           Three tests, each of which was learnt from a picture:
+
+           `class` is the archive's own word for the shape — 211 of the
+           fifty-foot pieces are corners and the rest are caps, edges, cores
+           and loose fittings, which is why filling a notch with "anything
+           with two plated sides" put masts and shuttles beside the ship.
+
+           `source` says where the plating was read from. "art" means the hull
+           curve is actually drawn on those sides; "folder" means it was
+           guessed from the folder name because the art showed none, and the
+           taxonomy's own note says that guess stamped 135 of 143 fully walled
+           rooms as hull corners. Those are the open rooms that were turning up
+           at the edge of the ship with their walls missing.
+
+           And a drive is not plating. An engine block has its own place at the
+           stern; it is not what a step in the hull is made of. */
         const sk = tile.skin || [];
-        if (sk.length !== 2 || (tile.proud || []).length) continue;
+        if (sk.length !== 2) continue;
+        if (tile.class !== "corner" || tile.source !== "art") continue;
+        if ((tile.proud || []).length) continue;
+        if ((tile.roles || []).some(r => r === "drive" || r === "fuel")) continue;
+        if (!sk.every(k => (tile.sides || {})[k] === "shaped")) continue;
         bleed.set(path, drawable.get(path));
-        const key = sk.slice().sort().join("");
-        if (!corner.has(key)) corner.set(key, []);
-        corner.get(key).push(path);
+        /* The archive draws a corner in whichever hand it was drawn in, so the
+           four orientations are reached by flipping rather than by hoping one
+           of each exists. Registered under every pair it can be turned into. */
+        for (const flip of FLIPS){
+          const pair = sk.map(k => flip.of(TILE_SHIP[k])).sort().join("");
+          if (!corner.has(pair)) corner.set(pair, []);
+          corner.get(pair).push({path, flip});
+        }
         continue;
       }
       if (ft[0] !== 100 || ft[1] !== 100) continue;
+      /* Same caution on the big tiles: plating guessed from a folder name is
+         not plating, so a tile is only allowed to claim a side faces space
+         when the hull curve is drawn on it. */
+      if (tile.source === "folder") continue;
       all.push(path);
       skin.set(path, tile.skin || []);
       doors.set(path, tile.doors || {});
@@ -398,6 +423,24 @@ async function loadTiles(){
  * and every wall and doorway is matched against the wrong edge as well.
  */
 const TILE_SIDE = {e: "n", s: "e", w: "s", n: "w"};
+
+/** The same map read the other way: which way a tile's own edge ends up facing. */
+const TILE_SHIP = {n: "e", e: "s", s: "w", w: "n"};
+
+/**
+ * The four hands a corner can be drawn in.
+ *
+ * The archive draws each corner once, in whichever hand it was drawn in, so
+ * three of the four orientations simply do not exist as files. They exist as
+ * reflections, which is how the archive itself ships its `[Mirror]` variants —
+ * so the missing ones are made rather than waited for.
+ */
+const FLIPS = [
+  {sx: 1,  sy: 1,  of: (d) => d},
+  {sx: -1, sy: 1,  of: (d) => (d === "e" ? "w" : d === "w" ? "e" : d)},
+  {sx: 1,  sy: -1, of: (d) => (d === "n" ? "s" : d === "s" ? "n" : d)},
+  {sx: -1, sy: -1, of: (d) => (d === "e" ? "w" : d === "w" ? "e" : d === "n" ? "s" : "n")},
+];
 
 /**
  * Where a doorway has to sit for two tiles to meet at it.
@@ -958,14 +1001,18 @@ function draw(ship, art, sections){
         if (!pool || !pool.length) continue;
         const cx = (near.q + near.r / 2) * pitch, cy = near.r * pitch;
         const chosen = pick(trimRand, pool);
-        const span = pitch * (TILES.bleed.get(chosen) ?? 1);
-        plan.appendChild(el("image", {
-          href: "geomorphs/" + chosen,
-          x: cx - span / 2, y: cy - span / 2, width: span, height: span,
-          preserveAspectRatio: "none",
-          transform: "rotate(90 " + cx + " " + cy + ")",
+        const span = pitch * (TILES.bleed.get(chosen.path) ?? 1);
+        const plate = el("g", {
+          transform: "translate(" + cx + " " + cy + ") rotate(90) scale("
+            + chosen.flip.sx + " " + chosen.flip.sy + ")",
           opacity: .85,
+        });
+        plate.appendChild(el("image", {
+          href: "geomorphs/" + chosen.path,
+          x: -span / 2, y: -span / 2, width: span, height: span,
+          preserveAspectRatio: "none",
         }));
+        plan.appendChild(plate);
       }
     }
     ship.rooms.forEach(function plate(room, i){
