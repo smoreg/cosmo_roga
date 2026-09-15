@@ -10,6 +10,7 @@ import {
 } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
+import { strayChance } from "../src/systems/crowd.js";
 import { BLOOM_KIND, CRAWLER, CROWD, ENFORCER, JAMMER, MONSTERS, SENTRY_TURRET } from "../src/content/monsters.js";
 import { moduleKind, type ModuleId } from "../src/content/modules.js";
 import { BLOOM } from "../src/systems/bloom.js";
@@ -476,5 +477,107 @@ describe("the shocker seizes the compartment", () => {
     // Once the stun is gone it shoots again.
     wait(game, 2);
     expect(intact(game)).toBeLessThan(before);
+  });
+});
+
+// -------------------------------------------------------------------- crowd
+
+/**
+ * G90 B, the owner's two rules of a crowded fight: of the machines in the
+ * drone's compartment only two — three on a coin — land a blow in one turn,
+ * and a shot from the next compartment can find one of them instead.
+ */
+describe("a crowd of three lands two blows a turn, or three", () => {
+  /** A blow that always lands for exactly one point, so counting is counting. */
+  const BRUTE = { ...MONSTERS.find((m) => m.id === "security-unit")!, damage: [1, 1, 0] as [number, number, number] };
+
+  it("holds the third machine back on half the turns, and says so", () => {
+    const game = gameOn(LINE, GAME_CONFIG.systems as Array<Twist<RoomGame>>, 11);
+    rigOf(game.player)!.slots.fill(null);
+    for (let i = 0; i < 3; i++) put(game, "r1", BRUTE);
+    game.player.hp = 500;
+    game.player.hpMax = 500;
+
+    const perTurn: number[] = [];
+    let held = 0;
+    for (let turn = 0; turn < 40; turn++) {
+      const before = game.player.hp;
+      const lines = game.log.lines.length;
+      game.playerCommand({ kind: "wait" });
+      perTurn.push(before - game.player.hp);
+      held += game.log.lines.slice(lines).filter((l) => l.key === "log.crowd.hold").length;
+    }
+    // Three brutes at the drone's own pace swing a little more than three
+    // times a turn between them, so without the cap some turns would take
+    // four; with it none does, and the turns split between two and three.
+    expect(Math.max(...perTurn), "never more than three").toBeLessThanOrEqual(3);
+    expect(perTurn.filter((n) => n === 2).length, "two on some turns").toBeGreaterThan(0);
+    expect(perTurn.filter((n) => n === 3).length, "three on others").toBeGreaterThan(0);
+    expect(held, "a line for every machine held back").toBeGreaterThan(0);
+    expect(held, "and never one on a turn nobody was").toBeGreaterThanOrEqual(perTurn.filter((n) => n === 2).length);
+  });
+
+  it("is never a shield: two machines land every blow of theirs a turn", () => {
+    // Two brutes swing at most twice a turn between them at the drone's own
+    // pace — a third swing is the scheduler letting one act twice, and the
+    // cap only ever holds back what a third machine would have added.
+    const game = gameOn(LINE, GAME_CONFIG.systems as Array<Twist<RoomGame>>, 11);
+    rigOf(game.player)!.slots.fill(null);
+    for (let i = 0; i < 2; i++) put(game, "r1", BRUTE);
+    game.player.hp = 500;
+    game.player.hpMax = 500;
+    wait(game, 20);
+    expect(game.player.hp).toBeLessThanOrEqual(500 - 40);
+  });
+});
+
+describe("a shot from the next compartment", () => {
+  it("finds a machine beside the drone on about half the shots, and never with nobody there", () => {
+    const game = gameOn(LINE, GAME_CONFIG.systems as Array<Twist<RoomGame>>, 5);
+    rigOf(game.player)!.slots.fill(null);
+    game.player.hp = 500;
+    game.player.hpMax = 500;
+    // A turret in the next compartment, and a bloom — which never moves and
+    // never strikes — standing in the drone's. Every turret round is a shot.
+    put(game, "r2");
+    const bystander = put(game, "r1", BLOOM_KIND);
+    bystander.hp = 500;
+    bystander.hpMax = 500;
+
+    let stray = 0;
+    let taken = 0;
+    for (let turn = 0; turn < 120; turn++) {
+      const lines = game.log.lines.length;
+      game.playerCommand({ kind: "wait" });
+      const fresh = game.log.lines.slice(lines);
+      stray += fresh.filter((l) => l.key === "log.shot.stray").length;
+      taken += fresh.filter((l) => l.key === "log.hit.module" || l.key === "engine.hit.taken").length;
+    }
+    expect(stray, "some shots go into the bystander").toBeGreaterThan(20);
+    expect(taken, "the rest still reach the drone").toBeGreaterThan(20);
+    expect(stray / (stray + taken)).toBeLessThanOrEqual(0.5 + 0.12);
+    expect(bystander.hp, "the bystander took them").toBeLessThan(500);
+    expect(
+      game.log.lines.some((l) => l.key === "log.shot.stray" && l.text.includes("bloom")),
+      "the line names what the shot found instead",
+    ).toBe(true);
+  });
+
+  it("never strays with the drone alone in its compartment", () => {
+    const game = gameOn(LINE, GAME_CONFIG.systems as Array<Twist<RoomGame>>, 5);
+    rigOf(game.player)!.slots.fill(null);
+    game.player.hp = 500;
+    game.player.hpMax = 500;
+    put(game, "r2");
+    wait(game, 30);
+    expect(game.log.lines.some((l) => l.key === "log.shot.stray")).toBe(false);
+    expect(game.player.hp).toBeLessThan(500);
+  });
+
+  it("caps the chance at a half however many stand beside the drone", () => {
+    expect(strayChance(0)).toBe(0);
+    expect(strayChance(1)).toBe(0.5);
+    expect(strayChance(2)).toBe(0.5);
+    expect(strayChance(9)).toBe(0.5);
   });
 });

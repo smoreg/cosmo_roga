@@ -1,10 +1,13 @@
-import type { DoorId, RoomCommand, RoomGame, RoomId } from "@jamrog/engine";
+import type { Door, DoorId, RoomCommand, RoomGame, RoomId } from "@jamrog/engine";
+import { doorStateWord } from "../content/words.js";
 import { isTug } from "../content/tug.js";
 import { t } from "../i18n.js";
 import {
   ACTION_KEYS,
   doorStands,
+  lessonGateOf,
   roomActions,
+  tugOnce,
   tugRowIndex,
   swapStands,
   tugStands,
@@ -18,9 +21,17 @@ import type { ModuleId } from "../content/modules.js";
 import { codexQueue, readCodex, seenCodex } from "../systems/codex.js";
 import { rigOf } from "../twist/rig.js";
 import { HISTORY_ROWS, historyPages } from "./logline.js";
-import { airlockRoom, passableForPlayer, travelRoute } from "./auto.js";
+import { airlockRoom, dangerAhead, passableForPlayer, safeForPlayer, travelRoute } from "./auto.js";
 import { doorLevel, doorWays, doorWaysStand, doorsStand, sealBehind, soleWay } from "./doorlist.js";
+import { gateRefuses } from "./lessongate.js";
+import { lessonStatus } from "../systems/tutorial.js";
+import { briefing } from "./lessoncard.js";
+import { isTraining } from "../content/tutorial.js";
 import { voyageRecord } from "../systems/voyage.js";
+import { systemsUp } from "../systems/shipstate.js";
+import { OBJECTIVE_COUNT } from "../content/objectives.js";
+import { SCREEN_WIDTH } from "./theme.js";
+import { virusOf } from "../systems/virus.js";
 import {
   DEFAULT_TITLE,
   seedOf,
@@ -57,6 +68,26 @@ export type Overlay =
   | "won"
   | "lost"
   | "sold"
+  /**
+   * The virus aboard: which strain, what it does, how to be rid of it
+   * (docs/tasks/G90-smoreg-wave.md, C2). Raised by itself on the turn the drone
+   * catches one, and by `v` or a click on the panel's virus line. Any key puts
+   * it away, and none of that is a turn.
+   */
+  | "virus"
+  /**
+   * What the job is, on the first frame of a training run (G96, 2): three
+   * sentences before step one. Any key puts it away, and none of that is a
+   * turn.
+   */
+  | "brief"
+  /**
+   * The third system is up and the hull is worth its price the moment it is
+   * under tow — which it is not until the drone is out through the airlock
+   * (docs/tasks/G95-smoreg-wave.md, B2). Once a run, raised by itself on the
+   * turn the last system starts, and any key puts it away.
+   */
+  | "airlock"
   | "crash";
 
 /** Overlays that mean the run, or this sortie, is over: they outrank the board. */
@@ -99,6 +130,7 @@ export type AppEffect =
   | { kind: "fight"; melee: boolean }
   /** Abort a walk in progress. */
   | { kind: "stopAuto" }
+  /** The language changed under the whole screen. Redraw, spend nothing. */
   /**
    * New seed, new voyage.
    *
@@ -276,17 +308,49 @@ export interface AppState {
    * replay can reach it.
    */
   readonly seedText: string | undefined;
+  /**
+   * The compartment under the mouse on the honeycomb, if any: aimed at the way
+   * the highlighted line of the list aims, and drawn with the route to it, but
+   * never a turn (G90 D4). Set by the page only (`hovered`) and dropped by the
+   * next key or click, so a pointer resting on the map cannot outvote the arrows.
+   */
+  readonly hover?: RoomId | undefined;
+  /**
+   * Whether this run has already been shown the airlock card.
+   *
+   * Once a run and not once a hull: the rule it states does not change, and the
+   * second telling is a card in the way of a player who already walked out with
+   * the money once. Here rather than on the drone because it is about what has
+   * been *read*, and because a fresh run is a fresh state (`newRunState`) — a
+   * save reloaded mid-hull never sees it twice either, since the marks are read
+   * afresh off the game and the edge it is raised on is already behind them.
+   */
+  readonly airlockTold: boolean;
   /** The last transition's output. Recomputed on every step; never history. */
   readonly effect: AppEffect;
 }
 
-/** Drones lost and hulls sold over the voyage so far. */
+/** Drones lost and hulls sold over the voyage so far, and whether the drone is infected. */
 export interface SortieMarks {
   readonly lost: number;
   readonly sold: number;
+  /**
+   * The third thing a turn can raise a card for: the drone carrying a virus it
+   * was not carrying the last time this looked (G90). A boolean, because one
+   * virus per drone is the rule (`systems/virus.ts`) and what is noticed is the
+   * edge from clean to infected, however the last one was got rid of.
+   */
+  readonly infected: boolean;
+  /**
+   * Every system of the hull the drone is standing in is up. False at home and
+   * on a hull with work left, so the edge into it is the turn the third system
+   * starts — the moment the whole price of the hull becomes a thing that can
+   * still be lost by staying aboard.
+   */
+  readonly online: boolean;
 }
 
-const NO_MARKS: SortieMarks = { lost: 0, sold: 0 };
+const NO_MARKS: SortieMarks = { lost: 0, sold: 0, infected: false, online: false };
 
 /**
  * What the run has to show for itself, counted off the voyage record.
@@ -296,24 +360,34 @@ const NO_MARKS: SortieMarks = { lost: 0, sold: 0 };
  * the tests), and a question must never be the thing that starts a run.
  */
 function marksOf(game: RoomGame): SortieMarks {
+  const infected = virusOf(game.player) !== undefined;
+  // Aboard only, and off the ship's own record rather than the voyage's copy of
+  // it: the copy is written when the drone leaves (`systems/voyage.ts`,
+  // `returnToTug`), which is a turn too late for a card about not leaving yet.
+  const online = !isTug(game) && systemsUp(game) >= OBJECTIVE_COUNT;
   const voyage = voyageRecord(game);
-  if (!voyage) return NO_MARKS;
+  if (!voyage) return { ...NO_MARKS, infected, online };
   return {
     lost: voyage.state.reduce((n, s) => n + s.deaths.length, 0),
     sold: voyage.state.filter((s) => s.sold).length,
+    infected,
+    online,
   };
 }
 
 const IDLE: AppEffect = { kind: "idle" };
 const PASS: AppEffect = { kind: "pass" };
 
-/** Leaving the title: the same state whichever line was pressed. */
+/**
+ * Leaving the title: the same state whichever line was pressed — and, over a
+ * training run that has not moved, the card that says what the job is.
+ */
 function started(state: AppState, game: RoomGame): AppState {
   return {
     ...state,
     seedText: undefined,
     titleHelp: false,
-    overlay: "none",
+    overlay: briefing(game) ? "brief" : "none",
     exploring: false,
     ask: undefined,
     warned: undefined,
@@ -328,6 +402,7 @@ function started(state: AppState, game: RoomGame): AppState {
     codex: [],
     codexAt: 0,
     seen: marksOf(game),
+    airlockTold: false,
     effect: IDLE,
   };
 }
@@ -359,6 +434,7 @@ export function initialState(settings: TitleSettings = DEFAULT_TITLE): AppState 
     codex: [],
     codexAt: 0,
     seen: NO_MARKS,
+    airlockTold: false,
     effect: IDLE,
   };
 }
@@ -478,19 +554,41 @@ function listFor(
  * last lit box behind as a lie.
  */
 export function aimedAt(game: RoomGame, state: AppState): RoomId | undefined {
-  return listOf(game, state)[state.cursor]?.leadsTo;
+  return state.hover ?? listOf(game, state)[state.cursor]?.leadsTo;
 }
 
-/** Lines of the list that have a key, which is as far as the cursor may go. */
+/** What the map is pointed at: the compartment, and the doors of the walk there. */
+export interface MapAim {
+  readonly room: RoomId | undefined;
+  readonly route: ReadonlySet<DoorId>;
+}
+
+const NO_ROUTE: ReadonlySet<DoorId> = new Set();
+
 /**
- * How far the highlight may go: every line of the list, numbered or not.
- *
- * It used to count numbered lines only, which is half of why an eleventh line
- * could not be reached by anything (docs/tasks/G55-playtest-findings.md, 4).
- * The ten digits are a window over this, moved by the arrows (`windowStart`).
+ * The aim, with the way to it: the doors a walk there would take, in the order
+ * `travelRoute` plans them — round a known hazard before through one, as the
+ * walk itself does (`ui/auto.ts`, `makeTraveller`). The owner could not tell
+ * where a click would take the drone («движение не очевидно»); the honeycomb
+ * draws these doors amber and the destination dashed (G90 D4).
  */
-function listLength(game: RoomGame, menu: Level | undefined, moves: boolean, doors: boolean): number {
-  return listFor(game, menu, moves, doors).length;
+export function mapAim(game: RoomGame, state: AppState): MapAim {
+  const room = aimedAt(game, state);
+  const here = game.player.room;
+  if (room === undefined || here === undefined || room === here) return { room, route: NO_ROUTE };
+  if (isTug(game) || game.status !== "playing") return { room, route: NO_ROUTE };
+  const doors = travelRoute(game.ship, here, room, safeForPlayer(game)) ?? [];
+  return { room, route: new Set(doors.map((d) => d.id)) };
+}
+
+/**
+ * The pointer came to rest on a compartment of the honeycomb, or left one.
+ * Nothing but the aim changes, and nothing is asked of the run; in front of a
+ * card there is no map to aim at.
+ */
+export function hovered(state: AppState, room: RoomId | undefined): AppState {
+  const next = state.overlay === "none" ? room : undefined;
+  return state.hover === next ? state : { ...state, hover: next };
 }
 
 /**
@@ -525,6 +623,40 @@ function moved(cursor: number, delta: number, length: number): number {
 }
 
 /**
+ * The highlight on a list of actions, moved to the next row that can be
+ * pressed — past every greyed one, which `Enter` could only refuse (G90 D5).
+ * A list with nothing pressable on it moves row by row, as it always did, and
+ * the page draws that cursor dim rather than amber.
+ */
+function movedOn(list: readonly Action[], cursor: number, delta: number): number {
+  const length = list.length;
+  if (length <= 0) return 0;
+  if (!list.some((a) => a.enabled)) return moved(cursor, delta, length);
+  let at = cursor;
+  for (let i = 0; i < length; i++) {
+    at = moved(at, delta, length);
+    if (list[at]!.enabled) return at;
+  }
+  return cursor;
+}
+
+/**
+ * The first pressable row at or after `cursor`, wrapping round: where a reset
+ * to the top, a clamp or a list that changed under the highlight puts it.
+ * The row itself when nothing on the list can be pressed.
+ */
+function pressableFrom(list: readonly Action[], cursor: number): number {
+  const length = list.length;
+  if (length <= 0) return 0;
+  const from = Math.min(Math.max(cursor, 0), length - 1);
+  for (let i = 0; i < length; i++) {
+    const at = (from + i) % length;
+    if (list[at]!.enabled) return at;
+  }
+  return from;
+}
+
+/**
  * One key press, as a state transition.
  *
  * `game` is read, never written: the reducer asks it what can be done here and
@@ -532,8 +664,13 @@ function moved(cursor: number, delta: number, length: number): number {
  * comes back as an effect.
  */
 export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): AppState {
-  // A broken run takes exactly one key: the one that starts a new one. Every
-  // other key would ask the sim a question it has already failed to answer.
+  // Every key and every click drops the pointer's aim: whatever the player
+  // just did is what the map should be pointing at now.
+  const next = reduce(state, intent, game);
+  return next.hover === undefined ? next : { ...next, hover: undefined };
+}
+
+function reduce(state: AppState, intent: UiIntent, game: RoomGame): AppState {
   if (state.crash !== undefined) {
     if (intent.kind !== "restart") return withEffect(state, PASS);
     return newRunState(state);
@@ -591,6 +728,12 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
   if (state.overlay === "lost" || state.overlay === "sold") {
     return synced({ ...state, overlay: "none", effect: IDLE }, game);
   }
+  // The virus window, the lesson's opening card and the airlock card are the
+  // same kind of card: read, and any key — `Esc`, the `v` that opened one, a
+  // click — puts it away without doing anything else.
+  if (state.overlay === "virus" || state.overlay === "brief" || state.overlay === "airlock") {
+    return synced({ ...state, overlay: "none", effect: IDLE }, game);
+  }
 
   // Any key aborts an explore run, and is swallowed doing it: the key that
   // says "stop" must not also spend the turn the player is stopping for.
@@ -619,6 +762,11 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
     }
     case "history":
       return synced(historyTurned(state, game, intent.delta), game);
+    case "virus": {
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      return synced(virusOpened(state, game), game);
+    }
     case "dismiss":
       // Escape closes what is in front of the board first, and then takes the
       // list back up a level: the two are never on the screen at once, so one
@@ -627,6 +775,9 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       if (state.overlay === "codex") return synced(codexClosed(state), game);
       if (state.overlay === "history") return synced(closedHistory(state), game);
       if (state.menu !== undefined || state.moves || state.doors) return upALevel(state, game);
+      // With nothing in front of the board and no level to leave, the key does
+      // nothing. The lesson's window used to fold on it; the window is the
+      // lesson, and hiding it taught nothing (G96, 5).
       return synced({ ...state, effect: IDLE }, game);
     case "restart":
       return newRunState(state);
@@ -647,7 +798,7 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       return synced(
         {
           ...state,
-          cursor: moved(state.cursor, intent.delta, listLength(game, state.menu, state.moves, state.doors)),
+          cursor: movedOn(listFor(game, state.menu, state.moves, state.doors), state.cursor, intent.delta),
           effect: IDLE,
         },
         game,
@@ -726,22 +877,14 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
       return chosen({ ...state, cursor: intent.index }, game, intent.index);
     }
     case "room": {
-      // A click on a box is that box's line of the move list, pressed — which
-      // is what keeps the mouse from being a second set of rules: one open door
-      // away it steps, further away it walks, and with a bulkhead in the way it
-      // opens that bulkhead's own list of methods, exactly as the row does.
       const stop = stopped(state, game);
       if (stop) return stop;
-      const list = roomActions(game, undefined, true);
-      const at = list.findIndex((line) => line.leadsTo === intent.id);
-      if (at >= 0) return chosen({ ...state, moves: true, doors: false, menu: undefined, cursor: at }, game, at);
-      // A box the map has no name for — a neighbour nobody has been in — is
-      // still the far side of one of this compartment's doors, and that door's
-      // row is what the click presses. Every one of those clicks used to do
-      // nothing at all: 1 707 of 1 707 on sixty seeds (docs/tasks/G88-polish-by-map.md, B1).
-      const own = roomActions(game).findIndex((line) => line.leadsTo === intent.id);
-      if (own < 0) return withEffect(state, PASS);
-      return chosen({ ...state, moves: false, doors: false, menu: undefined, cursor: own }, game, own);
+      return roomClicked(state, game, intent.id);
+    }
+    case "door": {
+      const stop = stopped(state, game);
+      if (stop) return stop;
+      return doorClicked(state, game, intent.id);
     }
     case "module":
       return act(state, game, () => ({ kind: "command", cmd: aimed(game, intent.module, intent.slot) }));
@@ -762,6 +905,109 @@ export function appReducer(state: AppState, intent: UiIntent, game: RoomGame): A
     case "fight":
       return stopped(state, game) ?? (isTug(game) ? nowhereToWalk(state, game) : act(state, game, () => ({ kind: "fight", melee: intent.melee })));
   }
+}
+
+/**
+ * A box on the map, clicked.
+ *
+ * Mostly that box's line of the move list, pressed — which is what keeps the
+ * mouse from being a second set of rules: one open door away it steps, further
+ * away it walks, and with a bulkhead in the way it opens that bulkhead's own
+ * list of methods, exactly as the row does. A neighbour nobody has been in is
+ * still the far side of one of this compartment's doors, and that door's row is
+ * what the click presses (docs/tasks/G88-polish-by-map.md, B1).
+ *
+ * The rest used to do nothing at all (G90 D3): the box underfoot opens its own
+ * list at the top, and a box nobody has named is walked towards — to the last
+ * compartment on the way there the drone can name, or through the first door
+ * on the way when it can name none — and a box with no way to it says so.
+ */
+function roomClicked(state: AppState, game: RoomGame, id: RoomId): AppState {
+  if (isTug(game)) return withEffect(state, PASS);
+  const here = game.roomOf(game.player).id;
+  if (id === here) {
+    return synced({ ...state, moves: false, doors: false, menu: undefined, cursor: 0, effect: IDLE }, game);
+  }
+  const map = roomActions(game, undefined, true);
+  const at = map.findIndex((line) => line.leadsTo === id);
+  if (at >= 0) return chosen({ ...state, moves: true, doors: false, menu: undefined, cursor: at }, game, at);
+  const own = roomActions(game).findIndex((line) => line.leadsTo === id);
+  if (own >= 0) return chosen({ ...state, moves: false, doors: false, menu: undefined, cursor: own }, game, own);
+
+  const room = game.ship.rooms[id];
+  const route = room === undefined ? undefined : travelRoute(game.ship, here, id);
+  if (room === undefined || route === undefined || route.length === 0) {
+    const label = room?.label ?? String(id);
+    return synced({ ...state, effect: { kind: "log", text: t("why.room.noRoute", { room: label }) } }, game);
+  }
+  const toward = lastNamed(game, here, route);
+  if (toward !== undefined) return roomClicked(state, game, toward);
+  // The first door on the way leads somewhere nobody has named either: its row.
+  const first = game.ship.other(route[0]!, here);
+  const step = roomActions(game).findIndex((line) => line.leadsTo === first);
+  if (step >= 0) return chosen({ ...state, moves: false, doors: false, menu: undefined, cursor: step }, game, step);
+  return synced({ ...state, effect: { kind: "log", text: t("why.room.noRoute", { room: room.label }) } }, game);
+}
+
+/**
+ * The furthest compartment along a route that the drone could name, walking
+ * out from here and stopping at the first it could not: the move list has a
+ * row for exactly those (`ui/actions.ts`, `known`), so the click lands on one.
+ */
+function lastNamed(game: RoomGame, here: RoomId, route: readonly Door[]): RoomId | undefined {
+  let at = here;
+  let last: RoomId | undefined;
+  for (const door of route) {
+    at = game.ship.other(door, at);
+    const room = game.ship.roomAt(at);
+    if (!(room.explored || room.scanned || game.visible.has(at))) break;
+    last = at;
+  }
+  return last;
+}
+
+/**
+ * A door on the honeycomb, clicked — its corridor, its tag or a link's chip.
+ *
+ * One of this compartment's: the list goes to that door's own row, on `d`
+ * when the doors have a list and on the compartment's own list otherwise, and
+ * a row that cannot be pressed also says why — the highlight does not rest on
+ * a greyed row, so the line is the answer. A door elsewhere is the nearer of
+ * its two compartments, clicked. Never a turn by itself.
+ */
+function doorClicked(state: AppState, game: RoomGame, id: DoorId): AppState {
+  if (isTug(game)) return withEffect(state, PASS);
+  const door = game.ship.doors[id];
+  if (door === undefined) return withEffect(state, PASS);
+  const here = game.roomOf(game.player).id;
+  if (door.a !== here && door.b !== here) {
+    const far = (room: RoomId): number => travelRoute(game.ship, here, room)?.length ?? Number.POSITIVE_INFINITY;
+    return roomClicked(state, game, far(door.a) <= far(door.b) ? door.a : door.b);
+  }
+  const onRow = (doors: boolean, list: readonly Action[], at: number): AppState => {
+    const row = list[at]!;
+    const effect: AppEffect = row.enabled ? IDLE : { kind: "log", text: row.why ?? t("why.notHere") };
+    return synced({ ...state, doors, moves: false, menu: undefined, cursor: at, effect }, game);
+  };
+  if (doorsStand(game)) {
+    const list = doorLevel(game);
+    const at = list.findIndex((row) => aboutDoor(row, door));
+    if (at >= 0) return onRow(true, list, at);
+  }
+  const list = roomActions(game);
+  const at = list.findIndex((row) => aboutDoor(row, door));
+  if (at >= 0) return onRow(false, list, at);
+  const why = t("why.door.state", { door: door.label, state: doorStateWord(door.state) });
+  return synced({ ...state, effect: { kind: "log", text: why } }, game);
+}
+
+/** Is this row about that door: its step, its way through, or the airlock's `leave`? */
+function aboutDoor(row: Action, door: Door): boolean {
+  if (row.step === door.id) return true;
+  const cmd = row.cmd;
+  if (cmd.kind === "go") return cmd.door === door.id;
+  if (cmd.kind === "leave") return door.state === "airlock";
+  return cmd.kind === "act" && cmd.target === door.id && row.ways !== undefined;
 }
 
 /**
@@ -829,6 +1075,17 @@ function codexTurned(state: AppState, game: RoomGame, delta: number): AppState {
   const at = moved(state.codexAt, delta, cards.length);
   readCodex(game, cards[at]!);
   return synced({ ...state, codexAt: at, effect: IDLE }, game);
+}
+
+/**
+ * `v`: the virus window, or one line saying there is nothing to show.
+ *
+ * A line rather than silence for the same reason every refused key gets one:
+ * a key that does nothing teaches nothing, and a clean rack is the answer.
+ */
+function virusOpened(state: AppState, game: RoomGame): AppState {
+  if (virusOf(game.player) === undefined) return { ...state, effect: { kind: "log", text: t("why.virus.none") } };
+  return { ...state, overlay: "virus", exploring: false, effect: IDLE };
 }
 
 /** Put it away, and drop the snapshot with it: the next `i` asks again. */
@@ -957,7 +1214,16 @@ function chosen(state: AppState, game: RoomGame, index: number): AppState {
   if (line?.step !== undefined && line.step !== null) {
     return synced({ ...state, menu: line.step, cursor: 0, effect: IDLE }, game);
   }
-  return act(state, game, () => picked(line), true);
+  // A group that asks one question is answered by the line that is about to be
+  // spent, so the list it came out of goes with it and the highlight lands back
+  // on the row that opened it. Only when the line is one the game will take: a
+  // refusal costs no turn, and a level that shuts on a greyed line takes the
+  // reasons with it (`TugRow.once`).
+  const closing = line?.enabled === true && tugOnce(state.menu);
+  const from = closing
+    ? { ...state, menu: undefined, cursor: leftBehind(state, state.at, undefined) }
+    : state;
+  return act(from, game, () => picked(line), true);
 }
 
 /**
@@ -986,6 +1252,17 @@ function act(state: AppState, game: RoomGame, effect: () => AppEffect, exploring
   const stop = stopped(state, game);
   if (stop) return stop;
   const asked = effect();
+  // The lesson's gate (G96, 1): a key that would spend a turn on something the
+  // open step is not about prints the step's own line instead, and spends
+  // nothing — the same refusal a greyed row gives when it is pressed.
+  const refused = lessonRefusal(game, asked);
+  if (refused !== undefined) return synced({ ...state, effect: { kind: "log", text: refused } }, game);
+  // A walk whose first and only door is into a known hazard is answered here,
+  // not by a walk: see `hazardAsked`.
+  if (asked.kind === "travel") {
+    const hazard = hazardStep(game, asked.to);
+    if (hazard !== undefined) return hazardAsked(state, game, askOf(asked), hazard);
+  }
   // Only a real walk raises the flag: a refused pick is not the start of one.
   const walking = exploring && (asked.kind === "explore" || asked.kind === "travel");
   const ask = walking ? askOf(asked) : undefined;
@@ -1011,6 +1288,76 @@ function act(state: AppState, game: RoomGame, effect: () => AppEffect, exploring
     }
   }
   return synced({ ...state, exploring: walking, ask, warned: undefined, effect: asked }, game);
+}
+
+/**
+ * What the lesson's gate says to an effect that would move the world: a walk
+ * of either kind is the `walk` move, closing in is `attack`, a command is
+ * whatever `moveOf` calls it. Nothing in an ordinary run, and nothing for an
+ * effect that spends no turn.
+ */
+function lessonRefusal(game: RoomGame, effect: AppEffect): string | undefined {
+  const gate = lessonGateOf(game);
+  if (gate === undefined) return undefined;
+  if (effect.kind === "explore" || effect.kind === "travel") return gateRefuses(gate, game, { kind: "go", door: 0 });
+  if (effect.kind === "fight") return gateRefuses(gate, game, { kind: "attack", target: 0 });
+  if (effect.kind === "command") return gateRefuses(gate, game, effect.cmd);
+  return undefined;
+}
+
+/**
+ * The door into a known hazard, when a walk to `to` would take it as its one
+ * and only step — the neighbour itself filled with smoke or frost, or a mined
+ * door with no way round — and the red line about it.
+ */
+function hazardStep(game: RoomGame, to: RoomId): { door: Door; line: string } | undefined {
+  const here = game.roomOf(game.player).id;
+  const route = travelRoute(game.ship, here, to, safeForPlayer(game));
+  const door = route?.length === 1 ? route[0] : undefined;
+  if (door === undefined || !passableForPlayer(door)) return undefined;
+  const line = dangerAhead(game, door);
+  return line === undefined ? undefined : { door, line };
+}
+
+/**
+ * A click, a row or a digit asking to step into a known hazard one door away.
+ *
+ * This was the hazard click that "worked badly" (G90 D3). It started a walk,
+ * and a walk's first question is whether a machine is in sight
+ * (`ui/auto.ts`, `makeWatch`): with one anywhere in view every click on the
+ * smoke answered «You see …» and stopped before the door, the stop named no
+ * door, so no confirmation was ever remembered and the second click was the
+ * same question again — for as long as the machine stayed in sight. Without
+ * a machine the first click did stop at the door and ask, but only in the log:
+ * the map lit nothing.
+ *
+ * Now the question is asked without walking: the red line, the door's own list
+ * of ways with the step in on top, and the compartment lit on the map through
+ * that list's rows. The same ask again is the step itself — a `go`, which no
+ * machine in sight can stop.
+ */
+function hazardAsked(state: AppState, game: RoomGame, ask: string, hazard: { door: Door; line: string }): AppState {
+  const { door, line } = hazard;
+  const warned = state.warned;
+  if (warned !== undefined && warned.ask === ask && warned.door === door.id) {
+    const go: AppEffect = { kind: "command", cmd: { kind: "go", door: door.id } };
+    return synced({ ...state, exploring: false, ask: undefined, warned: undefined, effect: go }, game);
+  }
+  const told: AppEffect = { kind: "log", text: t("stop.hazard.again", { what: line }) };
+  return synced(
+    {
+      ...state,
+      exploring: false,
+      ask: undefined,
+      warned: { ask, door: door.id },
+      moves: true,
+      doors: false,
+      menu: door.id,
+      cursor: 0,
+      effect: told,
+    },
+    game,
+  );
 }
 
 /** The words a `Warning` remembers a walk by: what, and where to. */
@@ -1131,6 +1478,17 @@ export function syncStatus(state: AppState, game: RoomGame): AppState {
 }
 
 /** The walk ended on its own: a stop, a refused command, or a run that is over. */
+/**
+ * A run the shell has just built, in place of the one the reducer was looking
+ * at: over a training run the card that says what the job is comes up first
+ * (G96, 2). The reducer cannot raise it itself — the row that asks for a
+ * training run is answered by the shell, which builds the game after the
+ * reducer has returned — so the shell asks here once the run exists.
+ */
+export function runBegun(state: AppState, game: RoomGame): AppState {
+  return briefing(game) && state.overlay === "none" ? { ...state, overlay: "brief" } : state;
+}
+
 export function walkEnded(state: AppState): AppState {
   return { ...state, exploring: false, effect: IDLE };
 }
@@ -1237,11 +1595,15 @@ function withCursor(state: AppState, game: RoomGame): AppState {
   const menu = at === state.at && state.menu !== undefined && levelStands(game, state.menu, doors)
     ? state.menu
     : undefined;
-  if (at !== state.at || menu !== state.menu || moves !== state.moves || doors !== state.doors) {
-    return { ...state, cursor: leftBehind(state, at, menu), at, menu, moves, doors };
-  }
-  const length = listLength(game, menu, moves, doors);
-  return state.cursor < length ? state : { ...state, cursor: Math.max(0, length - 1) };
+  const next =
+    at !== state.at || menu !== state.menu || moves !== state.moves || doors !== state.doors
+      ? { ...state, cursor: leftBehind(state, at, menu), at, menu, moves, doors }
+      : state;
+  // Whichever way it got here — home to the top, back onto a tug row, clamped
+  // under a list that got shorter, or a digit pressed on a greyed row — the
+  // highlight rests on a row `Enter` can do, when the list has one (G90 D5).
+  const cursor = pressableFrom(listFor(game, menu, moves, doors), next.cursor);
+  return cursor === next.cursor ? next : { ...next, cursor };
 }
 
 /**
@@ -1309,6 +1671,7 @@ function newRunState(state: AppState): AppState {
     codex: [],
     codexAt: 0,
     seen: NO_MARKS,
+    airlockTold: false,
     effect: { kind: "newRun" },
   };
 }
@@ -1341,6 +1704,21 @@ function synced(state: AppState, game: RoomGame): AppState {
   // not "the drone did not come back", it is the last thing that will happen.
   if (status === "dead" && state.overlay !== "dead") return { ...state, overlay: "dead" };
   if (status === "won" && state.overlay !== "won") return { ...state, overlay: "won" };
+  // The virus window only ever lands on a clear board: a card already in front
+  // of it is what the player is reading, and the infection is on the panel.
+  if (raised === "virus") return state.overlay === "none" ? ending(state, raised) : state;
+  // The same rule for the airlock card, with one more: it is shown once a run,
+  // and the flag is set when it is *shown* rather than when it is earned — a
+  // card that never reached the screen has told nobody anything.
+  if (raised === "airlock") {
+    if (state.airlockTold || state.overlay !== "none") return state;
+    // Silent for a training run, and ticked off with the silence: the lesson's
+    // last two steps are this card in other words, in a window that is already
+    // on the screen, and the rule against saying one thing twice is the one
+    // `content/hints.ts` keeps for `objective` and `payout` (`LESSON_SAYS`).
+    if (isTraining(game.player)) return { ...state, airlockTold: true };
+    return { ...ending(state, raised), airlockTold: true };
+  }
   if (raised !== undefined) return ending(state, raised);
   // A sortie's own ending stands until a key puts it away (`appReducer`).
   if (ENDINGS.has(state.overlay) && state.overlay !== "dead" && state.overlay !== "won") return state;
@@ -1356,5 +1734,88 @@ function synced(state: AppState, game: RoomGame): AppState {
 function raisedBy(was: SortieMarks, now: SortieMarks): Overlay | undefined {
   if (now.sold > was.sold) return "sold";
   if (now.lost > was.lost) return "lost";
+  // Last, so a sortie's ending outranks it: the drone that caught something on
+  // the turn it was lost is not the news.
+  if (now.infected && !was.infected) return "virus";
+  // And after that: a hull finished by a drone that then died on the way out is
+  // a loss, and the card about the way out would be reading it the news.
+  if (now.online && !was.online) return "airlock";
   return undefined;
+}
+
+// ------------------------------------------------------------ the lesson (G90 E)
+
+/**
+ * The lesson's window, as either renderer draws it: the head, what to press,
+ * and the instruction under them.
+ *
+ * Everything on it is decided here and worded in `content/i18n`; the page puts
+ * it in a card over a corner of the map and the terminal puts it on the rows
+ * above the log, and neither adds a word (`ui/web/screen.ts`, `ui/render.ts`).
+ * `done` is the one frame after a step completed, which is the whole of the
+ * "short done, then the next step" the task asks for: the step the run is on
+ * is already the next one, and the head carries the tick for one turn.
+ */
+export interface LessonView {
+  /** `LESSON 4/9`, or the head of the closing line. */
+  readonly head: string;
+  /** The key or the line to press; empty once the lesson is over. */
+  readonly press: string;
+  /** The instruction, or the closing line. */
+  readonly lines: readonly string[];
+  readonly done: boolean;
+  readonly over: boolean;
+}
+
+export function lessonView(game: RoomGame): LessonView | undefined {
+  const status = lessonStatus(game);
+  if (status === undefined) return undefined;
+  if (status.over || status.text === undefined || status.press === undefined) {
+    return { head: t("lesson.over.head"), press: "", lines: [t("lesson.over")], done: status.done, over: true };
+  }
+  return {
+    head: t("lesson.head", { n: status.step + 1, of: status.of }),
+    press: t(status.press),
+    lines: [t(status.text)],
+    done: status.done,
+    over: false,
+  };
+}
+
+/** Columns a lesson row may use on the terminal: the log's own width. */
+export const LESSON_WIDTH = SCREEN_WIDTH - 2;
+
+/** Rows the terminal gives the window, at most: the head and two of instruction. */
+export const LESSON_ROWS = 3;
+
+/**
+ * The window as rows for the terminal: the head line — the tick for a step
+ * just done, the step, the key — and the instruction wrapped to the log's
+ * width under it. Empty in a run that has no lesson.
+ */
+export function lessonRows(game: RoomGame): string[] {
+  const view = lessonView(game);
+  if (view === undefined) return [];
+  const head = [view.done ? t("lesson.done") : "", view.head, view.press]
+    .filter((part) => part.length > 0)
+    .join(HEAD_SEP);
+  return [head, ...view.lines.flatMap((line) => wrapTo(line, LESSON_WIDTH))].slice(0, LESSON_ROWS);
+}
+
+const HEAD_SEP = " · ";
+
+/** One line broken on spaces to `width` columns; a word longer than that stands alone. */
+function wrapTo(text: string, width: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line.length === 0) line = word;
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  if (line.length > 0) out.push(line);
+  return out;
 }

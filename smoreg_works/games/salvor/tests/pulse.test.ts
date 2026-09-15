@@ -214,15 +214,15 @@ describe("what the two views paint it with", () => {
    * The flashing box on the schematic is what carries the signal for a machine
    * already standing in the drone's compartment.
    */
-  it("turns the line of a machine a door away red while it flashes", () => {
+  it("flashes the line of a machine a door away while it flashes", () => {
     const game = gameOn();
     const id = put(game, "r2");
     const line = panelBlocks(game, []).find((l) => l.id === id);
     expect(line, "the machine has a line of its own to flash").toBeDefined();
-    // Whole, so its own colour is the top of the integrity scale (G79,
-    // `contactTone`); the pulse is what puts red on it.
-    expect(panelColour(line!, new Set())).toBe(THEME.hpFull);
-    expect(panelColour(line!, new Set(), new Set([id]))).toBe(THEME.bad);
+    // A machine's line is red (G90 D1) and its hit points carry the integrity
+    // scale (G79, `contactTone`); the pulse turns the whole of it bright.
+    expect(panelColour(line!, new Set())).toBe(THEME.bad);
+    expect(panelColour(line!, new Set(), new Set([id]))).toBe(THEME.bright);
   });
 
   it("leaves every other line of the panel alone", () => {

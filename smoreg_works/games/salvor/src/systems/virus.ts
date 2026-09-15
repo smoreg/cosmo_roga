@@ -15,7 +15,7 @@ import { moduleName, type ModuleId } from "../content/modules.js";
 import { DEFAULT_STRAIN, strainName, strainOf, type Strain, type StrainId } from "../content/viruses.js";
 import type { Key } from "../content/i18n/keys.js";
 import { t } from "../i18n.js";
-import { applyDerived, findSlot, hitSlot, rigOf, type Rig, type WreckSource } from "../twist/rig.js";
+import { applyDerived, findSlotAs, hitSlot, rigOf, type Rig, type WreckSource } from "../twist/rig.js";
 import { takeCredits } from "./purse.js";
 
 /**
@@ -49,11 +49,25 @@ export const SPREAD_TURNS = strainOf("spasm").spread;
 /** How loud a twitch is. Heard on the turn it happens; see `addNoise`. */
 export const TWITCH_NOISE = 6;
 
-/** Consecutive turns of welding a purge takes. */
-export const CURE_TURNS = 2;
+/**
+ * Consecutive turns a purge takes by hand.
+ *
+ * No module at all (G90, the owner): «лечится без модулей, но за время». It
+ * used to be two turns of welding, which made the WELDER the whole cure and a
+ * drone without one simply carried the thing home — and a player reading the
+ * card could not tell why a welder, of all things, was the answer.
+ */
+export const CURE_TURNS = 6;
 
-/** The WELDER's own noise, from design-doc.md "Шум": a purge is welding. */
-const PURGE_NOISE = 5;
+/**
+ * The same purge with a SPIKE in the rack: half the turns, and the SPIKE is
+ * what a blow lands on while it works (`twist/rig.ts`, `actExposure`). The
+ * owner again: «ОТМЫЧКА ускоряет лечение».
+ */
+export const SPIKE_CURE_TURNS = 3;
+
+/** Hands-on work, as loud as searching a body (`systems/doors.ts`). */
+const PURGE_NOISE = 2;
 
 /**
  * What the tug charges to clean one (design-doc.md, "Экономика рейса"), and
@@ -151,6 +165,30 @@ export function virusOf(player: Entity): VirusState | undefined {
   return raw as VirusState;
 }
 
+/** How many turns a purge started now would take: a SPIKE halves it. */
+export function cureTurns(rig: Rig): number {
+  return findSlotAs(rig, "spike") === null ? CURE_TURNS : SPIKE_CURE_TURNS;
+}
+
+/**
+ * Turns until the strain aboard does its thing again, counting the next turn
+ * as one. The clock is `afterPlayerTurn`'s: a beat lands on the turn whose age
+ * is a whole number of periods, and the turn it came aboard is age zero.
+ */
+export function turnsToBeat(game: RoomGame, v: VirusState): number {
+  const period = strainOf(v.strain).period;
+  const age = Math.max(0, game.inputs.length - v.since - 1);
+  return period - (age % period);
+}
+
+/** Turns until it crawls into the next module, or undefined for a strain that stays. */
+export function turnsToSpread(game: RoomGame, v: VirusState): number | undefined {
+  const spread = strainOf(v.strain).spread;
+  if (spread <= 0) return undefined;
+  const age = Math.max(0, game.inputs.length - v.since - 1);
+  return Math.max(1, spread - age);
+}
+
 /**
  * Take it off the drone and say which module it was in. The tug's bench calls
  * this after charging for it; in the field the purge is the only way.
@@ -207,7 +245,7 @@ export function tryInfect(game: RoomGame, slot: number, source: WreckSource, bon
     "bad",
     "log.virus.caught",
   );
-  hintOnce(game, "virus", t(VIRUS_HINT_KEY));
+  hintOnce(game, "virus", virusHint());
   return true;
 }
 
@@ -333,24 +371,25 @@ function nextIntact(rig: Rig, from: number): number | undefined {
 // ----------------------------------------------------------------- the purge
 
 /**
- * `act cure {slot}`: two turns of welding, and the virus is gone.
+ * `act cure {slot}`: six turns in a row by hand, three with a SPIKE, and the
+ * virus is gone.
  *
  * It mends nothing — the module comes out of it exactly as damaged as it went
- * in — so a purge is two turns bought with nothing but time, which is the price
- * the mechanic is meant to charge.
+ * in — so a purge is turns bought with nothing but time, which is the price
+ * the mechanic is meant to charge. Nothing in the rack is required: a drone
+ * that cannot afford the turns has the bench, the hold and the sale.
  */
 function purge(game: RoomGame, slot: number | undefined): Outcome {
   const rig = rigOf(game.player);
   const v = rig ? virusOf(game.player) : undefined;
   if (!rig || !v || !rig.slots[v.slot]) return FAIL(t("why.virus.none"));
   if (slot !== undefined && slot !== v.slot) return FAIL(t("why.virus.clean"));
-  if (findSlot(rig, "welder") === null) return FAIL(noWelder());
 
-  const left = advance(game, v);
+  const left = advance(game, v, cureTurns(rig));
   game.makeNoise(game.roomOf(game.player).id, PURGE_NOISE);
   if (left > 0) {
     game.log.add(
-      t("log.virus.purge.on", { module: nameOf(rig, v.slot) }),
+      t("log.virus.purge.on", { module: nameOf(rig, v.slot), left }),
       game.schedule.time,
       "plain",
       "log.virus.purge.on",
@@ -369,17 +408,17 @@ function purge(game: RoomGame, slot: number | undefined): Outcome {
  *
  * Stamped with the index this command will take, so the job resumes only from
  * the turn immediately before it — the same rule cutting and welding a door go
- * by (`systems/doors.ts`), and the one that makes a purge two turns *in a row*.
+ * by (`systems/doors.ts`), and the one that makes a purge its turns *in a row*.
  */
-function advance(game: RoomGame, v: VirusState): number {
+function advance(game: RoomGame, v: VirusState, total: number): number {
   const resumed = v.curing !== undefined && v.curing.turn === game.inputs.length - 1;
-  const left = (resumed ? v.curing!.left : CURE_TURNS) - 1;
+  const left = (resumed ? v.curing!.left : total) - 1;
   if (left > 0) v.curing = { left, turn: game.inputs.length };
   else delete v.curing;
   return left;
 }
 
-/** Anything but another turn of welding drops the job where it stands. */
+/** Anything but another turn of purging drops the job where it stands. */
 function breakOff(game: RoomGame, v: VirusState): void {
   if (v.curing === undefined || v.curing.turn === game.inputs.length - 1) return;
   delete v.curing;
@@ -437,15 +476,16 @@ export const VIRUS: System<RoomGame> = {
     // a constant, and a bot reading "the line came back unchanged" as "nothing
     // happened" pressed it forever instead of once
     // (docs/tasks/G30-balance-v2.md, "Хуже стало одно…").
-    const left = v.curing?.left ?? CURE_TURNS;
-    const welder = findSlot(rig, "welder") !== null;
-    const offer: ActionOffer<RoomCommand> = {
-      label: t("action.purge", { module: nameOf(rig, v.slot), left }),
-      cmd: { kind: "act", verb: CURE_VERB, slot: v.slot },
-      enabled: welder,
-    };
-    if (!welder) offer.why = noWelder();
-    offers.push(offer);
+    //
+    // Always enabled: nothing in the rack is required any more, and the price
+    // in brackets says which of the two speeds this drone gets.
+    const left = v.curing?.left ?? cureTurns(rig);
+    const module = nameOf(rig, v.slot);
+    const label =
+      findSlotAs(rig, "spike") === null
+        ? t("action.purge", { module, left })
+        : t("action.purge.spike", { module, left, spike: moduleName("spike") });
+    offers.push({ label, cmd: { kind: "act", verb: CURE_VERB, slot: v.slot }, enabled: true });
     return offers;
   },
 
@@ -453,27 +493,43 @@ export const VIRUS: System<RoomGame> = {
     const rig = rigOf(game.player);
     const v = rig ? virusOf(game.player) : undefined;
     if (!rig || !v || !rig.slots[v.slot]) return [];
-    const strain = strainOf(v.strain);
-    return [
-      {
-        text: t("panel.virus", { virus: strainName(strain), module: nameOf(rig, v.slot) }),
-        fg: BAD_FG,
-      },
-    ];
+    return [{ text: harmLine(strainOf(v.strain)), fg: BAD_FG }];
   },
 };
+
+/**
+ * The panel's one line about it: the strain and what it does, with its number,
+ * in 28 columns — «SPASM in CELL» said where it was and nothing about why that
+ * was bad (G90). Which module is the rack's own `!` two blocks up; the window
+ * behind `v` says the rest.
+ */
+export function harmLine(strain: Strain): string {
+  const virus = strainName(strain);
+  const period = strain.period;
+  const beat = strain.beat;
+  switch (beat.kind) {
+    case "expose":
+      return t("panel.virus.expose", { virus, period });
+    case "wear":
+      return t("panel.virus.wear", { virus, period, points: beat.points });
+    case "skim":
+      return t("panel.virus.skim", { virus, period, credits: beat.credits });
+    case "core":
+      return t("panel.virus.core", { virus, period, points: beat.points });
+  }
+}
 
 // -------------------------------------------------------------------- pieces
 
 /** What the panel and the log call the module in that slot. */
-function nameOf(rig: Rig, slot: number): string {
+export function nameOf(rig: Rig, slot: number): string {
   const kind: ModuleId | undefined = rig.slots[slot]?.kind;
   return kind === undefined ? t("word.module") : moduleName(kind);
 }
 
-/** The one refusal this system shares with the rack: no welder, no purge. */
-function noWelder(): string {
-  return t("why.module.missing", { module: moduleName("welder") });
+/** The onboarding line, with the purge's two speeds filled in from the numbers above. */
+export function virusHint(): string {
+  return t(VIRUS_HINT_KEY, { turns: CURE_TURNS, fast: SPIKE_CURE_TURNS, spike: moduleName("spike") });
 }
 
 /** One onboarding line, said once per run. Same bag of flags the rig writes. */

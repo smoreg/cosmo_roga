@@ -7,7 +7,7 @@ import { hazardKind, isHazardId, type HazardId } from "../content/hazards.js";
  * A leaf file by the rule of `docs/adr/0003-decoupling.md`: this record is
  * read by the doors (a welder lifting a mine), the walks (`ui/auto.ts`,
  * "is there something known beyond that door"), the picture
- * (`ui/schematic-input.ts`, the mark in the box) and the rules themselves
+ * (`ui/contents.ts`, the mark in the box) and the rules themselves
  * (`systems/hazards.ts`), and the one file that changes it must not be what
  * all of those have to import to read it.
  *

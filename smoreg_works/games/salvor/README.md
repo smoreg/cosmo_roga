@@ -11,7 +11,7 @@ is a compartment's name, "how far" is a number of doors.
 
 This is the jam entry — see [`docs/design-doc.md`](../../docs/design-doc.md) (полностью,
 по-русски) for the full design: the frame, the sortie/derelict/charter loop, the twist,
-door and door-tool table, ship systems, alert, ghosts, the rival. `games/fortnight2` is a
+door and door-tool table, ship systems, the ten-rung alert, ghosts, the rival, the lesson. `games/fortnight2` is a
 separate, finished tile-based game frozen at tag `submission-v1` — the insurance entry if
 `salvor` doesn't make it to the deadline; it is not touched or built by default.
 
@@ -35,10 +35,11 @@ npm run dev         # root command — starts SALVOR, not fortnight2
 | `h` | hide, in a compartment with cover |
 | `s` `e` `w` `p` `K` `f` `c` | module verbs, only if the module is fitted: scanner pulse · EMP stun · weld · power a lock · spike a lock · shoot · cut a door |
 | `<` | leave through the airlock, back to the tug |
+| `v` | the virus window: what the strain does and how to purge it (no turn) |
 | `?` / `Esc` / `Shift+R` | help / close / new run |
 
-`hjkl`, the arrows and the numpad move nothing — there is no grid to move on. The arrow
-keys are dead on purpose: a cursor over the action list would be a second way to choose.
+`hjkl` and the numpad directions move nothing — there is no grid to move on. The arrow
+keys move the highlight up and down the action list, and `Enter` does the highlighted line.
 
 ## Commands
 

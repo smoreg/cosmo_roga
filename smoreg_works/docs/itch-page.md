@@ -11,10 +11,10 @@ Everything below has been checked against the code it describes: every key again
 ## Owner checklist
 
 - [ ] **Playable in browser** — upload `salvor-web.zip` from `npm run zip` (run it at the repo
-      root; it builds `games/salvor`) as "This file will be played in the browser". The zip is
-      904 KB, the unpacked build 1.1 MB — 301 KB of it code (96 KB gzipped), the rest fourteen
-      `.ogg` files: the music track and thirteen sound effects. The track is 598 KB of that and
-      does not compress, which is why the zip comes out only about 210 KB under the unpacked size.
+      root; it builds `games/salvor`) as "This file will be played in the browser". Measured off
+      the `wave/g90` build of 15.09: the zip is about 1.0 MB, the unpacked build 1.5 MB — 644 KB
+      of it code (196 KB gzipped), the rest seventeen `.ogg` files: the music track and sixteen
+      sound effects. The track is 598 KB of that and does not compress.
 - [ ] **Viewport size — 1718 × 764.** Worked out from `src/ui/theme.ts` rather than from the old
       draft, which had it wrong. `SCREEN_WIDTH` = `mapWidth` 66 + `sidebarWidth` 29 = **95
       columns**; `SCREEN_HEIGHT` = `mapHeight` 34 + `logHeight` 7 + 1 = **42 rows**. `render.ts`
@@ -60,25 +60,32 @@ in almost as damaged as the one you lost.
 
 ### The voyage
 
-You run the tug, not the drone. The tug is four compartments on the same schematic — DOCK
-buys drones and casts off, BENCH mends and grafts, HOLD sells, HELM signs jobs and jumps —
-and there is not a menu anywhere in the game.
+You run the tug, not the drone. At home the tug is one list of nine lines: buy a drone,
+mend and graft, stow, fit and sell modules, choose where to fly, cast off.
 
-A voyage is three hulls: a freighter that teaches you the trade, one of five classes drawn
-from the catalogue — laboratory, military, smuggler, corsair, quarantine — and then your
+A voyage is three stops. At the first you choose between two or three starting hulls —
+freighter, barge, ferry, probe, tender, of eleven to fifteen compartments. At the second,
+two or three of laboratory, military, smuggler, corsair and quarantine. The third is your
 father's tug, which is the last one and the reason for all of it. Each hull is a graph of
-twelve to twenty-five compartments joined by doors, generated whole: the rooms, the locks,
+eleven to twenty-five compartments joined by doors, generated whole: the rooms, the locks,
 where the keycard is, what is lying about, which machines are aboard.
 
 You start with one SCRAPPER hull and 25 credits. A drone costs 40, 55 or 70 depending on
-what it is; a jump to the next hull costs 30; a point of repair on the bench costs 4. When
-the rack is empty and the account will not cover the cheapest hull, the voyage is over.
+what it is; a jump to the next stop costs 40; mending a module on the bench costs a credit a
+point, four at most. When the rack is empty and the account will not cover the cheapest
+hull, the voyage is over.
 
-Sign charters at the HELM before you cast off: SALVAGE wants credits' worth in the hold,
-RETRIEVE wants a crate carried out, UPLOAD wants five uninterrupted turns at a console, and
-NEUTRALIZE — always on the board — wants the engine, the core and the terminal brought
-online. That last one sells the whole hull, and it is the difference between scraping by
-and getting somewhere.
+The goal of every hull is the same, and the panel names it: START 3 — the engine, the
+reactor and the terminal — then get out, and the hull sells. That is the difference between
+scraping by and getting somewhere. On top of it, each hull you pick comes with one contract,
+chosen on the same line as the hull: SALVAGE wants credits' worth in the hold, RETRIEVE a
+crate carried out, UPLOAD five uninterrupted turns at a console. Past the first stop one of
+the two contracts on offer carries a clause and pays more for it: HOT (the ship is awake
+before you board), QUIET (void once the alert reaches 6) or 1 TRIP (the job comes home on
+the first sortie or not at all).
+
+New to it? The title's second line, *Recall the first drone*, is the lesson: nine steps on
+a small hand-built hull, each one done by doing it, not by pressing past it.
 
 ### The ship remembers
 
@@ -88,6 +95,20 @@ a drone of yours died is where its GHOST will be waiting on the next sortie, car
 same rack you lost — the fattest salvage on the ship, and the one thing aboard that knows
 exactly what you hit with.
 
+The ship also hears you. Time and noise climb a ten-rung alert: it posts machines where you
+have walked, sends them after you, shuts and then locks doors, sends its hunter. At nine it
+starts blowing its own compartments on a five-turn fuse you can watch count down — never one
+you need, never one that cuts you off. Forty turns after the first charge it counts down
+from three and blows itself up with your drone aboard, and the tug moves on without that hull. Standing quiet talks it back down;
+starting all three systems switches it off.
+
+Nothing walls you in for good: any locked or welded door can be rammed open with the drone's
+own chassis, eight turns in a row that the whole ship hears. A crowd is a doorway, not a
+pile: no more than two or three blows land on you from the room in one turn, and a turret
+firing through the door past them can hit one of its own. Scrap can carry a
+virus: `v` says what the strain does, and purging it takes six turns by hand, three with a
+SPIKE in the rack.
+
 Some hulls have a rival tug tied on the other side. Its drone is racing you for the same
 three systems, and it cuts through locked doors on the way — which makes following it
 cheaper than cutting for yourself, right up until it finishes first.
@@ -95,13 +116,14 @@ cheaper than cutting for yourself, right up until it finishes first.
 Stand in the same compartment as that drone and you can deal instead of fight. Pay it 100
 credits and it drops everything it was carrying and leaves the hull for good. Take 100 from
 it and it brings one system online on the spot — the noise and the alert are yours to
-live with, the contract stays yours. Or split the sale: it works the ship alongside you and
+live with, the sale stays yours. Or split the sale: it works the ship alongside you and
 every system it raises counts as yours, and the hull goes under tow for half. A deal holds
 for the rest of the voyage, and neither of you lands another blow on the other.
 
 ### Controls
 
-Everything is a key. There is no cursor over the world and no mouse in the terminal view.
+Everything is a key. There is no cursor over the world and no mouse in the terminal view;
+the graphic view takes clicks as well.
 
 ```
 1-9 0        act — a numbered line of this compartment's list: attack, go
@@ -124,7 +146,14 @@ s e w p K f c   module verbs, while the rack still carries them:
              f  shoot
              c  cut a door — three turns, and the whole ship hears it
 a            keycard on a locked door — silent, instant, and the card is
-             gone. The list offers it last: the terminal wants one too
+             gone. The list offers it after the modules: the terminal
+             wants one too
+m            walk to a compartment you have seen — pick it from the list
+d            the doors of this compartment: shut, weld, open, ram
+shift+D      weld shut the door you came through
+i            the card for what is happening here (the [i] badge)
+PgUp         the message log, all of it
+v            the virus in your rack: what it does and how to purge it
 V            switch view: ASCII terminal ⇄ graphic
 L            language: EN · ES · RU
 ?            help          esc  close          shift+R  new run
@@ -137,7 +166,10 @@ the grid; the numpad digits still pick lines.
 ### Two screens, three languages, and sound
 
 `V` switches between the ASCII terminal and a graphic view — the same schematic, panel and
-action list drawn as SVG and HTML instead of as characters, with the action lines clickable.
+action list drawn as SVG and HTML instead of as characters, and clickable: a line of the
+list, a compartment on the map to walk there, a door to open its line. Hover a compartment
+and the map draws the route to it. Machines are red, the count in a compartment sits in a red
+skull, and the drone has its own amber marker on top of everything.
 Neither view decides anything: both draw the same pure functions of the same run, and the
 choice is remembered. ASCII is the default, because that is what this is.
 
@@ -146,14 +178,15 @@ title, and changes nothing but the words — same seed, same voyage, any languag
 
 There is one piece of music, written for the game, and the run mixes it: the tug is the
 quiet place, an ENFORCER aboard is the loudest the ship gets, and the level slides between
-them over two beats rather than stepping. Thirteen sound effects sit on top of it. Add
+them over two beats rather than stepping. Sixteen sound effects sit on top of it. Add
 `?sound=off` to the URL to play in silence.
 
 One thing on the screen is timed to the track. When a machine comes into sight that was not
 in sight a moment ago — you walk in on it, it walks in on you, a door opens, the alert sends
 it — its compartment on the schematic and its line in the contacts block flash red for two
-beats, on the beat. Nothing else in the game flashes, nothing moves, and a browser asking
-for reduced motion gets the colour without the blink.
+beats, on the beat. Nothing else is timed to the music. The only other motion is the
+ship's: a charge blinks while its fuse burns, and a compartment going up flashes and shakes
+the map. A browser asking for reduced motion gets the colours and none of the movement.
 
 ### This is a traditional roguelike
 
@@ -201,7 +234,7 @@ Single character: one drone, aboard, at a time.
 
 TypeScript, no game engine. The terminal view is `rot-js` and nothing else from it — the
 field of view, the pathfinding, the generator and the turn scheduler are all our own. The
-graphic view is inline SVG and HTML with no library at all. 301 KB of code, and the rest of
+graphic view is inline SVG and HTML with no library at all. 644 KB of code, and the rest of
 the download is audio.
 
 `?seed=12345` in the URL reproduces a run exactly — the cheapest bug report there is.
@@ -219,11 +252,13 @@ and that is worth saying plainly rather than leaving to be discovered.
 - **Music** — `Dead Compartment`, written by me in Suno: the prompting and the selection are
   mine, the synthesis is the model's. What ships is a 16-bar loop cut out of that track at
   74.9 bpm, and the game mixes it live rather than switching between pieces.
-- **Sound effects** — ten of the thirteen were generated for this project with ElevenLabs
+- **Sound effects** — ten of the sixteen were generated for this project with ElevenLabs
   Sound Effects, under their terms for generated audio; the prompts are in the repository.
-  The other three are Strudel patterns written for the game and rendered offline, with the
-  drums synthesised from code after a description of a TR-909 rather than from a sample bank.
-  Strudel (AGPL-3.0) is a tool that renders them and is not part of the game.
+  Three are Strudel patterns written for the game and rendered offline, with the drums
+  synthesised from code after a description of a TR-909 rather than from a sample bank.
+  Strudel (AGPL-3.0) is a tool that renders them and is not part of the game. The last three
+  — the fuse, the blast and the purge — are synthesised from noise and sine waves with `sox`
+  by a script in the repository, no model involved.
 - **Type** — whatever monospace your browser already has. No font is shipped.
 - **Ship vocabulary** — the compartment names and the fixed-port docking rule in the
   generator are after Robert Pearce's *Starship Geomorphs 2.0* (rpgmobius.com/geomorphs,

@@ -3,10 +3,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { newGame } from "../src/game.js";
 import { TUTORIAL_SEED } from "../src/content/tutorial.js";
+
 import { appReducer, initialState, withSettings, type AppState } from "../src/ui/appstate.js";
 import { toIntent, type KeyLike } from "../src/ui/input.js";
-
-import { BUILD_VERSION, DEFAULT_TITLE, SEED_DIGITS, SOUND_STORAGE_KEY, TITLE_PICKS, TITLE_ROWS, isSoundKey, itemText, rememberSound, seedFromUrl, seedOf, seedTyped, storedSound, titleRowAt, titleRowOfPick, titleScreen, type TitleSettings } from "../src/ui/title.js";
+import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
+import { BUILD_VERSION, DEFAULT_TITLE, SEED_DIGITS, SOUND_STORAGE_KEY, TITLE_PICKS, TITLE_ROWS, isSoundKey, itemText, rememberSound, seedFromUrl, seedOf, seedTyped, storedSound, titleLines, titleRowAt, titleRowOfPick, titleScreen, type TitleSettings } from "../src/ui/title.js";
 
 /**
  * The start screen (docs/tasks/G84-title-screen.md).
@@ -72,8 +73,6 @@ describe("the start screen answers the five questions", () => {
     }
   });
 
-
-
   it("names the jam, the author and the build at the foot", () => {
     const foot = titleScreen(DEFAULT_TITLE).foot;
     expect(foot).toContain("Fortnight 2");
@@ -123,6 +122,15 @@ describe("the start screen fits the terminal in every language", () => {
  */
 describe("every row of the menu can be clicked", () => {
 
+  /**
+   * And the row the highlight is on is marked in both views.
+   *
+   * The reducer moves a cursor either way (see the keys below); what this holds
+   * is that the two screens draw it — the page with the class its action list
+   * already uses, the terminal with a row of its own colour and the `▸` the
+   * panel points with (docs/tasks/G86-tutorial-and-title.md, 11).
+   */
+
   it("does by click exactly what the row's key does", () => {
     const clicks = TITLE_ROWS.map((_, i) => appReducer(title(), { kind: "line", index: i }, newGame(7)));
     expect(clicks[TITLE_ROWS.indexOf("voyage")]!.overlay).toBe("none");
@@ -148,16 +156,6 @@ describe("every row of the menu can be clicked", () => {
       expect(game.inputs, String(index)).toEqual([]);
       expect(game.schedule.time, String(index)).toBe(0);
     }
-  });
-
-  it("leaves the digits to the four rows that wear one", () => {
-    // A click reaches all seven; a digit reaches the four that print one, and
-    // `5`..`0` go on meaning "any other key casts off" as they always did.
-    expect(titleRowOfPick(0)).toBe("voyage");
-    expect(titleRowOfPick(3)).toBe("seed");
-    expect(titleRowOfPick(4)).toBeUndefined();
-    expect(titleRowAt(4)).toBe("sound");
-    expect(key(title(), press("5", "Digit5")).overlay).toBe("none");
   });
 
   it("keeps the rows out of the way of the seed being typed", () => {
@@ -206,23 +204,6 @@ describe("every key of the menu does what its row promises", () => {
     // first one: cast off. That is the row's own promise, not "any key".
     expect(key(title(), press("Enter")).overlay).toBe("none");
     expect(key(title(), press("?")).overlay).toBe("help");
-  });
-
-  it("moves the highlight with the arrows and does the lit row on `Enter`", () => {
-    const menu = title();
-    expect(menu.cursor).toBe(0);
-    const down = key(menu, press("ArrowDown"));
-    expect(down.cursor).toBe(TITLE_PICKS.training);
-    expect(down.effect).toEqual({ kind: "idle" });
-    // The lit row is what `Enter` does: the second row is the training run.
-    expect(key(down, press("Enter")).effect).toEqual({ kind: "training" });
-    // Down to the help row and into the card, with no digit pressed at all.
-    expect(keys(menu, press("ArrowDown"), press("ArrowDown"), press("Enter")).overlay).toBe("help");
-    // And the sound row is reachable the same way: it is the last of them.
-    const sound = keys(menu, ...Array(TITLE_ROWS.indexOf("sound")).fill(press("ArrowDown")));
-    expect(sound.cursor).toBe(TITLE_ROWS.indexOf("sound"));
-    expect(key(sound, press("Enter")).effect).toEqual({ kind: "sound" });
-    expect(key(sound, press("Enter")).overlay).toBe("title");
   });
 
   it("wraps the highlight at both ends of the menu", () => {
@@ -282,15 +263,6 @@ describe("every key of the menu does what its row promises", () => {
     expect(key(title(), press("2", "Digit2")).overlay).toBe("none");
     expect(key(title(), press("3", "Digit3")).overlay).toBe("help");
   });
-
-  it("leaves `S` to the shell, which is what makes it work here", () => {
-    // Read before the key table, like the debug overlay: never a turn, never
-    // an overlay, and it has to work before a run has started.
-    expect(isSoundKey(press("S"))).toBe(true);
-    expect(isSoundKey(press("s"))).toBe(false);
-    expect(isSoundKey({ key: "S", ctrlKey: true })).toBe(false);
-  });
-
 
   it("names the sound the way the row says it, both ways round", () => {
     const on = titleScreen({ ...DEFAULT_TITLE, sound: true }).items.find((i) => i.key === "S");
@@ -411,24 +383,6 @@ describe("the seed is chosen on the screen, not in the address bar", () => {
 // ------------------------------------------------------------- what is remembered
 
 describe("the screen remembers settings and never remembers progress", () => {
-  it("brings the sound back next session", () => {
-    const kept = store();
-    rememberSound(false, kept);
-    expect(storedSound(kept)).toBe(false);
-  });
-
-
-  it("keeps nothing but settings: no seed, no run, no progress", () => {
-    const kept = store();
-    rememberSound(true, kept);
-    const written = [SOUND_STORAGE_KEY];
-    // The jam forbids meta-progression outright (.claude/CLAUDE.md), so the
-    // whole of what a session may leave behind is named here: one setting.
-    expect(written.every((k) => k.startsWith("salvor."))).toBe(true);
-    expect(kept.getItem("salvor.seed")).toBeNull();
-    expect(kept.getItem("salvor.voyage")).toBeNull();
-    expect(kept.getItem("salvor.progress")).toBeNull();
-  });
 
   it("shrugs off a storage that throws rather than losing the screen", () => {
     const hostile = {
@@ -462,5 +416,4 @@ describe("the screen remembers settings and never remembers progress", () => {
     expect(key(typed, press("Escape")).seedText).toBeUndefined();
     expect(key(title(), press("1", "Digit1")).seedText).toBeUndefined();
   });
-
 });

@@ -25,7 +25,8 @@ import { TUG_ID } from "../src/content/tug.js";
  */
 
 const SEEDS = seedRange(1, 32);
-const MAX_STEPS = 1500;
+/** As in balance.test.ts: a careful voyage on the ten-rung ladder and the larger hulls can take 2550 steps to end (G90 A, B). */
+const MAX_STEPS = 3000;
 
 /** The three compartments a derelict is neutralised in (design-doc.md). */
 const SYSTEM_KINDS = ["engineering", "reactor", "control"];
@@ -321,6 +322,7 @@ describe("what a voyage can reach", () => {
     // on it and buys 2.5 → 2.2 drones. The line is honest and the price is the
     // defect; the price is a `content` number and belongs to a balance pass.
     const wins = carefulWide.filter((r) => r.result.status === "won").length;
+    console.log(`careful wins ${wins} of ${WIN_SEEDS.length}`);
     expect(wins, "the jam's acceptance line: wins over 200 seeds").toBeGreaterThanOrEqual(3);
   });
 

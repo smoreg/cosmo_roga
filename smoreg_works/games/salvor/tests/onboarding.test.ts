@@ -1,23 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { Rng, RoomGame, isAlive, reachableWithKeys, type RoomCommand, type RoomGameConfig, type RoomId, type Ship } from "@jamrog/engine";
-import { BOTS_ROOMS, seedRange, shipFromText } from "@jamrog/engine/testing";
+import { RoomGame, reachableWithKeys, type RoomCommand, type RoomGameConfig, type RoomId, type Ship } from "@jamrog/engine";
+import { seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
-import { TUTORIAL_ID, TUTORIAL_SEED, TUTORIAL_SPEC, TUTORIAL_STEPS } from "../src/content/tutorial.js";
+import { LESSON_STEPS, TUTORIAL_SEED, lessonOf, type LessonId } from "../src/content/tutorial.js";
 import { HINT_LINE_KEYS, ONBOARDING_HINTS, saidHint, soldLine, tugOpening } from "../src/content/hints.js";
 import { t } from "../src/i18n.js";
 import { CHEAPEST_HULL, STARTING_CREDITS } from "../src/content/hulls.js";
 import { moduleKind } from "../src/content/modules.js";
-import { STARTER_HULLS, classOfShip, flavourCallsign } from "../src/content/derelicts.js";
+import { STARTER_HULLS, classOfShip, derelictName, flavourCallsign } from "../src/content/derelicts.js";
+import { CHARTER_PAY } from "../src/content/charters.js";
 import { OBJECTIVES } from "../src/content/objectives.js";
-import { TUG_ID, isTug } from "../src/content/tug.js";
+import { TUG_ID, TUG_ROOMS, isTug } from "../src/content/tug.js";
 import { GHOST_HINT_KEY } from "../src/systems/ghost.js";
+import { shipState } from "../src/systems/shipstate.js";
+import { lessonStatus } from "../src/systems/tutorial.js";
 import { POPULATE, roomList, type Body, type Crate, type ShipSystem, type Wreck } from "../src/systems/populate.js";
 import { DOORS } from "../src/systems/doors.js";
 import { VOYAGE, cratePrice, currentDerelict, undock, voyageOf } from "../src/systems/voyage.js";
 import { RIG, hostilesIn, rigOf, type Rig } from "../src/twist/rig.js";
-import { makeExplorer } from "../src/ui/auto.js";
-import { roomActions } from "../src/ui/actions.js";
-import { appReducer, initialState, type AppState } from "../src/ui/appstate.js";
+import { engage, isStop, makeExplorer, makeTraveller, type AutoResult, type Explorer } from "../src/ui/auto.js";
+import { roomActions, waysHere } from "../src/ui/actions.js";
+import { appReducer, initialState, listOf, runBegun, stoppedAt, syncStatus, walkEnded, type AppState } from "../src/ui/appstate.js";
 import { toIntent } from "../src/ui/input.js";
 
 /**
@@ -143,11 +146,11 @@ describe("the first thing a player ever does", () => {
       press("1"); // the title's first row casts off
       expect(state.overlay, `seed ${seed}`).toBe("none");
 
-      // The line, wherever the ten rows put it — and they put it in the same
+      // The line, wherever the nine rows put it — and they put it in the same
       // place on every seed, which is the other half of what this holds.
       const list = roomActions(game);
       const off = list.findIndex((a) => a.cmd.kind === "act" && a.cmd.verb === "undock");
-      expect(off, `seed ${seed}`).toBe(list.length - 1);
+      expect(off, `seed ${seed}`).toBe(1);
       press(list[off]!.key);
 
       expect(game.shipId, `seed ${seed}`).not.toBe(TUG_ID);
@@ -164,30 +167,35 @@ describe("the first thing a player ever does", () => {
     const game = newGame(11);
     const labels = (): string[] => roomActions(game).map((a) => a.label);
 
-    expect(labels()[0]).toBe("buy a hull ▸");
-    // The row that casts off comes last and is a checklist of what the visit
-    // home has left undone; a fresh board has one thing on it
+    // The voyage leads the list, in the owner's order (G92 B1, G95 B1): the
+    // hull and contract the tug flies to, then boarding it.
+    expect(labels()[0]).toBe("hull & contract ▸");
+    expect(labels()[1]).toBe("boarding the derelict");
+    expect(labels()[2]).toBe("buy a hull ▸");
+    // What the visit home has left undone is the note under the row that casts
+    // off, not its name; a fresh board has one thing on it
     // (docs/tug-menu-audit.md, "what a designer would do", 5, and П7).
-    expect(labels()[9]).toBe("cast off — board closes");
-    expect(labels().some((l) => l.startsWith("take a charter"))).toBe(true);
-    expect(roomActions(game)).toHaveLength(10);
+    expect(roomActions(game)[1]!.extra).toBe("(choice closes)");
+    expect(roomActions(game)).toHaveLength(9);
     expect(roomActions(game).every((a) => a.key !== "")).toBe(true);
 
     // And the same ten from anywhere aboard, because nothing about them is
     // about where the drone is standing.
     for (const door of [1, 2, 3]) expect(game.playerCommand({ kind: "go", door }).ok).toBe(true);
-    expect(labels()[9]).toBe("cast off — board closes");
+    expect(roomActions(game)[1]!.extra).toBe("(choice closes)");
 
-    // The board itself, one level down, and the first line of it is the point
-    // of the game: raise three systems and the tug sells the hull whole.
-    const board = roomActions(game, "charter").filter((a) => a.cmd.kind === "act" && a.cmd.verb === "charter");
-    expect(board.map((a) => a.label)).toEqual(["take NEUTRALIZE (200 CR)", "take SALVAGE (20 CR)"]);
+    // The first stop, one level down: every starting hull the seed offers, each
+    // over its own contracts, and the job the first sortie is paid for leading
+    // (G90 F). The goal of the run is the panel's, not a line to sign.
+    const board = roomActions(game, "jump").filter((a) => a.cmd.kind === "act" && a.cmd.verb === "berth");
+    expect(board[0]!.label).toBe(`SALVAGE · ${CHARTER_PAY.salvage} CR`);
+    expect(board[0]!.head).toContain(derelictName(currentDerelict(game).spec));
 
-    // With nothing outstanding the row is the hull by its callsign: a voyage
-    // can draw two freighters, and the line that flies you to one has to say
-    // which (G55, 17).
+    // With nothing outstanding the row is its own name and nothing else: a
+    // menu row does not change what it is called with the state of the rack.
     expect(game.playerCommand(board[0]!.cmd).ok).toBe(true);
-    expect(labels()[9]).toBe(`cast off → ${flavourCallsign(currentDerelict(game).flavour)}`);
+    expect(labels()[1]).toBe("boarding the derelict");
+    expect(roomActions(game)[1]!.extra).toBeUndefined();
   });
 
   /**
@@ -196,14 +204,14 @@ describe("the first thing a player ever does", () => {
    * says what the screen is for (docs/tasks/G40-tug-clarity.md, 2–4 as G53
    * leaves them).
    */
-  it("opens on ten rows, the rack among them and a sentence, on 200 seeds", () => {
+  it("opens on nine rows, the rack among them and a sentence, on 200 seeds", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const game = newGame(seed);
       const list = roomActions(game);
 
-      expect(list, `seed ${seed}`).toHaveLength(10);
-      expect(list[9]!.label, `seed ${seed}`).toMatch(/^cast off /);
-      expect(list[9]!.enabled, `seed ${seed}`).toBe(true);
+      expect(list, `seed ${seed}`).toHaveLength(9);
+      expect(list[1]!.label, `seed ${seed}`).toBe("boarding the derelict");
+      expect(list[1]!.enabled, `seed ${seed}`).toBe(true);
       // The rack, always: three hulls one level down, the drone on the rails
       // among them (docs/tasks/G40-tug-clarity.md, 3).
       const rack = roomActions(game, "buy");
@@ -235,20 +243,29 @@ describe("the first thing a player ever does", () => {
 
     // Once a run, like every other line that goes through `hint`.
     voyageOf(game).credits = 500;
+    currentDerelict(game).sold = true;
     game.playerCommand({ kind: "act", verb: "jump" });
     expect(said()).toBe(1);
   });
 });
 
+function nameBeyond(game: RoomGame, door: number): string {
+  const here = game.roomOf(game.player).id;
+  return game.ship.roomAt(game.ship.other(game.ship.doorAt(door), here)).name;
+}
 
 // ------------------------------------------------------- the first derelict
 
 describe("the first freighter, on 200 seeds", () => {
-  it("puts the goal and one small job on the board, and 25 CR in the account", () => {
+  it("leads every starting hull with the salvage run, and 25 CR in the account", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const voyage = voyageOf(newGame(seed));
-      expect(voyage.offered.map((c) => c.id), `seed ${seed}`).toEqual(["neutralize", "salvage"]);
-      expect(voyage.offered[1]!.payout, `seed ${seed}`).toBe(SALVAGE_TARGET);
+      for (const hull of voyage.stops![0]!) {
+        expect(hull.charters[0]!.id, `seed ${seed}`).toBe("salvage");
+        expect(hull.charters[0]!.payout, `seed ${seed}`).toBe(CHARTER_PAY.salvage);
+      }
+      // Signed for the line the list leads with, until another is chosen.
+      expect(voyage.charters.map((c) => c.id), `seed ${seed}`).toEqual(["salvage"]);
       expect(voyage.credits, `seed ${seed}`).toBe(STARTING_CREDITS);
       expect(voyage.hull, `seed ${seed}`).toBeDefined();
     }
@@ -278,10 +295,13 @@ describe("the first freighter, on 200 seeds", () => {
     // point.
     for (let seed = 1; seed <= SEEDS; seed++) {
       const game = newGame(seed);
-      const first = roomActions(game, "charter").find((a) => a.enabled && a.cmd.kind === "act");
-      expect(first?.label, `seed ${seed}`).toContain(t("charter.name.neutralize"));
+      const hull = voyageOf(game).derelicts[0]!.id;
+      const first = roomActions(game, "jump").find((a) => a.enabled && a.cmd.kind === "act" && a.step === undefined);
+      expect(first?.label, `seed ${seed}`).toContain(t("charter.name.salvage"));
       expect(game.playerCommand(first!.cmd).ok, `seed ${seed}`).toBe(true);
-      expect(voyageOf(game).charters.map((c) => c.id), `seed ${seed}`).toEqual(["neutralize"]);
+      expect(voyageOf(game).charters.map((c) => c.id), `seed ${seed}`).toEqual(["salvage"]);
+      // The first line is the hull the voyage opened tied to: nothing moved.
+      expect(voyageOf(game).derelicts[0]!.id, `seed ${seed}`).toBe(hull);
     }
   });
 
@@ -444,7 +464,7 @@ describe("the five hints", () => {
     // In its own turn means: on the same line of the log as the thing that
     // earned it, and right after it — not the turn the world has moved on to
     // by the time the command is over.
-    const found = `You go through the body: ${BODY_CREDITS} CR and a keycard.`;
+    const found = `Body searched: ${BODY_CREDITS} CR and a keycard.`;
     expect(saidOn(game, t(HINT_LINE_KEYS.keycard))).toBe(saidOn(game, found));
     expect(indexOf(game, t(HINT_LINE_KEYS.keycard))).toBe(indexOf(game, found) + 1);
 
@@ -472,8 +492,8 @@ describe("the five hints", () => {
     expect(game.shipId).toBe(TUG_ID);
     expect(said(game, soldLine(24, HULL_PRICE))).toBe(1);
     // Straight after the line that banked it, so the two read as one sentence:
-    // `The hold is emptied: +24 CR. 49 CR.` / `Hold sold for 24 CR. Hulls cost 40.`
-    const banked = `The hold is emptied: +24 CR. ${STARTING_CREDITS + 24} CR.`;
+    // `Hold emptied: +24 CR. 49 CR.` / `Hold sold for 24 CR. Hulls cost 40.`
+    const banked = `Hold emptied: +24 CR. ${STARTING_CREDITS + 24} CR.`;
     expect(indexOf(game, soldLine(24, HULL_PRICE))).toBe(indexOf(game, banked) + 1);
     expect(soldLine(24, HULL_PRICE)).toBe(`Hold sold for 24 CR. Hulls cost ${HULL_PRICE}.`);
 
@@ -552,347 +572,205 @@ function onBodies(): RoomGame {
   return game;
 }
 
-// ------------------------------------------------------- the training hull
+// ------------------------------------------------------------- the lesson
 
 /**
- * The tutorial, flown (docs/tasks/G69-tutorial.md, G86).
+ * The lesson, flown by a player who does only what the window says
+ * (docs/tasks/G90-smoreg-wave.md, E4).
  *
- * `tests/tutorial.test.ts` holds the ship and the chain apart from each other —
- * the hull over a hundred draws, the seven lines as a table of predicates. This
- * is the two of them together: three bots on the seeds a training run starts
- * from, and the log they leave behind.
+ * `tests/tutorial.test.ts` holds the ship and the steps apart from each other;
+ * this is the two of them together, through the real key table, the real
+ * reducer and the walks the shell would run — in all three languages, because
+ * the follower reads the window's own words for the line it presses, and a
+ * step that named the wrong verb in Spanish would be a lesson nobody there
+ * could finish.
  *
- * The log is read through a wrapper rather than off `game.log.lines`, and that
- * is not fussiness: a `MessageLog` keeps the last two hundred lines, a tutorial
- * sortie is longer than that, and the first hints of the run had scrolled out of
- * the array by the time the run ended. Counting them where they are written is
- * the only way to say "exactly once" about a whole run — and it is also the only
- * moment at which the *situation* behind a line can be read, which is what the
- * corpse check below needs.
- *
- * Driven by hand rather than through `runBotOn`, for the same reason
- * `winnable.test.ts` drives the first sortie by hand: this measures things that
- * happen mid-run — what the drone was standing in front of, what the turn
- * already said — and the harness hands back one row per run.
+ * The follower knows the nine ids and one move per id, and nothing about the
+ * ship: which compartment to click it reads off the window (`r2`), which line
+ * to press it finds by the verb the window names, and with the map's list up
+ * in the way of a line it backs out of it as a player would. A press that
+ * changes nothing counts against it; four in a row is stuck.
  */
 
-const MAX_STEPS = 1500;
+const LESSON_SEEDS = [TUTORIAL_SEED, ...seedRange(1, 12)];
 
-/** A blow, whoever landed it: the engine's own line and the rack's wording of it. */
-const isBlow = (key: string): boolean => key.startsWith("engine.hit.") || key.startsWith("log.hit.");
-
-interface ChainLine {
-  readonly id: string;
-  readonly turn: number;
-  /** Something alive was in sight when the line was written. */
-  readonly inSight: boolean;
-  /** Blows had been traded on that turn when the line was written. */
-  readonly fighting: boolean;
-}
-
-interface TrainingRun {
+interface Flown {
   readonly game: SalvorGame;
-  /** The chain's own lines, in the order they were said. */
-  readonly said: ChainLine[];
-  /** Every hint of the run, the chain's and the ordinary ones alike. */
-  readonly hints: Array<{ key: string; turn: number; afterAlarm: boolean }>;
-  /** The turn the first blow of the run landed, either way round. */
-  firstBlow: number | undefined;
-  /** The drone stood in a compartment with a locked bulkhead aboard the hull. */
-  stoodAtLock: boolean;
+  /** The step the window was on at every press, in order. */
+  readonly seen: number[];
+  /** Presses on which the window carried the tick. */
+  readonly ticks: number;
+  /** Where it ran out of things to do, if it did. */
+  readonly stuck?: string;
 }
 
-function flyTraining(seed: number, bot: keyof typeof BOTS_ROOMS = "careful"): TrainingRun {
-  const play = BOTS_ROOMS[bot]!();
+/** The first word of a list line, as the window names it: `salvage`, `разбор`. */
+function verbOf(text: string): string {
+  return text.split(" ")[0]!.replace(/[:«»]/g, "");
+}
+
+function followLesson(seed: number): Flown {
   const game = newGame(seed, true);
-  // The harness's own stream for the bot, so a hand-driven run and a
-  // `runBotOn` one make the same decisions (`testing/metrics.ts`).
-  const rng = new Rng(seed ^ 0x5bf03635);
-  const run: TrainingRun = {
-    game,
-    said: [],
-    hints: [],
-    firstBlow: undefined,
-    stoodAtLock: false,
-  };
+  // The run opens on the card that says what the job is (G96, 2), and the
+  // follower reads it the way a player does: one key, no turn.
+  let state: AppState = runBegun({ ...initialState(), overlay: "none" }, game);
+  if (state.overlay !== "brief") return { game, seen: [], ticks: 0, stuck: "no opening card" };
+  state = appReducer(state, { kind: "dismiss" }, game);
+  const seen: number[] = [];
+  let ticks = 0;
 
-  const add = game.log.add.bind(game.log);
-  (game.log as unknown as { add: typeof add }).add = (text, turn, tone, key, params) => {
-    if (typeof key === "string") {
-      if (run.firstBlow === undefined && isBlow(key)) run.firstBlow = turn;
-      if (key.startsWith("hint.")) {
-        run.hints.push({
-          key,
-          turn,
-          afterAlarm: game.log.lines.some((l) => l.turn === turn && l.tone === "alarm"),
-        });
-      }
-      if (key.startsWith(TUTORIAL_PREFIX)) {
-        run.said.push({
-          id: key.slice("hint.".length),
-          turn,
-          inSight: game.entities.some(
-            (e) => e.id !== game.player.id && isAlive(e) && e.room !== undefined && game.visible.has(e.room),
-          ),
-          fighting: game.log.lines.some((l) => l.turn === turn && isBlow(l.key ?? "")),
-        });
-      }
-    }
-    add(text, turn, tone, key, params);
+  const spend = (cmd: RoomCommand): boolean => {
+    const ok = game.playerCommand(cmd).ok;
+    state = syncStatus(state, game);
+    return ok;
   };
-
-  for (let step = 0; step < MAX_STEPS && !game.isOver(); step++) {
-    const out = game.playerCommand(play(game, rng));
-    // The harness charges an idle turn for a refusal; without it a bot that
-    // keeps pressing a refused verb never moves and never measures anything.
-    if (!out.ok) game.playerCommand({ kind: "wait" });
-    if (!isTug(game) && classOfShip(game.ship) === TUTORIAL_ID) {
-      const here = game.roomOf(game.player).id;
-      if (game.ship.doorsOf(here).some((d) => d.state === "locked")) run.stoodAtLock = true;
+  const follow = (result: AutoResult): boolean => {
+    if (!isStop(result)) return spend(result.cmd) || ((state = walkEnded(state)), false);
+    game.log.add(result.stop, game.schedule.time, "warn");
+    state = walkEnded(state);
+    if (result.door !== undefined) state = stoppedAt(state, game, result.door);
+    return false;
+  };
+  const walk = (walker: Explorer): void => {
+    for (let i = 0; i < 60 && state.exploring && !game.isOver(); i++) if (!follow(walker.step(game))) break;
+    state = walkEnded(state);
+  };
+  const apply = (intent: Parameters<typeof appReducer>[1]): void => {
+    state = appReducer(state, intent, game);
+    const e = state.effect;
+    if (e.kind === "command") spend(e.cmd);
+    else if (e.kind === "explore") walk(makeExplorer(e.through));
+    else if (e.kind === "travel") walk(makeTraveller(e.to, e.through));
+    else if (e.kind === "fight") follow(engage(game, e.melee ? "melee" : "best"));
+    else if (e.kind === "log") game.log.add(e.text, game.schedule.time, "warn");
+    // A card the run raised — the hull sold, the virus caught — is put away
+    // by the next key, as any key does.
+    if (state.overlay === "sold" || state.overlay === "lost" || state.overlay === "virus" || state.overlay === "brief") {
+      state = appReducer(state, { kind: "dismiss" }, game);
     }
+  };
+  const press = (key: string): void => apply(toIntent({ key }, rigOf(game.player) ?? undefined));
+  const line = (verb: string): boolean => {
+    const at = listOf(game, state).findIndex((a) => a.enabled && verbOf(a.label) === verb);
+    if (at < 0) return false;
+    apply({ kind: "line", index: at });
+    return true;
+  };
+  const row = (): boolean => {
+    const at = listOf(game, state).findIndex((a) => a.step !== undefined && a.step !== null);
+    if (at < 0) return false;
+    apply({ kind: "line", index: at });
+    return true;
+  };
+  /** Everything a press can change, so a press that changes nothing is seen to. */
+  const shape = (): string =>
+    JSON.stringify([
+      game.shipId, game.player.room, game.player.data, game.currentShip.data,
+      game.ship.doors.map((d) => d.state), game.entities.map((e) => [e.room, e.hp]), state.menu, state.moves,
+    ]);
+  const word = (key: Parameters<typeof t>[0], params?: Record<string, string | number>): string => verbOf(t(key, params));
+
+  let idle = 0;
+  for (let i = 0; i < 400 && !game.isOver(); i++) {
+    const status = lessonStatus(game);
+    if (status === undefined) return { game, seen, ticks, stuck: `no window at press ${i}` };
+    if (status.done) ticks++;
+    seen.push(status.step);
+    if (status.over) return { game, seen, ticks };
+    const id: LessonId = LESSON_STEPS[status.step]!.id;
+    const before = shape();
+    // The map's list is up (a walk stopped at a door) and the step wants a
+    // line of the compartment's own: back up a level first, as a player would.
+    if (state.moves && state.menu === undefined && (id === "modules" || id === "door" || id === "virus" || id === "systems")) {
+      press("Escape");
+      continue;
+    }
+    switch (id) {
+      case "click": {
+        const label = /\br\d+\b/.exec(t(status.press!))?.[0];
+        apply({ kind: "room", id: game.ship.room(label!).id });
+        break;
+      }
+      case "explore":
+        press("o");
+        break;
+      case "modules":
+        if (!line(word("action.salvage", { module: "", left: 0, max: 0 }))) press("o");
+        break;
+      case "door":
+        if (state.menu !== undefined) line(verbOf(listOf(game, state).find((a) => a.enabled)?.label ?? ""));
+        else if (!line(word("action.search")) && !row()) press("o");
+        break;
+      case "fight":
+        press("Tab");
+        break;
+      case "alert":
+        if (waysHere(game).some((w) => w.enabled && w.verb === "cut")) press("c");
+        else press("o");
+        break;
+      case "virus":
+        line(word("action.purge", { module: "", left: 0 }));
+        break;
+      case "scan":
+        press("s");
+        break;
+      case "systems": {
+        if (line(word("action.workBare", { system: "", left: 0 }))) break;
+        const online = shipState(game).online;
+        const target = game.ship.rooms.find((r) =>
+          roomList<ShipSystem>(r, "systems").some((sys) => !online.includes(sys.kind)),
+        );
+        if (target !== undefined) apply({ kind: "room", id: target.id });
+        break;
+      }
+      case "leave":
+        press("<");
+        break;
+    }
+    if (shape() === before) {
+      if (++idle > 3) return { game, seen, ticks, stuck: `${id} at turn ${game.schedule.time}` };
+    } else idle = 0;
   }
-  return run;
+  return { game, seen, ticks, stuck: game.isOver() ? "run over" : "out of presses" };
 }
 
-const TUTORIAL_PREFIX = "hint.tutorial.";
-
-/** The three roles, on two dozen seeds each: the ceiling, the floor and the fuzzer. */
-const CHAIN_BOTS = ["careful", "greedy", "random"] as const;
-const CHAIN_SEEDS = seedRange(1, 24);
-
-describe("the training hull", () => {
-  const run = flyTraining(TUTORIAL_SEED);
-  const { game, said } = run;
-  const state = voyageOf(game).state[0]!;
-
-  it("is the first hull of the itinerary, and the tug takes it", () => {
-    expect(state.spec.id).toBe(TUTORIAL_SPEC.id);
-    expect(state.online.length).toBe(OBJECTIVES.length);
-    expect(state.sold).toBe(true);
-    // One drone, one sortie's worth of lessons: the tutorial seed is picked so
-    // that a careful bot finishes the hull without losing a drone on it.
-    expect(state.deaths).toEqual([]);
-  });
-
-  it("says all seven of its lines, each exactly once", () => {
-    const ids = said.map((l) => l.id);
-    expect(new Set(ids).size).toBe(TUTORIAL_STEPS.length);
-    for (const step of TUTORIAL_STEPS) {
-      expect(ids.filter((id) => id === step.id).length, step.id).toBe(1);
-    }
-  });
-
-  it("says them in the order the hull hands them over", () => {
-    // The order is a property of the seed and not of the chain: a hull whose
-    // bulkhead lies deeper than its engine room says the same seven lines in
-    // the order it meets them (`content/tutorial.ts`, `stepDue`).
-    //
-    // So what is held is the chain's own rule. The first line is the one that
-    // says which keys do anything at all, the last is the one that says the
-    // lesson is over, and every line in between lands on a turn when its
-    // subject is in front of the drone. Two lines may share a turn — the
-    // boarding turn hands over three subjects at once — and never more (G86).
-    expect(said[0]!.id).toBe("tutorial.enter");
-    expect(said[said.length - 1]!.id).toBe("tutorial.sale");
-    expect(new Set(said.map((l) => l.id))).toEqual(new Set(TUTORIAL_STEPS.map((s) => s.id)));
-    for (let i = 1; i < said.length; i++) {
-      expect(said[i]!.turn, said[i]!.id).toBeGreaterThanOrEqual(said[i - 1]!.turn);
-    }
-  });
-
-  /**
-   * The machine lesson, on the fight it is about.
-   *
-   * It used to arrive after it: the chain was a queue with the scanner second,
-   * the docking bay hands the drone a scout on the turn it boards and the scout
-   * is dead by the next player turn, so the line explaining what a fight costs
-   * came twenty and thirty turns later — in 0 of 120 careful runs and 0 of 120
-   * greedy ones did it land at the fight (docs/tasks/G86-tutorial-and-title.md,
-   * 3). What fixed it is the priority order plus one clause: a fight on the
-   * screen counts as the subject being in front of the player, so the lesson
-   * lands on the turn of the blow rather than on the turn the machine happens
-   * to still be alive.
-   */
-  it("says the machine lesson on the turn of the first blow, or the one after", () => {
-    for (const bot of CHAIN_BOTS) {
-      const runs = CHAIN_SEEDS.map((seed) => flyTraining(seed, bot));
-      const fought = runs.filter((r) => r.firstBlow !== undefined);
-      const onTime = fought.filter((r) => {
-        const line = r.said.find((l) => l.id === "tutorial.contact");
-        return line !== undefined && line.turn <= r.firstBlow! + 1;
-      });
-      const share = fought.length === 0 ? 1 : onTime.length / fought.length;
-      console.log(`${bot}: machine lesson at the first fight ${onTime.length}/${fought.length}`);
-      // Taken: 100 % careful, 100 % greedy, 88 % of the fuzzer's runs over 120
-      // seeds. The fuzzer is the floor — it presses `leave` at random, so some
-      // of its runs are off the hull before the chain has said anything at all.
-      expect(share, `${bot}: the machine lesson is late`).toBeGreaterThanOrEqual(bot === "random" ? 0.75 : 0.95);
-    }
-  });
-
-  /**
-   * And never over a body.
-   *
-   * The engine keeps the dead in the entity list — that is what makes a corpse
-   * something to salvage — and the predicate did not ask whether what it could
-   * see was alive, so 34 of 120 runs said "a machine, and here is what a fight
-   * costs" at a compartment holding nothing but the scout the drone had already
-   * beaten (G86, 2).
-   */
-  it("never says the machine lesson at a corpse", () => {
-    for (const bot of CHAIN_BOTS) {
-      for (const r of CHAIN_SEEDS.map((seed) => flyTraining(seed, bot))) {
-        for (const line of r.said) {
-          if (line.id !== "tutorial.contact") continue;
-          expect(
-            line.inSight || line.fighting,
-            `${bot}: the machine lesson was said with nothing alive in sight and no blow struck`,
-          ).toBe(true);
+describe("the lesson, followed", () => {
+  {
+    it(`gets a player who does what the window says out through the airlock, in `, () => {
+      try {
+        let turns = 0;
+        for (const seed of LESSON_SEEDS) {
+          const run = followLesson(seed);
+          expect(run.stuck, `, seed ${seed}`).toBeUndefined();
+          expect(lessonStatus(run.game)?.over, `, seed ${seed}: the lesson is not over`).toBe(true);
+          expect(voyageOf(run.game).state[0]!.sold, `, seed ${seed}: the hull was not taken`).toBe(true);
+          expect(isTug(run.game), `, seed ${seed}`).toBe(true);
+          expect(run.game.player.hp, `, seed ${seed}`).toBeGreaterThan(0);
+          // Home with the lesson over, and the key the closing line names is
+          // what the tug actually wears: 1 opens the next hulls with their
+          // contracts (G90 F, reordered in G92 B1 and again in G95 B1), and the
+          // sale left enough to pay for the jump.
+          const named = roomActions(run.game).find((a) => a.key === "1")!;
+          expect(named.step, `, seed ${seed}`).toBe("jump");
+          expect(named.enabled, `, seed ${seed}: the row the closing line names is greyed`).toBe(true);
+          expect(roomActions(run.game, "jump").some((a) => a.enabled && a.cmd.kind === "act" && a.cmd.verb === "jump"), `, seed ${seed}`).toBe(true);
+          turns += run.game.schedule.time;
         }
+        console.log(`${LESSON_SEEDS.length}/${LESSON_SEEDS.length} lessons over, ${(turns / LESSON_SEEDS.length).toFixed(1)} turns each`);
+      } finally {
       }
-    }
-  });
+    });
+  }
 
-  /**
-   * The bulkhead lesson, on the ship whose one locked door is the reason it has
-   * a keycard at all.
-   *
-   * Measured before: careful 100 %, greedy 30 %, random 88 % of the runs that
-   * stood in front of it (G86, 4). What was in the way was the queue — the
-   * scanner line and the boarding line both outranked it, and a drone stands in
-   * front of that door for a turn or two before it opens it.
-   */
-  it("says the bulkhead lesson to nearly every drone that stands at one", () => {
-    for (const bot of CHAIN_BOTS) {
-      const runs = CHAIN_SEEDS.map((seed) => flyTraining(seed, bot));
-      const stood = runs.filter((r) => r.stoodAtLock);
-      const told = stood.filter((r) => r.said.some((l) => l.id === "tutorial.door"));
-      const share = stood.length === 0 ? 1 : told.length / stood.length;
-      console.log(`${bot}: bulkhead lesson ${told.length}/${stood.length}`);
-      expect(share, `${bot}: the bulkhead lesson is missed`).toBeGreaterThanOrEqual(0.9);
-    }
-  });
-
-  /**
-   * The line that says the lesson is over, on the way home rather than on a
-   * sale.
-   *
-   * It used to wait for the hull to go under tow, which is the one moment of the
-   * chain a player has to earn: 70 % of careful runs earned it, 4 % of greedy
-   * ones and no random one at all (G86, 8). Coming back through the airlock is
-   * the same event one step earlier and it happens either way.
-   */
-  it("says the last line to nearly every drone that comes home", () => {
-    for (const bot of CHAIN_BOTS) {
-      const runs = CHAIN_SEEDS.map((seed) => flyTraining(seed, bot));
-      const told = runs.filter((r) => r.said.some((l) => l.id === "tutorial.sale"));
-      console.log(`${bot}: lesson-over line ${told.length}/${runs.length}`);
-      // The fuzzer is the floor again: a drone that dies out there with no
-      // money for another never comes home, and there is no line for that.
-      expect(
-        told.length / runs.length,
-        `${bot}: the lesson-over line is missed`,
-      ).toBeGreaterThanOrEqual(bot === "random" ? 0.5 : 0.95);
-    }
-  });
-
-  /**
-   * What a turn may teach, which is two rows of seven and never three.
-   *
-   * 279 of 1308 turns used to carry two hints or more, and 415 hints shared
-   * their turn with a blow, a death or the alarm (G86, 6). The budget is
-   * `content/hints.ts`, `turnRoom`; what is held here is the promise it makes,
-   * on the runs that say the most: whenever the chain speaks, its turn carries
-   * at most two hints in total, and never one the alarm has already claimed.
-   */
-  it("teaches at most two lines in a turn, and nothing over the alarm", () => {
-    for (const bot of CHAIN_BOTS) {
-      const runs = CHAIN_SEEDS.map((seed) => flyTraining(seed, bot));
-      let crowded = 0;
-      let turns = 0;
-      for (const r of runs) {
-        const byTurn = new Map<number, number>();
-        for (const h of r.hints) byTurn.set(h.turn, (byTurn.get(h.turn) ?? 0) + 1);
-        for (const n of byTurn.values()) {
-          turns++;
-          if (n >= 2) crowded++;
-        }
-        for (const line of r.said) {
-          expect(byTurn.get(line.turn) ?? 0, `${bot}: three hints on turn ${line.turn}`).toBeLessThanOrEqual(2);
-        }
-        for (const h of r.hints) {
-          if (!h.key.startsWith(TUTORIAL_PREFIX)) continue;
-          expect(h.afterAlarm, `${bot}: ${h.key} was said over the alarm`).toBe(false);
-        }
-      }
-      console.log(`${bot}: turns carrying two hints ${crowded}/${turns}`);
-    }
-  });
-
-  /**
-   * And the chain owns the two topics it shares with the ordinary lines.
-   *
-   * `hint.objective` is `tutorial.system` in other words, `hint.payout` is
-   * `tutorial.airlock` in other words, and 94 and 88 of 120 training runs heard
-   * both of each (G86, 5). In a training run the chain says them, in the
-   * compartment they are about, and the ordinary twin stays silent for the rest
-   * of the voyage (`content/hints.ts`, `CHAIN_SAYS`).
-   */
-  it("never says the two ordinary lines the chain already carries", () => {
-    for (const bot of CHAIN_BOTS) {
-      for (const r of CHAIN_SEEDS.map((seed) => flyTraining(seed, bot))) {
-        const twins = r.hints.filter((h) => h.key === "hint.objective" || h.key === "hint.payout");
-        expect(twins.map((h) => h.key), `${bot}: said twice`).toEqual([]);
-      }
-    }
-  });
-
-  it("costs the player no hull, and leaves the account no worse", () => {
-    // The training hull used to displace the first wreck of the itinerary, and
-    // that wreck sells for 150–220 against the training hull's 60: over 40
-    // careful runs the lesson cost 4 CR of the 20 the voyage ends with, and a
-    // hull of the four it flies (G86, 7). Added in front of them instead.
-    const money = (training: boolean): number =>
-      seedRange(1, 24).reduce((sum, seed) => {
-        const play = BOTS_ROOMS.careful!();
-        const game = newGame(seed, training);
-        const rng = new Rng(seed ^ 0x5bf03635);
-        for (let step = 0; step < MAX_STEPS && !game.isOver(); step++) {
-          if (!game.playerCommand(play(game, rng)).ok) game.playerCommand({ kind: "wait" });
-        }
-        return sum + voyageOf(game).credits;
-      }, 0) / 24;
-
-    const taught = money(true);
-    const plain = money(false);
-    console.log(`careful/24: ${taught.toFixed(1)} CR after the lesson, ${plain.toFixed(1)} CR without it`);
-    expect(taught, "the lesson costs the player money").toBeGreaterThanOrEqual(plain * 0.9);
-  });
-
-  it("says six of the seven whatever the seed, on 24 of them", () => {
-    // Six are moments the hull guarantees: aboard, a machine, a bulkhead, a
-    // system, the airlock with something to lose, and the scanner. The seventh
-    // is the way home, which is the one line a player has to get back for.
-    let home = 0;
-    for (const seed of CHAIN_SEEDS) {
-      const ids = new Set(flyTraining(seed).said.map((l) => l.id));
-      for (const step of TUTORIAL_STEPS) {
-        if (step.id === "tutorial.sale") continue;
-        expect(ids.has(step.id), `seed ${seed}: ${step.id}`).toBe(true);
-      }
-      if (ids.has("tutorial.sale")) home++;
-    }
-    console.log(`training hull flown to the end and back: ${pct(home, 24)}`);
-    expect(home).toBeGreaterThanOrEqual(20);
-  });
-
-  it("leaves an ordinary run opening on a hull of the voyage's own", () => {
-    // The one thing a training run may never do (jam rule 1): change the run
-    // that is not one. Same first hull, same charter board, same credits — and
-    // since G73 that first hull is whichever of the five the seed drew, never
-    // the training one (`content/derelicts.ts`, `STARTER_HULLS`).
-    const plain = newGame(TUTORIAL_SEED);
-    expect(STARTER_HULLS.map((h) => h.id)).toContain(voyageOf(plain).derelicts[0]!.id);
-    expect(voyageOf(plain).credits).toBe(STARTING_CREDITS);
+  it("walks every step in order, skipping none, and says done once after each", () => {
+    const run = followLesson(TUTORIAL_SEED);
+    expect(run.stuck).toBeUndefined();
+    // The steps the window was on, each first seen after the one before it.
+    const order = [...new Set(run.seen)];
+    expect(order).toEqual(LESSON_STEPS.map((_, i) => i).concat(LESSON_STEPS.length));
+    expect(lessonOf(run.game.player)?.step).toBe(LESSON_STEPS.length);
+    // A tick on the press after every step closed — nine — and never on two
+    // turns running: the count and not the clock is what the tick is keyed to.
+    expect(run.ticks).toBeGreaterThanOrEqual(LESSON_STEPS.length);
   });
 });

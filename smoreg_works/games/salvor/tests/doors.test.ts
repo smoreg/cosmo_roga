@@ -159,7 +159,7 @@ describe("a keycard", () => {
     expect(noiseHere(game)).toBe(0);
     // Standing still and working a reader: nothing of the rack is in the way.
     expect(exposedKind(game)).toBe("plating");
-    expect(lines(game)).toContain("The keycard reader blinks green. d1 slides open.");
+    expect(lines(game)).toContain("Keycard: d1 opens.");
   });
 
   it("costs no turn without a card, and none on a door that is not locked", () => {
@@ -314,6 +314,69 @@ describe("the cutter", () => {
   });
 });
 
+// ---------------------------------------------------------------------- the ram
+
+describe("the ram", () => {
+  it("takes eight turns in a row at twelve noise, with the thrusters under every blow, and leaves a hole", () => {
+    const game = gameOn(SHIP);
+    drop(game, "cutter");
+    drop(game, "cell");
+    expect(keysHeld(game.player)).toBe(0);
+
+    for (let turn = 1; turn <= 8; turn++) {
+      expect(act(game, "ram", "d1").ok, `turn ${turn}`).toBe(true);
+      expect(noiseHere(game), `turn ${turn}`).toBe(12);
+      expect(exposedKind(game), `turn ${turn}`).toBe("thrusters");
+      expect(stateOf(game, "d1"), `turn ${turn}`).toBe(turn === 8 ? "broken" : "locked");
+    }
+    expect(lines(game)).toContain("Ramming d1. 7 more turns.");
+    expect(lines(game)).toContain("d1 buckles and gives way.");
+  });
+
+  it("opens a welded bulkhead too, with nothing in the rack at all", () => {
+    const game = gameOn(SHIP);
+    rig(game).slots.fill(null);
+    applyDerived(game.player);
+    for (let turn = 0; turn < 8; turn++) expect(act(game, "ram", "d4").ok).toBe(true);
+    expect(stateOf(game, "d4")).toBe("broken");
+  });
+
+  it("starts again when anything interrupts it", () => {
+    const game = gameOn(SHIP);
+    for (let turn = 0; turn < 7; turn++) act(game, "ram", "d1");
+    game.playerCommand({ kind: "wait" });
+    expect(lines(game)).toContain("You break off the ramming.");
+    act(game, "ram", "d1");
+    expect(stateOf(game, "d1")).toBe("locked");
+  });
+
+  it("is refused on a door that is open, broken or closed, for no turn", () => {
+    const game = gameOn(SHIP);
+    for (const label of ["d2", "d3", "d5"]) {
+      expect(act(game, "ram", label).ok, label).toBe(false);
+    }
+    expect(game.inputs).toHaveLength(0);
+  });
+
+  it("is the way out of a compartment a weld would otherwise have walled in", () => {
+    // G14's livelock, the other way round: the drone behind a sealed door with
+    // nothing in the rack used to wait out the harness. Eight turns of the
+    // chassis, and it walks home.
+    const game = gameOn(`
+      TUG -a1- r1
+      r1 -#d1#- r2
+      r1: docking
+      r2: storage
+    `);
+    rig(game).slots.fill(null);
+    applyDerived(game.player);
+    standIn(game, "r2");
+    for (let turn = 0; turn < 8; turn++) expect(act(game, "ram", "d1").ok).toBe(true);
+    expect(game.playerCommand({ kind: "go", door: door(game, "d1") }).ok).toBe(true);
+    expect(game.roomOf(game.player).id).toBe(game.ship.room("r1").id);
+  });
+});
+
 // ------------------------------------------------------------------- the welder
 
 describe("the welder", () => {
@@ -461,14 +524,14 @@ describe("a mined door", () => {
     d2: trap=mine
   `;
 
-  it("lists defuse ahead of the four ways through the lock, and ahead of closing an open one", () => {
+  it("lists defuse ahead of the five ways through the lock, and ahead of closing an open one", () => {
     const game = gameOn(MINED);
     give(game, "welder");
     const verbs = (label: string): string[] =>
       offers(game)
         .filter((o) => o.cmd.kind === "act" && o.cmd.target === door(game, label))
         .map((o) => (o.cmd.kind === "act" ? o.cmd.verb : ""));
-    expect(verbs("d1")).toEqual(["defuse", "power", "spike", "cut", "key"]);
+    expect(verbs("d1")).toEqual(["defuse", "power", "spike", "cut", "key", "ram"]);
     expect(verbs("d2")).toEqual(["defuse", "close", "weld"]);
   });
 
@@ -533,7 +596,7 @@ describe("what the compartment offers", () => {
     keys(game, 1);
 
     const locked = offers(game).filter((o) => o.cmd.kind === "act" && o.cmd.verb !== "search" && o.cmd.target === door(game, "d1"));
-    expect(locked.map((o) => o.label)).toEqual(["power d1", "spike d1", "cut d1", "key d1"]);
+    expect(locked.map((o) => o.label)).toEqual(["power d1", "spike d1", "cut d1", "key d1", "ram d1"]);
     expect(locked.every((o) => o.enabled)).toBe(true);
   });
 
@@ -555,7 +618,10 @@ describe("what the compartment offers", () => {
       (o) => o.enabled && o.cmd.kind === "act" && o.cmd.target === door(game, "d1"),
     );
     expect(ways[0]!.label).toBe("power d1");
-    expect(ways[ways.length - 1]!.label).toBe("key d1");
+    // The card is the last thing spent, and the chassis — which spends
+    // nothing and is always there — is behind even that (G90 B).
+    expect(ways[ways.length - 2]!.label).toBe("key d1");
+    expect(ways[ways.length - 1]!.label).toBe("ram d1");
 
     // And the card is still one press away for a player who wants the silence:
     // it is offered, it is enabled, and it opens the bulkhead.
@@ -564,9 +630,10 @@ describe("what the compartment offers", () => {
     expect(keysHeld(game.player)).toBe(1);
   });
 
-  it("falls through to the card when the modules are gone", () => {
+  it("falls through to the card when the modules are gone, with the chassis behind it", () => {
     // The one case where the card is the first enabled line, and the case the
-    // ordering must not break: nothing else aboard opens this lock.
+    // ordering must not break: nothing else in the rack opens this lock, and
+    // the ram is behind the card so that the silent way is the one taken.
     const game = gameOn(SHIP);
     drop(game, "cutter");
     drop(game, "cell");
@@ -575,33 +642,35 @@ describe("what the compartment offers", () => {
     const ways = offers(game).filter(
       (o) => o.enabled && o.cmd.kind === "act" && o.cmd.target === door(game, "d1"),
     );
-    expect(ways.map((o) => o.label)).toEqual(["key d1"]);
+    expect(ways.map((o) => o.label)).toEqual(["key d1", "ram d1"]);
   });
 
-  it("greys out every one of them for a drone carrying nothing, and says why", () => {
+  it("greys out every module way for a drone carrying nothing, says why, and leaves it the ram", () => {
     const game = gameOn(SHIP);
     drop(game, "cutter");
     drop(game, "cell");
 
     const locked = offers(game).filter((o) => o.cmd.kind === "act" && o.cmd.verb !== "search" && o.cmd.target === door(game, "d1"));
-    expect(locked).toHaveLength(4);
-    expect(locked.some((o) => o.enabled)).toBe(false);
-    for (const o of locked) expect(o.why, o.label).toBeTruthy();
+    expect(locked).toHaveLength(5);
+    const greyed = locked.filter((o) => !o.enabled);
+    expect(greyed.map((o) => o.label)).toEqual(["power d1", "spike d1", "cut d1", "key d1"]);
+    for (const o of greyed) expect(o.why, o.label).toBeTruthy();
+    expect(locked.filter((o) => o.enabled).map((o) => o.label)).toEqual(["ram d1"]);
   });
 
-  it("offers nothing at all on a welded door a drone cannot cut", () => {
+  it("offers a welded door the ram alone without a cutter, and the torch ahead of it with one", () => {
     const game = gameOn(SHIP);
     drop(game, "cutter");
-    // The GHOST chassis: no cutter, so a sealed bulkhead is not a decision but
-    // a wall, and a line it can never press would only be noise.
-    expect(offers(game).filter((o) => o.cmd.kind === "act" && o.cmd.verb !== "search" && o.cmd.target === door(game, "d4"))).toEqual([]);
-
-    give(game, "cutter");
-    expect(
+    // The GHOST chassis: no cutter, so a sealed bulkhead used to be a wall.
+    // It is a decision now — eight loud turns of the chassis — and nothing else.
+    const ways = (): string[] =>
       offers(game)
         .filter((o) => o.cmd.kind === "act" && o.cmd.verb !== "search" && o.cmd.target === door(game, "d4"))
-        .map((o) => o.label),
-    ).toEqual(["cut d4"]);
+        .map((o) => o.label);
+    expect(ways()).toEqual(["ram d4"]);
+
+    give(game, "cutter");
+    expect(ways()).toEqual(["cut d4", "ram d4"]);
   });
 
   it("offers closing and welding on what is open, and nothing on a hole", () => {

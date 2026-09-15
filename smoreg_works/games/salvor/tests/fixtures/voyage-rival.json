@@ -40,9 +40,22 @@
       "target": 2
     },
     {
+      "kind": "attack",
+      "target": 3
+    },
+    {
+      "kind": "attack",
+      "target": 5
+    },
+    {
       "kind": "act",
       "verb": "salvage",
       "target": 1000
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1024
     },
     {
       "kind": "attack",
@@ -51,12 +64,17 @@
     {
       "kind": "act",
       "verb": "salvage",
-      "target": 1020
+      "target": 1025
     },
     {
       "kind": "act",
       "verb": "salvage",
-      "target": 1021
+      "target": 1026
+    },
+    {
+      "kind": "act",
+      "verb": "carry",
+      "target": 1027
     },
     {
       "kind": "go",
@@ -97,20 +115,6 @@
       "kind": "act",
       "verb": "salvage",
       "target": 1009
-    },
-    {
-      "kind": "act",
-      "verb": "carry",
-      "target": 1010
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
-    },
-    {
-      "kind": "hide"
     }
   ],
   "expect": {
@@ -121,7 +125,7 @@
     "deaths": 1,
     "sold": 0,
     "charters": 0,
-    "kills": 1,
+    "kills": 3,
     "turns": 37,
     "rig": {
       "slots": [
@@ -145,6 +149,6 @@
       ]
     }
   },
-  "fingerprint": "f378adb8",
-  "codeSha": "5ec1c4ad5123e700649c9ca533d064798ba301ad"
+  "fingerprint": "cdc3f070",
+  "codeSha": "15d9574db54e0183b39f660dc6079da679ef462a"
 }

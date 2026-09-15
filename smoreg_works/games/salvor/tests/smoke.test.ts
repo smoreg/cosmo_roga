@@ -31,7 +31,8 @@ import { newGame } from "../src/game.js";
  * inside 1500. Raising the budget is the honest fix; the threshold under it
  * stays zero.
  */
-const MAX_STEPS = 1500;
+/** As in balance.test.ts: a careful voyage on the ten-rung ladder and the larger hulls can take 2550 steps to end (G90 A, B). */
+const MAX_STEPS = 3000;
 
 const SEEDS = seedRange(1, 32);
 

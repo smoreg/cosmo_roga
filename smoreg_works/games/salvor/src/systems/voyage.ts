@@ -1,22 +1,81 @@
-import { TURN_COST, type ActionOffer, type Entity, type LevelId, type Outcome, type Room, type RoomCommand, type RoomGame, type RoomId, type System } from "@jamrog/engine";
-import { buildChartered, derelictName, derelictsForVoyage, flavourCallsign, flavourLine, rollFlavour, type DerelictSpec, type FlavourRoll } from "../content/derelicts.js";
+import {
+  Ship,
+  TURN_COST,
+  layoutShip,
+  type ActionOffer,
+  type Door,
+  type Entity,
+  type LevelId,
+  type Outcome,
+  type Room,
+  type RoomCommand,
+  type RoomGame,
+  type RoomId,
+  type System,
+} from "@jamrog/engine";
+import {
+  buildChartered,
+  derelictName,
+  derelictSpec,
+  flavourCallsign,
+  flavourLine,
+  rollFlavour,
+  stopsForVoyage,
+  type DerelictSpec,
+  type FlavourRoll,
+} from "../content/derelicts.js";
 import type { Key } from "../content/i18n/keys.js";
 import { t, tId } from "../i18n.js";
 import { CHARTER_FLAG } from "../content/cards-derelicts.js";
 import { TUTORIAL_SPEC, isTraining } from "../content/tutorial.js";
-import { charterFlags, doneBy, offerCharters, salvageCharter, salvageTarget, type Charter, type CharterId } from "../content/charters.js";
+import {
+  CLAUSES,
+  charterFlags,
+  contractsFor,
+  doneBy,
+  offerCharters,
+  salvageTarget,
+  type Charter,
+  type CharterId,
+  type ClauseId,
+} from "../content/charters.js";
 import { TUG_OPENING_KEY, hint, soldLine, tugCallsign, tugOpening, voyageOpening } from "../content/hints.js";
 import { TUG_ID, isTug, tugShip } from "../content/tug.js";
-import { CHEAPEST_HULL, HULLS, STARTING_CREDITS, STARTING_HULL, hullKind, hullName, hullSlots, hullTrait, type HullId, type HullKind, startingSlots } from "../content/hulls.js";
-import { MAX_GRAFT, isRelic, moduleKind, moduleName, type ModuleId } from "../content/modules.js";
+import {
+  CHEAPEST_HULL,
+  HULLS,
+  STARTING_CREDITS,
+  STARTING_HULL,
+  hullKind,
+  hullName,
+  hullSlots,
+  hullTrait,
+  type HullId,
+  type HullKind,
+  startingSlots,} from "../content/hulls.js";
+import { MAX_GRAFT, MODULES, isRelic, moduleKind, moduleName, type ModuleId } from "../content/modules.js";
 import { OBJECTIVE_COUNT, type ObjectiveId } from "../content/objectives.js";
-import { alertState } from "./alert.js";
+import { MAX_LEVEL, alertState, detonated, raiseAlert } from "./alert.js";
 import { rivalState } from "./rivalstate.js";
 import { keysHeld } from "./doors.js";
 import { roomList, type Crate, type RoomItem } from "./populate.js";
 import { shipState } from "./shipstate.js";
 import { BENCH_CURE_PRICE, INFECTED_SELL_SHARE, clearVirus, virusOf } from "./virus.js";
-import { applyDerived, capOf, graft as graftOn, install, installAt, removeSlot, rigFrom, rigOf, type Rig, type Slot, findSlot, carriedBy, carriedFrom, setCarried } from "../twist/rig.js";
+import {
+  applyDerived,
+  capOf,
+  graft as graftOn,
+  install,
+  installAt,
+  removeSlot,
+  rigFrom,
+  rigOf,
+  type Rig,
+  type Slot,
+  findSlot,
+  carriedBy,
+  carriedFrom,
+  setCarried,} from "../twist/rig.js";
 
 /**
  * The voyage: one account, one drone at a time, and the two ways a run ends.
@@ -69,7 +128,13 @@ const GRAFT_PRICE = 12;
  * Exported because it is the one price the account may never be spent under
  * while the tug is tied to a hull that has gone under tow (`jumpFirst`).
  */
-export const JUMP_PRICE = 30;
+export const JUMP_PRICE = 40;
+// Forty and not thirty since G90 F: a hull's one contract pays 30-45 CR where
+// a board of them paid 20-30, and the account buys jumps with it. Measured on
+// the careful harness with the contracts at their new rates: at thirty the tug
+// reached the father's hull on 27 of 32 voyages against a ceiling of 80 %, at
+// thirty-five on 26, at forty on 25 — with 4 wins in 200 and 22 hulls sold in
+// 32 at every one of the three.
 // What cleaning one costs and what an infected module fetches are the virus's
 // own numbers (`systems/virus.ts`): the bench only charges them.
 
@@ -137,7 +202,18 @@ const HOLD_TARGET = 2100;
 
 /** Aimed at the dock's shelf: `STOCK_TARGET + i` is the i-th module on it. */
 const STOCK_TARGET = 2200;
-const CHARTER_TARGET = 2200;
+
+/**
+ * Aimed at a line of a stop's list of hulls and contracts:
+ * `CHOICE_TARGET + stop × CHOICE_STRIDE + i` is the i-th line of that stop.
+ *
+ * The stop is in the number on purpose. A line pressed on one stop and a line
+ * in the same place on the next are different bargains, and a command that
+ * says which stop it was written for is refused on any other — a recorded press
+ * replayed a stop late does not quietly fly somewhere else.
+ */
+const CHOICE_TARGET = 2300;
+const CHOICE_STRIDE = 50;
 
 const NOT_ENOUGH = "why.credits";
 
@@ -310,6 +386,38 @@ export interface Voyage {
   paid: CharterId[];
   /** Sorties flown this voyage: every undock, whatever came of it. */
   sortie: number;
+  /**
+   * Every stop of the itinerary as the hulls on offer there and the contracts
+   * each one carries, drawn once with the itinerary (G90 F). `derelicts[i]` is
+   * the one chosen, or the first while nothing has been.
+   *
+   * Optional, and a record without it is still a voyage: a save from before the
+   * choice existed has one hull a stop and no contract on any of them
+   * (`candidatesAt`).
+   */
+  stops?: Candidate[][];
+  /**
+   * True once the hull and contract of the stop the tug is at have been chosen:
+   * at the first stop by `berth`, at every other by the `jump` that flew there.
+   * A tug moved on by a hull that blew up arrives with nothing chosen.
+   */
+  berthed?: boolean;
+  /** Contracts on this hull a clause has voided. Absent until one is. */
+  voided?: CharterId[];
+}
+
+/** One hull on a stop's list, by class id, and the contracts it carries. */
+export interface Candidate {
+  hull: string;
+  charters: Charter[];
+}
+
+/** A line of a stop's list: a hull, and the contract that line signs — or none. */
+export interface ChoiceRow {
+  spec: DerelictSpec;
+  charter?: Charter;
+  /** Is this the first line of its hull? The list prints the hull over it. */
+  first: boolean;
 }
 
 /**
@@ -347,10 +455,20 @@ function isVoyage(raw: unknown): raw is Voyage {
   );
 }
 
+/** Where the contracts of every candidate are drawn from: a fork, so the run's rng spends nothing. */
+const CONTRACT_SALT = 0xc0a7;
+
 function fresh(game: RoomGame): Voyage {
-  // Four hulls, drawn once: the freighter that teaches the game, two of the
-  // five in between, and the father's tug (design-doc.md, "Типы дереликтов").
-  const drawn = derelictsForVoyage(game.rng);
+  // Three stops, drawn once: two or three starting hulls, two or three of the
+  // five in between, and the father's tug (design-doc.md, "Типы дереликтов";
+  // G90 F). The first hull of every stop is the one the itinerary has always
+  // drawn, out of the same numbers.
+  const stops = stopsForVoyage(game.rng);
+  const drawn = stops.map((hulls) => hulls[0]!);
+  const deal = game.rng.fork(CONTRACT_SALT);
+  const offered: Candidate[][] = stops.map((hulls, stop) =>
+    hulls.map((spec) => ({ hull: spec.id, charters: contractsFor(spec, stop, deal) })),
+  );
   // A training run puts a hull built to be learned on in *front* of them — six
   // compartments, one machine, one bulkhead, three systems (`content/tutorial.ts`,
   // docs/tasks/G69-tutorial.md). The draw above still happens and still costs
@@ -364,7 +482,8 @@ function fresh(game: RoomGame): Voyage {
   // of the voyage. Measured over 40 careful runs it cost 20.5 CR and left the
   // itinerary a hull short; prepending is the same voyage with a lesson in
   // front of it (docs/tasks/G86-tutorial-and-title.md, 7).
-  const derelicts = isTraining(game.player) ? [TUTORIAL_SPEC, ...drawn] : drawn;
+  const training = isTraining(game.player);
+  const derelicts = training ? [TUTORIAL_SPEC, ...drawn] : drawn;
   const first = derelicts[0]!;
   return {
     credits: STARTING_CREDITS,
@@ -379,6 +498,7 @@ function fresh(game: RoomGame): Voyage {
     charters: [],
     paid: [],
     sortie: 0,
+    stops: training ? [[{ hull: TUTORIAL_SPEC.id, charters: [] }], ...offered] : offered,
   };
 }
 
@@ -421,6 +541,7 @@ function freshDerelict(game: RoomGame, spec: DerelictSpec, shipId: string): Dere
 function rollStock(_game: RoomGame): ModuleId[] {
   return [...SHELF];
 }
+
 
 /**
  * The dock's shelf: three modules, always listed, live only for a module the
@@ -536,30 +657,16 @@ function dock(game: RoomGame): void {
   const state = currentDerelict(game);
 
   clearCharterFlags(game);
-  // The board is always rolled, and the first hull of a voyage throws most of
-  // it away for two lines: `NEUTRALIZE`, which is what the whole run is for,
-  // and `SALVAGE`, which is what one sortie has to pay for
-  // (design-doc.md, "Обучение конструкцией", 1).
-  //
-  // It used to be `SALVAGE` alone, on the argument that one line is the
-  // simplest first screen there can be — and that is how the owner flew two
-  // whole derelicts without the game ever naming its own goal: the charter that
-  // says "raise three systems and the tug sells the hull" is the one charter
-  // the tutorial hull did not offer (docs/review-2026-09-07.md, A1). Two
-  // numbered lines are still a first screen anybody can read, and the first of
-  // them is now the point of the game.
-  //
-  // Rolled and discarded rather than skipped, so that one seed is one voyage:
-  // the draw is the same number of numbers either way, and the ships, the
-  // machines and the keycards of a run do not move because the tutorial rule
-  // fired.
-  const board = offerCharters(state.spec, game.rng);
-  voyage.offered =
-    voyage.current === 0
-      ? [...board.filter((c) => c.id === "neutralize"), salvageCharter(state.spec)]
-      : board;
+  // The board this used to draw is gone: a hull's contracts are chosen with the
+  // hull itself, on the stop's list (`rowsAt`), one a ship. It is still rolled
+  // and thrown away, so that one seed stays one voyage: the ships, machines and
+  // keycards of a run come out of the numbers after this draw, and a run that
+  // takes the first line of every list is the run the seed has always been.
+  offerCharters(state.spec, game.rng);
+  voyage.offered = [];
   voyage.charters = [];
   voyage.paid = [];
+  delete voyage.voided;
   game.log.add(
     t("log.helm.board", { flavour: flavourLine(state.spec, state.flavour) }),
     game.schedule.time,
@@ -585,26 +692,158 @@ function boarded(game: RoomGame): boolean {
   return game.ships.get(currentDerelict(game).shipId) !== undefined;
 }
 
-/**
- * `act charter {i}`: sign one of the jobs on the board.
- *
- * Only before the first sortie to this hull, and that is the rule rather than a
- * limitation: the marks a charter needs are placed by the deck when the ship is
- * generated, so a charter signed after the airlock has opened is one the player
- * could never finish. The line stays on the list, greyed, saying so.
- */
-export function takeCharter(game: RoomGame, i: number): Outcome {
-  const voyage = voyageOf(game);
-  const state = currentDerelict(game);
-  const charter = voyage.offered[i];
-  if (!charter) return FAIL(t("why.charter.none"));
-  if (boarded(game)) return FAIL(t("why.charter.late", { hull: derelictName(state.spec) }));
+// ------------------------------------------------------------------ the stops
 
-  voyage.offered.splice(i, 1);
-  voyage.charters.push(charter);
+/**
+ * The hulls on offer at one stop, resolved to classes this build knows.
+ *
+ * A record that does not line up with its own itinerary — a save from before
+ * the choice, a test that set `derelicts` by hand — is one hull and no
+ * contract, which is exactly what such a voyage always was.
+ */
+function candidatesAt(voyage: Voyage, stop: number): Array<{ spec: DerelictSpec; charters: Charter[] }> {
+  const here = voyage.derelicts[stop];
+  if (!here) return [];
+  const listed = voyage.stops?.length === voyage.derelicts.length ? (voyage.stops[stop] ?? []) : [];
+  const known = listed.flatMap((c) => {
+    const spec = typeof c?.hull === "string" ? derelictSpec(c.hull) : undefined;
+    return spec === undefined ? [] : [{ spec, charters: Array.isArray(c.charters) ? c.charters : [] }];
+  });
+  return known.some((c) => c.spec.id === here.id) ? known : [{ spec: here, charters: [] }];
+}
+
+/**
+ * One stop's list, line by line: each hull's contracts, plain first, then the
+ * line that flies there with none. A line is a hull and a contract together —
+ * choosing it signs that contract and only that one (G90 F, 3).
+ */
+export function rowsAt(voyage: Voyage, stop: number): ChoiceRow[] {
+  return candidatesAt(voyage, stop).flatMap(({ spec, charters }) => [
+    ...charters.map((charter, i) => ({ spec, charter, first: i === 0 })),
+    { spec, first: charters.length === 0 },
+  ]);
+}
+
+/**
+ * Is this stop's choice still open? A voyage starts tied to the first hull on
+ * its list — and a tug a blown hull moved on arrives tied to the next stop's
+ * first — and until something has been aboard it the player may take another
+ * hull of the stop, and a contract with it, once.
+ */
+export function berthOpen(game: RoomGame): boolean {
+  const voyage = voyageOf(game);
+  return voyage.berthed !== true && !boarded(game) && !currentDerelict(game).sold;
+}
+
+/** The stop a list of `verb` is about: the first one while it is open, the next one after. */
+function stopOf(game: RoomGame, verb: string): number | undefined {
+  const voyage = voyageOf(game);
+  if (verb === "berth") return berthOpen(game) ? voyage.current : undefined;
+  if (verb !== "jump" || berthOpen(game)) return undefined;
+  return voyage.derelicts[voyage.current + 1] === undefined ? undefined : voyage.current + 1;
+}
+
+/** Which line of which stop a command is aimed at, or nothing for one written elsewhere. */
+function rowOf(game: RoomGame, stop: number, target: number | undefined): ChoiceRow | undefined {
+  const rows = rowsAt(voyageOf(game), stop);
+  // A bare command is the first hull with no contract: what a voyage flew to
+  // before there was a list, and what an old recording presses.
+  if (target === undefined) return rows.find((r) => r.charter === undefined) ?? rows[0];
+  const at = target - CHOICE_TARGET - stop * CHOICE_STRIDE;
+  return at >= 0 && at < CHOICE_STRIDE ? rows[at] : undefined;
+}
+
+/**
+ * `act berth {line}`: the hull and contract of the stop the tug is at, chosen
+ * before anything has been aboard. Another hull of the stop replaces the one
+ * the tug is tied to; the same hull keeps everything it had.
+ */
+export function berth(game: RoomGame, target?: number): Outcome {
+  const voyage = voyageOf(game);
+  if (!berthOpen(game)) return FAIL(t("why.berth.closed", { hull: derelictName(currentDerelict(game).spec) }));
+  const stop = voyage.current;
+  const row = rowOf(game, stop, target);
+  if (!row) return FAIL(t("why.choice.none"));
+
+  if (row.spec.id !== voyage.derelicts[stop]!.id) {
+    voyage.derelicts[stop] = row.spec;
+    voyage.state[stop] = freshDerelict(game, row.spec, voyage.state[stop]!.shipId);
+    dock(game);
+  }
+  voyage.berthed = true;
+  sign(game, row.charter);
+  return FREE();
+}
+
+/**
+ * The contract a stop leads with: the first line of its first hull. A tug that
+ * arrives somewhere without a choice — the start of a voyage, or moved on by a
+ * hull that blew up — is signed for it, and the stop's list stays open to take
+ * another line until something has been aboard.
+ */
+function leadingCharter(voyage: Voyage, stop: number): Charter | undefined {
+  const here = voyage.derelicts[stop];
+  return rowsAt(voyage, stop).find((r) => r.spec.id === here?.id)?.charter;
+}
+
+/** The one contract of this hull, or none — said either way. */
+function sign(game: RoomGame, charter: Charter | undefined): void {
+  const voyage = voyageOf(game);
+  clearCharterFlags(game);
+  voyage.charters = charter === undefined ? [] : [charter];
+  voyage.paid = [];
+  delete voyage.voided;
+  if (charter === undefined) {
+    game.log.add(t("log.charter.none"), game.schedule.time, "plain", "log.charter.none");
+    return;
+  }
   for (const flag of charterFlags([charter])) game.flags.add(flag);
   game.log.add(t("log.charter.signed", { charter: charter.text }), game.schedule.time, "good", "log.charter.signed");
-  return FREE();
+}
+
+// ---------------------------------------------------------------- the clauses
+
+/**
+ * Rungs a `hot` hull is already up when the drone first walks in: two of the
+ * five, four of the ten — the part of the ladder where the ship is listening
+ * and has not yet started shutting doors.
+ */
+export const HOT_STEPS = Math.round((MAX_LEVEL * 2) / 5);
+
+/** The rung that voids a `quiet` contract: three of five, six of ten. */
+export const QUIET_AT = Math.ceil((MAX_LEVEL * 3) / 5);
+
+/** The contract on this hull with this clause, while it can still be paid. */
+function openClause(game: RoomGame, clause: ClauseId): Charter | undefined {
+  const voyage = voyageOf(game);
+  return voyage.charters.find(
+    (c) => c.clause === clause && !voyage.paid.includes(c.id) && !(voyage.voided ?? []).includes(c.id),
+  );
+}
+
+/** A contract its clause has broken: never paid, and said once, with why. */
+function voidCharter(game: RoomGame, charter: Charter): void {
+  const voyage = voyageOf(game);
+  (voyage.voided ??= []).push(charter.id);
+  const clause = charter.clause ?? CLAUSES[0]!;
+  game.log.add(
+    tId("log.charter.void", clause, "", { charter: charterName(charter), n: QUIET_AT }),
+    game.schedule.time,
+    "bad",
+    `log.charter.void.${clause}`,
+  );
+}
+
+/** A `quiet` contract dies the turn the gauge of its hull reaches `QUIET_AT`. */
+function checkQuiet(game: RoomGame): void {
+  if (isTug(game) || stateOfShip(game) !== voyageOf(game).state[voyageOf(game).current]) return;
+  const quiet = openClause(game, "quiet");
+  if (quiet && alertState(game).level >= QUIET_AT) voidCharter(game, quiet);
+}
+
+/** Has this contract been voided on this hull? */
+export function charterVoided(game: RoomGame, charter: Charter): boolean {
+  return (voyageOf(game).voided ?? []).includes(charter.id);
 }
 
 /** What the board, the log and the panel call a charter: one shouted word. */
@@ -612,9 +851,60 @@ function charterName(charter: Charter): string {
   return tId("charter.name", charter.id, charter.id.toUpperCase());
 }
 
-/** What a charter is worth on the board: credits, or the whole voyage. */
-function charterPrice(charter: Charter): string {
-  return charter.payout > 0 ? t("word.cr", { n: charter.payout }) : t("word.theVoyage");
+/** The one word, and the clause's word after it when the contract carries one. */
+export function charterTag(charter: Charter): string {
+  const name = charterName(charter);
+  return charter.clause === undefined
+    ? name
+    : t("charter.tag", { charter: name, clause: tId("charter.clause", charter.clause, charter.clause) });
+}
+
+/** A line of a stop's list: the contract and what it pays, or the hull with none. */
+function choiceLabel(row: ChoiceRow): string {
+  return row.charter === undefined
+    ? t("action.choice.none", { hull: derelictName(row.spec) })
+    : t("action.choice", { charter: charterTag(row.charter), cr: row.charter.payout });
+}
+
+/**
+ * The hull printed over its own lines of a stop's list, aligned with
+ * `stationTargets(verb)`: its name, how many compartments and what it sells for.
+ * Nothing on the lines that are not a hull's first.
+ */
+export function choiceHeads(game: RoomGame, verb: string): Array<string | undefined> {
+  const stop = stopOf(game, verb);
+  if (stop === undefined) return [];
+  return rowsAt(voyageOf(game), stop).map((row) =>
+    row.first
+      ? t("choice.head", {
+          hull: derelictName(row.spec),
+          rooms: `${row.spec.rooms[0]}-${row.spec.rooms[1]}`,
+          cr: row.spec.salePrice,
+        })
+      : undefined,
+  );
+}
+
+/**
+ * What the tug's jump row is called. While the first stop is open it is the
+ * choice of the first hull; after that, where a jump goes.
+ *
+ * It used to name the sale a jump walked away from — `drop 1/3, sale 120 CR` —
+ * because that was the one thing the list below it could not say
+ * (docs/problem-map-2026-09-11.md). There is no such jump any more: a hull
+ * with anything still on it holds the tug until it is dealt with (`jumpHeld`),
+ * and the greyed line says why instead.
+ */
+export function jumpRowLabel(game: RoomGame): string {
+  if (berthOpen(game)) return t(voyageOf(game).current === 0 ? "action.pick.berth" : "action.pick.berthHere");
+  return t("action.pick.jump", { price: JUMP_PRICE });
+}
+
+/** The stop a jump flies to now, and its hulls, for the board. Nothing past the last. */
+export function nextStop(game: RoomGame): { stop: number; hulls: Array<{ spec: DerelictSpec; charters: Charter[] }> } | undefined {
+  const voyage = voyageOf(game);
+  const stop = stopOf(game, "berth") ?? stopOf(game, "jump");
+  return stop === undefined ? undefined : { stop, hulls: candidatesAt(voyage, stop) };
 }
 
 /**
@@ -631,6 +921,7 @@ function payCharters(game: RoomGame, state: DerelictState): void {
 
   for (const charter of voyage.charters) {
     if (charter.id === "neutralize" || voyage.paid.includes(charter.id)) continue;
+    if ((voyage.voided ?? []).includes(charter.id)) continue;
     if (!doneBy(charter.id, home, game.ship, state.spec)) {
       // Said here, with what is missing: most signed charters never pay, and
       // until this line nothing on the screen ever said one had not
@@ -641,6 +932,8 @@ function payCharters(game: RoomGame, state: DerelictState): void {
         need: salvageTarget(state.spec),
       });
       if (missed) game.log.add(missed, game.schedule.time, "warn", `log.charter.missed.${charter.id}`);
+      // One trip, and this was it.
+      if (charter.clause === "trip") voidCharter(game, charter);
       continue;
     }
     voyage.paid.push(charter.id);
@@ -727,6 +1020,39 @@ function jumpFirst(game: RoomGame): string | undefined {
   const state = voyage.state[voyage.current];
   if (state?.sold !== true || !voyage.derelicts[voyage.current + 1]) return undefined;
   return t("why.jump.first", { price: JUMP_PRICE });
+}
+
+/**
+ * The sentence the jump row says while the hull the tug is tied to is still
+ * out there, or nothing once it is not.
+ *
+ * The owner's rule, word for word: «прыжок до разбора или самоуничтожения
+ * дереликта ЗАБЛОЧЕН». A hull is done with in one of three ways — taken under
+ * tow (`sold`), blown up under the drone at the top of the alert ladder
+ * (`systems/alert.ts`, `detonated`), or taken by the other tug (`comeHome`,
+ * `taken`) — and until one of them the tug stays. Before this the jump was
+ * open the moment the account held 40 CR, and that is what it cost: a hull
+ * with two systems up and a 120 CR sale on it left for a hull the drone had
+ * not seen, and the tug at the father's hull with nothing to fly
+ * (`testing/roombots.ts`, `goBack`, for what a bot had to learn about it).
+ *
+ * A hull nobody has boarded holds the tug too: the way to change one's mind
+ * about a stop is `berth`, open exactly until something has been aboard. And
+ * it never traps a run — with a drone on the rails `undock` is open for as
+ * long as the hull is not sold, and with none the account either buys one or
+ * the run is already over (`endIfBroke`, and the cheapest hull is the price of
+ * a jump).
+ */
+function jumpHeld(game: RoomGame): string | undefined {
+  const state = currentDerelict(game);
+  if (dealtWith(game, state)) return undefined;
+  return t("why.jump.held", { hull: derelictName(state.spec) });
+}
+
+/** Is this hull done with: under tow, blown, or on the other tug's line? */
+function dealtWith(game: RoomGame, state: DerelictState): boolean {
+  if (state.sold || detonated(game, state.shipId)) return true;
+  return state.deal === undefined && state.rivalProgress >= OBJECTIVE_COUNT;
 }
 
 /** Can the account pay this without eating the jump it may still need? */
@@ -951,7 +1277,7 @@ export function clean(game: RoomGame, slot: number): Outcome {
  * `act sell {slot}`: a module out of the rack and gone for good.
  *
  * An infected one fetches half, which is the third way out of a virus and the
- * only one that pays: cure it for 4 CR, weld it for two turns in the field, or
+ * only one that pays: cure it for 4 CR, purge it by hand for six turns in the field, or
  * take what somebody else's problem is worth.
  *
  * Gone for good is the whole of what this line had to start saying. There is no
@@ -1222,6 +1548,7 @@ export function undock(game: RoomGame): Outcome {
   if (state.sold) return FAIL(t("why.undock.sold", { hull: derelictName(state.spec) }));
 
   const index = voyage.current;
+  const first = !boarded(game);
   voyage.sortie++;
   game.log.add(t(UNDOCK_KEY), game.schedule.time, "warn", UNDOCK_KEY);
   game.travelTo(state.shipId, {
@@ -1239,33 +1566,57 @@ export function undock(game: RoomGame): Outcome {
   game.currentShip.data.derelict = state.spec.id;
   game.currentShip.data.name = flavourCallsign(state.flavour);
   game.currentShip.data.type = state.spec.id;
+  // A hot hull is awake before the drone is through the airlock, once: the
+  // gauge a contract put up is the ship's from then on, and falls like any other.
+  const hot = first ? openClause(game, "hot") : undefined;
+  if (hot) {
+    game.log.add(t("log.charter.hot", { charter: charterName(hot), n: HOT_STEPS }), game.schedule.time, "warn", "log.charter.hot");
+    raiseAlert(game, HOT_STEPS);
+  }
   return FREE();
 }
 
 /**
- * `act jump`: the tug flies to the next hull of the itinerary, 30 CR.
+ * `act jump`: the tug flies to the next hull of the itinerary, 40 CR.
  *
  * The tug moves, not the drone — the next derelict is generated the first time
- * something undocks into it — and neutralising the hull left behind was never
- * compulsory (design-doc.md, "Типы дереликтов").
+ * something undocks into it. Neutralising the hull left behind used not to be
+ * compulsory (design-doc.md, "Типы дереликтов"); since G92 the hull holds the
+ * tug until it is under tow, blown, or the other tug's (`jumpHeld`).
  */
-export function jump(game: RoomGame): Outcome {
+export function jump(game: RoomGame, target?: number): Outcome {
   const voyage = voyageOf(game);
   if (!isTug(game)) return FAIL(t("why.jump.aboard"));
 
   const next = voyage.current + 1;
-  const spec = voyage.derelicts[next];
-  if (!spec) return FAIL(t("why.jump.last"));
+  if (!voyage.derelicts[next]) return FAIL(t("why.jump.last"));
+  const held = jumpHeld(game);
+  if (held !== undefined) return FAIL(held);
+  const row = rowOf(game, next, target);
+  if (!row) return FAIL(t("why.choice.none"));
   if (!spend(game, JUMP_PRICE)) return FAIL(t(NOT_ENOUGH));
+  moveOn(game, next, row.spec, row.charter);
+  voyage.berthed = true;
+  return FREE();
+}
 
-  // The board is rolled again at the next hull, so a job signed here and not
-  // filled is gone the moment the tug moves: named, rather than just dropped.
+/**
+ * The tug moves to stop `next` of the itinerary: to the hull and contract on
+ * the line `jump` was pressed on, or — forced by a hull that is gone — to the
+ * stop's first hull with no contract.
+ */
+function moveOn(game: RoomGame, next: number, spec: DerelictSpec, charter?: Charter): void {
+  const voyage = voyageOf(game);
+  // A contract is signed against one hull, so one signed here and not filled
+  // is gone the moment the tug moves: named, rather than just dropped.
   const dropped = voyage.charters.filter((c) => !charterDone(game, c)).map(charterName);
   if (dropped.length > 0) {
     game.log.add(t("log.jump.left", { charters: dropped.join(", ") }), game.schedule.time, "warn", "log.jump.left");
   }
 
   voyage.current = next;
+  voyage.derelicts[next] = spec;
+  delete voyage.berthed;
   if (!voyage.state[next]) voyage.state[next] = freshDerelict(game, spec, String(next + 1));
   game.log.add(
     t("log.jump", { hull: derelictName(spec), credits: voyage.credits }),
@@ -1274,66 +1625,27 @@ export function jump(game: RoomGame): Outcome {
     "log.jump",
   );
   dock(game);
-  return FREE();
+  sign(game, charter);
 }
 
 /**
- * Which derelict index the HELM has already warned about, this game.
- *
- * Kept off `player.data` on purpose, unlike everything else this file
- * remembers: `tests/replay.test.ts` fingerprints a run by hashing the whole of
- * `player.data` plus the log, against recordings made before this warning
- * existed, and a field that shows up on every derelict whether or not the
- * warning ever fires would invalidate every one of them for a reason that has
- * nothing to do with what they test. A `WeakMap` keyed by the game itself carries
- * the same "once this stay" guarantee without writing anything a save file, a
- * replay's `stateOf`, or `RECORD=1` would ever see: `replayRooms` builds a fresh
- * `RoomGame` for every replay, so a fresh, empty entry is exactly what a fresh
- * instance should start from — nothing here can leak from one game to another
- * the way a plain module variable would (contrast `voyageOf`'s own comment on
- * that failure mode).
- *
- * The cost is the one a `WeakMap` always is: a drone that saves mid-stay and
- * reloads may hear the line again. Cheaper than the alternative, which is
- * either not having the line or breaking three fixtures nobody touched to get
- * it.
+ * The hull blew itself up under the drone (`systems/alert.ts`, `detonate`):
+ * it is off the itinerary. There is nothing left to be docked to, so the tug
+ * moves on to the next hull for nothing — and if that was the last one, the
+ * father's tug is gone and the voyage with it.
  */
-const jumpWarnedAt = new WeakMap<RoomGame, Set<number>>();
-
-/**
- * The line the jump offer itself cannot make room for: `jump → {hull} (30 CR)`
- * says nothing about the systems raised on the hull it leaves behind, because
- * those live on the panel and not in the numbered list
- * (docs/tasks/G30-balance-v2.md, "Хуже стало одно…" — the bot that surfaced
- * this pressed `jump` the moment it had 30 CR, on a hull worth 120–220 sold
- * whole). Said once, the first turn home there is something to lose, and not
- * again until `dock` starts a fresh stay on the next hull.
- *
- * It used to wait for the drone to be standing at the HELM. There is no HELM to
- * stand at now (G53), and the warning is better for it: the jump is on the same
- * screen as everything else, so the turn the player can first press it is the
- * turn they should first read this.
- */
-function warnBeforeJump(game: RoomGame): void {
-  if (game.status !== "playing" || !isTug(game)) return;
-
+function hullGone(game: RoomGame, state: DerelictState | undefined): void {
   const voyage = voyageOf(game);
-  if (!voyage.derelicts[voyage.current + 1]) return;
-
-  const state = currentDerelict(game);
-  if (state.sold || state.online.length === 0) return;
-
-  const said = jumpWarnedAt.get(game) ?? new Set<number>();
-  if (said.has(voyage.current)) return;
-  said.add(voyage.current);
-  jumpWarnedAt.set(game, said);
-
-  game.log.add(
-    t("log.jump.warn", { hull: flavourCallsign(state.flavour), up: state.online.length, of: OBJECTIVE_COUNT }),
-    game.schedule.time,
-    "warn",
-    "log.jump.warn",
-  );
+  const hull = state === undefined ? "" : derelictName(state.spec);
+  const next = voyage.current + 1;
+  const spec = voyage.derelicts[next];
+  if (spec === undefined || (state !== undefined && isLastHull(voyage, state))) {
+    game.log.add(t("log.voyage.blownLast", { hull }), game.schedule.time, "bad", "log.voyage.blownLast");
+    game.finish("dead", t("log.voyage.blownLast", { hull }));
+    return;
+  }
+  game.log.add(t("log.voyage.blown", { hull }), game.schedule.time, "bad", "log.voyage.blown");
+  moveOn(game, next, spec, leadingCharter(voyage, next));
 }
 
 // -------------------------------------------------------------- the crossings
@@ -1361,7 +1673,10 @@ function comeHome(game: RoomGame): void {
   }
   // A charter is filled when the drone got out with it filled, and the airlock
   // is the only moment that is ever true (design-doc.md, "Чартеры").
-  if (state) payCharters(game, state);
+  if (state) {
+    checkQuiet(game);
+    payCharters(game, state);
+  }
 
   // Three systems and the drone out alive — unless another tug got all three
   // first, in which case the hull is theirs and the charter is gone with it
@@ -1432,6 +1747,11 @@ function loseDrone(game: RoomGame): void {
   }
 
   voyage.hull = undefined;
+  // A one-trip contract does not survive the trip.
+  if (state === voyage.state[voyage.current]) {
+    const trip = openClause(game, "trip");
+    if (trip) voidCharter(game, trip);
+  }
   dropCharterCargo(game);
   setKeys(game.player, 0);
   setLoot(game.player, 0);
@@ -1451,7 +1771,11 @@ function loseDrone(game: RoomGame): void {
   // the time a ghost is on its feet the operator is standing on the tug.
   hint(game, "death");
 
+  // Read before the crossing: it is the derelict's own record, and after
+  // `returnToTug` the ship underfoot is the tug.
+  const gone = detonated(game);
   returnToTug(game, "death");
+  if (gone) hullGone(game, state);
   endIfBroke(game);
 }
 
@@ -1665,7 +1989,7 @@ export function stationOffers(game: RoomGame): Array<ActionOffer<RoomCommand>> {
  * 0.44 → 0.16). Sign, fly, then spend.
  */
 const STATION_ORDER: readonly string[] = [
-  "buy", "charter", "undock", "repair", "clean", "graft", "stow", "order", "fit", "sell", "jump",
+  "buy", "berth", "undock", "repair", "clean", "graft", "stow", "order", "fit", "sell", "jump",
 ];
 
 /**
@@ -1702,7 +2026,7 @@ const PICK_LABEL: Record<string, Key> = {
   stow: "action.pick.stow",
   fit: "action.pick.fit",
   sell: "action.pick.sell",
-  charter: "action.pick.charter",
+  berth: "action.pick.berth",
 };
 
 const PICK_PRICE: Record<string, number> = { graft: GRAFT_PRICE };
@@ -1745,21 +2069,28 @@ export function pickLabel(verb: string): string | undefined {
  * cost 1.81 → 0.41 a voyage (`STATION_ORDER`), and a rack under its ceiling is
  * the whole of what the first sortie is survived on.
  *
- * The callsign gives way to them, and only to them. A tug row is twenty-five
- * columns (`ACTION_WIDTH`) and the longest callsign is thirteen of them, so a
- * line carrying both would be cut somewhere; the hull is named twice more on
- * the same screen — on the banner and on the panel — and what is undone is
- * named nowhere else. With nothing outstanding the row is the callsign again.
+ * It is a note and not the name. The row used to be worded out of this list —
+ * `вылет 4 битых`, which the owner read off the live build and called what it
+ * is: «корявое имя» (G92 B2). What a row of a menu is called may not change
+ * with the state of the rack; the checklist is what the row has to *say*, so it
+ * goes in brackets after the name, where `fitLabel` puts it on its own row
+ * under the line the moment the two together are over twenty-five columns.
+ *
+ * The callsign is off the row for the same reason it was only ever on it
+ * conditionally: a tug row is twenty-five columns (`ACTION_WIDTH`) and the
+ * longest callsign is thirteen of them. The hull is named twice more on the
+ * same screen — on the banner and on the panel — and what is undone is named
+ * nowhere else.
  */
-function castOffLeft(voyage: Voyage, rig: Rig | undefined): string[] {
+function castOffLeft(game: RoomGame, rig: Rig | undefined): string[] {
   const out: string[] = [];
   const hurt = rig === undefined ? 0 : damaged(rig).length;
   if (hurt > 0) out.push(t("undock.left.damaged", { n: hurt }));
   // Only while there is one to sign: a board the drone has cleared is not a
   // thing left undone, and neither is one that never had anything on it.
-  // Alone on the row there is room to say what casting off does to the board;
-  // beside the damage there is not, and the short word stands in for it.
-  if (voyage.charters.length === 0 && voyage.offered.length > 0) {
+  // Alone in the brackets there is room to say what casting off does to the
+  // board; beside the damage there is not, and the short word stands in for it.
+  if (berthOpen(game)) {
     out.push(t(hurt > 0 ? "undock.left.charter" : "undock.left.board"));
   }
   return out;
@@ -1794,43 +2125,26 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
     return out;
   }
 
-  // The board. Signing closes with the airlock: a charter's crate is put aboard
-  // when the hull is generated, and the hull is generated by the first sortie.
-  if (verb === "charter") {
-    const open = !boarded(game);
-    voyage.offered.forEach((charter, i) => {
+  // A stop's list: every hull of it, and every contract each carries, one line
+  // a pair. The first stop's list is open until something has been aboard; after
+  // that the list is the next stop's, and every line of it is a jump.
+  if (verb === "berth" || verb === "jump") {
+    const stop = stopOf(game, verb);
+    if (stop === undefined) return out;
+    // Held before it is priced: a greyed line has one sentence, and "the hull
+    // is still out there" is the one that says what to do about it.
+    const held = verb === "jump" ? jumpHeld(game) : undefined;
+    const paid = verb === "berth" || voyage.credits >= JUMP_PRICE;
+    rowsAt(voyage, stop).forEach((row, i) => {
       out.push(
         offer(
-          t("action.charter", { charter: charterName(charter), price: charterPrice(charter) }),
-          { kind: "act", verb: "charter", target: CHARTER_TARGET + i },
-          open,
-          t("why.charter.late", { hull: derelictName(currentDerelict(game).spec) }),
+          choiceLabel(row),
+          { kind: "act", verb, target: CHOICE_TARGET + stop * CHOICE_STRIDE + i },
+          held === undefined && paid,
+          held ?? t(NOT_ENOUGH),
         ),
       );
     });
-    return out;
-  }
-
-  if (verb === "jump") {
-    const next = voyage.derelicts[voyage.current + 1];
-    if (next) {
-      // With systems raised on this hull the row says what the jump walks away
-      // from — the sale — rather than where it flies: the group's heading
-      // already says that, and half the voyages that sell nothing dropped a
-      // hull two systems short (docs/problem-map-2026-09-11.md).
-      const here = currentDerelict(game);
-      const sale = here.deal === "split" ? Math.floor(here.spec.salePrice / 2) : here.spec.salePrice;
-      out.push(
-        offer(
-          here.sold || here.online.length === 0
-            ? t("action.jump", { hull: derelictName(next), price: JUMP_PRICE })
-            : t("action.jump.drop", { up: here.online.length, of: OBJECTIVE_COUNT, cr: sale }),
-          { kind: "act", verb: "jump" },
-          voyage.credits >= JUMP_PRICE,
-          t(NOT_ENOUGH),
-        ),
-      );
-    }
     return out;
   }
 
@@ -1841,19 +2155,19 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
 
   if (voyage.hull === undefined) return out;
 
-  // The hull by its callsign, not by its class: a voyage draws three of these
-  // and two of them can be freighters, so `cast off → freighter` names a ship
-  // the player cannot tell from the last one
-  // (docs/tasks/G55-playtest-findings.md, 17). The class is on the board where
-  // the schematic goes, and on the panel, and neither of those is the line that
-  // flies you there.
+  // The row says what it does — go aboard the derelict — and the checklist of
+  // what the visit home left undone rides after it in brackets (`castOffLeft`).
+  // The refusal keeps the callsign: a voyage draws three of these and two of
+  // them can be freighters, so a sentence about "the freighter" names a ship the
+  // player cannot tell from the last one
+  // (docs/tasks/G55-playtest-findings.md, 17).
   if (verb === "undock") {
     const state = currentDerelict(game);
     const hull = flavourCallsign(state.flavour);
-    const left = castOffLeft(voyage, rig);
+    const left = castOffLeft(game, rig);
     out.push(
       offer(
-        left.length === 0 ? t("action.undock", { hull }) : t("action.undock.todo", { left: left.join(", ") }),
+        left.length === 0 ? t("action.undock") : t("action.undock.todo", { left: left.join(", ") }),
         { kind: "act", verb: "undock" },
         !state.sold,
         t("why.undock.tow", { hull }),
@@ -1969,6 +2283,7 @@ export function stationTargets(game: RoomGame, verb: string): Array<ActionOffer<
   // that puts a module on the drone belongs in one place, and the panel at home
   // has no eleventh row to give it.
 
+
   if (verb === "sell") {
     rig.slots.forEach((slot, i) => {
       if (!slot) return;
@@ -2046,6 +2361,7 @@ export const VOYAGE: System<RoomGame> = {
       "log.opening.voyage",
     );
     dock(game);
+    if (berthOpen(game)) sign(game, leadingCharter(voyage, voyage.current));
     // And, under the three, that the mouse works — which no line of the game
     // said in any language while the owner played with one
     // (docs/tasks/G87-playability.md, 3). Last of the opening, so the three
@@ -2086,9 +2402,9 @@ export const VOYAGE: System<RoomGame> = {
       case "undock":
         return undock(game);
       case "jump":
-        return jump(game);
-      case "charter":
-        return takeCharter(game, (cmd.target ?? CHARTER_TARGET) - CHARTER_TARGET);
+        return jump(game, cmd.target);
+      case "berth":
+        return berth(game, cmd.target);
     }
   },
 
@@ -2124,8 +2440,8 @@ export const VOYAGE: System<RoomGame> = {
       delete console.turns;
       game.log.add(t("log.console.away"), game.schedule.time, "warn", "log.console.away");
     }
+    checkQuiet(game);
     endIfBroke(game);
-    warnBeforeJump(game);
   },
 
   offerActions(game) {
@@ -2186,8 +2502,8 @@ export const VOYAGE: System<RoomGame> = {
       // the board's own line, where the schematic goes (`ui/tugboard.ts`).
       for (const charter of voyage.charters) {
         if (charter.id === "neutralize") continue;
-        const mark = charterDone(game, charter) ? "✓" : "·";
-        lines.push({ text: `${mark} ${charterName(charter)}` });
+        const mark = charterDone(game, charter) ? "✓" : charterVoided(game, charter) ? "✗" : "·";
+        lines.push({ text: `${mark} ${charterTag(charter)}` });
       }
     }
     return lines;
@@ -2197,13 +2513,13 @@ export const VOYAGE: System<RoomGame> = {
 /** Verbs the stations own. Everything else falls through to the next system. */
 type StationVerb =
   | "buy" | "repair" | "graft" | "clean" | "sell" | "stow" | "fit" | "order"
-  | "undock" | "jump" | "charter";
+  | "undock" | "jump" | "berth";
 
 function isStationVerb(verb: string): verb is StationVerb {
   return (
     verb === "buy" || verb === "repair" || verb === "graft" || verb === "clean" ||
     verb === "sell" || verb === "stow" || verb === "fit" || verb === "order" || verb === "undock" ||
-    verb === "jump" || verb === "charter"
+    verb === "jump" || verb === "berth"
   );
 }
 

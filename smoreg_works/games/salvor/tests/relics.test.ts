@@ -201,7 +201,7 @@ describe("a relic goes into a full rack by throwing a module out", () => {
     // The blade is the drone's swing now: two dice where the cutter had one.
     expect(game.player.damage).toEqual([2, 6, 0]);
     expect(game.log.tail(5).map((m) => m.text)).toContain(
-      "A relic: Q-BLADE. No bench mends it, no dock sells it.",
+      "Relic: Q-BLADE. No mending, no selling.",
     );
   });
 

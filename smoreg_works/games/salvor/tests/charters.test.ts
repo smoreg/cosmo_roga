@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { t } from "../src/i18n.js";
+import type { Key } from "../src/content/i18n/keys.js";
 import {
   Rng,
   RoomGame,
@@ -34,14 +36,25 @@ import {
   uploadFlag,
 } from "../src/content/cards-derelicts.js";
 import {
+  CHARTER_PAY,
+  CLAUSES,
+  CLAUSE_BONUS,
   charterFlags,
   charterKinds,
+  contractsFor,
   doneBy,
   offerCharters,
   salvageTarget,
+  withClause,
   type Charter,
   type CharterState,
+  type ClauseId,
 } from "../src/content/charters.js";
+import { HOT_STEPS, QUIET_AT, charterTag, stationTargets } from "../src/systems/voyage.js";
+import { alertState, raiseAlert } from "../src/systems/alert.js";
+import { newGame } from "../src/game.js";
+import { panelBlocks } from "../src/ui/panel.js";
+import { THEME } from "../src/ui/theme.js";
 
 /**
  * What a sortie is for (design-doc.md, "Чартеры").
@@ -93,15 +106,37 @@ function charterOf(list: readonly Charter[], id: string): Charter | undefined {
 // -------------------------------------------------------------------- the offer
 
 describe("what the HELM offers", () => {
-  it("lists two or three jobs, always with NEUTRALIZE first", () => {
+  it("draws one or two jobs, and never NEUTRALIZE: that is the goal, not a job", () => {
     for (const spec of DERELICTS) {
       for (let seed = 1; seed <= SEEDS; seed++) {
         const offer = offerCharters(spec, new Rng(seed));
         const where = `${spec.id} seed ${seed}`;
-        expect(offer.length, where).toBeGreaterThanOrEqual(2);
-        expect(offer.length, where).toBeLessThanOrEqual(3);
-        expect(offer[0]!.id, where).toBe("neutralize");
+        expect(offer.length, where).toBeGreaterThanOrEqual(1);
+        expect(offer.length, where).toBeLessThanOrEqual(2);
+        expect(offer.map((c) => c.id), where).not.toContain("neutralize");
         expect(new Set(offer.map((c) => c.id)).size, where).toBe(offer.length);
+      }
+    }
+  });
+
+  it("gives every candidate a plain contract first, and a clause only past the first stop", () => {
+    for (const spec of DERELICTS) {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        for (const stop of [0, 1, 2]) {
+          const list = contractsFor(spec, stop, new Rng(seed));
+          const where = `${spec.id} seed ${seed} stop ${stop}`;
+          expect(list.length, where).toBeGreaterThanOrEqual(1);
+          expect(list.length, where).toBeLessThanOrEqual(2);
+          expect(list[0]!.clause, where).toBeUndefined();
+          if (stop === 0) {
+            expect(list[0]!.id, where).toBe("salvage");
+            expect(list.every((c) => c.clause === undefined), where).toBe(true);
+          } else {
+            expect(list[1]!.clause, where).toBeDefined();
+            expect(CLAUSES, where).toContain(list[1]!.clause);
+            expect(list[1]!.payout, where).toBe(CHARTER_PAY[list[1]!.id as "salvage"] + CLAUSE_BONUS[list[1]!.clause!]);
+          }
+        }
       }
     }
   });
@@ -138,7 +173,7 @@ describe("what the HELM offers", () => {
           expect(charter.target!.mark).toBe("&");
           uploads++;
         }
-        if (charter.id === "salvage" || charter.id === "neutralize") {
+        if (charter.id === "salvage") {
           expect(charter.target).toBeUndefined();
         }
       }
@@ -147,11 +182,9 @@ describe("what the HELM offers", () => {
     expect(uploads).toBeGreaterThan(0);
   });
 
-  it("pays the rates of the economy table, and the hull's price for neutralising it", () => {
+  it("pays the rates of one contract a ship: more than a board of them used to", () => {
     for (const spec of DERELICTS) {
-      const rates: Record<string, number> = {
-        salvage: 20, retrieve: 25, upload: 30, neutralize: spec.salePrice,
-      };
+      const rates: Record<string, number> = { salvage: 30, retrieve: 40, upload: 45 };
       for (let seed = 1; seed <= 40; seed++) {
         for (const charter of offerCharters(spec, new Rng(seed))) {
           expect(charter.payout, `${spec.id} ${charter.id}`).toBe(rates[charter.id]);
@@ -176,7 +209,7 @@ describe("what the HELM offers", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       for (const charter of offerCharters(QUARANTINE, new Rng(seed))) seen.add(charter.id);
     }
-    expect([...seen].sort()).toEqual(["neutralize", "retrieve", "salvage", "upload"]);
+    expect([...seen].sort()).toEqual(["retrieve", "salvage", "upload"]);
   });
 
   it("offers the same jobs from the same seed", () => {
@@ -213,9 +246,8 @@ describe("when a charter is finished", () => {
     expect(filled(charter, { ...NOTHING, loot: 900 }, ship)).toBe(true);
   });
 
-  it("counts NEUTRALIZE only when all three systems are up", () => {
-    const charter = offerCharters(spec, new Rng(1))[0]!;
-    expect(charter.id).toBe("neutralize");
+  it("still counts an old save's NEUTRALIZE only when all three systems are up", () => {
+    const charter: Charter = { id: "neutralize", text: "?", payout: spec.salePrice };
     expect(filled(charter, NOTHING, bareShip())).toBe(false);
     expect(filled(charter, { ...NOTHING, online: ["engine", "core"] }, bareShip())).toBe(false);
     expect(filled(charter, { ...NOTHING, online: ["core", "terminal", "engine"] }, bareShip())).toBe(true);
@@ -440,50 +472,26 @@ describe("a charter, from the board to the account", () => {
   }
 
   /**
-   * The board as every hull but the first one draws it.
-   *
-   * The first hull of a voyage is deliberately one line — `SALVAGE 20 CR`, and
-   * nothing else, because it is the first thing a player ever reads
-   * (design-doc.md, "Обучение конструкцией", 1; `systems/voyage.ts`, `dock`).
-   * Every test below is about a board with a choice on it, so they redraw one
-   * the way the second hull would.
+   * Put these contracts on the one hull's line of the list, the way a voyage
+   * draws them for a stop past the first (`contractsFor`), and hand back the
+   * list as the tug offers it.
    */
-  function fullBoard(game: SalvorGame, spec: DerelictSpec): void {
-    voyageOf(game).offered = offerCharters(spec, game.rng);
+  function listing(game: SalvorGame, spec: DerelictSpec, charters: Charter[]) {
+    voyageOf(game).stops = [[{ hull: spec.id, charters }]];
+    return stationTargets(game, "berth");
   }
 
-  function walkToHelm(game: RoomGame): void {
-    for (const door of TO_HELM) expect(game.playerCommand({ kind: "go", door }).ok).toBe(true);
-  }
-
-  function walkToDock(game: RoomGame): void {
-    for (const door of [...TO_HELM].reverse()) {
-      expect(game.playerCommand({ kind: "go", door }).ok).toBe(true);
-    }
-  }
-
-  function offersHere(game: RoomGame) {
-    return gatedOffers(game);
+  /** Choose the line that signs this contract — or the one that signs none. */
+  function choose(game: SalvorGame, spec: DerelictSpec, charter: Charter | undefined, all: Charter[] = charter ? [charter] : []) {
+    const rows = listing(game, spec, all);
+    const at = charter === undefined ? all.length : all.indexOf(charter);
+    return game.playerCommand(rows[at]!.cmd as RoomCommand);
   }
 
   function press(game: RoomGame, prefix: string) {
-    const offer = offersHere(game).find((o) => o.label.startsWith(prefix));
-    expect(offer, `no offer '${prefix}' in [${offersHere(game).map((o) => o.label).join(", ")}]`)
-      .toBeDefined();
+    const offer = gatedOffers(game).find((o) => o.label.startsWith(prefix));
+    expect(offer, `no offer '${prefix}' in [${gatedOffers(game).map((o) => o.label).join(", ")}]`).toBeDefined();
     return game.playerCommand(offer!.cmd as RoomCommand);
-  }
-
-  /** Sign every small charter on the board and walk back to the airlock. */
-  function signAll(game: RoomGame): Charter[] {
-    walkToHelm(game);
-    const signed: Charter[] = [];
-    for (const charter of [...voyageOf(game).offered]) {
-      if (charter.id === "neutralize") continue;
-      expect(press(game, `take ${charter.id.toUpperCase()}`).ok).toBe(true);
-      signed.push(charter);
-    }
-    walkToDock(game);
-    return signed;
   }
 
   /** Everything of one kind lying in a compartment, by the item list's own name. */
@@ -503,68 +511,69 @@ describe("a charter, from the board to the account", () => {
     return itemsOn(game, kind)[0]!;
   }
 
-  it("draws a board for the hull the tug is tied to, NEUTRALIZE always on it", () => {
+  it("lists a hull's contracts as lines, then the line with none, and signs nothing yet", () => {
     for (const spec of DERELICTS) {
       const game = runOn(spec);
-      fullBoard(game, spec);
-      const board = voyageOf(game).offered;
+      const contracts = contractsFor(spec, 1, new Rng(3));
+      const rows = listing(game, spec, contracts);
 
-      expect(board.length, spec.id).toBeGreaterThanOrEqual(2);
-      expect(board.length, spec.id).toBeLessThanOrEqual(3);
-      expect(charterOf(board, "neutralize"), spec.id).toBeDefined();
+      expect(rows, spec.id).toHaveLength(contracts.length + 1);
+      expect(rows.map((r) => r.label), spec.id).toEqual([
+        ...contracts.map((c) => `${charterTag(c)} · ${c.payout} CR`),
+        "no contract",
+      ]);
       expect(voyageOf(game).charters, spec.id).toEqual([]);
     }
   });
 
-  it("gives the first hull of a voyage two lines: the goal, then the salvage run", () => {
-    // The onboarding rule, and the only board the game ever shortens: a player
-    // who has never seen it reads two lines at the HELM and knows both what the
-    // run is for and what one sortie has to pay for (design-doc.md, "Обучение
-    // конструкцией", 1). `NEUTRALIZE` leads, because it used to be missing here
-    // entirely — and a player who is never shown it flies two whole derelicts
-    // without learning that hulls are what the game sells
-    // (docs/review-2026-09-07.md, A1).
-    for (const spec of DERELICTS) {
-      const board = voyageOf(runOn(spec)).offered;
-      expect(board.map((c) => c.id), spec.id).toEqual(["neutralize", "salvage"]);
+  it("opens every voyage on its starting hulls, each with SALVAGE first", () => {
+    // The first stop of a real voyage: two or three starting hulls, the first
+    // of them the hull the itinerary has always drawn, and on each the job the
+    // first sortie is paid for, leading (design-doc.md, "Обучение
+    // конструкцией", 1).
+    for (let seed = 1; seed <= 60; seed++) {
+      const game = newGame(seed);
+      const voyage = voyageOf(game);
+      const stops = voyage.stops!;
+      expect(stops[0]!.length, `seed ${seed}`).toBeGreaterThanOrEqual(2);
+      expect(stops[0]!.length, `seed ${seed}`).toBeLessThanOrEqual(3);
+      expect(stops[0]![0]!.hull, `seed ${seed}`).toBe(voyage.derelicts[0]!.id);
+      for (const hull of stops[0]!) expect(hull.charters[0]!.id, `seed ${seed} ${hull.hull}`).toBe("salvage");
+      expect(stationTargets(game, "berth")[0]!.label, `seed ${seed}`).toBe(`SALVAGE · ${CHARTER_PAY.salvage} CR`);
     }
-    const board = voyageOf(runOn(FREIGHTER)).offered;
-    expect(board[0]!.payout).toBe(FREIGHTER.salePrice);
-    expect(board[1]!.payout).toBe(20);
   });
 
-  it("signs from the one list, wherever the drone is standing", () => {
-    // It used to be the HELM's and nobody else's, three bulkheads from the
-    // airlock — which is where the board went unread for two balance passes.
-    // Since G53 the tug is one screen (docs/tasks/G53-tug-is-a-menu.md).
+  it("signs one contract from the list, and only the one on the line chosen", () => {
     const game = runOn(LABORATORY);
-    const first = voyageOf(game).offered[0]!;
+    const contracts = contractsFor(LABORATORY, 1, new Rng(5));
 
-    expect(press(game, `take ${first.id.toUpperCase()}`).ok).toBe(true);
-    expect(voyageOf(game).charters).toEqual([first]);
-    expect(voyageOf(game).offered).not.toContain(first);
+    expect(choose(game, LABORATORY, contracts[1], contracts).ok).toBe(true);
+    expect(voyageOf(game).charters).toEqual([contracts[1]]);
+    expect(voyageOf(game).berthed).toBe(true);
+    // Chosen once: the first stop's list is closed.
+    expect(stationTargets(game, "berth")).toEqual([]);
   });
 
-  it("closes the board the moment the hull has been opened", () => {
+  it("closes the first stop's list the moment the hull has been opened", () => {
     const game = runOn(LABORATORY);
+    listing(game, LABORATORY, contractsFor(LABORATORY, 1, new Rng(5)));
     expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
     expect(game.playerCommand({ kind: "leave" }).ok).toBe(true);
 
-    walkToHelm(game);
-    const offer = offersHere(game).find((o) => o.label.startsWith("take "))!;
-    expect(offer.enabled).toBe(false);
-    expect(offer.why).toContain("already open");
-
-    const out = game.playerCommand(offer.cmd as RoomCommand);
+    expect(stationTargets(game, "berth")).toEqual([]);
+    const out = game.playerCommand({ kind: "act", verb: "berth", target: 2300 });
     expect(out.ok).toBe(false);
     expect(out.cost).toBe(0);
+    expect(out.reason).toContain("already open");
     expect(voyageOf(game).charters).toEqual([]);
   });
 
   it("puts the marks of the charters signed, and only those, aboard the hull", () => {
     for (const spec of [LABORATORY, MILITARY, QUARANTINE, FATHERS_TUG]) {
+      for (const charter of offerCharters(spec, new Rng(9))) {
       const game = runOn(spec);
-      const signed = signAll(game);
+      expect(choose(game, spec, charter).ok).toBe(true);
+      const signed = [charter];
       expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
 
       for (const charter of signed) {
@@ -579,6 +588,7 @@ describe("a charter, from the board to the account", () => {
       }
       if (!signed.some((c) => c.id === "retrieve")) expect(itemsOn(game, "charter-item")).toEqual([]);
       if (!signed.some((c) => c.id === "upload")) expect(itemsOn(game, "console")).toEqual([]);
+      }
     }
   });
 
@@ -591,7 +601,7 @@ describe("a charter, from the board to the account", () => {
     expect(voyageOf(game).credits).toBe(before);
 
     home(game);
-    expect(voyageOf(game).credits).toBe(before + 25);
+    expect(voyageOf(game).credits).toBe(before + CHARTER_PAY.retrieve);
     expect(voyageOf(game).paid).toEqual(["retrieve"]);
 
     // Out and back again: the errand is done, and done is not a wage.
@@ -627,7 +637,7 @@ describe("a charter, from the board to the account", () => {
     expect(console.uploaded).toBe(true);
 
     home(game);
-    expect(voyageOf(game).credits).toBe(before + 30);
+    expect(voyageOf(game).credits).toBe(before + CHARTER_PAY.upload);
   });
 
   it("drops the marked crate where the drone died, and pays nobody for it", () => {
@@ -668,8 +678,78 @@ describe("a charter, from the board to the account", () => {
     (game.player.data ??= {}).loot = need;
     home(game);
     expect(voyageOf(game).paid).toEqual(["salvage"]);
-    expect(voyageOf(game).credits).toBe(before + Math.floor(need / 2) + need + 20);
+    expect(voyageOf(game).credits).toBe(before + Math.floor(need / 2) + need + CHARTER_PAY.salvage);
   });
+
+  // ---------------------------------------------------------------- clauses
+
+  it("HOT: the hull is awake on the first boarding, and the job still pays with the clause on top", () => {
+    const game = withCharter("salvage", "hot");
+    expect(alertState(game).level).toBeGreaterThanOrEqual(HOT_STEPS);
+    expect(lines(game).some((l) => l.includes("the hull is awake"))).toBe(true);
+
+    const before = voyageOf(game).credits;
+    const need = salvageTarget(currentDerelict(game).spec);
+    (game.player.data ??= {}).loot = need;
+    home(game);
+    expect(voyageOf(game).paid).toEqual(["salvage"]);
+    expect(voyageOf(game).credits).toBe(before + need + CHARTER_PAY.salvage + CLAUSE_BONUS.hot);
+  });
+
+  it("QUIET: pays when the gauge stays under the line, and is void with a line the turn it reaches it", () => {
+    const kept = withCharter("salvage", "quiet");
+    const need = salvageTarget(currentDerelict(kept).spec);
+    const before = voyageOf(kept).credits;
+    (kept.player.data ??= {}).loot = need;
+    home(kept);
+    expect(voyageOf(kept).credits).toBe(before + need + CHARTER_PAY.salvage + CLAUSE_BONUS.quiet);
+
+    const loud = withCharter("salvage", "quiet");
+    raiseAlert(loud, QUIET_AT);
+    expect(loud.playerCommand({ kind: "wait" }).ok).toBe(true);
+    expect(voyageOf(loud).voided).toEqual(["salvage"]);
+    expect(lines(loud)).toContain(`SALVAGE void: the alert reached ${QUIET_AT}. It pays nothing now.`);
+    // Aboard, where it broke, the panel crosses it out with its clause on it.
+    const row = panelBlocks(loud, []).find((l) => l.text.includes("SALVAGE"));
+    expect(row?.text.trim()).toBe("✗ SALVAGE+QUIET");
+    expect(row?.fg).toBe(THEME.bad);
+    const was = voyageOf(loud).credits;
+    (loud.player.data ??= {}).loot = need;
+    home(loud);
+    expect(voyageOf(loud).paid).toEqual([]);
+    expect(voyageOf(loud).credits).toBe(was + need);
+  });
+
+  it("1 TRIP: pays when the job comes home on the first sortie, and is void when it does not", () => {
+    const quick = withCharter("salvage", "trip");
+    const need = salvageTarget(currentDerelict(quick).spec);
+    const before = voyageOf(quick).credits;
+    (quick.player.data ??= {}).loot = need;
+    home(quick);
+    expect(voyageOf(quick).credits).toBe(before + need + CHARTER_PAY.salvage + CLAUSE_BONUS.trip);
+
+    const slow = withCharter("salvage", "trip");
+    home(slow);
+    expect(voyageOf(slow).voided).toEqual(["salvage"]);
+    expect(lines(slow)).toContain("SALVAGE void: the job did not come home on the first sortie.");
+    expect(slow.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
+    const was = voyageOf(slow).credits;
+    (slow.player.data ??= {}).loot = need;
+    home(slow);
+    expect(voyageOf(slow).paid).toEqual([]);
+    expect(voyageOf(slow).credits).toBe(was + need);
+  });
+
+  it("1 TRIP: a drone lost on the first sortie voids the job", () => {
+    const game = withCharter("salvage", "trip");
+    game.player.hp = 0;
+    VOYAGE.onDeath!(game, game.player);
+    expect(voyageOf(game).voided).toEqual(["salvage"]);
+  });
+
+  function lines(game: RoomGame): string[] {
+    return game.log.lines.map((m) => m.text);
+  }
 
   /**
    * A run aboard a hull that carries exactly this charter, already undocked.
@@ -678,21 +758,16 @@ describe("a charter, from the board to the account", () => {
    * which small jobs a hull offers is a roll (`offerCharters`), and a test that
    * is about filling one should not also be a test about drawing it.
    */
-  function withCharter(id: string): SalvorGame {
-    for (let seed = 1; seed <= 60; seed++) {
-      const game = runOn(LABORATORY, seed);
-      fullBoard(game, LABORATORY);
-      if (!voyageOf(game).offered.some((c) => c.id === id)) continue;
-      walkToHelm(game);
-      expect(press(game, `take ${id.toUpperCase()}`).ok).toBe(true);
-      walkToDock(game);
-      expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
-      // The hull is emptied of machines: what is under test is the errand, and
-      // a scrapper walking in halfway through an upload is a different test.
-      game.entities = [game.player];
-      return game;
-    }
-    throw new Error(`no laboratory seed offered a ${id} charter`);
+  function withCharter(id: string, clause?: ClauseId): SalvorGame {
+    const plain = firstWith(LABORATORY, id);
+    const charter = clause === undefined ? plain : withClause(plain, clause);
+    const game = runOn(LABORATORY, 4);
+    expect(choose(game, LABORATORY, charter).ok).toBe(true);
+    expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
+    // The hull is emptied of machines: what is under test is the errand, and
+    // a scrapper walking in halfway through an upload is a different test.
+    game.entities = [game.player];
+    return game;
   }
 
   /** Out through the airlock, from wherever the drone is standing. */

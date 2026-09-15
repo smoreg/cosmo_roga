@@ -320,15 +320,14 @@ export function graft(rig: Rig, slot: number): RepairResult | undefined {
  */
 const VERB_MODULE: Record<string, ModuleId> = {
   close: "thrusters",
+  // Ramming a bulkhead is the chassis at work, and the chassis is the
+  // THRUSTERS: eight turns of it, every one with the drive under the blow.
+  ram: "thrusters",
   weld: "welder",
   cut: "cutter",
   spike: "spike",
   power: "cell",
   shoot: "emitter",
-  // Burning a virus out is welding, and it exposes the welder like any other
-  // welding does (`systems/virus.ts`). Without the row the purge would expose
-  // the PLATING, which is the one thing a drone standing still is not risking.
-  cure: "welder",
 };
 
 /**
@@ -371,6 +370,10 @@ function actExposure(game: RoomGame, rig: Rig, cmd: Extract<RoomCommand, { kind:
   }
   // A swap is the drone picking a crate up with its hands, like a carry.
   if (cmd.verb === "swap") return findSlotAs(rig, "plating");
+  // A purge is hands-on work, unless a SPIKE is doing it for half the turns —
+  // then the SPIKE is what is plugged in and what a blow lands on
+  // (`systems/virus.ts`, G90).
+  if (cmd.verb === "cure") return findSlotAs(rig, "spike") ?? findSlotAs(rig, "plating");
   return findSlotAs(rig, VERB_MODULE[cmd.verb] ?? "plating");
 }
 
@@ -618,7 +621,7 @@ export function wrecksIn(game: RoomGame, room: RoomId): Wreck[] {
  *
  * Wreckage belongs to the compartment and not to the run, which is what lets
  * the tug draw the derelict it is tied to as the last drone left it
- * (`ui/schematic-input.ts`).
+ * (`ui/contents.ts`).
  */
 export function wrecksOn(ship: Ship, room: RoomId): Wreck[] {
   const data = ship.roomAt(room).data;
@@ -1067,8 +1070,12 @@ export function hackTargetAt(game: RoomGame, target: number): HackTarget | undef
   return undefined;
 }
 
-/** Asked of every blow at the drone: does this one land at all? */
-export type DamageVeto = (game: RoomGame, source: Entity | undefined) => boolean;
+/**
+ * Asked of every blow at the drone: does this one land at all? `amount` is
+ * what would reach the rack, for a rule that sends the blow somewhere else
+ * (`systems/crowd.ts`, the stray shot) rather than only waving it off.
+ */
+export type DamageVeto = (game: RoomGame, source: Entity | undefined, amount: number) => boolean;
 
 const DAMAGE_VETOES: DamageVeto[] = [];
 
@@ -1087,8 +1094,8 @@ export function registerDamageVeto(veto: DamageVeto): void {
 }
 
 /** Does anything say this blow does not land? First refusal is enough. */
-function vetoed(game: RoomGame, source: Entity | undefined): boolean {
-  return DAMAGE_VETOES.some((veto) => veto(game, source));
+function vetoed(game: RoomGame, source: Entity | undefined, amount: number): boolean {
+  return DAMAGE_VETOES.some((veto) => veto(game, source, amount));
 }
 
 /**
@@ -1323,6 +1330,33 @@ function weld(game: RoomGame, rig: Rig, self: number): Outcome {
 
 // ---------------------------------------------------------------- the twist
 
+/**
+ * The line that said the machine died, taken back before the scrap line says it
+ * better.
+ *
+ * A kill wrote three rows — `You hit the scout for 6 (0/3).`, `The scout
+ * dies.`, `The scout collapses into scrap: SCANNER.` — and the middle one is
+ * the last two said twice by two files (docs/gui-guides.md, §5a, rule 5). The
+ * scrap line already names the machine, says it came apart and adds the one
+ * thing neither of the others has, so it is the line that stays; the death is
+ * folded into it.
+ *
+ * Taken back rather than never written because the death is the engine's to
+ * announce and the salvage is the game's: `packages/` may not know that this
+ * game turns a wreck into a module, and `rooms/actions.ts` writes its line and
+ * then calls the hook. The twist runs first of the systems, so the line it is
+ * looking at is the last one in the log and is still on this turn — anything
+ * else is a death nobody has narrated yet (a compartment blown up, a hull
+ * scuttled) and nothing is dropped.
+ */
+function dropDeathLine(game: RoomGame): void {
+  const lines = game.log.lines;
+  const last = lines[lines.length - 1];
+  if (last === undefined || last.turn !== game.schedule.time) return;
+  if (last.key !== "engine.dies" && last.key !== "log.machine.dies") return;
+  lines.pop();
+}
+
 export const RIG: Twist<RoomGame> = {
   name: "rig",
 
@@ -1338,8 +1372,9 @@ export const RIG: Twist<RoomGame> = {
     const kind = machineByName(victim.name)?.salvage;
     if (!kind) return;
     addWreck(game, victim.room, kind, game.rng.int(SCRAP_INTEGRITY[0], SCRAP_INTEGRITY[1]));
+    dropDeathLine(game);
     game.log.add(
-      t("log.scrap.drop", { machine: machineName(victim.name), module: moduleName(kind) }),
+      t("log.scrap.drop", { machine: capitalize(machineName(victim.name)), module: moduleName(kind) }),
       game.schedule.time,
       "plain",
       "log.scrap.drop",
@@ -1362,7 +1397,7 @@ export const RIG: Twist<RoomGame> = {
     if (victim.id !== game.player.id) return amount;
     // Before anything is routed, logged or burned: a blow somebody vetoed is a
     // blow that did not happen (`registerDamageVeto`).
-    if (vetoed(game, source)) return 0;
+    if (vetoed(game, source, amount)) return 0;
 
     const rig = rigOf(game.player);
     if (!rig) return amount;

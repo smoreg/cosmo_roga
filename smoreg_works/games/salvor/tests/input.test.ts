@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { DOOR_USE, isChord, keyHelp, listHelp, missingModuleLine, toIntent, type KeyLike } from "../src/ui/input.js";
-
+import { DOOR_USE, charterHelp, dockHelp, voyageHelp, HELP_ROWS, helpFooter, helpHeadings, helpPages, isChord, keyHelp, listHelp, missingModuleLine, ruleHelp, shipHelp, tugHelp, toIntent, urlHelp, type KeyLike } from "../src/ui/input.js";
+import { t } from "../src/i18n.js";
 import { findSlot, makeStartingRig, type Rig } from "../src/twist/rig.js";
+import { SCREEN_HEIGHT, SCREEN_WIDTH } from "../src/ui/theme.js";
 
 /**
  * The key table is the whole interface: every rule in the game is reached
@@ -164,6 +165,7 @@ describe("key mapping", () => {
     expect(toIntent(press("ArrowRight", "ArrowRight"), rig)).toEqual({ kind: "page", delta: 1 });
   });
 
+  
   it("gives the arrows and enter to the list, and nothing else", () => {
     expect(toIntent(press("ArrowUp", "ArrowUp"), rig)).toEqual({ kind: "cursor", delta: -1 });
     expect(toIntent(press("ArrowDown", "ArrowDown"), rig)).toEqual({ kind: "cursor", delta: 1 });
@@ -210,6 +212,37 @@ describe("key mapping", () => {
  */
 describe("the cards fit their frames", () => {
 
+  /**
+   * The question `?` is pressed to ask, answered before anything else on the
+   * card and answered differently in the two places a player can be lost
+   * (docs/tasks/G40-tug-clarity.md, 6).
+   */
+
+  /**
+   * One page, four blocks: the keys, the rule the twist is, what the numbered
+   * list is, and what a charter is (`docs/tasks/G32-onboarding-v2.md`, 4). A
+   * voter presses `?` once and closes it again — anything the card does not
+   * answer in that one screen it does not answer at all.
+   */
+
+  /**
+   * `?` at home, after the owner pressed it there and got the drone: «помощь на
+   * буксире должна рассказывать про буксир, а не управление дроном» (G95 B6).
+   * The card answers the questions the tug raises — what this screen is, what
+   * its rows do, where the voyage goes — and none the drone raises.
+   */
+
+  /**
+   * The settings that live in the address bar and had no other home.
+   *
+   * All five worked before the card mentioned them and none was written down
+   * anywhere a player would look: a voter who wants the music off, or a bug
+   * report worth reproducing, had the source to read and nothing else
+   * (docs/gui-guides.md, "Что применить", C). Checked in every language,
+   * because a translator who reworded a query string would have broken the one
+   * thing on the card that must be typed exactly.
+   */
+
   /** `PageUp` had no line on the card until it had a meaning (G79). */
   it("says which key opens the log's own past", () => {
     {
@@ -228,4 +261,12 @@ describe("the cards fit their frames", () => {
     expect(list).toContain("0");
     expect(list.toLowerCase()).not.toContain("letters under");
   });
+
+  /**
+   * The card used to be exactly as tall as the screen, so every key the game
+   * gained was a choice between its own line and somebody else's — G48 spent
+   * that choice once, folding two rows together to fit `m` in. Pages end the
+   * arithmetic: the rule is a per-page ceiling with air over it, and a card
+   * that outgrows one page grows another instead of losing a line.
+   */
 });

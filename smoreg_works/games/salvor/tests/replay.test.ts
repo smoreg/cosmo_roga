@@ -246,11 +246,12 @@ const SCENARIOS: Scenario[] = [
   { name: "loss", seed: 1, config: "shipped", play: (g, s) => playCareful(g, s, 1200) },
   { name: "rival", seed: 7, config: "shipped", play: playRival },
   // The first seed on which the scripted driver neutralises a generated
-  // freighter without help. It was 12, then 3, and is 5 since the hulls moved
-  // onto the lattice — the driver walks by the shortest route it can see, so
-  // every change to the shape of a hull moves which seeds it can finish.
+  // freighter without help. It was 12, then 3, then 5 when the hulls moved
+  // onto the lattice, and is 11 since G90 B made the starting hulls bigger —
+  // the driver walks by the shortest route it can see, so every change to the
+  // shape of a hull moves which seeds it can finish.
   // `SCAN=1` finds the next one; do that rather than lower the assertion.
-  { name: "sale", seed: 5, config: "one-hull", play: playSale },
+  { name: "sale", seed: 11, config: "one-hull", play: playSale },
 ];
 
 // -------------------------------------------------------------- the outcome
@@ -281,8 +282,9 @@ interface ReplayFixture {
   /**
    * A hash of everything the run left behind — every stored hull's graph, its
    * doors, what lies in its compartments, who is aboard it, the per-ship
-   * pockets, the voyage record and the whole log. The numbers above are what a
-   * diff can be read by; this is what makes the check bit-for-bit.
+   * pockets, the voyage record and every event the log recorded. The numbers
+   * above are what a diff can be read by; this is what makes the check
+   * bit-for-bit.
    */
   fingerprint: string;
   /** Commit the recording was made at. See the header. */
@@ -312,9 +314,18 @@ function outcomeOf(game: RoomGame): RunOutcome {
  * — all of them deterministic given the same commands, which is the whole point
  * of hashing them. Functions drop out through `JSON.stringify`, which is how
  * the charter predicates on the voyage record stay out of it.
+ *
+ * The log goes in as the events it recorded and not as the sentences it
+ * recorded them in: `LogLine.key` is what a line *is*, and the wording is a
+ * translation of it that gets shortened and rewritten (G97). Hashing the text
+ * made every such rewrite look like a voyage that had moved, which is the one
+ * thing this fixture exists to catch — so the check was loud for the change
+ * that never matters and would have stayed silent only by re-recording, which
+ * is how a real change gets waved through. A line with no key is still hashed
+ * by its text: there is nothing else it is.
  */
 function fingerprint(game: RoomGame): string {
-  return fnv1a(JSON.stringify([canonical(stateOf(game)), game.log.lines.map((l) => l.text)]));
+  return fnv1a(JSON.stringify([canonical(stateOf(game)), game.log.lines.map((l) => l.key ?? l.text)]));
 }
 
 /**

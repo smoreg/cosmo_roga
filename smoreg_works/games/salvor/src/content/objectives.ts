@@ -44,9 +44,12 @@ export const SYSTEM_GLYPH = "+";
  * gone — and every other number about a system follows from which one the drone
  * can actually do.
  */
+/** What a system is worked with: a module, the keycard, or nothing at all. */
+export type Tool = ModuleId | "key" | "hands";
+
 export interface ObjectiveJob {
-  /** The module the work exposes, or the keycard, which exposes PLATING. */
-  readonly tool: ModuleId | "key";
+  /** The module the work exposes; the keycard and bare hands expose PLATING. */
+  readonly tool: Tool;
   /** Player turns in a row. Any other command breaks the job off. */
   readonly turns: number;
   /** Noise made on each of those turns. */
@@ -63,9 +66,16 @@ export interface ObjectiveSpec {
   readonly name: string;
   /** English of the panel's short form: `engine ✓ core · term ·`. */
   readonly short: string;
-  /** Every way of raising it, in the order the drone should spend them. */
+  /** Every tooled way of raising it, in the order the drone should spend them. */
   readonly jobs: readonly ObjectiveJob[];
-  /** The first job this drone can do right now, or nothing it can do. */
+  /**
+   * The way with nothing in the rack: the drone's own time, and a lot of it,
+   * with the whole ship listening. Always there, never in `jobs` — `needs`
+   * answers "which tool", and the list teaches the tool by greying its row
+   * (`systems/ship.ts`, `offerActions`); the slow way is the row under it.
+   */
+  readonly hands: ObjectiveJob;
+  /** The first tooled job this drone can do right now, or nothing it can do. */
   needs(rig: Rig | undefined, keys: number): ObjectiveJob | undefined;
   /** Credits the charter pays on account for it. */
   readonly advance: number;
@@ -73,6 +83,16 @@ export interface ObjectiveSpec {
 
 /** Credits per system. The rest of the charter is paid when the drone gets out. */
 const ADVANCE = 15;
+
+/**
+ * How loud each turn of bare-handed work is: the ram's own figure
+ * (`systems/doors.ts`, `RAM_NOISE`), half again the eight that climbs the
+ * alert (`systems/alert.ts`, `NOISE_THRESHOLD`). The owner's word for both
+ * (G90 B, G94): a drone is never stuck in front of the thing that finishes
+ * the hull, it is made to pay for it — and the price of a system raised with
+ * nothing in the rack is a ship that has heard every turn of it.
+ */
+export const HANDS_NOISE = 12;
 
 /** Is this module in the rack, whatever is left of it? */
 function carries(rig: Rig | undefined, tool: ModuleId | "key"): boolean {
@@ -88,12 +108,26 @@ function firstAffordable(
   rig: Rig | undefined,
   keys: number,
 ): ObjectiveJob | undefined {
-  return jobs.find((job) => (job.tool === "key" ? keys > 0 : carries(rig, job.tool)));
+  return jobs.find((job) =>
+    job.tool === "hands" ? true : job.tool === "key" ? keys > 0 : carries(rig, job.tool),
+  );
 }
 
-/** A row of the table. `needs` is the same question for all three of them. */
-function spec(s: Omit<ObjectiveSpec, "needs" | "advance">): ObjectiveSpec {
-  return { ...s, advance: ADVANCE, needs: (rig, keys) => firstAffordable(s.jobs, rig, keys) };
+/**
+ * A row of the table. `needs` is the same question for all three of them, and
+ * `hands` is the turns the bare-handed way takes — the owner's figure for the
+ * terminal, twelve, with the others by the same measure: the ion drive is the
+ * biggest thing aboard and the longest tooled job, so it is the longest by
+ * hand as well. Every one of them is clearly worse than the tool and never
+ * impossible; the balance is measured in `tests/balance.test.ts`.
+ */
+function spec(s: Omit<ObjectiveSpec, "needs" | "advance" | "hands"> & { readonly hands: number }): ObjectiveSpec {
+  return {
+    ...s,
+    hands: { tool: "hands", turns: s.hands, noise: HANDS_NOISE },
+    advance: ADVANCE,
+    needs: (rig, keys) => firstAffordable(s.jobs, rig, keys),
+  };
 }
 
 /** The ion drive: a torch job, three turns, and the loudest thing aboard. */
@@ -107,6 +141,7 @@ export const ENGINE: ObjectiveSpec = spec({
     { tool: "cutter", turns: 3, noise: 8 },
     { tool: "welder", turns: 3, noise: 8 },
   ],
+  hands: 15,
 });
 
 /** The reactor: two turns of a CELL, and the CELL is a point poorer for it. */
@@ -120,6 +155,7 @@ export const CORE: ObjectiveSpec = spec({
   name: "REACTOR",
   short: "reac",
   jobs: [{ tool: "cell", turns: 2, noise: 6 }],
+  hands: 12,
 });
 
 /**
@@ -139,6 +175,7 @@ export const TERMINAL: ObjectiveSpec = spec({
     { tool: "spike", turns: 2, noise: 4 },
     { tool: "key", turns: 1, noise: 0 },
   ],
+  hands: 12,
 });
 
 /** All three, in the order the panel prints them. */
@@ -154,9 +191,11 @@ export function objectiveSpec(id: string): ObjectiveSpec | undefined {
 
 /**
  * What a tool is called in the action list: modules by the name the panel uses,
- * the keycard by the only word the player has ever seen for it.
+ * the keycard by the only word the player has ever seen for it, and no tool at
+ * all by the word for the hands.
  */
-export function toolName(tool: ModuleId | "key"): string {
+export function toolName(tool: Tool): string {
+  if (tool === "hands") return t("word.hands");
   return tool === "key" ? t("word.keycard") : moduleName(tool);
 }
 
@@ -175,9 +214,9 @@ export function objectiveOnlineLine(o: ObjectiveSpec): string {
   return tId("log.system.online", o.id, o.name);
 }
 
-/** Which module a job puts under the next blow. A keycard is hands-on: PLATING. */
-export function toolExposes(tool: ModuleId | "key"): ModuleId {
-  return tool === "key" ? "plating" : tool;
+/** Which module a job puts under the next blow. A keycard, or nothing, is hands-on: PLATING. */
+export function toolExposes(tool: Tool): ModuleId {
+  return tool === "key" || tool === "hands" ? "plating" : tool;
 }
 
 /** Why a system cannot be worked on: `Needs a SPIKE or a keycard.` */

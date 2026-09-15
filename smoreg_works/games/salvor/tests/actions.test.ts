@@ -266,7 +266,8 @@ describe("what the compartment offers", () => {
       "go d1  DOCKING   open",
       "go d4  HAB BLOCK open",
       "open d3 STORAGE   locked",
-      "cut d6 CORRIDOR  sealed",
+      // The seam is a choice now too — the torch or the chassis (G90 B).
+      "open d6 CORRIDOR  sealed",
     ]);
 
     const actions = roomActions(game);
@@ -372,20 +373,18 @@ describe("a bulkhead on one line of the map", () => {
     expect(mapped(game)).toContain("HAB BLOCK r5  1 door");
   });
 
-  it("refuses a shut bulkhead in the engine's own words, and costs no turn", () => {
+  it("hands a shut bulkhead nothing can cut to the chassis, which is always aboard", () => {
     const game = gameIn();
-    // Nothing in the rack: `DOORS` offers the welded seam no method at all —
-    // only a torch cuts one — which is when the row falls back to the refusal.
+    // Nothing in the rack: `DOORS` offers the welded seam the ram alone
+    // (G90 B), so the row is that one way and pressing it is a turn of it.
     stripRack(game);
     const shut = rowFor(game, "CORRIDOR");
-    expect(shut.enabled).toBe(false);
+    expect(shut.enabled).toBe(true);
+    expect(shut.cmd).toEqual({ kind: "act", verb: "ram", target: game.ship.door("d6").id });
 
     const outcome = game.playerCommand(shut.cmd);
-    expect(outcome.ok).toBe(false);
-    // The map may not invent a refusal the sim would not give.
-    expect(shut.why).toBe(outcome.reason);
-    // A refused command is not a turn: it never reaches the recorded voyage.
-    expect(game.inputs).toEqual([]);
+    expect(outcome.ok).toBe(true);
+    expect(game.inputs).toHaveLength(1);
   });
 
   it("makes a bulkhead with more than one answer a choice rather than one of them", () => {
@@ -410,12 +409,14 @@ describe("a bulkhead on one line of the map", () => {
 
   it("keeps a bulkhead with one answer as that answer", () => {
     // Stepping into a list to read a single entry is a keystroke spent on
-    // nothing: the welded seam has only the torch, so the torch takes the row.
+    // nothing: with no torch the welded seam has only the chassis (G90 B), so
+    // the ram takes the row.
     const game = gameIn();
+    stripRack(game);
     const line = rowFor(game, "CORRIDOR");
     expect(line.label).toBe("CORRIDOR  r6  d6 sealed");
     expect(line.step).toBeUndefined();
-    expect(line.cmd).toEqual({ kind: "act", verb: "cut", target: game.ship.door("d6").id });
+    expect(line.cmd).toEqual({ kind: "act", verb: "ram", target: game.ship.door("d6").id });
   });
 
   /**
@@ -445,7 +446,7 @@ describe("a bulkhead on one line of the map", () => {
     // rendered line is not something a reducer can aim.
     const game = gameIn();
     const line = rowFor(game, "STORAGE");
-    expect(line.ways?.map((w) => w.verb)).toEqual(["power", "spike", "cut", "key"]);
+    expect(line.ways?.map((w) => w.verb)).toEqual(["power", "spike", "cut", "key", "ram"]);
     expect(line.ways?.find((w) => w.verb === "cut")).toEqual({
       verb: "cut",
       letter: "c",
@@ -467,7 +468,7 @@ describe("a bulkhead on one line of the map", () => {
       waysHere(game)
         .filter((w) => w.cmd.kind === "act" && w.cmd.target === id)
         .map((w) => w.verb);
-    expect(aimedAt(lock)).toEqual(["power", "spike", "cut", "key"]);
+    expect(aimedAt(lock)).toEqual(["power", "spike", "cut", "key", "ram"]);
     install(rigOf(game.player)!, "welder", 3);
     expect(aimedAt(game.ship.door("d1").id)).toEqual(["weld"]);
   });
@@ -496,8 +497,10 @@ describe("a bulkhead on one line of the map", () => {
     stripRack(game);
     const line = rowFor(game, "STORAGE");
     expect(line.step).toBe(game.ship.door("d3").id);
-    expect(line.enabled).toBe(false);
-    expect(line.ways?.every((w) => !w.enabled)).toBe(true);
+    // The chassis is always one of the ways (G90 B), so the row is pressable
+    // and the four module ways are what is greyed.
+    expect(line.enabled).toBe(true);
+    expect(line.ways?.filter((w) => w.enabled).map((w) => w.verb)).toEqual(["ram"]);
   });
 
   it("does not read a wreck's id as a way through the door of the same number", () => {
@@ -535,6 +538,7 @@ describe("the ways through one bulkhead", () => {
       "spike   2 turns, noise 4",
       "cut     3 turns, noise 9",
       "key     1 turn, silent",
+      "ram     8 turns, noise 12",
       "back (d3)",
     ]);
     // Nothing of the compartment is left on it: this is the same list, one
@@ -546,8 +550,8 @@ describe("the ways through one bulkhead", () => {
   it("numbers the methods and always leaves 0 for the way back", () => {
     const game = gameIn();
     const list = roomActions(game, lock(game));
-    expect(list.map((a) => a.key)).toEqual(["1", "2", "3", "4", "0"]);
-    expect(list[4]!.step).toBe(null);
+    expect(list.map((a) => a.key)).toEqual(["1", "2", "3", "4", "5", "0"]);
+    expect(list[5]!.step).toBe(null);
   });
 
   it("greys what the drone cannot spend, with the reason on it, rather than hiding it", () => {
@@ -555,7 +559,7 @@ describe("the ways through one bulkhead", () => {
     const list = roomActions(game, lock(game));
     // Undocked with a CELL and a CUTTER and no card: two of the four are the
     // drone's, and the other two say what is missing rather than disappearing.
-    expect(list.filter((a) => a.enabled).map((a) => a.label.split(" ")[0])).toEqual(["power", "cut", "back"]);
+    expect(list.filter((a) => a.enabled).map((a) => a.label.split(" ")[0])).toEqual(["power", "cut", "ram", "back"]);
     expect(list.find((a) => a.label.startsWith("spike"))!.why).toBe("No SPIKE in the rack.");
     expect(list.find((a) => a.label.startsWith("key"))!.why).toBe("No keycard on the drone.");
   });
@@ -592,10 +596,10 @@ describe("the ways through one bulkhead", () => {
   it("offers no level at all where the way there is one the drone can walk", () => {
     const game = gameIn();
     const map = roomActions(game, undefined, true);
-    // One lock in the fixture, so one row that steps down; the welded seam has
-    // a single answer and wears it.
-    expect(map.filter((a) => typeof a.step === "number")).toHaveLength(1);
-    for (const head of ["DOCKING", "HAB", "CORRIDOR"]) {
+    // One lock and one seam in the fixture, and both are a choice now — the
+    // seam of the torch and the chassis (G90 B) — so two rows step down.
+    expect(map.filter((a) => typeof a.step === "number")).toHaveLength(2);
+    for (const head of ["DOCKING", "HAB"]) {
       expect(map.find((a) => a.label.startsWith(head))!.step, head).toBeUndefined();
     }
     // The compartment's own list counts the same way, for the same reason: the
@@ -603,6 +607,7 @@ describe("the ways through one bulkhead", () => {
     const here = roomActions(game);
     expect(here.filter((a) => typeof a.step === "number").map((a) => a.label)).toEqual([
       "open d3 STORAGE   locked",
+      "open d6 CORRIDOR  sealed",
     ]);
   });
 });
@@ -783,13 +788,14 @@ describe("the map of where the drone can walk", () => {
     const lock = map(game).find((a) => a.label.startsWith("STORAGE"))!;
     expect(lock.step).toBe(game.ship.door("d3").id);
     expect(lock.travel).toBeUndefined();
-    expect(lock.ways?.map((w) => w.verb)).toEqual(["power", "spike", "cut", "key"]);
+    expect(lock.ways?.map((w) => w.verb)).toEqual(["power", "spike", "cut", "key", "ram"]);
 
     expect(roomActions(game, lock.step ?? undefined, true).map((a) => a.label)).toEqual([
       "power   1 turn, noise 6",
       "spike   2 turns, noise 4",
       "cut     3 turns, noise 9",
       "key     1 turn, silent",
+      "ram     8 turns, noise 12",
       "back (d3)",
     ]);
   });
@@ -889,18 +895,21 @@ describe("the same list, on the tug", () => {
     const game = newGame(4);
     const list = labels(game);
 
-    // The order a visit home is spent in: a drone first, casting off last.
-    expect(list[0]).toBe("buy a hull ▸");
+    // The owner's order: the voyage first — where to fly and for what, then
+    // over there — then the drone, then the rack (G92 B1, G95 B1).
+    expect(list[0]).toBe("hull & contract ▸");
+    expect(list[1]).toBe("boarding the derelict");
+    expect(list[2]).toBe("buy a hull ▸");
     // A board with nothing signed on it is the one thing a fresh screen has
-    // left undone, so the row that casts off says so instead of naming the
-    // hull (docs/tug-menu-audit.md, "what a designer would do", 5).
-    expect(list[9]).toBe("cast off — board closes");
+    // left undone, so the row that casts off says so — in the note under it,
+    // not in its name (docs/tug-menu-audit.md, "what a designer would do", 5).
+    expect(roomActions(game)[1]!.extra).toBe("(choice closes)");
     expect(list.some((l) => l.startsWith("go "))).toBe(false);
     expect(list.some((l) => l.startsWith("leave"))).toBe(false);
     // Every verb of the tug is here, on the first screen, with nothing walked to.
     // `hold & shelf` is the row that fits a module, from either place it can
     // come from: the hold, and the three the dock has for sale.
-    for (const line of ["cast off", "repair", "graft", "clean", "stow", "hold &", "sell", "take", "jump"]) {
+    for (const line of ["boarding", "repair", "graft", "clean", "stow", "hold &", "sell", "hull & contract"]) {
       expect(list.some((l) => l.startsWith(line)), line).toBe(true);
     }
   });

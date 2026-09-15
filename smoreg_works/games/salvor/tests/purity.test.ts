@@ -47,12 +47,21 @@ const FORBIDDEN: Array<{ pattern: RegExp; why: string }> = [
   { pattern: /\brequire\s*\(/, why: "the rules are ES modules only" },
 ];
 
+/**
+ * Every source file under a directory, `.tsx` included.
+ *
+ * The view is written in JSX, and while this walked `.ts` alone the whole of
+ * it sat outside every scan in this file. The rules that still apply to it are
+ * the ones about *code* — no `process`, no `require`, no DOM in the sim. The
+ * rule about words no longer does, and that is a decision rather than an
+ * oversight: see `REACT_SPEAKS_ENGLISH` below.
+ */
 function tsFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) out.push(...tsFiles(path));
-    else if (entry.name.endsWith(".ts")) out.push(path);
+    else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) out.push(path);
   }
   return out;
 }
@@ -180,6 +189,26 @@ const WORDED_DIRS = [
 ];
 
 /**
+ * The React view says its own words, and that is on purpose.
+ *
+ * This file's rule — nothing but the tables speaks English — was written when
+ * the game spoke three languages and every string had to be answerable for in
+ * all of them. It speaks one now: `es.ts` and `ru.ts` are gone, and `t()` is a
+ * lookup rather than a translation. The reason for routing a label through a
+ * table went with them.
+ *
+ * What did *not* go is the reason for the rule everywhere else. The engine's
+ * own lines, a system's log, a machine's name and the codex still live in the
+ * table, because those are the game's words and they are read by the bots, the
+ * fixtures and the recorded replays. The view's words are the view's: "close",
+ * "on the rails", "nothing in here" — none of them is a fact about the run.
+ *
+ * So the scan stops at the view. If a second language ever comes back, this
+ * constant is the line to delete, and the three checks below come back with it.
+ */
+const REACT_SPEAKS_ENGLISH = join("games", "salvor", "src", "ui", "react");
+
+/**
  * Literals the scan lets through, each for a stated reason. Anything not on
  * this list and not covered by a rule below is a sentence somebody left behind.
  */
@@ -196,6 +225,14 @@ const ALLOWED_TEXT = new Set([
   // markup, and every word it shows comes from the terminal view's functions.
   "ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace",
   "DejaVu Sans Mono",
+  // The two faces the graphic view is set in, vendored into `assets/fonts` and
+  // declared by `@font-face` (G91 A). A family name is what a font calls
+  // itself: the same string in every language, and matched on by the browser
+  // rather than read by a player (`assets/CREDITS.md`).
+  "Barlow Condensed",
+  "IBM Plex Mono",
+  // The same two, as the fourth view's credits sheet prints them.
+  "Barlow Condensed · IBM Plex Mono",
   "glyph hostile",
   // A media query, which is CSS the app asks a question with rather than
   // anything the player reads: whether this browser wants less motion, which
@@ -219,7 +256,23 @@ const ALLOWED_TEXT = new Set([
   "LAST FERRY",
   "IRON WIDOW",
   "STILL HARBOUR",
+  // The game the fourth view's look owes a debt to, and the studio that made
+  // it, printed on its credits sheet. Two proper nouns and a middot
+  // (`ui/react/Screen.tsx`).
+  "Cogmind · Grid Sage Games",
 ]);
+
+/**
+ * A CSS value, which is not prose however many words it has in it.
+ *
+ * The other views write their styling into a stylesheet or into markup, and the
+ * markup rule below covers it. The React tree writes it into `style={{…}}`
+ * objects — `"1px solid var(--sv-line)"`, `"color-mix(in oklab, …)"`,
+ * `"sv-hex-grow var(--sv-frame) var(--sv-step) 1 both"` — where there is no tag
+ * to recognise it by. So it is recognised by what CSS is made of: a custom
+ * property, a function call, or a dimension at the front of it.
+ */
+const CSS_VALUE = /var\(--|^[^A-Za-z]*(?:[a-z-]+\(|[\d.]+(?:px|%|em|rem|deg|fr|ms|s|vh|vw)\b)/;
 
 /**
  * One line of a catalogue is allowed to hold English: the `name` a machine is
@@ -234,6 +287,7 @@ function allowedText(line: string, quoted: string, stripped: string): boolean {
   // `helpBody`, `titleLines`, `bannerLine` — so a tag, an attribute or a path
   // is structure, and the words inside it came through `t()` upstream.
   if (/[<>]/.test(stripped) || /\w="/.test(stripped)) return true;
+  if (CSS_VALUE.test(stripped)) return true;
   if (/^[\s\dMLCZ.,+-]+$/.test(stripped)) return true;
   /* And a whole path, which the rule above only half knew: it listed M, L, C
      and Z, and a drawn icon uses the rest of the grammar — arcs, quadratics,
@@ -255,6 +309,7 @@ describe("nothing but the tables speaks English", () => {
     for (const dir of WORDED_DIRS) {
       for (const file of tsFiles(join(ROOT, dir))) {
         if (relative(ROOT, file).includes(join("content", "i18n"))) continue;
+        if (relative(ROOT, file).includes(REACT_SPEAKS_ENGLISH)) continue;
         // The debug overlay (G68): a diagnostic panel for whoever is running
         // the build, not game text a player reads, so it is deliberately
         // plain English and outside `t()` — see the file's own doc comment.
@@ -281,4 +336,5 @@ describe("nothing but the tables speaks English", () => {
     }
     expect(found).toEqual([]);
   });
-});
+
+  });

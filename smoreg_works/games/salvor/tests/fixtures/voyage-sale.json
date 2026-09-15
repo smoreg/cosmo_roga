@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "seed": 5,
+  "seed": 11,
   "config": "one-hull",
   "inputs": [
     {
@@ -12,14 +12,36 @@
       "target": 2
     },
     {
+      "kind": "attack",
+      "target": 2
+    },
+    {
       "kind": "act",
       "verb": "salvage",
       "target": 1000
     },
     {
+      "kind": "attack",
+      "target": 3
+    },
+    {
+      "kind": "attack",
+      "target": 4
+    },
+    {
       "kind": "act",
       "verb": "salvage",
-      "target": 1017
+      "target": 1020
+    },
+    {
+      "kind": "act",
+      "verb": "salvage",
+      "target": 1021
+    },
+    {
+      "kind": "act",
+      "verb": "carry",
+      "target": 1022
     },
     {
       "kind": "go",
@@ -27,13 +49,37 @@
     },
     {
       "kind": "act",
-      "verb": "search",
+      "verb": "take",
+      "target": 1001
+    },
+    {
+      "kind": "act",
+      "verb": "take",
       "target": 1002
     },
     {
       "kind": "act",
       "verb": "take",
-      "target": 1001
+      "target": 1003
+    },
+    {
+      "kind": "go",
+      "door": 6
+    },
+    {
+      "kind": "act",
+      "verb": "carry",
+      "target": 1011
+    },
+    {
+      "kind": "act",
+      "verb": "search",
+      "target": 1012
+    },
+    {
+      "kind": "act",
+      "verb": "search",
+      "target": 1013
     },
     {
       "kind": "go",
@@ -41,8 +87,8 @@
     },
     {
       "kind": "act",
-      "verb": "take",
-      "target": 1013
+      "verb": "work",
+      "target": 1014
     },
     {
       "kind": "go",
@@ -61,69 +107,55 @@
     {
       "kind": "act",
       "verb": "work",
-      "target": 1014
+      "target": 1017
     },
     {
       "kind": "act",
       "verb": "work",
-      "target": 1014
+      "target": 1017
     },
     {
       "kind": "go",
-      "door": 8
+      "door": 14
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1019
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1019
+    },
+    {
+      "kind": "act",
+      "verb": "work",
+      "target": 1019
     },
     {
       "kind": "go",
-      "door": 11
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1004
-    },
-    {
-      "kind": "go",
-      "door": 4
-    },
-    {
-      "kind": "act",
-      "verb": "carry",
-      "target": 1006
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1005
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1005
-    },
-    {
-      "kind": "act",
-      "verb": "work",
-      "target": 1005
-    },
-    {
-      "kind": "go",
-      "door": 4
+      "door": 10
     },
     {
       "kind": "attack",
-      "target": 4
+      "target": 5
     },
     {
       "kind": "attack",
-      "target": 4
+      "target": 5
     },
     {
-      "kind": "go",
-      "door": 11
+      "kind": "attack",
+      "target": 5
     },
     {
       "kind": "go",
       "door": 7
+    },
+    {
+      "kind": "go",
+      "door": 6
     },
     {
       "kind": "go",
@@ -137,23 +169,24 @@
     "status": "won",
     "sortie": 1,
     "ships": 2,
-    "credits": 289,
+    "credits": 330,
     "deaths": 0,
     "sold": 1,
-    "charters": 0,
-    "kills": 2,
-    "turns": 30,
+    "charters": 1,
+    "kills": 3,
+    "turns": 37,
     "rig": {
       "slots": [
-        {
-          "kind": "cutter",
-          "integrity": 11
-        },
+        null,
         {
           "kind": "thrusters",
           "integrity": 12
         },
-        null,
+        {
+          "kind": "scanner",
+          "integrity": 10,
+          "bonus": 2
+        },
         {
           "kind": "plating",
           "integrity": 14,
@@ -161,7 +194,7 @@
         },
         {
           "kind": "cell",
-          "integrity": 9,
+          "integrity": 7,
           "bonus": 2
         },
         null
@@ -170,18 +203,18 @@
       "burnedCount": 2,
       "burned": [
         "welder",
-        "scanner"
+        "cutter"
       ],
       "scars": [
+        "cutter",
         null,
         null,
-        "scanner",
         null,
         null,
         "welder"
       ]
     }
   },
-  "fingerprint": "072655fa",
-  "codeSha": "5ec1c4ad5123e700649c9ca533d064798ba301ad"
+  "fingerprint": "b4142527",
+  "codeSha": "15d9574db54e0183b39f660dc6079da679ef462a"
 }

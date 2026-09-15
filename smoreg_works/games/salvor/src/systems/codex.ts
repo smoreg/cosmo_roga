@@ -3,7 +3,7 @@ import { alertCodexId, codexFor, type CodexId } from "../content/codex.js";
 import { isRelic } from "../content/modules.js";
 import { machineByName } from "../content/monsters.js";
 import { rigOf } from "../twist/rig.js";
-import { alertState } from "./alert.js";
+import { alertState, isBlown } from "./alert.js";
 import { GHOST_NAME } from "./ghost.js";
 import { signThisTurn } from "./hazards.js";
 import { rivalKind } from "./rival.js";
@@ -144,7 +144,7 @@ export function codexQueue(game: RoomGame): CodexId[] {
  */
 function watch(game: RoomGame): void {
   noticeAlert(game);
-  noticeVented(game);
+  noticeBlown(game);
   noticeVirus(game);
   noticeRelics(game);
   noticeContacts(game);
@@ -158,15 +158,15 @@ function noticeAlert(game: RoomGame): void {
 }
 
 /**
- * Vacuum, once the drone can see it is there.
+ * A compartment a charge has blown, once the drone can see it is there.
  *
- * Explored or scanned only: a compartment the ship has vented on the far side
+ * Explored or scanned only: a compartment the ship has blown on the far side
  * of the hull is not something the run has shown anybody yet, and the badge is
  * a promise that something on this screen is worth reading.
  */
-function noticeVented(game: RoomGame): void {
-  const vented = game.ship.rooms.some((r) => r.hazard === "vented" && (r.explored || r.scanned));
-  if (vented) noticeCodex(game, "vented");
+function noticeBlown(game: RoomGame): void {
+  const blown = game.ship.rooms.some((r) => isBlown(r) && (r.explored || r.scanned));
+  if (blown) noticeCodex(game, "blown");
 }
 
 /** Whatever strain is aboard, by the id `content/viruses.ts` gave it. */

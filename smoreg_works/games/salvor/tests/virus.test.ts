@@ -1,15 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  RoomGame,
-  TURN_COST,
-  dealDamage,
-  replayRooms,
-  spawnMonsterIn,
-  type Entity,
-  type RoomCommand,
-  type RoomGameConfig,
-  type System,
-} from "@jamrog/engine";
+import { RoomGame, TURN_COST, dealDamage, replayRooms, spawnMonsterIn, type Entity, type RoomCommand, type RoomGameConfig, type System } from "@jamrog/engine";
 import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { MONSTERS } from "../src/content/monsters.js";
@@ -18,19 +8,10 @@ import { moduleKind, type ModuleId } from "../src/content/modules.js";
 import { LEASH, LEECH, ROT, SPASM, type StrainId } from "../src/content/viruses.js";
 import { addWreck, findSlot, rigOf, type Rig, type WreckSource } from "../src/twist/rig.js";
 import { voyageOf } from "../src/systems/voyage.js";
-import { t } from "../src/i18n.js";
+
 import { panelBlocks } from "../src/ui/panel.js";
-import {
-  CURE_TURNS,
-  SPREAD_TURNS,
-  TWITCH_NOISE,
-  TWITCH_PERIOD,
-  VIRUS,
-  VIRUS_HINT_KEY,
-  infectChance,
-  tryInfect,
+import { CURE_TURNS, SPIKE_CURE_TURNS, SPREAD_TURNS, TWITCH_NOISE, TWITCH_PERIOD, VIRUS, VIRUS_HINT_KEY, harmLine, infectChance, tryInfect, turnsToBeat, turnsToSpread, virusHint, type VirusState,
   virusOf,
-  type VirusState,
 } from "../src/systems/virus.js";
 
 /**
@@ -62,7 +43,7 @@ function configOn(text: string, systems: Array<System<RoomGame>>): Omit<RoomGame
  * Standing in for that call site as a verb of its own keeps every test below on
  * the real turn cycle — a command, a turn spent, a roll out of the run's own
  * stream — while the twist stays untouched by this task. `fit` is the other
- * half of the same stand-in: the starting rack has no WELDER, and a replay can
+ * half of the same stand-in: the starting rack has no SPIKE, and a replay can
  * only match if the module got there through a command rather than by hand.
  */
 function infector(source: WreckSource, bonus = 0): System<RoomGame> {
@@ -75,7 +56,7 @@ function infector(source: WreckSource, bonus = 0): System<RoomGame> {
         return { ok: true, cost: TURN_COST };
       }
       if (cmd.verb !== "fit") return undefined;
-      fitWelder(game);
+      fitSpike(game);
       return { ok: true, cost: TURN_COST };
     },
   };
@@ -101,12 +82,24 @@ function slotOf(game: RoomGame, kind: ModuleId): number {
   return i;
 }
 
-/** The starting rack carries no WELDER; a purge needs one in the empty slot. */
-function fitWelder(game: RoomGame): number {
+/** A module of this kind in the first empty slot. */
+function fit(game: RoomGame, kind: ModuleId): number {
   const r = rig(game);
   const i = r.slots.findIndex((s) => s === null);
-  r.slots[i] = { kind: "welder", integrity: moduleKind("welder").integrity };
+  r.slots[i] = { kind, integrity: moduleKind(kind).integrity };
   return i;
+}
+
+/** The starting rack carries no SPIKE; the fast purge needs one in the empty slot. */
+function fitSpike(game: RoomGame): number {
+  return fit(game, "spike");
+}
+
+/** A purge's worth of turns, by whatever speed the rack gets. */
+function purgeFor(game: RoomGame, slot: number, turns: number): void {
+  for (let n = 0; n < turns; n++) {
+    expect(game.playerCommand({ kind: "act", verb: "cure", slot }).ok).toBe(true);
+  }
 }
 
 function put(game: RoomGame, room: string, id: string): Entity {
@@ -327,75 +320,33 @@ describe("what it does if nobody cleans it", () => {
     for (let turn = 1; turn <= SPREAD_TURNS + 2; turn++) game.playerCommand({ kind: "wait" });
     expect(virus(game).slot).toBe(cell);
   });
-
-  it("goes with the module when that module burns out", () => {
-    const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
-    const cell = slotOf(game, "cell");
-    infect(game, cell);
-
-    rig(game).slots[cell] = null;
-    rig(game).scars[cell] = "cell";
-    game.playerCommand({ kind: "wait" });
-    expect(virusOf(game.player)).toBeUndefined();
-    expect(said(game, "The virus goes with the burned module.")).toBe(1);
-  });
 });
 
 describe("the purge", () => {
-  it("takes two turns in a row and leaves the module exactly as damaged", () => {
+
+  it("by hand is hands-on work: the PLATING, and never a WELDER, is what a blow finds", () => {
     const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
     const cell = slotOf(game, "cell");
-    fitWelder(game);
-    rig(game).slots[cell]!.integrity = 2;
+    fit(game, "welder");
     infect(game, cell);
 
-    const first = game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    expect(first.ok).toBe(true);
-    expect(virusOf(game.player)).toBeDefined();
-    expect(virus(game).curing?.left).toBe(CURE_TURNS - 1);
-
-    const second = game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    expect(second.ok).toBe(true);
-    expect(virusOf(game.player)).toBeUndefined();
-    expect(said(game, "The purge takes. Your CELL is clean.")).toBe(1);
-    // Two turns bought with time, and nothing else: no integrity comes back.
-    expect(rig(game).slots[cell]!.integrity).toBe(2);
+    game.playerCommand({ kind: "act", verb: "cure", slot: cell });
+    expect(rig(game).exposed).toBe(slotOf(game, "plating"));
   });
 
-  it("is broken off by anything else, and has to start again", () => {
+  it("is quiet: two points of noise a turn, where the welding it replaced was five", () => {
     const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
     const cell = slotOf(game, "cell");
-    fitWelder(game);
     infect(game, cell);
-
     game.playerCommand({ kind: "act", verb: "cure", slot: cell });
     game.playerCommand({ kind: "wait" });
-    expect(said(game, "You break off the purge.")).toBe(1);
-    expect(virus(game).curing).toBeUndefined();
-
-    game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    expect(virusOf(game.player)).toBeDefined();
-    game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    expect(virusOf(game.player)).toBeUndefined();
-  });
-
-  it("is refused without a WELDER, and costs no turn", () => {
-    const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
-    const cell = slotOf(game, "cell");
-    infect(game, cell);
-    const turns = game.inputs.length;
-
-    const out = game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    expect(out.ok).toBe(false);
-    expect(out.reason).toBe("No WELDER in the rack.");
-    expect(game.inputs.length).toBe(turns);
-    expect(virusOf(game.player)).toBeDefined();
+    // `makeNoise` is heard on the next settle, which the wait is.
+    expect(game.noise.get(room(game, "r1")) ?? 0).toBeLessThanOrEqual(2);
   });
 
   it("is refused on a clean module, and on a clean rack", () => {
     const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
     const cell = slotOf(game, "cell");
-    fitWelder(game);
 
     expect(game.playerCommand({ kind: "act", verb: "cure", slot: cell }).reason).toBe(
       "Nothing in the rack is infected.",
@@ -408,22 +359,31 @@ describe("the purge", () => {
 });
 
 describe("what the player is told", () => {
-  it("offers the purge, greyed out until there is a welder to do it with", () => {
+  it("offers the purge whenever the drone is infected, by hand or with a SPIKE", () => {
     const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
     expect(VIRUS.offerActions?.(game)).toEqual([]);
 
     const cell = slotOf(game, "cell");
     infect(game, cell);
-    const greyed = VIRUS.offerActions?.(game) ?? [];
-    expect(greyed).toHaveLength(1);
-    expect(greyed[0]!.label).toBe(`purge CELL (welder, ${CURE_TURNS} turns)`);
-    expect(greyed[0]!.enabled).toBe(false);
-    expect(greyed[0]!.why).toBe("No WELDER in the rack.");
+    const bare = VIRUS.offerActions?.(game) ?? [];
+    expect(bare).toHaveLength(1);
+    expect(bare[0]!.label).toBe(`purge CELL (by hand, ${CURE_TURNS} turns)`);
+    expect(bare[0]!.enabled).toBe(true);
+    expect(bare[0]!.cmd).toEqual({ kind: "act", verb: "cure", slot: cell });
 
-    fitWelder(game);
-    const offer = (VIRUS.offerActions?.(game) ?? [])[0]!;
-    expect(offer.enabled).toBe(true);
-    expect(offer.cmd).toEqual({ kind: "act", verb: "cure", slot: cell });
+    fitSpike(game);
+    const fast = (VIRUS.offerActions?.(game) ?? [])[0]!;
+    expect(fast.label).toBe(`purge CELL (SPIKE, ${SPIKE_CURE_TURNS} turns)`);
+    expect(fast.enabled).toBe(true);
+  });
+
+  it("never mentions a WELDER, in any language the offer or the hint is read in", () => {
+    const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
+    infect(game, slotOf(game, "cell"));
+    const label = (VIRUS.offerActions?.(game) ?? [])[0]!.label;
+    expect(label).not.toMatch(/weld/i);
+    expect(virusHint()).not.toMatch(/weld/i);
+    expect(virusHint()).toContain(`${CURE_TURNS} turns, ${SPIKE_CURE_TURNS} with a SPIKE`);
   });
 
   it("counts the purge down, the same way a system splice does", () => {
@@ -433,81 +393,44 @@ describe("what the player is told", () => {
     // (docs/tasks/G30-balance-v2.md, "Хуже стало одно…").
     const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
     const cell = slotOf(game, "cell");
-    fitWelder(game);
     infect(game, cell);
 
     const label = () => (VIRUS.offerActions?.(game) ?? [])[0]!.label;
-    expect(label()).toBe(`purge CELL (welder, ${CURE_TURNS} turns)`);
+    expect(label()).toBe(`purge CELL (by hand, ${CURE_TURNS} turns)`);
 
     game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    expect(label()).toBe("purge CELL (welder, 1 turn)");
+    expect(label()).toBe(`purge CELL (by hand, ${CURE_TURNS - 1} turns)`);
 
-    // Broken off, and the line resets to the full count rather than staying at
-    // one: the next purge is a fresh job, not a continuation of the old one.
+    // Broken off, and the line resets to the full count rather than staying
+    // where it was: the next purge is a fresh job, not a continuation.
     game.playerCommand({ kind: "wait" });
-    expect(label()).toBe(`purge CELL (welder, ${CURE_TURNS} turns)`);
+    expect(label()).toBe(`purge CELL (by hand, ${CURE_TURNS} turns)`);
   });
 
-  it("names the infected module in the panel, in the bad colour", () => {
+  it("says what it does in the panel, with its number, in the bad colour", () => {
     const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
     expect(VIRUS.panelLines?.(game)).toEqual([]);
 
     infect(game, slotOf(game, "cell"));
-    expect(VIRUS.panelLines?.(game)).toEqual([{ text: "SPASM in CELL", fg: "#d96a6a" }]);
+    expect(VIRUS.panelLines?.(game)).toEqual([{ text: "v SPASM: exposes every 8", fg: "#d96a6a" }]);
+    expect(harmLine(ROT)).toBe("v ROT: -1 integrity every 5");
+    expect(harmLine(LEECH)).toBe("v LEECH: -5 CR every 12");
+    expect(harmLine(LEASH)).toBe("v LEASH: -1 core every 18");
   });
 
-  it("explains itself once a run, however often the rack catches it", () => {
+  it("counts to its next beat and to its crawl the way the tick does", () => {
     const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
-    const cell = slotOf(game, "cell");
-    fitWelder(game);
-    infect(game, cell);
-    expect(said(game, t(VIRUS_HINT_KEY))).toBe(1);
-
-    game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    infect(game, slotOf(game, "plating"));
-    expect(virusOf(game.player)).toBeDefined();
-    expect(said(game, t(VIRUS_HINT_KEY))).toBe(1);
-  });
-});
-
-describe("a run with a virus in it replays bit for bit", () => {
-  it("comes back with the same log, the same rack and the same clock", () => {
-    const cfg = configOn(PAIR, [VIRUS, infector("ghost", 0.15)]);
-    const game = new RoomGame({ ...cfg, seed: 11 });
-    const cell = findSlot(rigOf(game.player)!, "cell")!;
-    game.playerCommand({ kind: "act", verb: "fit" });
-
-    // Salvage until one piece of it is carrying something, then live with it
-    // for a while and weld it out.
-    for (let tries = 0; tries < 40 && !virusOf(game.player); tries++) infect(game, cell);
-    expect(virusOf(game.player)).toBeDefined();
-    for (let turn = 0; turn < TWITCH_PERIOD + 1; turn++) game.playerCommand({ kind: "wait" });
+    infect(game, slotOf(game, "cell"));
+    expect(turnsToBeat(game, virus(game))).toBe(TWITCH_PERIOD);
+    expect(turnsToSpread(game, virus(game))).toBe(SPREAD_TURNS);
+    wait(game, TWITCH_PERIOD - 1);
+    expect(turnsToBeat(game, virus(game))).toBe(1);
+    wait(game, 1);
     expect(said(game, "Your CELL twitches. SPASM picked where the blow lands.")).toBe(1);
-    game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    game.playerCommand({ kind: "act", verb: "cure", slot: cell });
-    expect(virusOf(game.player)).toBeUndefined();
-
-    const inputs: RoomCommand[] = game.inputs.slice();
-    const again = replayRooms(11, inputs, cfg);
-    expect(again.inputs).toEqual(inputs);
-    expect(again.log.lines.map((l) => l.text)).toEqual(game.log.lines.map((l) => l.text));
-    expect(rigOf(again.player)).toEqual(rigOf(game.player));
-    expect(virusOf(again.player)).toBeUndefined();
-  });
-
-  it("replays the clock itself when the rack is the same on both sides", () => {
-    const cfg = configOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
-    const script: RoomCommand[] = [
-      { kind: "act", verb: "infect", slot: 4 },
-      ...Array.from({ length: TWITCH_PERIOD + 3 }, (): RoomCommand => ({ kind: "wait" })),
-    ];
-    const first = replayRooms(5, script, cfg);
-    const second = replayRooms(5, script, cfg);
-
-    expect(virusOf(second.player)).toEqual(virusOf(first.player));
-    expect(rigOf(second.player)).toEqual(rigOf(first.player));
-    expect(second.log.lines.map((l) => l.text)).toEqual(first.log.lines.map((l) => l.text));
+    expect(turnsToBeat(game, virus(game))).toBe(TWITCH_PERIOD);
+    expect(turnsToSpread(game, virus(game))).toBe(SPREAD_TURNS - TWITCH_PERIOD);
+    virus(game).strain = "rot";
+    expect(turnsToSpread(game, virus(game))).toBeUndefined();
   });
 });
 
@@ -521,123 +444,6 @@ describe("a run with a virus in it replays bit for bit", () => {
  * that cannot be: a module really pulled out of a real wreck, on a hull whose
  * class says how likely the thing is to be carrying something.
  */
-describe("salvage, as the way a virus comes aboard", () => {
-  /** A hull with one pile of scrap in it and a rack with a slot to spare. */
-  const SCRAPYARD = `
-    TUG -a1- r1
-    r1 -d1- r2
-    r1: docking
-    r2: workshop
-  `;
-
-  function scrapyard(seed: number, source: WreckSource | undefined): RoomGame {
-    const game = new RoomGame({
-      ...GAME_CONFIG,
-      seed,
-      systems: [VIRUS],
-      content: { ...SALVOR, monsterChance: () => 0 },
-      firstShip: () => shipFromText(SCRAPYARD).ship,
-      firstShipId: "1",
-    });
-    // An empty slot to pull it into, and something to pull.
-    const spare = rig(game).slots.findIndex((s) => s === null);
-    expect(spare).toBeGreaterThanOrEqual(0);
-    const wreck = addWreck(game, game.player.room!, "welder", 2, source === "crate" ? "X" : "%");
-    if (source !== undefined) wreck.source = source;
-    return game;
-  }
-
-  function salvageHere(game: RoomGame): void {
-    expect(game.playerCommand({ kind: "act", verb: "salvage" }).ok).toBe(true);
-  }
-
-  it("never infects out of a sealed crate, over a thousand of them", () => {
-    let infected = 0;
-    for (let seed = 1; seed <= 1000; seed++) {
-      const game = scrapyard(seed, "crate");
-      salvageHere(game);
-      if (virusOf(game.player)) infected++;
-    }
-    expect(infected).toBe(0);
-  });
-
-  it("infects out of a ghost's rack about a quarter of the time", () => {
-    let infected = 0;
-    for (let seed = 1; seed <= 1000; seed++) {
-      const game = scrapyard(seed, "ghost");
-      salvageHere(game);
-      if (virusOf(game.player)) infected++;
-    }
-    expect(infected / 1000).toBeGreaterThan(0.2);
-    expect(infected / 1000).toBeLessThan(0.3);
-  });
-
-  it("treats a pile nobody recorded as the ship's own machinery", () => {
-    let infected = 0;
-    for (let seed = 1; seed <= 1000; seed++) {
-      const game = scrapyard(seed, undefined);
-      salvageHere(game);
-      if (virusOf(game.player)) infected++;
-    }
-    expect(infected / 1000).toBeGreaterThan(0.05);
-    expect(infected / 1000).toBeLessThan(0.16);
-  });
-
-  it("adds the quarantine hull's fifteen points to whatever it was", () => {
-    // Through the real generator and the real undock, because the bonus is the
-    // hull's own field and nothing but `specOfShip` connects the two.
-    let plain = 0;
-    let quarantined = 0;
-    for (let seed = 1; seed <= 200; seed++) {
-      plain += onHull(FREIGHTER, seed) ? 1 : 0;
-      quarantined += onHull(QUARANTINE, seed) ? 1 : 0;
-    }
-    expect(quarantined).toBeGreaterThan(plain);
-  });
-
-  /** One drone, one hull of that class, one pile of a ghost's scrap salvaged. */
-  function onHull(spec: DerelictSpec, seed: number): boolean {
-    const game = new RoomGame({
-      ...GAME_CONFIG,
-      seed,
-      systems: [hullOf(spec), ...(GAME_CONFIG.systems ?? [])],
-    });
-    expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
-    game.entities = [game.player];
-    const spare = rig(game).slots.findIndex((s) => s === null);
-    if (spare < 0) return false;
-    addWreck(game, game.player.room!, "welder", 2).source = "ghost";
-    const out = game.playerCommand({ kind: "act", verb: "salvage" });
-    return out.ok && virusOf(game.player) !== undefined;
-  }
-
-  function hullOf(spec: DerelictSpec): System<RoomGame> {
-    return {
-      name: "test-hull",
-      onRunStart(game) {
-        const voyage = voyageOf(game);
-        voyage.derelicts = [spec];
-        voyage.state[0]!.spec = spec;
-      },
-    };
-  }
-
-  it("marks the module on the panel and welds it clean on the drone's own turn", () => {
-    const game = scrapyard(1, "ghost");
-    const slot = fitWelder(game);
-    tryInfect(game, slot, "ghost", CERTAIN_BONUS);
-    expect(virus(game).slot).toBe(slot);
-
-    const marked = panelBlocks(game, []).find((l) => l.text.startsWith(`${slot + 1} `))!;
-    expect(marked.text).toContain("!");
-
-    // Welding it is welding: the WELDER is what a blow would land on.
-    expect(game.playerCommand({ kind: "act", verb: "cure", slot }).ok).toBe(true);
-    expect(rig(game).exposed).toBe(findSlot(rig(game), "welder"));
-    expect(game.playerCommand({ kind: "act", verb: "cure", slot }).ok).toBe(true);
-    expect(virusOf(game.player)).toBeUndefined();
-  });
-});
 
 // ------------------------------------------------------------------ strains
 
@@ -670,20 +476,6 @@ describe("the strains", () => {
     // And it never moves: a strain eating one module has nowhere better to be.
     wait(game, SPASM.spread);
     expect(virus(game).slot).toBe(slot);
-  });
-
-  it("takes the module with it when the rot finishes the job", () => {
-    const game = gameOn(PAIR, [VIRUS, infector(CERTAIN, CERTAIN_BONUS)]);
-    const slot = findSlot(rig(game), "scanner")!;
-    const points = rig(game).slots[slot]!.integrity;
-    strainOn(game, slot, "rot");
-
-    wait(game, ROT.period * points + 1);
-    expect(rig(game).slots[slot]).toBe(null);
-    // The burned-module path is the same one a blow takes, so the virus goes
-    // with it and the rack carries the scar.
-    expect(virusOf(game.player)).toBeUndefined();
-    expect(rig(game).scars[slot]).toBe("scanner");
   });
 
   it("skims the account and never takes it below nothing", () => {

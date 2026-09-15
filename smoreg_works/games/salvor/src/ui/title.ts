@@ -39,7 +39,7 @@ export interface TitleSettings {
   readonly seed: number;
 }
 
-/** One of the rings a row picks from. */
+/** One of the rings a row picks from: the languages, the views. */
 export interface TitleOption {
   readonly text: string;
   readonly on: boolean;
@@ -51,7 +51,7 @@ export interface TitleItem {
   readonly label: string;
   /** The plain answer, where the row has one: the seed, on or off. */
   readonly value?: string;
-  /** The ring, where the row cycles one. */
+  /** The ring, where the row cycles one: `EN · ES · RU`, the three views. */
   readonly options?: readonly TitleOption[];
 }
 
@@ -108,7 +108,7 @@ export function titleRowOfPick(index: number): TitleRowKind | undefined {
   return index >= 0 && index <= TITLE_PICKS.seed ? TITLE_ROWS[index] : undefined;
 }
 
-/** The two rows a letter answers to. `V` already worked on every screen; `S` is new. */
+/** The three rows a letter answers to. `L` and `V` already worked on every screen; `S` is new. */
 export const SOUND_KEY = "S";
 
 /** Digits a seed may have: `Math.random() * 0xffffffff >>> 0` never needs an eleventh. */
@@ -191,6 +191,7 @@ export function titleScreen(settings: TitleSettings, typing?: string): TitleScre
     ],
     hints: [
       typing === undefined ? t("title.start") : t("title.seed.typing", { seed: settings.seed }),
+      t("title.view.judges"),
     ],
     keysHead: t("title.keys.head"),
     keys: [t("title.keys.1"), t("title.keys.2")],
@@ -240,6 +241,8 @@ export const KEY_W = 4;
 export const LABEL_W = 22;
 const RING_SEP = " · ";
 
+/** The view row's key. `V` is owned by `ui/view.ts`; the menu only names it. */
+
 /** What a session with nothing chosen would show. Only the width tests use it. */
 export const DEFAULT_TITLE: TitleSettings = { sound: true, seed: 0 };
 
@@ -247,6 +250,8 @@ function seedValue(seed: number, typing?: string): string {
   if (typing === undefined) return String(seed);
   return typing.length === 0 ? t("title.seed.empty") : `${typing}_`;
 }
+
+
 
 /**
  * The digits so far plus one more, or the same string when there is no room.

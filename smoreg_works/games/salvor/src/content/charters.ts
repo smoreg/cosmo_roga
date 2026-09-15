@@ -1,7 +1,7 @@
 import type { Rng, Ship } from "@jamrog/engine";
 import { CHARTER_KINDS, UPLOAD_FLAG, retrieveFlag, uploadFlag } from "./cards-derelicts.js";
 import type { DerelictSpec } from "./derelicts.js";
-import { t } from "../i18n.js";
+import { t, tId } from "../i18n.js";
 import { zoneName } from "./zones.js";
 
 /**
@@ -30,6 +30,36 @@ import { zoneName } from "./zones.js";
 export type CharterId = "salvage" | "retrieve" | "upload" | "neutralize";
 
 /**
+ * What a contract can ask on top of its job, and what makes it pay more
+ * (docs/tasks/G90-smoreg-wave.md, F 4). Each one makes the *hull* harder or the
+ * job narrower, and none of them is ever the only contract a hull offers:
+ *
+ * - `hot` — the ship is already awake when the drone first walks in;
+ * - `quiet` — the contract is void the turn the alert reaches `QUIET_AT`;
+ * - `trip` — the job has to come home on the first sortie to this hull.
+ *
+ * A clause is checked by the voyage, which owns the alert and the airlock; this
+ * file only says what the clauses are and what they are worth.
+ */
+export type ClauseId = "hot" | "quiet" | "trip";
+
+export const CLAUSES: readonly ClauseId[] = ["hot", "quiet", "trip"];
+
+/** Credits a clause adds to the job it is written on. */
+export const CLAUSE_BONUS: Readonly<Record<ClauseId, number>> = { hot: 25, quiet: 30, trip: 20 };
+
+/**
+ * The base rates, one contract a hull. They were 20 / 25 / 30 when a board
+ * could be signed whole; with one job a ship the one job pays for the others it
+ * replaced (G90 F: «только один контракт на корабль, но платить за них больше»).
+ */
+export const CHARTER_PAY: Readonly<Record<Exclude<CharterId, "neutralize">, number>> = {
+  salvage: 30,
+  retrieve: 40,
+  upload: 45,
+};
+
+/**
  * What a charter may ask about the run. The whole of it: credits' worth of
  * salvage the drone has brought home, and which of the ship's three systems are
  * online. `systems/voyage.ts` will have far more state than this, and a charter
@@ -55,6 +85,8 @@ export interface Charter {
   readonly payout: number;
   /** The mark this charter needs aboard, and the compartment it belongs in. */
   readonly target?: { kind: string; mark: "*" | "&" };
+  /** The condition written on top of the job, if there is one. Paid for in `payout`. */
+  readonly clause?: ClauseId;
 }
 
 /**
@@ -95,8 +127,10 @@ function itemsAboard(ship: Ship): CharterItem[] {
  * its marks can be aboard at all.
  */
 export function salvageTarget(spec: DerelictSpec): number {
+  // Fifteen is the largest starting hull (G90 B raised the freighter to 13-15
+  // compartments): what a first sortie is asked for stays at twenty.
   const size = spec.rooms[1];
-  if (size <= 14) return 20;
+  if (size <= 15) return 20;
   if (size <= 19) return 35;
   return 50;
 }
@@ -114,14 +148,14 @@ export function charterKinds(spec: DerelictSpec): string[] {
  * first screen (design-doc.md, "Обучение конструкцией", 1).
  */
 export function salvageCharter(spec: DerelictSpec): Charter {
-  return { id: "salvage", text: t("charter.salvage", { need: salvageTarget(spec) }), payout: 20 };
+  return { id: "salvage", text: t("charter.salvage", { need: salvageTarget(spec) }), payout: CHARTER_PAY.salvage };
 }
 
 function retrieve(kind: string): Charter {
   return {
     id: "retrieve",
     text: t("charter.retrieve", { room: zoneName(kind) }),
-    payout: 25,
+    payout: CHARTER_PAY.retrieve,
     target: { kind, mark: "*" },
   };
 }
@@ -130,18 +164,19 @@ function upload(kind: string): Charter {
   return {
     id: "upload",
     text: t("charter.upload", { room: zoneName(kind) }),
-    payout: 30,
+    payout: CHARTER_PAY.upload,
     target: { kind, mark: "&" },
   };
 }
 
-/**
- * On every derelict, always: raise the engine, the core and the terminal, and
- * leave alive. It pays what the hull sells for, which is nothing on the father's
- * tug — that one is the end of the run rather than a sale.
- */
-function neutralize(spec: DerelictSpec): Charter {
-  return { id: "neutralize", text: t("charter.neutralize"), payout: spec.salePrice };
+/** The same job with a clause written on it, and the clause's price added. */
+export function withClause(charter: Charter, clause: ClauseId): Charter {
+  return {
+    ...charter,
+    text: t("charter.withClause", { charter: charter.text, clause: tId("charter.clause", clause, clause) }),
+    payout: charter.payout + CLAUSE_BONUS[clause],
+    clause,
+  };
 }
 
 // ------------------------------------------------------------------- finished
@@ -181,21 +216,23 @@ export function doneBy(id: CharterId, state: CharterState, ship: Ship, spec: Der
 }
 
 /**
- * What the HELM offers for one hull: `NEUTRALIZE`, plus one or two of the
- * small jobs generated out of this hull's own compartments.
+ * One or two of the jobs a hull can pay for, generated out of its own
+ * compartments. The two never share a compartment kind: two errands in one
+ * room is one trip, and a contract that pays twice for one walk is not a choice.
  *
- * `NEUTRALIZE` comes first because it is the one that is always there, and a
- * list whose first line moves between derelicts is a list the player has to
- * read twice. The small ones never share a compartment kind: two errands in one
- * room is one trip, and a charter that pays twice for one walk is not a choice.
+ * `NEUTRALIZE` used to lead this list, and it is gone from it: raising the three
+ * systems is the goal of every hull, not a job one of them is signed for
+ * (G90 D, 6 and F, 4). The draw is otherwise the one it always was — the same
+ * numbers out of the same rng — because the voyage still rolls it once per hull
+ * it ties on to, so a seed keeps the ships it has always had (`dock`).
  */
 export function offerCharters(spec: DerelictSpec, rng: Rng): Charter[] {
-  const out: Charter[] = [neutralize(spec)];
+  const out: Charter[] = [];
   const kinds = rng.shuffle(charterKinds(spec));
   const wanted = rng.int(1, 2);
 
   for (const id of rng.shuffle<CharterId>(["salvage", "retrieve", "upload"])) {
-    if (out.length - 1 >= wanted) break;
+    if (out.length >= wanted) break;
     if (id === "salvage") {
       out.push(salvageCharter(spec));
       continue;
@@ -205,6 +242,27 @@ export function offerCharters(spec: DerelictSpec, rng: Rng): Charter[] {
     out.push(id === "retrieve" ? retrieve(kind) : upload(kind));
   }
   return out;
+}
+
+/**
+ * The contracts one candidate hull carries on the jump list: a plain job first,
+ * then — past the first stop of a voyage — the same kind of work with a clause
+ * written on it for more money.
+ *
+ * The plain one leads on every hull, which is the rule of the list (a candidate
+ * always has a contract nobody can void) and the one the harness takes: bots
+ * press the first line they can. On the first stop both are plain and `SALVAGE`
+ * leads, because that hull is the one the game is learned on and it asks for no
+ * crate the deck would have to place — a seed's first ship is the ship it was.
+ */
+export function contractsFor(spec: DerelictSpec, stop: number, rng: Rng): Charter[] {
+  const jobs = offerCharters(spec, rng);
+  if (stop === 0) {
+    return [salvageCharter(spec), ...jobs.filter((c) => c.id !== "salvage")].slice(0, 2);
+  }
+  const plain = jobs[0] ?? salvageCharter(spec);
+  const clause = rng.pick(CLAUSES);
+  return [plain, withClause(jobs[1] ?? plain, clause)];
 }
 
 /**

@@ -100,8 +100,10 @@ export function makeGreedyBot(): RoomBot {
   const offers = new OfferMemory();
   const walk = new Walked();
   const out = new WayOut();
+  const trips = new Trips();
 
   return (game, _rng) => {
+    trips.turn(game);
     const here = walk.arrive(game);
     offers.arrived(game, here);
 
@@ -119,8 +121,78 @@ export function makeGreedyBot(): RoomBot {
       return offer;
     }
 
+    // The trip before this one found nothing on this ship either — no
+    // compartment it had not stood in, nothing killed — so flying it a third
+    // time is the same empty trip again. Go after whatever is still aboard
+    // instead: a machine that keeps its distance is cornered in the end, or
+    // the walk is loud enough that the ship sends something that does not.
+    // Measured on the shipped game: three scrappers hit to a sixth of their
+    // points ran from the drone for the rest of the run, the drone swept the
+    // empty hull, went home, came back and swept it again, thirty times in
+    // 1 500 commands and still at 6 000.
+    if (trips.fruitless(game) >= 1) {
+      const hunt = huntDoor(game, here);
+      if (hunt) return throughDoor(game, hunt);
+    }
+
     return out.step(game) ?? sweepAgain(game, walk, here);
   };
+}
+
+/**
+ * Whether each trip aboard a ship changed anything the bot can see: a
+ * compartment stood in for the first time, or something killed. Counted per
+ * ship, in trips, and only for the trips that found nothing in a row — one
+ * that finds something starts the count again.
+ *
+ * Two facts and no more, both the engine's own: `Room.explored` and
+ * `RoomGame.kills`. Credits, sales and charters are a game's words, and a bot
+ * that read them would be measuring one game.
+ */
+class Trips {
+  private ship: string | undefined;
+  private explored = 0;
+  private kills = 0;
+  private empty = new Map<string, number>();
+
+  /** Called once a turn, before anything is decided. */
+  turn(game: RoomGame): void {
+    if (game.shipId === this.ship) return;
+    if (this.ship !== undefined) {
+      const found = this.explored < roomsExploredOn(game, this.ship) || game.kills > this.kills;
+      this.empty.set(this.ship, found ? 0 : (this.empty.get(this.ship) ?? 0) + 1);
+    }
+    this.ship = game.shipId;
+    this.explored = roomsExplored(game);
+    this.kills = game.kills;
+  }
+
+  /** Trips aboard the ship underfoot, before this one, that found nothing in a row. */
+  fruitless(game: RoomGame): number {
+    return this.empty.get(game.shipId) ?? 0;
+  }
+}
+
+/**
+ * How much of a ship the drone has stood in, asked about a ship it has just
+ * left. The store keeps every hull a run has walked; a ship it does not keep is
+ * one that is gone, and nothing more will be found on it.
+ */
+function roomsExploredOn(game: RoomGame, ship: string): number {
+  const stored = game.ships.get(ship);
+  return stored ? stored.ship.rooms.filter((r) => r.explored).length : 0;
+}
+
+/**
+ * One step towards the nearest thing aboard that would fight the drone, by
+ * the doors this drone can walk or open; nothing when none is reachable.
+ */
+function huntDoor(game: RoomGame, here: RoomId): Door | undefined {
+  const rooms = game.entities.filter(enemyOf(game)).flatMap((e) => (e.room === undefined ? [] : [e.room]));
+  if (rooms.length === 0) return undefined;
+  const passable = routeDoors(game);
+  const map = RoomDistance.from(game.ship, rooms, passable);
+  return Number.isFinite(map.at(here)) ? map.nextDoor(here, passable) : undefined;
 }
 
 /**
@@ -299,8 +371,15 @@ const MAX_CONSECUTIVE_HIDES = 4;
  * And for a job several turns long: past this many turns in a row on one offer,
  * "the job is still running" and "this offer never goes away" look the same
  * from out here, so the bot stops paying for the difference.
+ *
+ * Sixteen, because the longest honest job the shipped game has is fifteen
+ * turns — a ship system raised with nothing in the rack — and a cap under it
+ * is a bot that pays six loud turns for every such job and finishes none of
+ * them: measured at six, wins over 200 seeds 7 → 5 and banked 74.7 → 61.4 CR
+ * a voyage, all of it noise for nothing. A line that never goes away is still
+ * caught, by `idle` — it comes back word for word; a job counts itself down.
  */
-const MAX_JOB_TURNS = 6;
+const MAX_JOB_TURNS = 16;
 
 /**
  * What the drone could do the turn it came aboard: how fast it moves and the

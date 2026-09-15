@@ -79,7 +79,7 @@ export interface ShipSystem {
    *
    * On the record rather than looked up from the kind, because the picture
    * reads a compartment's contents as a flat list of things with a glyph on
-   * them (`ui/schematic-input.ts`, `asThing`) and knows no word for a system.
+   * them (`ui/contents.ts`, `asThing`) and knows no word for a system.
    * Until this field existed the systems were the one kind of content that had
    * no glyph, so the three compartments a run is *for* were drawn as empty
    * boxes (docs/owner-queue.md, 4). Optional, because a ship stored by an older

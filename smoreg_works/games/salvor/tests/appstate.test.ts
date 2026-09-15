@@ -4,10 +4,12 @@ import { shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
 import { VOYAGE, currentDerelict, voyageOf } from "../src/systems/voyage.js";
 import { moduleName } from "../src/content/modules.js";
+import { OBJECTIVE_COUNT } from "../src/content/objectives.js";
 import { t } from "../src/i18n.js";
 import { addWreck, applyDerived, install, rigOf } from "../src/twist/rig.js";
 import { ACTION_KEYS, BACK_KEY, roomActions } from "../src/ui/actions.js";
 import {
+  aimedAt,
   appReducer,
   crashSummary,
   crashed,
@@ -368,15 +370,24 @@ describe("the cursor over the list", () => {
     // One level down, on a rack that can spend none of the four methods.
     let state = key(map, digit(lock), game);
     const list = roomActions(game, state.menu, true);
-    // The last of the four methods — the keycard, offered behind the modules —
-    // so the highlight has somewhere to travel before it answers.
-    const shut = list.filter((a) => a.step !== null).length - 1;
+    // The keycard, greyed behind the modules and ahead of the chassis — the
+    // one way always aboard (G90 B), so the list has exactly two rows that
+    // can be pressed: the ram and the way back.
+    const shut = list.filter((a) => a.step !== null).length - 2;
     expect(shut).toBeGreaterThan(0);
     expect(list[shut]!.enabled).toBe(false);
-    for (let i = 0; i < shut; i++) state = key(state, down, game);
-    expect(state.cursor).toBe(shut);
+    // The highlight never rests on a greyed row (G90 D5): it opens on the
+    // ram, the first line of this list that can be pressed, and the arrows
+    // step from it straight to the way back, over the greyed rows between.
+    const ram = list.findIndex((a) => a.enabled);
+    const back = list.findIndex((a) => a.step === null);
+    expect(ram).toBe(shut + 1);
+    expect(state.cursor).toBe(ram);
+    state = key(state, down, game);
+    expect(state.cursor).toBe(back);
 
-    const next = key(state, enter, game);
+    // The greyed row's own digit still answers for it, and spends nothing.
+    const next = key(state, digit(shut), game);
     expect(next.effect).toEqual({ kind: "log", text: list[shut]!.why });
     expect(game.inputs).toEqual([]);
   });
@@ -457,6 +468,7 @@ describe("one level down, into a bulkhead", () => {
       "spike   2 turns, noise 4",
       "cut     3 turns, noise 9",
       "key     1 turn, silent",
+      "ram     8 turns, noise 12",
       "back (d3)",
     ]);
     // The highlight starts at the top of the list it is now looking at.
@@ -533,13 +545,92 @@ describe("one level down, into a bulkhead", () => {
 
     state = syncStatus(state, game);
     expect(state.menu, "the level is gone").toBeUndefined();
-    expect(state.cursor, "and the highlight is where it went in").toBe(row);
+    // Where it went in, or the first row after it that can still be pressed:
+    // the repairs have nothing left to mend, and the highlight does not rest on
+    // a greyed row (G90 D5).
+    const list = roomActions(game);
+    expect(list[row]!.enabled).toBe(false);
+    expect(state.cursor, "and the highlight is where it went in").toBeGreaterThan(row);
+    expect(list[state.cursor]!.enabled).toBe(true);
+    expect(list.slice(row, state.cursor).every((a) => !a.enabled)).toBe(true);
 
-    // The stray `Enter` lands on the repairs, which have nothing left to mend,
-    // and is told so. It does not fly the drone out.
-    const again = key(state, enter, game);
-    expect(again.effect).toEqual({ kind: "log", text: roomActions(game)[row]!.why });
+    // The stray `Enter` does not fly the drone out.
+    key(state, enter, game);
+    expect(list[state.cursor]!.cmd).not.toEqual({ kind: "act", verb: "undock" });
     expect(game.inputs.filter((c) => c.kind === "act" && c.verb === "undock")).toEqual([]);
+  });
+
+  /**
+   * The voyage's list closes on the jump it was opened for (G92 B4).
+   *
+   * Every other group of the tug is a rack the player works down — mend five,
+   * sell three — and shutting after the first would be the audit's own defect
+   * over again. The stops are not a rack: the jump lands the tug at the next
+   * one, whose candidates refill the same list, so the question the player
+   * opened ("where do I fly now?") silently became another one and the very
+   * next line offered was another jump — «после прыжка даёт сразу сделать ещё
+   * прыжок, а не возвращается на старое меню».
+   */
+  it("closes the voyage's list on the jump, and comes back to the tug's own", () => {
+    const game = tugRun();
+    // Enough for the jump throughout: a row nothing can be pressed on is grey,
+    // and the highlight does not rest on a grey row (G90 D5) — which would be a
+    // different rule answering this test.
+    voyageOf(game).credits = 500;
+    const row = roomActions(game).findIndex((a) => a.step === "jump");
+    expect(row).toBe(0);
+
+    // The first stop, chosen: that is a berth, on the same row and the same list.
+    let state = key(playing(game), digit(row), game);
+    expect(state.menu).toBe("jump");
+    state = key(state, digit(0), game);
+    expect(game.playerCommand((state.effect as { cmd: RoomCommand }).cmd).ok).toBe(true);
+    state = syncStatus(state, game);
+    expect(state.menu, "the stops are answered, not worked down").toBeUndefined();
+
+    // And the same for the jump itself, which is what the owner pressed. The
+    // hull holds the tug until it is dealt with (G92 C), so the other tug takes
+    // this one: that frees the jump without ending anything under the player.
+    currentDerelict(game).rivalProgress = OBJECTIVE_COUNT;
+    state = key(state, digit(row), game);
+    expect(state.menu).toBe("jump");
+    const at = roomActions(game, "jump")
+      .findIndex((a) => a.enabled && a.cmd.kind === "act" && a.cmd.verb === "jump");
+    expect(at).toBeGreaterThanOrEqual(0);
+    state = key(state, digit(at), game);
+    expect(game.playerCommand((state.effect as { cmd: RoomCommand }).cmd).ok).toBe(true);
+
+    state = syncStatus(state, game);
+    expect(state.menu, "another jump is not the next thing offered").toBeUndefined();
+    // Back on the row it opened from, or the first pressable row after it: the
+    // new hull holds the tug the moment it arrives (G92 C), so the jump row is
+    // grey and the highlight does not rest on a grey row (G90 D5).
+    const list = roomActions(game);
+    expect(state.cursor).toBeGreaterThanOrEqual(row);
+    expect(list.slice(row, state.cursor).every((a) => !a.enabled)).toBe(true);
+    // The stops after this one are still there — nothing about the rule says
+    // the voyage is over, only where the menu lands.
+    expect(roomActions(game, "jump").length).toBeGreaterThan(1);
+  });
+
+  /**
+   * A rack is worked down, so its list stays standing while there is anything
+   * left on it. The two rules live in the same field and this is the half that
+   * did not change (`TugRow.once`).
+   */
+  it("keeps a rack's list open after one of its lines is spent", () => {
+    const game = tugRun();
+    voyageOf(game).credits = 500;
+    const row = roomActions(game).findIndex((a) => a.step === "sell");
+    expect(roomActions(game, "sell").length).toBeGreaterThan(2);
+
+    let state = key(playing(game), digit(row), game);
+    expect(state.menu).toBe("sell");
+    state = key(state, digit(0), game);
+    expect(game.playerCommand((state.effect as { cmd: RoomCommand }).cmd).ok).toBe(true);
+
+    state = syncStatus(state, game);
+    expect(state.menu, "there is more on the rack").toBe("sell");
   });
 
   it("hands the same row back when the player steps out of a tug group by hand", () => {
@@ -559,12 +650,19 @@ describe("one level down, into a bulkhead", () => {
   it("moves the highlight over the methods and does the one it is on", () => {
     const game = newRun();
     let state = inside(game);
-    state = key(state, press("ArrowDown", "ArrowDown"), game);
-    state = key(state, press("ArrowDown", "ArrowDown"), game);
-    expect(state.cursor).toBe(2);
-
     const list = roomActions(game, state.menu);
-    expect(key(state, enter, game).effect).toEqual({ kind: "command", cmd: list[2]!.cmd });
+    // Pressable rows only (G90 D5): two presses of the arrow are two of them.
+    const open = list.map((a, i) => (a.enabled ? i : -1)).filter((i) => i >= 0);
+    expect(open.length).toBeGreaterThan(2);
+    expect(state.cursor).toBe(open[0]);
+    state = key(state, press("ArrowDown", "ArrowDown"), game);
+    state = key(state, press("ArrowDown", "ArrowDown"), game);
+    expect(state.cursor).toBe(open[2]);
+
+    const line = list[open[2]!]!;
+    const effect = key(state, enter, game).effect;
+    if (line.step === null) expect(effect).toEqual({ kind: "idle" });
+    else expect(effect).toEqual({ kind: "command", cmd: line.cmd });
   });
 
   it("puts the highlight on the way back, which is still not a turn", () => {
@@ -684,6 +782,7 @@ describe("the map, the walk and the way out", () => {
       "spike   2 turns, noise 4",
       "cut     3 turns, noise 9",
       "key     1 turn, silent",
+      "ram     8 turns, noise 12",
       "back (d3)",
     ]);
   });
@@ -992,17 +1091,19 @@ describe("a stop the player can answer", () => {
     expect(game.inputs).toEqual([]);
   });
 
-  it("remembers a stop at a door with no list of its own, and lets the walk ask again", () => {
+  it("opens a seam's own list at the stop even with nothing in the rack, since the chassis is a way", () => {
+    // Before G90 B a seam with no torch aboard was a door with no list of its
+    // own, and the stop only remembered it. The ram is always aboard now, so
+    // the stop opens the seam's list like any lock's — the one line on it.
     const game = smokedRun();
     stripRack(game);
     game.player.data = { ...game.player.data, keys: 0 };
     game.ship.door("d3").state = "sealed";
     const d3 = game.ship.door("d3").id;
     const stopped = stopAt(key(playing(game), explore, game), game, "d3");
-    expect(stopped.menu).toBeUndefined();
+    expect(stopped.menu).toBe(d3);
     expect(stopped.warned).toEqual({ ask: "explore", door: d3 });
-    // Nothing to open: the second press is the walk again, which will say so.
-    expect(key(stopped, explore, game).effect).toEqual({ kind: "explore" });
+    expect(game.inputs).toEqual([]);
   });
 
   it("stops a door short of a known hazard one door off, as it does two doors off", () => {
@@ -1015,12 +1116,19 @@ describe("a stop the player can answer", () => {
     expect(row.travel).toBe(hab);
     expect(row.cmd).toEqual({ kind: "go", door: d2 });
 
+    // The question is asked on the spot rather than by a walk (G90 D3): the red
+    // line, the door's own list with the step in on top, and HAB lit on the map.
     const first = appReducer(playing(game), { kind: "room", id: hab }, game);
-    expect(first.effect).toEqual({ kind: "travel", to: hab });
-    const stopped = stopAt(first, game, "d2");
-    expect(stopped.warned).toEqual({ ask: `travel:${hab}`, door: d2 });
-    const second = appReducer(stopped, { kind: "room", id: hab }, game);
-    expect(second.effect).toEqual({ kind: "travel", to: hab, through: d2 });
+    expect(first.effect.kind).toBe("log");
+    expect((first.effect as { text: string }).text).toMatch(/Press again to go in\.$/);
+    expect(first.warned).toEqual({ ask: `travel:${hab}`, door: d2 });
+    expect(first.menu).toBe(d2);
+    expect(listOf(game, first)[first.cursor]!.cmd).toEqual({ kind: "go", door: d2 });
+    expect(aimedAt(game, first)).toBe(hab);
+    // The second is the step itself: a `go`, which no machine in sight can stop.
+    const second = appReducer(first, { kind: "room", id: hab }, game);
+    expect(second.effect).toEqual({ kind: "command", cmd: { kind: "go", door: d2 } });
+    expect(second.warned).toBeUndefined();
     expect(game.inputs).toEqual([]);
   });
 });
@@ -1042,13 +1150,15 @@ describe("a click on a box the map has no row for", () => {
     expect(clicked.effect).toEqual({ kind: "command", cmd: { kind: "go", door: game.ship.door("d4").id } });
   });
 
-  it("still does nothing for a box that is no door away", () => {
+  it("walks towards a box no door away, as far as the drone can name the way", () => {
+    // It did nothing at all (G90 D3). HAB is the last compartment on the way
+    // to the unnamed LAB that the drone can name, and HAB is one open door off.
     const game = deepRun();
     game.ship.room("r7").explored = false;
     game.ship.room("r7").scanned = false;
     game.refreshSight();
     const clicked = appReducer(playing(game), { kind: "room", id: game.ship.room("r7").id }, game);
-    expect(clicked.effect).toEqual({ kind: "pass" });
+    expect(clicked.effect).toEqual({ kind: "command", cmd: { kind: "go", door: game.ship.door("d4").id } });
   });
 });
 
@@ -1644,17 +1754,18 @@ describe("the doors of the compartment", () => {
 
   it("does the move itself when the compartment has one door and one way", () => {
     // The airlock compartment: `a1` is not a door of the list, so `d1` is the
-    // only bulkhead, and welded shut with a torch aboard cutting it is the only
-    // answer.
+    // only bulkhead, and welded shut with nothing in the rack the chassis is
+    // the only answer (G90 B).
     const game = newRun();
     game.player.room = game.ship.room("r1").id;
     game.refreshSight();
     game.ship.door("d1").state = "sealed";
+    stripRack(game);
     const state = key(playing(game), press("d", "KeyD"), game);
     expect(state.doors).toBe(false);
     expect(state.effect).toEqual({
       kind: "command",
-      cmd: { kind: "act", verb: "cut", target: game.ship.door("d1").id },
+      cmd: { kind: "act", verb: "ram", target: game.ship.door("d1").id },
     });
 
     // Open, the one door is still two answers — through it, or shut it — so
@@ -1668,14 +1779,19 @@ describe("the doors of the compartment", () => {
     expect(row.ways?.[0]?.cmd).toEqual({ kind: "go", door: game.ship.door("d1").id });
   });
 
-  it("says so when there is nothing to be done with the bulkheads here", () => {
+  it("hands the chassis over when nothing else can be done with the bulkheads here", () => {
+    // Before G90 B this was the one compartment `d` had nothing to say about:
+    // a seam and an empty rack. The ram is always aboard, so the seam is the
+    // one way, and the one way is the move itself.
     const game = cutOffRun();
     stripRack(game);
     game.ship.door("d4").state = "sealed";
     const state = key(playing(game), press("d", "KeyD"), game);
     expect(state.doors).toBe(false);
-    expect(state.effect).toEqual({ kind: "log", text: t("why.door.noneHere") });
-    expect(game.inputs).toEqual([]);
+    expect(state.effect).toEqual({
+      kind: "command",
+      cmd: { kind: "act", verb: "ram", target: game.ship.door("d4").id },
+    });
   });
 
   it("answers on the tug the way every other key of the other half does", () => {

@@ -20,19 +20,30 @@ import { credit, derelictAboard } from "./voyage.js";
  * to the drone — and everything the drone does aboard is still the same bargain
  * the doors are: a tool, some turns standing still, and a noise the ship hears.
  * Every number of it is `content/objectives.ts`.
+ *
+ * Two verbs, one job. `work` is the tool — a CUTTER into the engine, a CELL
+ * into the reactor, a SPIKE or a card into the terminal. `force` is the same
+ * job with nothing in the rack: the twin of the bulkhead the chassis rams open
+ * (`systems/doors.ts`, `ram`, G90 B), and there for the same reason — a drone
+ * is never stuck in front of the one thing that finishes the hull, it is only
+ * made to pay for it, in turns and in a ship that hears every one of them
+ * (G94). The list offers it only where the tool is missing; the command takes
+ * it whenever it is given, because a reactor raised by hand keeps the CELL's
+ * point, and that is a choice a player may make on purpose.
  */
 
 // --------------------------------------------------------------- the numbers
 
 /**
- * Steps of alert a system costs when it comes up (design-doc.md's `+2`).
+ * Steps of alert a system costs when it comes up: design-doc.md's `+2` on a
+ * five-rung ladder, which is four on the ten-rung one (G90 A).
  *
  * Steps and not points: each one of them is a rung of the ship's ladder
- * (`systems/alert.ts`), so the second system is what brings the hunter. The
- * third is the exception — it is the switch that turns the ladder off
+ * (`systems/alert.ts`), so a loud hull meets the hunter on its second system.
+ * The third is the exception — it is the switch that turns the ladder off
  * (`standDown`), and it costs nothing: "обезвреживание вырубает этот процесс".
  */
-const ALERT_PER_SYSTEM = 2;
+const ALERT_PER_SYSTEM = 4;
 
 /** Integrity the reactor takes out of the CELL that brought it up. */
 const CELL_COST = 1;
@@ -182,13 +193,15 @@ function sayNeutralised(game: RoomGame, state: ShipState): void {
 }
 
 /**
- * `act work {system}`: one turn of bringing a system up.
+ * `act work {system}`: one turn of bringing a system up with the tool it takes.
+ * `act force {system}`: one turn of the same with bare hands.
  *
  * Refusals come before anything is spent — no system here, this one is already
  * up, nothing in the rack that would do the job — because a turn spent finding
- * out is a turn the ship gets for free (design-doc.md, "Ход и действия").
+ * out is a turn the ship gets for free (design-doc.md, "Ход и действия"). The
+ * third refusal is `work`'s alone: by hand there is nothing to be missing.
  */
-function work(game: RoomGame, target: number | undefined): Outcome {
+function work(game: RoomGame, target: number | undefined, byHand: boolean): Outcome {
   const system = systemHere(game, target);
   const spec = system ? objectiveSpec(system.kind) : undefined;
   if (!system || !spec) return FAIL(t("why.system.none"));
@@ -196,7 +209,7 @@ function work(game: RoomGame, target: number | undefined): Outcome {
   const state = shipState(game);
   if (state.online.includes(spec.id)) return FAIL(t("why.system.up", { system: objectiveName(spec) }));
 
-  const job = spec.needs(rigOf(game.player), keysHeld(game.player));
+  const job = byHand ? spec.hands : spec.needs(rigOf(game.player), keysHeld(game.player));
   if (!job) return FAIL(needsLine(spec));
 
   // A job resumes only from a turn of the same job on the same system: the
@@ -211,10 +224,15 @@ function work(game: RoomGame, target: number | undefined): Outcome {
   const room = game.roomOf(game.player);
   game.makeNoise(room.id, job.noise);
   if (left > 0) {
+    // The bare-handed line says its price every turn, because the price is
+    // the whole of the difference: the tool's line is plain, this one is not.
+    const system = objectiveName(spec);
     game.log.add(
-      t("log.system.work", { tool: toolName(job.tool), system: objectiveName(spec), left }),
+      byHand
+        ? t("log.system.work.hands", { system, left })
+        : t("log.system.work", { tool: toolName(job.tool), system, left }),
       game.schedule.time,
-      "plain",
+      byHand ? "warn" : "plain",
       "log.system.work",
     );
     return DONE();
@@ -237,9 +255,10 @@ registerHackTarget((game, target) => {
   return job ? systemHack(game, system, spec, job) : undefined;
 });
 
-/** The row of the table this tool belongs to. */
+/** The row of the table this tool belongs to; the hands are the row under it. */
 function jobWith(spec: ObjectiveSpec, tool: ObjectiveJob["tool"] | undefined): ObjectiveJob | undefined {
-  return tool === undefined ? undefined : spec.jobs.find((j) => j.tool === tool);
+  if (tool === undefined) return undefined;
+  return tool === "hands" ? spec.hands : spec.jobs.find((j) => j.tool === tool);
 }
 
 /**
@@ -310,7 +329,8 @@ function workLabel(spec: ObjectiveSpec, tool: ObjectiveJob["tool"], left: number
 
 /**
  * The system standing where the drone is, with the job it would take — whether
- * or not the drone can pay for it.
+ * or not the drone can pay for it. A bare-handed job already running is the
+ * job, and it counts down here the way a tooled one does.
  *
  * What the panel's objective block draws (`ui/panel.ts`): a compartment with a
  * system in it says so on the panel even when nothing in the rack will raise
@@ -327,9 +347,15 @@ export function objectiveHere(
     const spec = objectiveSpec(system.kind);
     if (!spec || state.online.includes(spec.id)) continue;
     const doable = spec.needs(rigOf(game.player), keysHeld(game.player));
-    const job = doable ?? spec.jobs[0]!;
+    const forcing = state.work?.id === system.id && state.work.tool === "hands";
+    const job = forcing ? spec.hands : (doable ?? spec.jobs[0]!);
     const started = state.work?.id === system.id && state.work.tool === job.tool;
-    return { spec, job, doable: doable !== undefined, left: started ? state.work!.left : job.turns };
+    return {
+      spec,
+      job,
+      doable: doable !== undefined || forcing,
+      left: started ? state.work!.left : job.turns,
+    };
   }
   return undefined;
 }
@@ -340,8 +366,9 @@ export const SHIP: System<RoomGame> = {
   name: "ship",
 
   performCommand(game, actor, cmd): Outcome | undefined {
-    if (actor.id !== game.player.id || cmd.kind !== "act" || cmd.verb !== "work") return undefined;
-    return work(game, cmd.target);
+    if (actor.id !== game.player.id || cmd.kind !== "act") return undefined;
+    if (cmd.verb !== "work" && cmd.verb !== "force") return undefined;
+    return work(game, cmd.target, cmd.verb === "force");
   },
 
   /**
@@ -359,7 +386,7 @@ export const SHIP: System<RoomGame> = {
       delete state.work;
       return;
     }
-    if (cmd.kind === "act" && cmd.verb === "work" && cmd.target === open.id) return;
+    if (cmd.kind === "act" && (cmd.verb === "work" || cmd.verb === "force") && cmd.target === open.id) return;
     delete state.work;
     game.log.add(t(BROKEN_OFF_KEY), game.schedule.time, "warn", BROKEN_OFF_KEY);
   },
@@ -391,14 +418,30 @@ export const SHIP: System<RoomGame> = {
       // Greyed out, the line still has to name a tool: which one a system takes
       // is what the list is teaching (design-doc.md, "Обучение конструкцией").
       const job = doable ?? spec.jobs[0]!;
-      const left = state.work?.id === system.id && state.work.tool === job.tool ? state.work.left : job.turns;
+      const running = (tool: ObjectiveJob["tool"], turns: number): number =>
+        state.work?.id === system.id && state.work.tool === tool ? state.work.left : turns;
       const offer: ActionOffer<RoomCommand> = {
-        label: workLabel(spec, job.tool, left),
+        label: workLabel(spec, job.tool, running(job.tool, job.turns)),
         cmd: { kind: "act", verb: "work", target: system.id },
         enabled: doable !== undefined,
       };
       if (!doable) offer.why = needsLine(spec);
-      offers.push(offer);
+      // The greyed row keeps teaching which tool — until the drone is doing
+      // without one: a job by hand is a dozen turns in this compartment, and
+      // a row that says "needs a CUTTER" under every one of them is a row of
+      // the list's budget spent on a lesson already taken (`tests/panel.test.ts`,
+      // the list fits on every turn of 200 voyages).
+      const forcing = state.work?.id === system.id && state.work.tool === "hands";
+      if (!forcing) offers.push(offer);
+      // Under it, the slow way: what it costs to do without is the turns on
+      // the row and the noise in the log, every turn of it.
+      if (!doable) {
+        offers.push({
+          label: workLabel(spec, "hands", running("hands", spec.hands.turns)),
+          cmd: { kind: "act", verb: "force", target: system.id },
+          enabled: true,
+        });
+      }
     }
     return offers;
   },

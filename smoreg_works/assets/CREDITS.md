@@ -6,13 +6,26 @@
 |---|---|---|---|
 | `audio/music/main.ogg` — трек `Dead Compartment` | Kirill Semenchenko (smoreg), владелец проекта | написан им в **Suno** (генеративная модель), исходник `main.mp3` не коммитится; в репозиторий кладётся только вырезанная петля | как у репозитория |
 | `audio/sfx/{system,dead,sold}.ogg` | этот проект | паттерны Strudel `games/salvor/music/src/stingers/`, рендер `music/scripts/render.mjs` | как у репозитория |
-| `audio/sfx/*.ogg` (остальные 10) | ElevenLabs Sound Effects, сгенерировано для этого проекта | text-to-sound-effects API, промпты — в `music/scripts/sfx.mjs` | по условиям ElevenLabs на сгенерированное аудио |
+| `audio/sfx/*.ogg` (следующие 10) | ElevenLabs Sound Effects, сгенерировано для этого проекта | text-to-sound-effects API, промпты — в `music/scripts/sfx.mjs` | по условиям ElevenLabs на сгенерированное аудио |
+| `audio/sfx/{explode,fuse,purge}.ogg` | этот проект | синтез `sox` (шум, синус, фильтры) скриптом `games/salvor/music/scripts/synth-sfx.sh`, без моделей и сети | как у репозитория |
 | `games/salvor/assets/tiles/*` и `games/salvor/src/tiles/sprites.ts` | этот проект | маски `#`/`.` в `games/salvor/tools/tiles/sprites.mjs`, рендер `npm run tiles -w games/salvor`; маски текстом — `tiles.txt` | как у репозитория |
 | `games/salvor/src/ui/react/board/machines.ts` — иконки машин, корпусов дрона, хлама, ящиков и систем; `games/salvor/public/favicon.svg` | Lorc, Delapouite, Lord Berandas, DarkZaitzev | [game-icons.net](https://game-icons.net), забираются `games/salvor/tools/machines/fetch.mjs`; перекрашены в `currentColor`, подложка сайта убрана | **CC BY 3.0** — нужна атрибуция |
 | `games/salvor/public/deck/*` — палуба под отсеками | Robert Pearce, экранная раскраска Eric B. Smith | *RPG Mobius Geomorphs*, <https://rpgmobius.com/geomorphs>; уменьшены и инвертированы `games/salvor/tools/deck/bake.mjs` | **CC BY-NC 4.0** — атрибуция и **только некоммерческое** |
+| `fonts/barlow-condensed-{600,700}-latin.woff2` | Jeremy Tribby | Barlow Condensed, подмножество latin с Google Fonts | SIL Open Font License 1.1 |
+| `fonts/plex-mono-{400,600}-{latin,cyrillic}.woff2` | IBM (Mike Abbink, Bold Monday) | IBM Plex Mono, подмножества latin и cyrillic с Google Fonts | SIL Open Font License 1.1 |
 
-**Здесь раньше было написано, что чужих файлов в сборке нет. Теперь есть, и
-это меняет условия для всего проекта.**
+## Шрифты
+
+Два чужих шрифта в сборке есть, и лежат они в репозитории, а не тянутся из сети:
+сборка для itch.io открывается с `file://` внутри zip, где сети нет вовсе.
+Подмножеств взято ровно два — latin и cyrillic, всего 72 КБ. У Barlow Condensed
+кириллицы нет, поэтому он стоит только в ролях display и title, а русский в этих
+ролях подхватывает IBM Plex Mono из того же стека
+(`games/salvor/src/ui/web/styles.ts`). Оба шрифта под OFL 1.1: она требует
+сохранять уведомление об авторстве и не продавать шрифты отдельно — две строки
+выше и есть это уведомление; файлы не переименованы и не изменены.
+
+**Чужие файлы в сборке есть, и их четыре вида.** Шрифты выше, и ещё два:
 
 - **Иконки** — game-icons.net, **CC BY 3.0**. Восемь машин, пять корпусов
   дрона, семь видов хлама, ящик, серверная стойка и метка на вкладке. Лицензия
@@ -21,13 +34,13 @@
 - **Палуба под отсеками** — геоморфы, **CC BY-NC 4.0**. Это уже условие про
   весь проект: **всё, собранное с этой плиткой, остаётся некоммерческим.**
   Плитка — артефакт сборки, а не содержимое репозитория (`.gitignore`,
-  `tools/deck/bake.mjs`): дерево без неё не несёт ничего чужого и рисует
-  плоскую доску. Полный текст лицензии едет вместе с файлами, в
+  `games/salvor/tools/deck/bake.mjs`): дерево без неё не несёт ничего чужого и
+  рисует плоскую доску. Полный текст лицензии едет вместе с файлами, в
   `games/salvor/public/deck/LICENCE.md`.
 
-Аудио по-прежнему своё: либо сгенерировано для этого проекта, либо написано
-его автором. Но «всё написано кодом» про музыку сказать нельзя, и раньше здесь
-было сказано именно это. Честная раскладка такая:
+Аудио по-прежнему своё: либо сгенерировано для этого проекта, либо написано его
+автором. Но «всё написано кодом» про музыку сказать нельзя, и раньше здесь было
+сказано именно это. Честная раскладка такая:
 
 - **Основная музыка — трек владельца**, сделанный им в Suno. Это генеративная
   модель: промпт и отбор — его, синтез — модели. Файл в игре — вырезанная из

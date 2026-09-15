@@ -333,14 +333,14 @@ describe("damage routing", () => {
 
   it("signs a blow nothing dealt by whatever owned it, and by 'Something' only when nothing did", () => {
     const game = gameOn(PAIR);
-    const hits = () => game.log.lines.filter((l) => l.key === "log.hit.vent" || l.key === "log.hit.module");
-    blamedOn("log.hit.vent", () => RIG.onDamage!(game, game.player, 1, undefined));
-    expect(hits().map((l) => l.key)).toEqual(["log.hit.vent"]);
+    const hits = () => game.log.lines.filter((l) => l.key === "log.hit.mine" || l.key === "log.hit.module");
+    blamedOn("log.hit.mine", () => RIG.onDamage!(game, game.player, 1, undefined));
+    expect(hits().map((l) => l.key)).toEqual(["log.hit.mine"]);
     expect(hits()[0]!.text.startsWith("Something")).toBe(false);
 
     // The cause lasts exactly as long as the blow it was named for.
     RIG.onDamage!(game, game.player, 1, undefined);
-    expect(hits().map((l) => l.key)).toEqual(["log.hit.vent", "log.hit.module"]);
+    expect(hits().map((l) => l.key)).toEqual(["log.hit.mine", "log.hit.module"]);
     expect(hits()[1]!.text.startsWith("Something")).toBe(true);
   });
 
@@ -473,7 +473,7 @@ describe("burning a module changes what the drone can do", () => {
     RIG.onDamage!(game, game.player, moduleKind("scanner").integrity, bot);
 
     const lines = game.log.tail(20).map((m) => m.text);
-    expect(lines).toContain(`The maintenance bot hits your SCANNER (0/${moduleKind("scanner").integrity}).`);
+    expect(lines).toContain(`The maintenance bot: hit, SCANNER (0/${moduleKind("scanner").integrity}).`);
     expect(lines).toContain(moduleBurnLine("scanner"));
   });
 });

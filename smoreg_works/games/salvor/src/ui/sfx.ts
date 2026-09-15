@@ -5,6 +5,9 @@ import deadUrl from "../../../../assets/audio/sfx/dead.ogg?url";
 import doorUrl from "../../../../assets/audio/sfx/door.ogg?url";
 import emitterUrl from "../../../../assets/audio/sfx/emitter.ogg?url";
 import empUrl from "../../../../assets/audio/sfx/emp.ogg?url";
+import explodeUrl from "../../../../assets/audio/sfx/explode.ogg?url";
+import fuseUrl from "../../../../assets/audio/sfx/fuse.ogg?url";
+import purgeUrl from "../../../../assets/audio/sfx/purge.ogg?url";
 import hitUrl from "../../../../assets/audio/sfx/hit.ogg?url";
 import machineUrl from "../../../../assets/audio/sfx/machine.ogg?url";
 import pulseUrl from "../../../../assets/audio/sfx/pulse.ogg?url";
@@ -38,7 +41,10 @@ export type SfxId =
   | "machine"
   | "system"
   | "dead"
-  | "sold";
+  | "sold"
+  | "explode"
+  | "fuse"
+  | "purge";
 
 const URLS: Record<SfxId, string> = {
   burn: burnUrl,
@@ -54,6 +60,9 @@ const URLS: Record<SfxId, string> = {
   system: systemUrl,
   dead: deadUrl,
   sold: soldUrl,
+  explode: explodeUrl,
+  fuse: fuseUrl,
+  purge: purgeUrl,
 };
 
 /**
@@ -73,47 +82,120 @@ const URLS: Record<SfxId, string> = {
  */
 const SOUNDS: Readonly<Record<string, SfxId>> = {
   "log.module.burn": "burn",
+  "log.virus.burned": "burn",
+  "log.virus.rot.burned": "burn",
   "log.hit.module": "hit",
-  "log.hit.vent": "hit",
+  "log.alert.blast.you": "explode",
   "log.hit.mine": "hit",
+  "log.virus.core": "hit",
+
+  // The run turning upward: a system raised, however it was raised, and the
+  // ship standing down because of it.
   "log.system.online": "system",
+  "log.system.all": "system",
+  "log.alert.down": "system",
+  "log.upload.done": "system",
+  "log.rival.raises": "system",
 
   // Losing the drone, and losing the ship with it. The run's own last line is
   // written by the engine (`RoomGame.finish`) and carries no key, so what
   // sounds here is the sortie ending rather than the run.
   "log.drone.lost": "dead",
   "log.rival.jumped": "dead",
+
+  // Money arriving: the hull under tow, and everything else the account is
+  // paid through (`credit()` in systems/voyage.ts) — a hold carried home
+  // through the airlock above all, which was the silent half of the loop.
   "log.hull.tow": "sold",
+  "log.credit": "sold",
+  "log.carry.home": "sold",
+  "log.rival.deal.sold": "sold",
 
   // Everything that arrives to take the ship off you sounds the same way: the
   // ship waking something up, a rival docking, a ghost of a previous sortie
-  // moving about, and the twenty-turn clock a lost claim starts.
+  // moving about, and the twenty-turn clock a lost claim starts. The gauge
+  // climbing a rung is the same klaxon — it is the ship noticing you, and it
+  // was the most frequent important line of a run that made no sound for it
+  // (docs/tasks/G89-festival.md, D1).
   "log.alert.hunter": "alert",
   "log.alert.busy": "alert",
+  "log.alert.up": "alert",
+  "log.alert.wake": "alert",
+  "log.alert.detonation": "alert",
+  "log.bloom.hatch": "alert",
   "log.rival.aboard": "alert",
   "log.rival.lost": "alert",
   "log.ghost.sighted": "alert",
 
+  // Pressure going somewhere it should not: the EMP's own thump and rush of
+  // static, a compartment vented, a mine going off, a virus getting in, the
+  // tug's burn for the next hull.
   "log.emp": "emp",
   "log.shock": "emp",
+  // A charge set and a fuse ticking are one sound; a compartment going up
+  // and the ship going up are the other (docs/tasks/G90-smoreg-wave.md, A5).
+  "log.alert.charge": "fuse",
+  "log.alert.fuse": "fuse",
+  "log.alert.blast": "explode",
+  "log.alert.boom": "explode",
+  "log.hazard.mine.hit": "emp",
+  "log.hazard.mine.machine": "emp",
+  "log.virus.caught": "emp",
+  "log.virus.rot": "emp",
+  "log.jump": "emp",
 
+  // Every way a part changes hands: off a wreck, out of a crate or a body, into
+  // the hold, onto the rails, off the rack at the dock.
   "log.salvage.install": "salvage",
   "log.salvage.graft": "salvage",
   "log.salvage.mend": "salvage",
   "log.bloom.strip": "salvage",
+  "log.crate.open": "salvage",
+  "log.body.search": "salvage",
+  "log.carry.take": "salvage",
+  "log.cargo.take": "salvage",
+  "log.relic.take": "salvage",
+  "log.swap.carried": "salvage",
+  "log.swap.dropped": "salvage",
+  "log.hold.fit": "salvage",
+  "log.hold.fitted": "salvage",
+  "log.hold.stow": "salvage",
+  "log.bench.graft": "salvage",
+  "log.stock.buy": "salvage",
+  "log.hull.bought": "salvage",
 
+  // The sensor ping: the pulse itself, and a danger the drone's sensors have
+  // just put a name to — the smoke, the ice and the mine a door away.
   "log.pulse": "pulse",
+  "log.hazard.tell.smoke": "pulse",
+  "log.hazard.tell.frost": "pulse",
+  "log.hazard.tell.mine": "pulse",
+  "log.upload.on": "pulse",
 
   "log.weld": "weld",
-  "log.virus.purge.on": "weld",
+  "log.virus.purge.on": "purge",
+  "log.virus.purge.done": "purge",
   "log.door.weld.on": "weld",
   "log.door.weld.done": "weld",
   "log.door.cut.on": "weld",
+  "log.door.ram.on": "weld",
+  "log.system.work": "weld",
+  "log.spike.on": "weld",
+  "log.bench.repair": "weld",
+  "log.bench.clean": "weld",
 
+  // A bulkhead moving, whoever moved it: the drone's hand, the ship shutting it
+  // behind you, the airlock cycling, the tug's clamps letting go.
   "log.door.key": "door",
   "log.door.power": "door",
   "log.door.cut.done": "door",
+  "log.door.ram.done": "door",
+  "log.door.close": "door",
   "log.spike.done": "door",
+  "log.alert.door": "door",
+  "log.alert.lock": "door",
+  "log.voyage.home": "door",
+  "log.voyage.undock": "door",
 
   "log.emitter.hit": "emitter",
 
@@ -124,6 +206,7 @@ const SOUNDS: Readonly<Record<string, SfxId>> = {
   "log.machine.dies": "machine",
   "log.scrap.drop": "machine",
   "log.bloom.dies": "machine",
+  "log.ghost.drop": "machine",
 
   // The engine's own half of a fight and of a bulkhead. It used to write these
   // unkeyed, so a blow that missed every module and a door opening under the
@@ -138,24 +221,55 @@ const SOUNDS: Readonly<Record<string, SfxId>> = {
 };
 
 /** Never more than this in one turn: past three it is noise, not information. */
-const MAX_PER_TURN = 3;
+export const MAX_PER_TURN = 3;
+
+/**
+ * Which sound survives a crowded turn, most important first.
+ *
+ * The cap used to keep the first three lines in log order, and a turn is
+ * written in the order the systems ran rather than the order that matters: the
+ * drone's death came after the blow, the burn and the machine that dealt it, so
+ * the death stinger was the one dropped — 56 of 1 580 lost drones over 200 seeds
+ * of bots. The stingers come first now (the run turning), then what happened to
+ * the drone, then what the drone did.
+ */
+export const SFX_RANK: readonly SfxId[] = [
+  "dead",
+  "sold",
+  "explode",
+  "alert",
+  "system",
+  "burn",
+  "hit",
+  "emp",
+  "machine",
+  "emitter",
+  "door",
+  "weld",
+  "salvage",
+  "pulse",
+  "fuse",
+  "purge",
+];
 
 /**
  * What a turn's worth of new log lines should sound like.
  *
  * Each id appears at most once however many lines earned it — two modules
- * burning in one blow is one crack, not two on top of each other — and the
- * order is the order the lines came in, so the loudest thing is usually first.
+ * burning in one blow is one crack, not two on top of each other. Past the cap
+ * the most important are kept (`SFX_RANK`), and those play in the order their
+ * lines came in.
  */
 export function sfxFor(lines: readonly LogLine[]): SfxId[] {
-  const played: SfxId[] = [];
+  const heard: SfxId[] = [];
   for (const line of lines) {
     const id = sfxForKey(line.key);
-    if (id === undefined || played.includes(id)) continue;
-    played.push(id);
-    if (played.length === MAX_PER_TURN) break;
+    if (id !== undefined && !heard.includes(id)) heard.push(id);
   }
-  return played;
+  if (heard.length <= MAX_PER_TURN) return heard;
+  const rank = (id: SfxId) => SFX_RANK.indexOf(id);
+  const kept = new Set([...heard].sort((a, b) => rank(a) - rank(b)).slice(0, MAX_PER_TURN));
+  return heard.filter((id) => kept.has(id));
 }
 
 /** The sound one event makes, or nothing at all. Exported for the sfx test. */
@@ -164,17 +278,28 @@ export function sfxForKey(key: string | undefined): SfxId | undefined {
 }
 
 /**
- * The lines added since `heard` of them had been counted.
+ * The lines added after `last`, the newest line already turned into sound.
  *
- * `MessageLog` drops its oldest line once it is full and folds a line repeated
- * within one turn into a counter, so the count can go down as well as up and
- * "everything after index N" is not always N new lines. Clamping is the whole
- * function: a caller that falls behind gets the tail rather than an exception,
- * and a caller that gets ahead gets nothing rather than a replay.
+ * By the line itself and not by a count. `MessageLog` keeps 200 lines and drops
+ * the oldest past that, so once a run had written 200 the count read 200 on
+ * every turn and "everything after index 200" was nothing: the game went silent
+ * for good partway into every voyage, and a new run started behind the old
+ * run's count was silent until it caught up. A line stays the same object for
+ * as long as the log holds it — a repeat folds into its counter rather than
+ * replacing it — so finding it again is exact.
+ *
+ * A line the log no longer holds, or never held (another run's), gives nothing
+ * rather than a replay of the whole log; the shell moves `last` on when it
+ * swaps the run. Nothing heard yet means everything is new.
  */
-export function linesSince(lines: readonly LogLine[], heard: number): readonly LogLine[] {
-  return lines.slice(Math.min(Math.max(heard, 0), lines.length));
+export function linesAfter(lines: readonly LogLine[], last: LogLine | undefined): readonly LogLine[] {
+  if (last === undefined) return lines;
+  const at = lines.lastIndexOf(last);
+  return at < 0 ? [] : lines.slice(at + 1);
 }
+
+/** How loud an effect plays, 0..1. The interface blips sit under it (`ui/uisound.ts`). */
+export const SFX_VOLUME = 0.7;
 
 /**
  * One-shots, over whatever the music is doing.
@@ -190,7 +315,7 @@ export class SalvorSfx {
   private readonly volume: number;
   private enabled: boolean;
 
-  constructor(enabled: boolean, volume = 0.7) {
+  constructor(enabled: boolean, volume = SFX_VOLUME) {
     this.volume = volume;
     this.enabled = enabled && typeof Audio !== "undefined";
     if (this.enabled) this.load();

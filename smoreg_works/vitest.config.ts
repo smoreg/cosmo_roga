@@ -8,7 +8,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["packages/*/tests/**/*.test.ts", "games/*/tests/**/*.test.ts", "games/*/tests/**/*.test.tsx"],
+    // .tsx as well as .ts: the React view's tests mount components, so they are
+    // written in JSX and declare their own jsdom environment per file.
+    include: [
+      "packages/*/tests/**/*.test.ts",
+      "games/*/tests/**/*.test.ts",
+      "games/*/tests/**/*.test.tsx",
+    ],
     // _template is a scaffold, not a game: its files still hold placeholders.
     // fortnight2 is frozen (jam entry nobody touches) and its suite eats a third
     // of the run; salvor is the live game.

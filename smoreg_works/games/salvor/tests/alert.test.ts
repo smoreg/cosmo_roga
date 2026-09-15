@@ -1,45 +1,13 @@
 import { describe, it, expect } from "vitest";
-import {
-  Rng,
-  RoomDistance,
-  RoomGame,
-  isAlive,
-  rememberRoom,
-  replayRooms,
-  spawnMonsterIn,
-  type Entity,
-  type MonsterKind,
-  type RoomContentPack,
-  type RoomId,
-  type Ship,
-} from "@jamrog/engine";
-import {
-  BOTS_ROOMS,
-  formatSummary,
-  runBatchOn,
-  runBotOn,
-  roomPlay,
-  seedRange,
-  shipFromText,
-} from "@jamrog/engine/testing";
+import { Rng, RoomDistance, RoomGame, hexLayout, isAlive, rememberRoom, replayRooms, spawnMonsterIn, type Door, type Entity, type MonsterKind, type RoomContentPack, type RoomId, type Ship } from "@jamrog/engine";
+import { BOTS_ROOMS, formatSummary, runBatchOn, runBotOn, roomPlay, seedRange, shipFromText } from "@jamrog/engine/testing";
 import { GAME_CONFIG, SALVOR, newGame, type SalvorGame } from "../src/game.js";
 import { stampClass } from "../src/content/derelicts.js";
 import { CROWD, ENFORCER, MONSTERS, type Machine } from "../src/content/monsters.js";
 import { TUG_ID, isTug } from "../src/content/tug.js";
 import { TUTORIAL_SPEC } from "../src/content/tutorial.js";
-import {
-  ALERT,
-  DOOR_PERIOD,
-  HUNTER_LEVEL,
-  MAX_LEVEL,
-  PERIOD,
-  SCUTTLE_PERIOD,
-  SCUTTLE_WARN,
-  alertState,
-  raiseAlert,
-  standDown,
-  type AlertState,
-} from "../src/systems/alert.js";
+import { ALERT, ARM_TURNS, BLOWN, CHARGE_LEVEL, CHARGE_PERIOD, DETONATION_TURNS, DOOR_PERIOD, FUSE_TURNS, HUNTER_LEVEL, LOCK_LEVEL, MAX_LEVEL, PERIOD, alertState, detonated, fuseIn, isBlown, raiseAlert, standDown, type AlertState } from "../src/systems/alert.js";
+import { voyageOf } from "../src/systems/voyage.js";
 import { addWreck, hostilesIn, install, rigOf } from "../src/twist/rig.js";
 import { t } from "../src/i18n.js";
 import { engage, isStop } from "../src/ui/auto.js";
@@ -107,6 +75,9 @@ const TUG = `
   t1: deck
 `;
 
+/** The ten words of the ladder, as the English log prints them. */
+const WORDS = ["NOTICED", "SEARCHING", "POST", "PICKETS", "HUNTING", "PACK", "ENFORCER", "LOCKDOWN", "SCUTTLE", "DETONATION"];
+
 /**
  * A machine that never gets a turn — speed 1 against the drone's 100 is one
  * action per hundred, and `static` does nothing with it. Every count below is
@@ -147,8 +118,8 @@ function trainingShip(text: string, seed = 11): RoomGame {
 
 /**
  * The same, one derelict later: the run's first hull is the tutorial and its
- * ladder wakes nothing at two and three, so a test about what those rungs
- * wake has to stand on the second.
+ * ladder wakes nothing on the posting and sending rungs, so a test about what
+ * those rungs wake has to stand on the second.
  */
 function secondShip(text: string, seed = 11, over: Partial<RoomContentPack> = {}): RoomGame {
   const game = gameOn(text, seed, { monstersForDepth: () => [INERT], ...over });
@@ -220,7 +191,7 @@ function doorsAway(ship: Ship, from: RoomId, to: RoomId): number {
   return RoomDistance.from(ship, [from], (d) => ship.passable(d, { breacher: true })).at(to);
 }
 
-/** What the rack and the core add up to: the number the vacuum takes from. */
+/** What the rack and the core add up to: the number a blast takes from. */
 function durability(game: RoomGame): number {
   const rig = rigOf(game.player);
   const rack = rig ? rig.slots.reduce((n, s) => n + (s?.integrity ?? 0), 0) : 0;
@@ -231,16 +202,22 @@ function logged(game: RoomGame, text: string): number {
   return game.log.lines.filter((l) => l.text === text).length;
 }
 
+function blown(game: RoomGame): string[] {
+  return game.ship.rooms.filter((r) => isBlown(r)).map((r) => r.label);
+}
+
+const GAUGE = (level: number) => "▮".repeat(level) + "▯".repeat(MAX_LEVEL - level);
+
 // ------------------------------------------------------------------ the clock
 
 describe("the alert is the ship's clock", () => {
-  it("raises every 80 turns on the run's first derelict, and brings nothing with it", () => {
+  it("raises every 40 turns on the run's first derelict, and brings nothing with it", () => {
     const game = quietShip(LINE, 4242);
     const st = alertState(game);
     const before = machines(game).length;
 
-    wait(game, 79);
-    expect(st.turnsAboard).toBe(79);
+    wait(game, 39);
+    expect(st.turnsAboard).toBe(39);
     expect(st.level).toBe(0);
 
     wait(game, 1);
@@ -251,52 +228,50 @@ describe("the alert is the ship's clock", () => {
     expect(logged(game, "Alert: NOTICED.")).toBe(1);
   });
 
-  it("raises every 40 turns on every derelict after it", () => {
+  it("raises every 20 turns on every derelict after it", () => {
     const game = quietShip(LINE, 515);
     game.travelTo("2", { generate: () => shipFromText(LINE).ship });
     const st = alertState(game);
     expect(st.level).toBe(0);
 
-    wait(game, 39);
+    wait(game, 19);
     expect(st.level).toBe(0);
 
     wait(game, 1);
-    expect(st.turnsAboard).toBe(40);
+    expect(st.turnsAboard).toBe(20);
     expect(st.level).toBe(1);
   });
 
-  it("keeps the 80-turn clock for the hull after the training one, and hurries on the one after that", () => {
+  it("keeps the 40-turn clock for the hull after the training one, and hurries on the one after that", () => {
     // The training hull stands in front of the itinerary and used to take the
-    // slow clock with it, so the first real hull of a training run ran on 40
-    // (docs/tasks/G88-polish-by-map.md, A2).
+    // slow clock with it, so the first real hull of a training run ran on the
+    // fast one (docs/tasks/G88-polish-by-map.md, A2).
     const game = trainingShip(LINE, 4243);
     game.travelTo("2", { generate: () => shipFromText(LINE).ship });
     const second = alertState(game);
-    wait(game, 79);
+    wait(game, 39);
     expect(second.level, "the hull after the tutorial is the run's first").toBe(0);
     wait(game, 1);
     expect(second.level).toBe(1);
 
     game.travelTo("3", { generate: () => shipFromText(LINE).ship });
     const third = alertState(game);
-    wait(game, 40);
+    wait(game, PERIOD);
     expect(third.level, "the one after it runs on the ordinary clock").toBe(1);
   });
 
-  it("a raise at the top of the gauge costs the ship nothing", () => {
+  it("a raise on a rung that wakes nothing costs the ship nothing", () => {
     const game = quietShip(LINE, 64064);
     decoyHunter(game, "r4");
     const st = alertState(game);
-    raiseAlert(game, 5);
-    expect(st.level).toBe(5);
+    raiseAlert(game, LOCK_LEVEL);
+    expect(st.level).toBe(LOCK_LEVEL);
     const before = machines(game).length;
 
-    // The first derelict's own period is 80 turns; the gauge is already full
-    // and the ship's hunter is already out, so the due date passes and nothing
-    // at all comes of it. Nothing aboard has been walked, so there is nothing
-    // to vent either.
-    wait(game, 79);
-    expect(st.turnsAboard).toBe(79);
+    // The first derelict's own period is 40 turns; the ship's hunter is
+    // already out, so the replacement clock passes and nothing comes of it.
+    wait(game, 39);
+    expect(st.turnsAboard).toBe(39);
     expect(machines(game).length).toBe(before);
   });
 });
@@ -304,80 +279,93 @@ describe("the alert is the ship's clock", () => {
 // ----------------------------------------------------------------- the ladder
 
 describe("the ladder: every rung once, on the way up", () => {
-  it("0 → 5 in one go posts one, sends one, wakes the hunter, and a raise at 5 adds nothing", () => {
+  it("0 → 10 in one go posts two, sends two, wakes the hunter, and a raise at the top adds nothing", () => {
     const game = secondShip(OPEN_WALKED, 31337);
     const st = alertState(game);
     const here = game.roomOf(game.player).id;
 
-    raiseAlert(game, 7);
-    expect(st.level).toBe(5);
-    // Level 2 posts one, level 3 sends one, level 4 is the ENFORCER: three.
-    expect(machines(game).length).toBe(3);
+    raiseAlert(game, 12, true);
+    expect(st.level).toBe(MAX_LEVEL);
+    // Three and four post one each, five and six send one each, seven is the
+    // ENFORCER: five.
+    expect(machines(game).length).toBe(5);
     expect(enforcers(game).length).toBe(1);
     const woken = machines(game).filter((m) => m.name !== ENFORCER.name);
-    expect(woken.filter((m) => m.data?.targetRoom === here).length, "the one sent at level 3").toBe(1);
-    expect(woken.filter((m) => m.data?.targetRoom === undefined).length, "the one posted at level 2").toBe(1);
+    expect(woken.filter((m) => m.data?.targetRoom === here).length, "the two sent at five and six").toBe(2);
+    expect(woken.filter((m) => m.data?.targetRoom === undefined).length, "the two posted at three and four").toBe(2);
     for (const m of machines(game)) {
       expect(doorsAway(game.ship, here, m.room!), `${m.name} woke too close`).toBeGreaterThanOrEqual(2);
     }
 
     // Each rung's line exactly once, and the top of the gauge says what it is.
-    for (const word of ["NOTICED", "SEARCHING", "HUNTING", "ENFORCER", "SCUTTLE"]) {
-      expect(logged(game, `Alert: ${word}.`), word).toBe(1);
-    }
-    expect(game.log.lines.some((l) => l.text.startsWith(`SCUTTLE: in ${SCUTTLE_WARN} turns`))).toBe(true);
+    for (const word of WORDS) expect(logged(game, `Alert: ${word}.`), word).toBe(1);
+    expect(st.fuses.length, "nine sets its first charge at once").toBe(1);
+    expect(game.log.lines.some((l) => l.text.startsWith(`DETONATION: ${DETONATION_TURNS} turns`))).toBe(true);
 
     // Provoked again at the top: nothing new is woken and nothing is said twice.
     const before = machines(game).length;
-    raiseAlert(game, 3);
+    raiseAlert(game, 3, true);
     expect(machines(game).length).toBe(before);
-    expect(logged(game, "Alert: SCUTTLE.")).toBe(1);
+    expect(logged(game, "Alert: DETONATION.")).toBe(1);
+  });
+
+  it("nine is as far as noise or a raised system take it; only the clock takes it to ten", () => {
+    const game = secondShip(OPEN_WALKED, 31338);
+    const st = alertState(game);
+    raiseAlert(game, 12);
+    expect(st.level, "provoked, the ship stops at the charges").toBe(CHARGE_LEVEL);
+    expect(logged(game, "Alert: DETONATION.")).toBe(0);
+    loudWait(game, ARM_TURNS - 1);
+    expect(st.level, "two periods of charges first").toBe(CHARGE_LEVEL);
+    loudWait(game, 1);
+    expect(st.level, "then the ship arms itself").toBe(MAX_LEVEL);
+    expect(logged(game, "Alert: DETONATION.")).toBe(1);
   });
 
   it("climbs a rung again only after the gauge has fallen off it", () => {
     const game = secondShip(OPEN_WALKED, 77);
     const st = alertState(game);
     raiseAlert(game, 3);
-    expect(machines(game).length).toBe(2);
+    expect(machines(game).length).toBe(1);
 
-    // Fifteen quiet turns: the ship stops looking, and the one it sent at
-    // three is the ship's to keep. Coming back up to three sends one more —
+    // Eight quiet turns: the ship stops looking, and the one it posted at
+    // three is the ship's to keep. Coming back up to three posts one more —
     // it is a transition, and a transition is answered every time.
-    wait(game, 15);
+    wait(game, 8);
     expect(st.level).toBe(2);
     raiseAlert(game);
     expect(st.level).toBe(3);
-    expect(machines(game).length).toBe(3);
+    expect(machines(game).length).toBe(2);
   });
 
-  it("wakes nothing at two and three on the run's first derelict, which is the tutorial", () => {
+  it("wakes nothing on the posting and sending rungs of the run's first derelict, which is the tutorial", () => {
     const first = quietShip(OPEN_WALKED, 78);
-    raiseAlert(first, 3);
+    raiseAlert(first, HUNTER_LEVEL - 1);
     expect(machines(first).length, "the word, the doors, and later the hunter — no extra machines").toBe(0);
-    expect(logged(first, "Alert: HUNTING.")).toBe(1);
+    expect(logged(first, "Alert: PACK.")).toBe(1);
     raiseAlert(first);
     expect(enforcers(first).length, "the hunter still comes").toBe(1);
   });
 
-  it("wakes nothing at two and three on the hull after the training one either", () => {
+  it("wakes nothing on those rungs on the hull after the training one either", () => {
     const game = trainingShip(OPEN_WALKED, 79);
     game.travelTo("2", { generate: () => shipFromText(OPEN_WALKED).ship });
-    raiseAlert(game, 3);
+    raiseAlert(game, HUNTER_LEVEL - 1);
     expect(machines(game).length, "the first real hull of a training run is the first hull").toBe(0);
-    expect(logged(game, "Alert: HUNTING.")).toBe(1);
+    expect(logged(game, "Alert: PACK.")).toBe(1);
   });
 
   it("never sends the hunter after the drone on the training hull", () => {
     // Six compartments and one scout, built to be learned on
     // (`content/tutorial.ts`): the ENFORCER on it is a lesson nobody asked for.
     const game = trainingShip(OPEN_WALKED, 80);
-    raiseAlert(game, MAX_LEVEL);
-    expect(alertState(game).level).toBe(MAX_LEVEL);
+    raiseAlert(game, LOCK_LEVEL);
+    expect(alertState(game).level).toBe(LOCK_LEVEL);
     expect(enforcers(game).length, "not on the rung the hunter comes on").toBe(0);
-    // Nor when the top of the gauge would replace one: fifteen turns, held loud
-    // so the gauge stays up there.
+    // Nor when the lockdown would replace one: sixteen turns, held loud so
+    // the gauge stays up there.
     loudWait(game, 16);
-    expect(enforcers(game).length, "not from the top of the gauge either").toBe(0);
+    expect(enforcers(game).length, "not from the lockdown either").toBe(0);
 
     // The hull after it is an ordinary hull as far as the hunter is concerned.
     game.travelTo("2", { generate: () => shipFromText(OPEN_WALKED).ship });
@@ -385,20 +373,20 @@ describe("the ladder: every rung once, on the way up", () => {
     expect(enforcers(game).length).toBe(1);
   });
 
-  it("wakes tougher machines from level four: the hunter carries +1 at four and +2 at five", () => {
+  it("wakes tougher machines from the lockdown: the hunter carries +0 at seven and +1 at eight", () => {
     const game = quietShip(LINE, 4004);
     raiseAlert(game, HUNTER_LEVEL);
     const first = enforcers(game)[0]!;
-    expect(first.hp).toBe(ENFORCER.hp + 1);
-    expect(first.hpMax).toBe(ENFORCER.hp + 1);
+    expect(first.hp).toBe(ENFORCER.hp);
+    expect(first.hpMax).toBe(ENFORCER.hp);
 
     first.hp = 0;
     raiseAlert(game);
-    expect(alertState(game).level).toBe(MAX_LEVEL);
+    expect(alertState(game).level).toBe(LOCK_LEVEL);
     wait(game, 15);
     const second = enforcers(game)[0]!;
-    expect(second.hp).toBe(ENFORCER.hp + 2);
-    expect(second.hpMax).toBe(ENFORCER.hp + 2);
+    expect(second.hp).toBe(ENFORCER.hp + 1);
+    expect(second.hpMax).toBe(ENFORCER.hp + 1);
   });
 
   it("wakes machines of the compartment's own depth, and skips a depth with nothing in it", () => {
@@ -406,7 +394,7 @@ describe("the ladder: every rung once, on the way up", () => {
     // a depth-2 or depth-3 machine and never something from the deep water.
     const game = secondShip(OPEN_WALKED, 909, { monstersForDepth: SALVOR.monstersForDepth });
     decoyHunter(game, "r2");
-    raiseAlert(game, 3);
+    raiseAlert(game, 4);
     const woken = machines(game).filter((m) => m.name !== ENFORCER.name);
     expect(woken.length).toBe(2);
     for (const m of woken) {
@@ -420,14 +408,14 @@ describe("the ladder: every rung once, on the way up", () => {
 
 // ------------------------------------------------------------------ the doors
 
-describe("from level three the ship shuts doors behind the drone", () => {
+describe("from level five the ship shuts doors behind the drone", () => {
   it("closes one open door every ten turns, and never one of the drone's own compartment", () => {
     const game = quietShip(OPEN_WALKED, 3003);
-    // A witness, so silence never talks the ship back down under three: a
+    // A witness, so silence never talks the ship back down under five: a
     // scout one open door out sees the drone. d1 is the drone's own door and
     // the one the ship may never touch, which is what keeps the witness looking.
     put(game, "r2", MONSTERS.find((m) => m.id === "scout")!, { behaviour: "static" });
-    raiseAlert(game, 3);
+    raiseAlert(game, 5);
     const closed = () => game.ship.doors.filter((d) => d.state === "closed").map((d) => d.label);
 
     wait(game, DOOR_PERIOD - 1);
@@ -440,15 +428,15 @@ describe("from level three the ship shuts doors behind the drone", () => {
     expect(game.log.lines.filter((l) => /^The ship shuts d\d+ behind you\.$/.test(l.text)).length).toBe(2);
   });
 
-  it("at five it locks them — with no key aboard — and never the last free way home", () => {
+  it("at eight it locks them — with no key aboard — and never the last free way home", () => {
     const game = quietShip(LOOP, 5005);
     standIn(game, "r4");
     // The witness sits in r3, looking through d3 — the drone's own door.
     put(game, "r3", MONSTERS.find((m) => m.id === "scout")!, { behaviour: "static" });
     decoyHunter(game, "r2");
-    raiseAlert(game, 5);
+    raiseAlert(game, LOCK_LEVEL);
 
-    wait(game, 4 * DOOR_PERIOD);
+    wait(game, 3 * DOOR_PERIOD);
     const locked = game.ship.doors.filter((d) => d.state === "locked");
     expect(locked.length, "d2 can be locked, d1 cannot: it is the loop's last free way home").toBe(1);
     expect(locked[0]!.label).toBe("d2");
@@ -462,111 +450,276 @@ describe("from level three the ship shuts doors behind the drone", () => {
   });
 });
 
-// ---------------------------------------------------------------- the scuttle
+// ---------------------------------------------------------------- the charges
 
-describe("at five the ship starts venting its own compartments", () => {
-  it("counts twelve turns down and then vents the farthest walked compartment every ten", () => {
+describe("at nine the ship starts blowing its own compartments up", () => {
+  it("sets a charge on the rung, counts the fuse down, and the compartment goes up at zero", () => {
     const game = quietShip(WALKED, 6006);
     decoyHunter(game, "r2");
     const posted = put(game, "r4", INERT);
-    addWreck(game, game.ship.room("r4").id, "cell", 3);
-    raiseAlert(game, 5);
+    // The scrap in r3 is something the drone came for: r3 is never charged,
+    // and r2 is not either, because losing r2 would cut r1 off from r3.
+    addWreck(game, game.ship.room("r3").id, "cell", 3);
+    raiseAlert(game, CHARGE_LEVEL);
     const st = alertState(game);
-    const vented = () => game.ship.rooms.filter((r) => r.hazard === "vented").map((r) => r.label);
+    const r4 = game.ship.room("r4").id;
 
-    loudWait(game, SCUTTLE_WARN - 1);
-    expect(vented(), "the last warning is still running").toEqual([]);
+    expect(st.fuses.map((f) => game.ship.roomAt(f.room).label), "the one compartment it may take").toEqual(["r4"]);
+    expect(fuseIn(game, r4)).toBe(FUSE_TURNS);
+    expect(logged(game, `Charge set: REACTOR, ${FUSE_TURNS} turns.`)).toBe(1);
+    expect(ALERT.panelLines?.(game)?.map((l) => l.text)).toContain(`CHARGE r4 · ${FUSE_TURNS}`);
+
+    loudWait(game, FUSE_TURNS - 1);
+    expect(fuseIn(game, r4), "the fuse burns a turn a turn").toBe(1);
+    expect(logged(game, "Charge in REACTOR: 1.")).toBe(1);
+    expect(blown(game), "not yet").toEqual([]);
+
     loudWait(game, 1);
-    expect(vented(), "the farthest compartment the drone has walked").toEqual(["r4"]);
+    expect(blown(game)).toEqual(["r4"]);
+    expect(fuseIn(game, r4)).toBeUndefined();
     expect(isAlive(posted), "nothing in it survives").toBe(false);
     expect(game.entities.includes(posted)).toBe(false);
-    expect(game.ship.room("r4").data.wrecks, "the scrap went out with the air").toEqual([]);
-    expect(st.vents).toBe(1);
-    expect(logged(game, "The ship vents REACTOR. Everything in it is gone.")).toBe(1);
+    expect(game.ship.door("d3").state, "sealed behind it").toBe("sealed");
+    expect(st.blasts).toBe(1);
+    expect(logged(game, "REACTOR blows up: nothing left.")).toBe(1);
 
-    loudWait(game, SCUTTLE_PERIOD - 1);
-    expect(vented()).toEqual(["r4"]);
+    // The next charge is due eight turns after the first, and there is
+    // nowhere it may go: r3 holds the scrap, r2 is the only way to it.
+    loudWait(game, CHARGE_PERIOD);
+    expect(st.fuses, "never a compartment worth keeping, never one that cuts the drone off").toEqual([]);
+    expect(blown(game)).toEqual(["r4"]);
+
+    // Take the scrap away and the ship has something to blow again: the
+    // period ran out while it had nowhere to go, so the next turn is enough.
+    (game.ship.room("r3").data.wrecks as unknown[]).length = 0;
     loudWait(game, 1);
-    expect(vented(), "then the next farthest, ten turns later").toEqual(["r3", "r4"]);
-    // Never the airlock's compartment, never the drone's, never one door out.
-    loudWait(game, 3 * SCUTTLE_PERIOD);
-    expect(vented()).toEqual(["r3", "r4"]);
+    expect(st.fuses.length).toBe(1);
   });
 
-  it("costs a drone that walks into a vented compartment every turn it stands there", () => {
+  it("never picks the drone's compartment or the airlock's, never a ship system, never the only way to one", () => {
+    const fused = (game: RoomGame) => alertState(game).fuses.map((f) => game.ship.roomAt(f.room).label);
+    for (let s = 0; s < 20; s++) {
+      // r1 is the airlock's, r2 the drone's, r4 holds a reactor that is still
+      // down, and r3 is the only way to r4: nowhere at all.
+      const walled = quietShip(OPEN_WALKED, 6100 + s);
+      decoyHunter(walled, "r4");
+      standIn(walled, "r2");
+      (walled.ship.room("r4").data as Record<string, unknown>).systems = [{ id: 1, kind: "core", online: false }];
+      raiseAlert(walled, CHARGE_LEVEL);
+      expect(fused(walled), `seed ${6100 + s}`).toEqual([]);
+
+      // The reactor in r3 instead, and the leaf beyond it is the one place left.
+      const leaf = quietShip(OPEN_WALKED, 6200 + s);
+      decoyHunter(leaf, "r4");
+      standIn(leaf, "r2");
+      (leaf.ship.room("r3").data as Record<string, unknown>).systems = [{ id: 1, kind: "core", online: false }];
+      raiseAlert(leaf, CHARGE_LEVEL);
+      expect(fused(leaf), `seed ${6200 + s}`).toEqual(["r4"]);
+      // ...and raising the reactor does not hand r3 over: a compartment the
+      // drone has just started a system in must not then go up under it.
+      (leaf.ship.room("r3").data as { systems: Array<{ online: boolean }> }).systems[0]!.online = true;
+      loudWait(leaf, CHARGE_PERIOD);
+      expect(blown(leaf), `seed ${6200 + s}`).toEqual(["r4"]);
+      expect(fused(leaf), `seed ${6200 + s}`).toEqual([]);
+    }
+  });
+
+  it("blows a compartment out rather than sealing it when the blasts before it made it the only way", () => {
+    // Two ways from the airlock to a reactor still down, r2 and r3, and a
+    // charge burning in each — the state seed 43 reached through a gauge
+    // that fell off nine and climbed back (every climb sets a charge), or an
+    // old save. Each charge was safe when set; by the time the second goes
+    // off, the first has sealed the other route. Neither blast may seal.
+    const game = quietShip(
+      `
+        TUG -a1- r1
+        r1 -d1- r2 -d2- r4
+        r1 -d3- r3 -d4- r4
+        r1: docking explored
+        r2: hold explored
+        r3: hab explored
+        r4: reactor explored
+      `,
+      6010,
+    );
+    decoyHunter(game, "r4");
+    (game.ship.room("r4").data as Record<string, unknown>).systems = [{ id: 1, kind: "core", online: false }];
+    raiseAlert(game, CHARGE_LEVEL);
+    const st = alertState(game);
+    const r2 = game.ship.room("r2").id;
+    const r3 = game.ship.room("r3").id;
+    st.fuses = [
+      { room: r2, at: st.turnsAboard + 2 },
+      { room: r3, at: st.turnsAboard + 4 },
+    ];
+    const reactorReachable = () => {
+      const bare = RoomDistance.from(game.ship, [game.ship.entry], (d) => game.ship.passable(d, {}));
+      return Number.isFinite(bare.at(game.ship.room("r4").id));
+    };
+
+    loudWait(game, 2);
+    expect(blown(game)).toEqual(["r2"]);
+    // r3's charge is still burning, so r2 is not sealed: with r3 counted as
+    // gone, sealing r2 would have cut the drone off from the reactor.
+    expect(game.ship.door("d1").state).toBe("broken");
+    expect(game.ship.door("d2").state).toBe("broken");
+    expect(reactorReachable(), "after the first blast").toBe(true);
+
+    loudWait(game, 2);
+    expect(blown(game)).toEqual(["r2", "r3"]);
+    // Now r2 is a wreck the drone walks through, so r3 may be sealed.
+    expect(game.ship.door("d3").state).toBe("sealed");
+    expect(game.ship.door("d4").state).toBe("sealed");
+    expect(reactorReachable(), "after the second blast").toBe(true);
+  });
+
+  it("kills a drone that stayed, and blows the doors out rather than sealing the wreck in", () => {
     const game = quietShip(WALKED, 6007);
     decoyHunter(game, "r2");
-    raiseAlert(game, 5);
-    loudWait(game, SCUTTLE_WARN);
-    expect(game.ship.room("r4").hazard).toBe("vented");
-    // The ship has been locking doors behind the drone meanwhile; that is the
-    // block above's business, and here the drone is given the walk.
-    for (const door of game.ship.doors) if (door.state === "locked") door.state = "closed";
+    addWreck(game, game.ship.room("r3").id, "cell", 3);
+    raiseAlert(game, CHARGE_LEVEL);
+    const r4 = game.ship.room("r4").id;
+    expect(fuseIn(game, r4)).toBe(FUSE_TURNS);
 
     walkTo(game, "r4");
-
-    let last = durability(game);
-    for (let turn = 0; turn < 3; turn++) {
-      wait(game, 1);
-      const now = durability(game);
-      expect(now, `turn ${turn} in the vacuum`).toBeLessThan(last);
-      last = now;
-    }
-    // Every blow was signed by the vacuum and none by "Something" — and `Tab`,
-    // with nothing in sight, says what is hitting the drone rather than that
-    // there is no target (docs/tasks/G83-anonymous-blows.md, 1).
-    expect(game.log.lines.some((l) => l.key === "log.hit.vent")).toBe(true);
-    expect(game.log.lines.some((l) => l.key === "log.hit.module")).toBe(false);
+    // `Tab`, with nothing in sight, says what is about to hit the drone rather
+    // than that there is no target (docs/tasks/G83-anonymous-blows.md, 1).
     expect(game.visibleMonsters()).toHaveLength(0);
     const fight = engage(game);
     expect(isStop(fight) ? fight.stop : fight.cmd).toBe(t("why.fight.hazard"));
 
-    // Out again, and it stops: the vacuum is a place, not a status.
-    walkTo(game, "r3");
-    const outside = durability(game);
-    wait(game, 2);
-    expect(durability(game)).toBe(outside);
+    while (fuseIn(game, r4) !== undefined) wait(game, 1);
+    expect(blown(game)).toEqual(["r4"]);
+    // A compartment going up around the drone is the end of it: the rack does
+    // not stand between the drone and a charge the way it stands between the
+    // drone and a blow.
+    expect(isAlive(game.player), "the charge went off under it").toBe(false);
+    expect(game.log.lines.some((l) => l.key === "log.alert.blast.you")).toBe(true);
+    expect(alertState(game).blastDeaths).toBe(1);
+    expect(game.ship.door("d3").state, "blown out, not sealed: the wreck is walkable").toBe("broken");
+  });
+});
+
+// ------------------------------------------------------------- the detonation
+
+describe("at ten the ship blows itself up", () => {
+  it("counts three turns down on the panel and then takes everything aboard with it", () => {
+    const game = quietShip(WALKED, 6500);
+    const decoy = decoyHunter(game, "r2");
+    raiseAlert(game, MAX_LEVEL, true);
+    expect(ALERT.panelLines?.(game)?.[0]).toEqual({
+      text: `ALERT ${GAUGE(MAX_LEVEL)} BOOM IN ${DETONATION_TURNS}`,
+      fg: "#d96a6a",
+    });
+
+    loudWait(game, DETONATION_TURNS - 1);
+    expect(ALERT.panelLines?.(game)?.[0]?.text).toBe(`ALERT ${GAUGE(MAX_LEVEL)} BOOM IN 1`);
+    expect(alertState(game).detonated).toBe(false);
+
+    loudWait(game, 1);
+    expect(alertState(game).detonated).toBe(true);
+    expect(detonated(game)).toBe(true);
+    expect(isAlive(decoy), "nothing aboard survives").toBe(false);
+    expect(logged(game, "The ship detonates.")).toBe(1);
+    expect(game.ship.rooms.every((r) => isBlown(r))).toBe(true);
+    // No voyage in this fixture: the engine's own death is what is left.
+    expect(game.isOver()).toBe(true);
+  });
+
+  it("stops counting when the gauge falls off the top, and starts again from a fresh climb", () => {
+    const game = quietShip(WALKED, 6501);
+    decoyHunter(game, "r2");
+    raiseAlert(game, MAX_LEVEL, true);
+    const st = alertState(game);
+    st.level = MAX_LEVEL - 1;
+    // Off the top, by hand: the countdown is a thing of the top rung.
+    expect(ALERT.panelLines?.(game)?.[0]?.text).toBe(`ALERT ${GAUGE(9)} SCUTTLE`);
+    wait(game, DETONATION_TURNS + 1);
+    expect(st.detonated).toBe(false);
+  });
+
+  it("takes the hull off the itinerary: the drone is lost and the tug moves on for nothing", () => {
+    const game = newGame(77);
+    expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
+    const voyage = voyageOf(game);
+    const was = voyage.current;
+    const credits = voyage.credits;
+    const hull = voyage.state[was]!.shipId;
+
+    raiseAlert(game, MAX_LEVEL, true);
+    for (let i = 0; i < DETONATION_TURNS && !isTug(game); i++) game.playerCommand({ kind: "wait" });
+
+    expect(isTug(game), "the operator is home").toBe(true);
+    expect(detonated(game, hull)).toBe(true);
+    expect(voyage.hull, "the drone did not come back").toBeUndefined();
+    expect(voyage.current, "the next hull, without a jump being paid for").toBe(was + 1);
+    expect(voyage.credits, "nothing was charged for the crossing").toBe(credits);
+    expect(game.log.lines.some((l) => l.key === "log.voyage.blown")).toBe(true);
+    expect(game.log.lines.some((l) => l.key === "log.jump")).toBe(true);
+    expect(game.playerCommand({ kind: "act", verb: "undock" }).ok, "no drone to send").toBe(false);
+  });
+
+  it("ends the voyage when the last hull is the one that goes", () => {
+    const game = newGame(78);
+    const voyage = voyageOf(game);
+    // Jump straight to the father's tug: every jump paid for out of thin air.
+    while (voyage.current < voyage.derelicts.length - 1) {
+      voyage.credits += 1000;
+      // And every hull on the way stamped as under tow: a hull still out there
+      // holds the tug (`jumpHeld`).
+      voyage.state[voyage.current]!.sold = true;
+      expect(game.playerCommand({ kind: "act", verb: "jump" }).ok).toBe(true);
+    }
+    expect(game.playerCommand({ kind: "act", verb: "undock" }).ok).toBe(true);
+    raiseAlert(game, MAX_LEVEL, true);
+    for (let i = 0; i < DETONATION_TURNS && !game.isOver(); i++) game.playerCommand({ kind: "wait" });
+    expect(game.isOver()).toBe(true);
+    expect(game.status).toBe("dead");
+    expect(game.log.lines.some((l) => l.key === "log.voyage.blownLast")).toBe(true);
   });
 });
 
 // -------------------------------------------------------------- neutralised
 
 describe("a neutralised ship stops answering", () => {
-  it("with three systems up the gauge does not move, no door shuts and nothing is vented", () => {
+  it("with three systems up the gauge does not move, no door shuts and nothing is charged", () => {
     const game = secondShip(OPEN_WALKED, 7007);
     decoyHunter(game, "r2");
-    raiseAlert(game, 3);
+    raiseAlert(game, 5);
     const st = alertState(game);
     game.currentShip.data.ship = { online: ["ENGINE", "CORE", "TERMINAL"] };
     const doors = game.ship.doors.map((d) => d.state);
 
     loudWait(game, 100);
-    expect(st.level).toBe(3);
+    expect(st.level).toBe(5);
     expect(game.ship.doors.map((d) => d.state)).toEqual(doors);
-    expect(game.ship.rooms.filter((r) => r.hazard === "vented")).toEqual([]);
-    // The decoy, the one posted at two and the one sent at three: all still
-    // there, and nothing has joined them.
-    expect(machines(game).length, "what was awake stays awake, and nothing joins it").toBe(3);
-    expect(ALERT.panelLines?.(game)?.[0]?.text).toBe("ALERT ▮▮▮▯▯ OFF");
+    expect(blown(game)).toEqual([]);
+    // The decoy, the two posted and the one sent: all still there, and
+    // nothing has joined them.
+    expect(machines(game).length, "what was awake stays awake, and nothing joins it").toBe(4);
+    expect(ALERT.panelLines?.(game)?.[0]?.text).toBe(`ALERT ${GAUGE(5)} OFF`);
   });
 
-  it("stands down the moment the ship says so, countdown included", () => {
+  it("stands down the moment the ship says so, charges and countdown included", () => {
     const game = quietShip(WALKED, 7008);
     decoyHunter(game, "r2");
-    raiseAlert(game, 5);
-    expect(ALERT.panelLines?.(game)?.[0]?.text).toBe(`ALERT ▮▮▮▮▮ SCUTTLE IN ${SCUTTLE_WARN}`);
+    raiseAlert(game, MAX_LEVEL, true);
+    expect(alertState(game).fuses.length).toBe(1);
+    expect(ALERT.panelLines?.(game)?.[0]?.text).toBe(`ALERT ${GAUGE(MAX_LEVEL)} BOOM IN ${DETONATION_TURNS}`);
 
     standDown(game);
-    expect(logged(game, "The ship stands down. Neutralised, it stops answering.")).toBe(1);
-    expect(ALERT.panelLines?.(game)?.[0]).toEqual({ text: "ALERT ▮▮▮▮▮ OFF" });
-    loudWait(game, SCUTTLE_WARN + SCUTTLE_PERIOD);
-    expect(game.ship.rooms.filter((r) => r.hazard === "vented")).toEqual([]);
-    raiseAlert(game, 2);
-    expect(alertState(game).level).toBe(5);
+    expect(logged(game, "Ship neutralised: it stops answering.")).toBe(1);
+    expect(ALERT.panelLines?.(game)?.[0]).toEqual({ text: `ALERT ${GAUGE(MAX_LEVEL)} OFF` });
+    expect(alertState(game).fuses, "disarmed").toEqual([]);
+    loudWait(game, DETONATION_TURNS + FUSE_TURNS);
+    expect(blown(game)).toEqual([]);
+    expect(alertState(game).detonated).toBe(false);
+    raiseAlert(game, 2, true);
+    expect(alertState(game).level).toBe(MAX_LEVEL);
   });
 });
 
-describe("noise raises the alert, but not more than once in ten turns", () => {
+describe("noise raises the alert, but not more than once in five turns", () => {
   it("a loud compartment counts, a second one three turns later does not", () => {
     const game = quietShip(LINE, 99);
     decoyHunter(game, "r4");
@@ -584,10 +737,10 @@ describe("noise raises the alert, but not more than once in ten turns", () => {
     expect(st.turnsAboard).toBe(4);
     expect(st.level, "inside the cooldown").toBe(1);
 
-    wait(game, 6);
+    wait(game, 1);
     game.makeNoise(here, 9);
     game.playerCommand({ kind: "wait" });
-    expect(st.turnsAboard).toBe(11);
+    expect(st.turnsAboard).toBe(6);
     expect(st.level, "cooldown expired").toBe(2);
   });
 
@@ -709,7 +862,7 @@ describe("no compartment holds more than CROWD machines", () => {
   it("musters three to a compartment and stops when the walked ship is full", () => {
     for (let s = 0; s < 60; s++) {
       const game = quietShip(WALKED, 8200 + s);
-      alertState(game).level = 5;
+      alertState(game).level = MAX_LEVEL;
       roundTrip(game);
       expect(crowdedTo(game), `seed ${8200 + s}`).toBe(CROWD);
       expect(machines(game).length).toBe(2 * CROWD);
@@ -793,37 +946,37 @@ describe("no compartment holds more than CROWD machines", () => {
 // ------------------------------------------------------- silence and cover
 
 describe("silence talks the ship down", () => {
-  it("fifteen quiet turns cost the ship one level", () => {
+  it("eight quiet turns cost the ship one level", () => {
     const game = quietShip(LINE, 21);
     decoyHunter(game, "r4");
     const st = alertState(game);
     raiseAlert(game, 3);
 
-    wait(game, 14);
+    wait(game, 7);
     expect(st.level).toBe(3);
     wait(game, 1);
     expect(st.level).toBe(2);
     expect(game.log.lines.some((l) => l.text === "The ship stops looking for you.")).toBe(true);
   });
 
-  it("one noisy turn on the fourteenth puts the count back to zero", () => {
+  it("one noisy turn on the seventh puts the count back to zero", () => {
     const game = quietShip(LINE, 22);
     decoyHunter(game, "r4");
     const st = alertState(game);
     raiseAlert(game, 3);
 
-    wait(game, 13);
+    wait(game, 6);
     game.makeNoise(game.roomOf(game.player).id, 6);
     game.playerCommand({ kind: "wait" });
     expect(st.quietTurns).toBe(0);
 
-    wait(game, 14);
+    wait(game, 7);
     expect(st.level, "the count started again").toBe(3);
     wait(game, 1);
     expect(st.level).toBe(2);
   });
 
-  it("eight turns are enough in cover", () => {
+  it("four turns are enough in cover", () => {
     const game = quietShip(COVER, 23);
     decoyHunter(game, "r4");
     const st = alertState(game);
@@ -831,7 +984,7 @@ describe("silence talks the ship down", () => {
 
     expect(game.playerCommand({ kind: "hide" }).ok).toBe(true);
     expect(game.player.hidden).toBe(true);
-    wait(game, 6);
+    wait(game, 2);
     expect(st.level).toBe(3);
     wait(game, 1);
     expect(st.level, "the hide itself was the first quiet turn").toBe(2);
@@ -861,13 +1014,13 @@ describe("silence talks the ship down", () => {
     const slot = install(rigOf(game.player)!, "baffle", 4);
     expect(slot, "the rack had no room for a BAFFLE").not.toBeUndefined();
 
-    wait(game, 15);
+    wait(game, 8);
     expect(st.level).toBe(2);
   });
 
   it("never goes below zero, and says nothing when there is nothing to say", () => {
     const game = quietShip(LINE, 26);
-    wait(game, 60);
+    wait(game, 30);
     expect(alertState(game).level).toBe(0);
     expect(game.log.lines.some((l) => l.text === "The ship stops looking for you.")).toBe(false);
   });
@@ -884,7 +1037,7 @@ const LOCKED = `
   r3: reactor explored
 `;
 
-describe("near the top of the gauge the ship sends an ENFORCER", () => {
+describe("at seven the ship sends an ENFORCER", () => {
   it("exactly one, two doors out, and never a second one", () => {
     const game = quietShip(LOCKED, 31);
     const here = game.roomOf(game.player).id;
@@ -916,70 +1069,85 @@ describe("near the top of the gauge the ship sends an ENFORCER", () => {
     // it just made rather than walking in.
     expect(doorsAway(game.ship, game.player.room!, hunter.room!)).toBeLessThanOrEqual(1);
     // Either line will do: a blow that lands in the rack is the twist's to
-    // report (`The enforcer hits your PLATING (12/16).`) and one that reaches
-    // the core is the engine's. Twelve turns of 1d3+1 no longer get through a
-    // full rack, which is the point of the pass that raised it.
-    expect(game.log.lines.some((l) => /enforcer hits/i.test(l.text))).toBe(true);
+    // report (`log.hit.module`) and one that reaches the core is the engine's.
+    // Twelve turns of 1d3+1 no longer get through a full rack, which is the
+    // point of the pass that raised it. Asked by key rather than by wording,
+    // which is what the log's lines get rewritten for (G97).
+    const blows = new Set(["log.hit.module", "engine.hit.taken"]);
+    expect(
+      game.log.lines.some((l) => l.key !== undefined && blows.has(l.key) && /enforcer/i.test(l.text)),
+    ).toBe(true);
   });
 
-  it("at level five a dead hunter is replaced fifteen turns later", () => {
+  it("from the lockdown a dead hunter is replaced fifteen turns later", () => {
     const game = quietShip(LOCKED, 33);
-    raiseAlert(game, 5);
+    raiseAlert(game, LOCK_LEVEL);
     const first = enforcers(game)[0]!;
-    expect(alertState(game).level).toBe(5);
+    expect(alertState(game).level).toBe(LOCK_LEVEL);
 
     first.hp = 0;
     expect(enforcers(game).length).toBe(0);
 
-    wait(game, 14);
+    // Held loud: eight quiet turns would talk the ship off the lockdown.
+    loudWait(game, 14);
     expect(enforcers(game).length, "the ship's own clock, not the next raise").toBe(0);
-    wait(game, 1);
+    loudWait(game, 1);
     expect(enforcers(game).length).toBe(1);
   });
 
-  it("at level five everything aboard is told where the drone is", () => {
+  it("from the lockdown everything aboard is told where the drone is", () => {
     const game = quietShip(LINE, 34);
     decoyHunter(game, "r4");
     const posted = put(game, "r4", INERT);
     expect(posted.data?.targetRoom, "a machine posted by hand knows nothing").toBeUndefined();
 
-    raiseAlert(game, 4);
-    wait(game, 14);
-    expect(posted.data?.targetRoom, "level four is not the standing order").toBeUndefined();
+    raiseAlert(game, LOCK_LEVEL - 1);
+    loudWait(game, 14);
+    expect(posted.data?.targetRoom, "seven is not the standing order").toBeUndefined();
 
     raiseAlert(game);
-    wait(game, 1);
+    loudWait(game, 1);
     expect(posted.data?.targetRoom).toBe(game.roomOf(game.player).id);
   });
 
   it("shows up in the panel as a line of its own, with the rung's word after the bar", () => {
     const game = quietShip(LOCKED, 35);
-    expect(ALERT.panelLines?.(game)).toEqual([{ text: "ALERT ▯▯▯▯▯" }]);
+    // Scrap in r2: the one charge the ship sets at nine can only go to r3.
+    addWreck(game, game.ship.room("r2").id, "cell", 3);
+    expect(ALERT.panelLines?.(game)).toEqual([{ text: `ALERT ${GAUGE(0)}` }]);
 
     raiseAlert(game);
-    expect(ALERT.panelLines?.(game)).toEqual([{ text: "ALERT ▮▯▯▯▯ NOTICED" }]);
-    raiseAlert(game);
-    expect(ALERT.panelLines?.(game)).toEqual([{ text: "ALERT ▮▮▯▯▯ SEARCHING" }]);
+    expect(ALERT.panelLines?.(game)).toEqual([{ text: `ALERT ${GAUGE(1)} NOTICED` }]);
+    raiseAlert(game, 3);
+    expect(ALERT.panelLines?.(game)).toEqual([{ text: `ALERT ${GAUGE(4)} PICKETS` }]);
 
-    // Three is where the gauge turns amber and the doors start shutting.
+    // Five is where the gauge turns amber and the doors start shutting.
     raiseAlert(game);
-    expect(ALERT.panelLines?.(game)).toEqual([{ text: "ALERT ▮▮▮▯▯ HUNTING", fg: "#d9b56a" }]);
+    expect(ALERT.panelLines?.(game)).toEqual([{ text: `ALERT ${GAUGE(5)} HUNTING`, fg: "#d9b56a" }]);
 
-    raiseAlert(game);
+    raiseAlert(game, 2);
     expect(ALERT.panelLines?.(game)).toEqual([
-      { text: "ALERT ▮▮▮▮▯ ENFORCER", fg: "#d9b56a" },
+      { text: `ALERT ${GAUGE(7)} ENFORCER`, fg: "#d9b56a" },
       { text: "ENFORCER still aboard", fg: "#d96a6a" },
+    ]);
+
+    // Nine is red, and every fuse burning is a line under it.
+    raiseAlert(game, 2);
+    expect(ALERT.panelLines?.(game)).toEqual([
+      { text: `ALERT ${GAUGE(9)} SCUTTLE`, fg: "#d96a6a" },
+      { text: "ENFORCER still aboard", fg: "#d96a6a" },
+      { text: `CHARGE r3 · ${FUSE_TURNS}`, fg: "#d96a6a" },
     ]);
 
     // The top is a countdown, and it ticks on the panel.
-    raiseAlert(game);
-    expect(ALERT.panelLines?.(game)).toEqual([
-      { text: `ALERT ▮▮▮▮▮ SCUTTLE IN ${SCUTTLE_WARN}`, fg: "#d96a6a" },
-      { text: "ENFORCER still aboard", fg: "#d96a6a" },
-    ]);
-    loudWait(game, 5);
+    raiseAlert(game, 1, true);
     expect(ALERT.panelLines?.(game)?.[0]).toEqual({
-      text: `ALERT ▮▮▮▮▮ SCUTTLE IN ${SCUTTLE_WARN - 5}`,
+      text: `ALERT ${GAUGE(10)} BOOM IN ${DETONATION_TURNS}`,
+      fg: "#d96a6a",
+    });
+    loudWait(game, 1);
+    expect(ALERT.panelLines?.(game)?.[0]).toEqual({
+      text: `ALERT ${GAUGE(10)} BOOM IN ${DETONATION_TURNS - 1}`,
       fg: "#d96a6a",
     });
   });
@@ -998,10 +1166,10 @@ function roundTrip(game: RoomGame): void {
 }
 
 describe("the alert belongs to the ship, not to the drone", () => {
-  it("survives a trip to the tug and back, and comes back two steps calmer", () => {
+  it("survives a trip to the tug and back, and comes back four steps calmer", () => {
     const game = quietShip(WALKED, 41);
     decoyHunter(game, "r4");
-    raiseAlert(game, 3);
+    raiseAlert(game, 6);
     wait(game, 5);
     const aboard = alertState(game).turnsAboard;
 
@@ -1012,78 +1180,93 @@ describe("the alert belongs to the ship, not to the drone", () => {
     game.travelTo("1", { generate: () => shipFromText(WALKED).ship });
     const st = alertState(game);
     expect(st.turnsAboard, "the ship remembers how long you were aboard").toBe(aboard);
-    expect(st.level, "cycling out through the airlock is two steps, not a reset").toBe(1);
+    expect(st.level, "cycling out through the airlock is four steps, not a reset").toBe(2);
   });
 
   it("keeps a floor equal to the systems the drone raised", () => {
     const game = quietShip(WALKED, 42);
     decoyHunter(game, "r4");
-    raiseAlert(game, 4);
+    raiseAlert(game, LOCK_LEVEL);
     // What the SHIP system (G17) writes into the same per-ship pocket.
     game.currentShip.data.ship = { online: ["ENGINE", "CORE"] };
 
     roundTrip(game);
-    expect(alertState(game).level, "four less two, on a floor of two").toBe(2);
+    expect(alertState(game).level, "eight less four, on a floor of two").toBe(4);
 
-    alertState(game).level = 5;
+    alertState(game).level = MAX_LEVEL;
     roundTrip(game);
-    expect(alertState(game).level, "five less two, over the floor").toBe(3);
+    expect(alertState(game).level, "ten less four, over the floor").toBe(6);
 
     alertState(game).level = 2;
     roundTrip(game);
     expect(alertState(game).level, "never under the floor").toBe(2);
   });
 
-  it("leaving at the top comes back to three and a full muster; dying aboard comes back to two", () => {
+  it("leaving at the top comes back to six and a full muster; dying aboard comes back to four", () => {
     const left = quietShip(WALKED, 43);
-    alertState(left).level = 5;
+    alertState(left).level = MAX_LEVEL;
     const before = new Set(left.entities.map((e) => e.id));
     roundTrip(left);
-    expect(alertState(left).level).toBe(3);
-    // 2 + 2 × 5 is twelve, a hand-drawn hull holds eight, and the two
+    expect(alertState(left).level).toBe(6);
+    // 2 + 10 is twelve, a hand-drawn hull holds eight, and the two
     // compartments deep enough to muster into hold three each (`CROWD`): the
     // muster is sized by how alarmed the ship was, and capped by what it can
     // hold — and by where it can put it.
     expect(machines(left).filter((e) => !before.has(e.id)).length).toBe(2 * CROWD);
 
     const died = quietShip(WALKED, 44);
-    alertState(died).level = 5;
+    alertState(died).level = MAX_LEVEL;
     // The death hook, exactly as the engine calls it when a machine's blow
     // lands: the voyage moves the operator home afterwards, and here the trip
     // is made by hand.
     died.onDeath(died.player);
     expect(alertState(died).lostDrone).toBe(true);
     roundTrip(died);
-    expect(alertState(died).level).toBe(2);
+    expect(alertState(died).level).toBe(4);
     expect(alertState(died).lostDrone, "spent on the entry, not kept").toBe(false);
   });
 
-  it("reads a corrupted record as zero rather than throwing", () => {
+  it("disarms the charges that were burning when the drone left, countdown included", () => {
     const game = quietShip(WALKED, 45);
+    decoyHunter(game, "r2");
+    addWreck(game, game.ship.room("r3").id, "cell", 3);
+    raiseAlert(game, MAX_LEVEL, true);
+    expect(alertState(game).fuses.length).toBe(1);
+    expect(alertState(game).detonateAt).toBeGreaterThanOrEqual(0);
+    roundTrip(game);
+    expect(alertState(game).fuses).toEqual([]);
+    expect(alertState(game).detonateAt).toBe(-1);
+    expect(blown(game), "a hull is the same place the second time").toEqual([]);
+  });
+
+  it("reads a corrupted record as zero rather than throwing", () => {
+    const game = quietShip(WALKED, 46);
     raiseAlert(game, 2);
     game.currentShip.data.ship = "not a record";
     expect(() => roundTrip(game)).not.toThrow();
     expect(alertState(game).level).toBe(0);
   });
 
-  it("fills in what a record from before the ladder does not have", () => {
-    const game = quietShip(WALKED, 46);
+  it("fills in what a record from before the ladder does not have, and clamps a five-rung level", () => {
+    const game = quietShip(WALKED, 47);
     game.currentShip.data.alert = {
       level: 3, turnsAboard: 10, lastNoiseBump: -10, quietTurns: 0, lastHunter: -15, rolls: 2,
     };
     const st = alertState(game);
     expect(st.level, "the gauge is the old record's").toBe(3);
     expect(st.frozen).toBe(false);
-    expect(st.scuttleFrom).toBe(-1);
+    expect(st.armAt).toBe(-1);
+    expect(st.detonateAt).toBe(-1);
+    expect(st.fuses).toEqual([]);
     expect(st.peaks).toBe(0);
     expect(() => wait(game, 20)).not.toThrow();
   });
 
-  it("musters 2 + 2 × alert machines, all of them in explored compartments two doors from the airlock", () => {
+  it("musters 2 + alert machines, all of them in explored compartments two doors from the airlock", () => {
     for (let s = 0; s < 200; s++) {
       const game = quietShip(WALKED, 5000 + s);
       const entry = game.ship.entry;
-      alertState(game).level = 2;
+      alertState(game).level = 4;
       const before = new Set(game.entities.map((e) => e.id));
 
       roundTrip(game);
@@ -1098,11 +1281,11 @@ describe("the alert belongs to the ship, not to the drone", () => {
   });
 
   it("musters nothing on the first entry, and nothing when nowhere is both explored and deep", () => {
-    const fresh = quietShip(WALKED, 47);
+    const fresh = quietShip(WALKED, 48);
     expect(machines(fresh).length).toBe(0);
 
     // Nothing but the airlock compartment has been walked.
-    const blind = quietShip(LINE, 48);
+    const blind = quietShip(LINE, 49);
     alertState(blind).level = 3;
     roundTrip(blind);
     expect(machines(blind).length).toBe(0);
@@ -1116,9 +1299,9 @@ describe("the alert belongs to the ship, not to the drone", () => {
       return game.ship.doors.map((d) => `${d.label}:${d.state}`).join(" ");
     };
 
-    const once = doorStates(49);
+    const once = doorStates(50);
     expect(once, "somebody walked through and left a door open").toContain("d1:open");
-    expect(doorStates(49), "the same ship did the same thing").toBe(once);
+    expect(doorStates(50), "the same ship did the same thing").toBe(once);
   });
 });
 
@@ -1130,7 +1313,7 @@ describe("the alert is deterministic and keeps to itself", () => {
     const before = game.rng.state;
 
     raiseAlert(game, 4);
-    expect(machines(game).length, "the ship did wake things, so there was something to roll").toBe(3);
+    expect(machines(game).length, "the ship did wake things, so there was something to roll").toBe(2);
     expect(game.rng.state, "the alert rolls on the ship's own stream").toBe(before);
   });
 
@@ -1138,35 +1321,38 @@ describe("the alert is deterministic and keeps to itself", () => {
     const cfg = {
       ...GAME_CONFIG,
       // One hulk per compartment, so the drone has something to be loud about:
-      // time alone can no longer fill the gauge — fifteen quiet turns take a
+      // time alone can no longer fill the gauge — eight quiet turns take a
       // level off and the clock only puts one on every forty — so noise is the
       // only way up, which is the alert working as designed.
       content: { ...SALVOR, monsterChance: () => 1, monstersForDepth: () => [INERT] },
-      // Five compartments rather than four: the gauge wants four fights to
-      // reach the hunter and a hulk only dies once.
+      // Eight compartments: the gauge wants seven fights to reach the hunter
+      // and a hulk only dies once.
       firstShip: () =>
         shipFromText(`
           TUG -a1- r1
-          r1 -d1- r2 -d2- r3 -d3- r4 -d4- r5
+          r1 -d1- r2 -d2- r3 -d3- r4 -d4- r5 -d5- r6 -d6- r7 -d7- r8
           r1: docking
           r2: hold
           r3: hab
           r4: reactor
           r5: control
+          r6: hold
+          r7: hab
+          r8: control
         `).ship,
       firstShipId: "1",
       systems: [ALERT],
     };
     const seed = 62;
 
-    // Four fights, ten quiet turns apart: four raises, and the fourth is the
-    // hunter — with a posted machine and two dispatched ones on the way.
+    // Seven fights, five quiet turns apart: seven raises, and the seventh is
+    // the hunter.
     const first = new RoomGame({ ...cfg, seed });
-    for (const label of ["d1", "d2", "d3", "d4"]) {
+    for (const label of ["d1", "d2", "d3", "d4", "d5", "d6", "d7"]) {
       first.playerCommand({ kind: "go", door: first.ship.door(label).id });
       const prey = first.entitiesIn(first.roomOf(first.player).id).find((e) => e.id !== first.player.id);
       if (prey) first.playerCommand({ kind: "attack", target: prey.id });
-      wait(first, 10);
+      wait(first, 5);
     }
     expect(
       first.log.lines.some((l) => l.text.startsWith("An ENFORCER wakes up")),
@@ -1196,50 +1382,126 @@ describe("a whole run with the alert running", () => {
       "careful",
       BOTS_ROOMS.careful!,
       seedRange(1, 32),
-      roomPlay({ maxSteps: 1200, make: (seed) => newGame(seed) }),
+      roomPlay({ maxSteps: 3000, make: (seed) => newGame(seed) }),
     );
     expect(summary.stuck, formatSummary(summary)).toBe(0);
   });
 });
 
 /**
+ * A door the drone walks through with nothing in its hands — the ship's own
+ * rule for a door it may not lock (`lockable`) and for a compartment it may
+ * not blow (`cutsOff`). A blast seals the compartment's doors, which is a
+ * wall bare-handed and three turns of cutting otherwise, exactly like a lock
+ * the ship turned or a bulkhead the drone welded; a blown compartment whose
+ * doors were blown *out* is a wreck the drone walks through.
+ */
+function walkable(ship: Ship): (d: Door) => boolean {
+  return (d) => ship.passable(d, { isPlayer: true });
+}
+
+/**
+ * The doors' own business on this step: a door outside the compartments that
+ * blew went locked or sealed — the ship turned a lock, the drone welded a
+ * bulkhead — and that, not the blast, is what closed a route.
+ */
+function doorsMoved(ship: Ship, before: readonly string[], blownNow: ReadonlySet<RoomId>): boolean {
+  return ship.doors.some(
+    (d, i) =>
+      before[i] !== d.state &&
+      (d.state === "locked" || d.state === "sealed") &&
+      !blownNow.has(d.a) &&
+      !blownNow.has(d.b),
+  );
+}
+
+/** The airlock and every compartment holding a system that is still down. */
+function goals(game: RoomGame): RoomId[] {
+  const down = game.ship.rooms.filter((r) => {
+    const systems = (r.data as { systems?: unknown }).systems;
+    return Array.isArray(systems) && systems.some((s) => (s as { online?: unknown }).online !== true);
+  });
+  return [game.ship.entry, ...down.map((r) => r.id)];
+}
+
+/**
  * The ladder over two hundred careful voyages, read off every derelict's own
- * record once the voyage is over.
+ * record once the voyage is over — and the one promise the charges make,
+ * checked on every blast of every one of them.
  *
- * Two shares, and both have a floor and a ceiling for a reason. The top of the
- * gauge has to be *reachable* by a bot that never reads the panel, or the
- * scuttle is a rule that exists only in this file — and it has to be rare, or
- * every sortie ends the same way. Venting has to happen at all, and the drone
- * has to walk out of most of the sorties it happens in: a scuttle that kills
- * the drone in the compartment it just vented is an execution, not a warning.
+ * Two shares, and both have a floor and a ceiling for a reason. The charges
+ * have to be *reachable* by a bot that never reads the panel, or the scuttle
+ * is a rule that exists only in this file — and they have to be rare, or every
+ * sortie ends the same way. Compartments have to go up at all, and the drone
+ * has to walk out of most of the sorties it happens in: a charge that kills
+ * the drone in the compartment it stood in is an execution, not a warning.
  */
 describe("the ladder over 200 careful voyages", () => {
-  const tally = { sorties: 0, peaks: 0, ventSorties: 0, ventDeaths: 0 };
+  const tally = { sorties: 0, peaks: 0, blasts: 0, blastDeaths: 0, detonations: 0, cutOff: 0 };
   for (const seed of seedRange(1, 200)) {
     let game: SalvorGame | undefined;
-    runBotOn(BOTS_ROOMS.careful!, seed, roomPlay({ maxSteps: 1500, make: (s) => (game = newGame(s)) }));
-    for (const id of game!.ships.ids()) {
+    const bot = BOTS_ROOMS.careful!();
+    const rng = new Rng(seed ^ 0x90);
+    game = newGame(seed);
+    let idle = 0;
+    for (let step = 0; step < 1500 && !game.isOver() && idle < 12; step++) {
+      // A fuse about to reach zero: what the drone can reach now is what it
+      // must still reach after the blast, bare-handed and with a cutter.
+      const armed = !isTug(game) && alertState(game).fuses.some((f) => f.at - alertState(game).turnsAboard <= 1);
+      // Bare-handed, the way the ship judges it; a turn the doors moved on
+      // as well — a lock the ship turned, a bulkhead the drone welded — is
+      // the doors' business and is left to their own tests.
+      const had = armed
+        ? (() => {
+            const here = game!.roomOf(game!.player).id;
+            const map = RoomDistance.from(game!.ship, [here], walkable(game!.ship));
+            return goals(game!).filter((g) => Number.isFinite(map.at(g)));
+          })()
+        : [];
+      const doorsBefore = armed ? game.ship.doors.map((d) => d.state) : [];
+      const blownBefore = new Set(armed ? game.ship.rooms.filter(isBlown).map((r) => r.id) : []);
+      const blastsBefore = armed ? alertState(game).blasts : 0;
+      const shipBefore = game.shipId;
+      const hereBefore = armed ? game.roomOf(game.player).id : -1;
+      const before = game.inputs.length;
+      game.playerCommand(bot(game, rng));
+      idle = game.inputs.length > before ? 0 : idle + 1;
+      if (!armed || isTug(game) || game.shipId !== shipBefore || alertState(game).blasts === blastsBefore) continue;
+      const here = game.roomOf(game.player).id;
+      // A drone that stepped through a lock with its tools on the same turn
+      // has a different bare-handed map for reasons that are not the blast's.
+      const blownNow = new Set(game.ship.rooms.filter((r) => isBlown(r) && !blownBefore.has(r.id)).map((r) => r.id));
+      if (here !== hereBefore || isBlown(game.roomOf(game.player))) continue;
+      if (doorsMoved(game.ship, doorsBefore, blownNow)) continue;
+      const map = RoomDistance.from(game.ship, [here], walkable(game.ship));
+      for (const g of had) if (!Number.isFinite(map.at(g))) tally.cutOff++;
+    }
+    for (const id of game.ships.ids()) {
       if (id === TUG_ID) continue;
-      const stored = game!.ships.get(id)!;
+      const stored = game.ships.get(id)!;
       const st = stored.data.alert as AlertState | undefined;
       if (st === undefined) continue;
       tally.sorties += stored.visits;
       tally.peaks += st.peaks;
-      tally.ventSorties += st.ventSorties;
-      tally.ventDeaths += st.ventDeaths;
+      tally.blasts += st.blasts;
+      tally.blastDeaths += st.blastDeaths;
+      tally.detonations += st.detonated ? 1 : 0;
     }
   }
   const report = JSON.stringify(tally);
 
-  it("reaches the top of the gauge on between 5 and 40 % of sorties", () => {
+  it("reaches the charges on between 5 and 40 % of sorties", () => {
     const share = tally.peaks / tally.sorties;
     expect(share, report).toBeGreaterThanOrEqual(0.05);
     expect(share, report).toBeLessThanOrEqual(0.4);
   });
 
-  it("vents on at least 1 % of sorties, and the drone survives most of those", () => {
-    const share = tally.ventSorties / tally.sorties;
-    expect(share, report).toBeGreaterThanOrEqual(0.01);
-    expect(tally.ventDeaths / tally.ventSorties, report).toBeLessThan(0.3);
+  it("blows compartments up at all, and the drone survives most of the ones it stood in", () => {
+    expect(tally.blasts, report).toBeGreaterThan(0);
+    expect(tally.blastDeaths / tally.blasts, report).toBeLessThan(0.3);
+  });
+
+  it("never cuts the drone off from the airlock or from a system still down", () => {
+    expect(tally.cutOff, report).toBe(0);
   });
 });

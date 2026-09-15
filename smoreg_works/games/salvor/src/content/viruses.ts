@@ -113,7 +113,7 @@ export const LEECH: Strain = {
 /**
  * The leash: it goes for the drone itself. Three beats is three of the core's
  * three points, so a leash uncured is a dead drone on a clock — the one strain
- * you drop everything for, and the reason the WELDER is worth a slot.
+ * you drop everything for: six turns of purging by hand, three with a SPIKE.
  *
  * Eighteen turns a beat, which is over fifty for the whole drone: long enough
  * that a sortie can be finished and a bench reached, short enough that it can

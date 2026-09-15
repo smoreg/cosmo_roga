@@ -76,7 +76,7 @@ describe("every card the tables ask for exists", () => {
   const owed = (): Array<[string, string]> => [
     ...STRAINS.map((s) => [s.id, "strain"] as [string, string]),
     ...Array.from({ length: MAX_LEVEL }, (_, i) => [alertCodexId(i + 1), "alert rung"] as [string, string]),
-    ["vented", "hazard"],
+    ["blown", "hazard"],
     ...HAZARD_IDS.map((id) => [id, "hazard"] as [string, string]),
     ...RELICS.map((id) => [id, "relic"] as [string, string]),
     ...[SENTRY_TURRET, JAMMER, BLOOM_KIND, CRAWLER].map((m) => [m.id, "machine"] as [string, string]),
@@ -361,10 +361,10 @@ describe("the `i` window", () => {
   it("marks the modules the drone is actually carrying", () => {
     const game = run();
     const rig = rigOf(game.player)!;
-    install(rig, "welder", 5);
+    install(rig, "spike", 3);
     noticeCodex(game, "spasm");
     const view = codexView(game, press(idle(), "i", game))!;
-    expect(view.fitted.has("welder")).toBe(true);
+    expect(view.fitted.has("spike")).toBe(true);
 
     const helps = codexBody(view.entry, view.fitted).find((line) => line.includes(t("codex.label.helps")))!;
     expect(helps).toContain(t("codex.fitted"));

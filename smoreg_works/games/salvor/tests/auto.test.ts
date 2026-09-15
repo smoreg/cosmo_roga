@@ -166,27 +166,27 @@ describe("what a shut bulkhead wants", () => {
     applyDerived(game.player);
   }
 
-  it("names the four ways through a lock and marks the ones aboard", () => {
+  it("names the five ways through a lock and marks the ones aboard", () => {
     const game = gameOn(SHUT("r2 -[d3:k1]- r4"), "r2");
     arm(game, "cutter");
     expect(stopOf(makeExplorer().step(game))).toBe(
-      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard; aboard: CUTTER.",
+      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard, ram; aboard: CUTTER, ram.",
     );
     game.player.data = { ...game.player.data, keys: 1 };
     expect(stopOf(makeExplorer().step(game))).toBe(
-      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard; aboard: CUTTER, keycard.",
+      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard, ram; aboard: CUTTER, keycard, ram.",
     );
   });
 
-  it("names the one way through a seam", () => {
+  it("names the two ways through a seam", () => {
     const game = gameOn(SHUT("r2 -#d3#- r4"), "r2");
     arm(game, "cutter");
-    expect(stopOf(makeExplorer().step(game))).toBe("The way on is shut: d3 (sealed) — CUTTER; aboard: CUTTER.");
+    expect(stopOf(makeExplorer().step(game))).toBe("The way on is shut: d3 (sealed) — CUTTER, ram; aboard: CUTTER, ram.");
   });
 
-  it("says outright when nothing aboard opens it", () => {
-    // Nothing to open it with is a walk `o` never sends (`canBreach`), so it
-    // is the travel walk that gets there: a compartment named behind a lock.
+  it("counts the chassis as aboard when nothing else is", () => {
+    // The ram is always aboard (G90 B), so no bulkhead is ever one nothing
+    // opens: the travel walk gets there and names the one way left.
     const game = gameOn(
       `
         TUG -a1- r1
@@ -200,7 +200,7 @@ describe("what a shut bulkhead wants", () => {
     );
     stripTools(game);
     expect(stopOf(makeTraveller(game.ship.room("r3").id).step(game))).toBe(
-      "The way on is shut: d2 (locked) — CELL, SPIKE, CUTTER, keycard; nothing aboard opens it.",
+      "The way on is shut: d2 (locked) — CELL, SPIKE, CUTTER, keycard, ram; aboard: ram.",
     );
     expect(game.inputs).toEqual([]);
   });
@@ -353,12 +353,15 @@ describe("auto-explore", () => {
     expect(stopOf(makeExplorer().step(game))).toContain("The way on is shut: d2 (locked) — ");
   });
 
-  it("says the sortie is over rather than walking at a lock it cannot open", () => {
-    // And says what to come back with: the dock sells a CUTTER, and a CUTTER is
-    // the one module that opens both kinds of shut bulkhead there are.
+  it("stops at a lock the rack cannot open and offers the chassis, rather than calling the sortie over", () => {
+    // A lock with nothing in the rack for it used to be the end of the sortie.
+    // The ram is always aboard (G90 B), so the walk goes up to the bulkhead
+    // and hands over the one decision left: eight loud turns, or home.
     const game = gameOn(SHUT("r2 -[d3:k1]- r4"), "r2");
     stripTools(game);
-    expect(stopOf(makeExplorer().step(game))).toBe("DERELICT: no way further in, 1 room left — you need a CUTTER.");
+    expect(stopOf(makeExplorer().step(game))).toBe(
+      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard, ram; aboard: ram.",
+    );
     expect(game.inputs).toEqual([]);
   });
 
@@ -380,18 +383,18 @@ describe("auto-explore", () => {
     expect(stopOf(makeExplorer().step(game))).toBe("DERELICT: no way further in, 1 room left unexplored.");
   });
 
-  it("counts a keycard as a way through a lock and nothing at all through a seam", () => {
+  it("counts a keycard as a way through a lock and not through a seam, and the chassis through both", () => {
     const locked = gameOn(SHUT("r2 -[d3:k1]- r4"), "r2");
     stripTools(locked);
     locked.player.data = { ...locked.player.data, keys: 1 };
     expect(stopOf(makeExplorer().step(locked))).toBe(
-      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard; aboard: keycard.",
+      "The way on is shut: d3 (locked) — CELL, SPIKE, CUTTER, keycard, ram; aboard: keycard, ram.",
     );
 
     const sealed = gameOn(SHUT("r2 -#d3#- r4"), "r2");
     stripTools(sealed);
     sealed.player.data = { ...sealed.player.data, keys: 1 };
-    expect(stopOf(makeExplorer().step(sealed))).toBe("DERELICT: no way further in, 1 room left — you need a CUTTER.");
+    expect(stopOf(makeExplorer().step(sealed))).toBe("The way on is shut: d3 (sealed) — CUTTER, ram; aboard: ram.");
   });
 
   it("reads a bulkhead the same way its own list of ways does", () => {

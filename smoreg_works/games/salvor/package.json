@@ -15,7 +15,8 @@
     "@jamrog/audio": "*",
     "@jamrog/engine": "*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "rot-js": "^2.2.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.31",

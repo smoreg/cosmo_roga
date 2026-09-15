@@ -1,5 +1,5 @@
 import { RoomDistance, isAlive, lastKnownRoom, type Entity, type RoomGame } from "@jamrog/engine";
-import { alertState } from "../systems/alert.js";
+import { MAX_LEVEL, alertState } from "../systems/alert.js";
 import { canSeeDrone } from "../systems/sight.js";
 import { rivalState } from "../systems/rivalstate.js";
 import { virusOf } from "../systems/virus.js";
@@ -45,8 +45,9 @@ function machineLine(game: RoomGame, distances: RoomDistance, m: Entity): string
 
 function alertLine(game: RoomGame): string {
   const a = alertState(game);
-  const scuttle = a.scuttleFrom >= 0 ? ` scuttleFrom=${a.scuttleFrom}` : "";
-  return `ALERT level=${a.level}/5 turnsAboard=${a.turnsAboard} quiet=${a.quietTurns}${scuttle}${a.frozen ? " frozen" : ""}`;
+  const boom = a.detonateAt >= 0 ? ` detonateAt=${a.detonateAt}` : "";
+  const fuses = a.fuses.length === 0 ? "" : ` fuses=${a.fuses.map((f) => `${f.room}@${f.at}`).join(",")}`;
+  return `ALERT level=${a.level}/${MAX_LEVEL} turnsAboard=${a.turnsAboard} quiet=${a.quietTurns}${boom}${fuses}${a.frozen ? " frozen" : ""}`;
 }
 
 function droneLine(game: RoomGame): string {

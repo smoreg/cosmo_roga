@@ -149,7 +149,7 @@ export interface DerelictSpec {
 export const FREIGHTER: DerelictSpec = {
   id: "freighter",
   name: "freighter",
-  rooms: [12, 14],
+  rooms: [13, 15],
   maxDepth: 4,
   kinds: [
     ENTRY_KIND, "cargo", "storage", "corridor", "maintenance", "lifesupport",
@@ -271,7 +271,7 @@ export const CALLSIGNS: readonly string[] = [
 export const BARGE: DerelictSpec = {
   id: "barge",
   name: "barge",
-  rooms: [9, 11],
+  rooms: [11, 13],
   maxDepth: 6,
   kinds: [
     ENTRY_KIND, "cargo", "storage", "maintenance", "corridor",
@@ -313,7 +313,7 @@ export const BARGE: DerelictSpec = {
 export const FERRY: DerelictSpec = {
   id: "ferry",
   name: "ferry",
-  rooms: [8, 10],
+  rooms: [11, 12],
   maxDepth: 4,
   kinds: [
     ENTRY_KIND, "hab", "cargo", "mess", "cryo",
@@ -355,7 +355,7 @@ export const FERRY: DerelictSpec = {
 export const PROBE: DerelictSpec = {
   id: "probe",
   name: "probe",
-  rooms: [7, 8],
+  rooms: [11, 12],
   maxDepth: 4,
   kinds: [ENTRY_KIND, "sensors", "storage", "engineering", "reactor", "control"],
   band: ["scout", "feral-drone"],
@@ -385,7 +385,7 @@ export const PROBE: DerelictSpec = {
 export const TENDER: DerelictSpec = {
   id: "tender",
   name: "tender",
-  rooms: [9, 11],
+  rooms: [11, 13],
   maxDepth: 5,
   kinds: [
     ENTRY_KIND, "workshop", "maintenance", "storage", "corridor",
@@ -692,8 +692,32 @@ export function specOfShip(ship: Ship): DerelictSpec | undefined {
  * the same way — so it is the part that costs least to lose.
  */
 export function derelictsForVoyage(rng: Rng): DerelictSpec[] {
+  return stopsForVoyage(rng).map((stop) => stop[0]!);
+}
+
+/** Where the extra candidates of a stop are drawn from: a fork, so `rng` spends nothing more. */
+const CANDIDATE_SALT = 0x5f0a;
+
+/**
+ * Every stop of a voyage and the hulls the tug may fly to at each: two or three
+ * starting classes, two or three of the middle, and the father's tug alone
+ * (docs/tasks/G90-smoreg-wave.md, F 1-2).
+ *
+ * The first hull of each stop is the one the itinerary above has always drawn,
+ * out of the same numbers of the same rng, so a seed's default voyage is the
+ * voyage it was and the harness — which takes the first line it can — flies it.
+ * The others come out of a fork of the rng taken after the draw: a fork reads
+ * the state and advances nothing, so asking for choices costs the run no numbers.
+ * The middle's second and third are the shuffle's own next hulls.
+ */
+export function stopsForVoyage(rng: Rng): DerelictSpec[][] {
   const pool = rng.shuffle([...MIDDLE_HULLS]);
-  return [rng.pick(STARTER_HULLS), pool[0]!, FATHERS_TUG];
+  const starter = rng.pick(STARTER_HULLS);
+  const extra = rng.fork(CANDIDATE_SALT);
+  const others = extra.shuffle(STARTER_HULLS.filter((s) => s !== starter));
+  const starters = [starter, ...others.slice(0, extra.int(1, 2))];
+  const middles = pool.slice(0, extra.int(2, 3));
+  return [starters, middles, [FATHERS_TUG]];
 }
 
 /**

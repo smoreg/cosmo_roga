@@ -5,11 +5,11 @@ import { GAME_CONFIG, SALVOR } from "../src/game.js";
 import { FREIGHTER, derelictShip } from "../src/content/derelicts.js";
 import { CHEAPEST_HULL } from "../src/content/hulls.js";
 import { moduleKind, type ModuleId } from "../src/content/modules.js";
-import { OBJECTIVES, TERMINAL } from "../src/content/objectives.js";
+import { CORE, ENGINE, HANDS_NOISE, OBJECTIVES, TERMINAL } from "../src/content/objectives.js";
 import { SHIP, objectiveHere, systemsAboard } from "../src/systems/ship.js";
 import { shipState } from "../src/systems/shipstate.js";
 import { TUG_ID, VOYAGE, currentDerelict, voyageOf } from "../src/systems/voyage.js";
-import { alertState } from "../src/systems/alert.js";
+import { HUNTER_LEVEL, alertState } from "../src/systems/alert.js";
 import { DOORS } from "../src/systems/doors.js";
 import { POPULATE, roomList, type ShipSystem } from "../src/systems/populate.js";
 import { applyDerived, findSlot, rigOf, type Rig } from "../src/twist/rig.js";
@@ -121,6 +121,11 @@ function systemIn(game: RoomGame, label: string): ShipSystem {
 
 function workOn(game: RoomGame, label: string): Outcome {
   return game.playerCommand({ kind: "act", verb: "work", target: systemIn(game, label).id });
+}
+
+/** One turn of the same system with nothing in the rack. */
+function forceOn(game: RoomGame, label: string): Outcome {
+  return game.playerCommand({ kind: "act", verb: "force", target: systemIn(game, label).id });
 }
 
 /** Work a system all the way up, one legal turn after another. */
@@ -309,6 +314,162 @@ describe("turns in a row", () => {
   });
 });
 
+// ------------------------------------------------------------- bare-handed
+
+/**
+ * The slow way (G94): every system can be raised with nothing in the rack, and
+ * the price is the turns and the noise. The twin of the door the chassis rams
+ * open (`systems/doors.ts`), for the same reason — a drone is never stuck in
+ * front of the one thing that would finish the hull.
+ */
+describe("raising a system with nothing in the rack", () => {
+  it("is dearer than any tool, in turns and in noise, on all three", () => {
+    for (const spec of OBJECTIVES) {
+      const turns = Math.max(...spec.jobs.map((j) => j.turns));
+      const noise = Math.max(...spec.jobs.map((j) => j.noise));
+      expect(spec.hands.tool).toBe("hands");
+      expect(spec.hands.turns, `${spec.id}: turns`).toBeGreaterThan(turns);
+      expect(spec.hands.noise, `${spec.id}: noise`).toBeGreaterThan(noise);
+      expect(spec.hands.noise).toBe(HANDS_NOISE);
+    }
+  });
+
+  it("offers the slow way only where the tool is missing", () => {
+    const game = gameOn(DERELICT);
+    standIn(game, "r2");
+    expect(SHIP.offerActions!(game).map((o) => o.label)).toEqual(["work ENGINE: CUTTER 3"]);
+
+    // A keycard is a tool too: with one on the drone the terminal has one row.
+    keys(game, 1);
+    standIn(game, "r4");
+    expect(SHIP.offerActions!(game).map((o) => o.label)).toEqual(["work TERMINAL: keycard 1"]);
+
+    keys(game, 0);
+    expect(SHIP.offerActions!(game).map((o) => o.label)).toEqual([
+      "work TERMINAL: SPIKE 2",
+      "work TERMINAL: HANDS 12",
+    ]);
+  });
+
+  it("brings the engine up by hand, one loud turn after another, with the PLATING under every blow", () => {
+    const game = gameOn(DERELICT);
+    drop(game, "cutter");
+    drop(game, "welder");
+    const room = standIn(game, "r2");
+    const id = systemIn(game, "r2").id;
+
+    for (let turn = 1; turn <= ENGINE.hands.turns; turn++) {
+      expect(forceOn(game, "r2").ok, `turn ${turn}`).toBe(true);
+      expect(game.noise.get(room), `turn ${turn}`).toBe(HANDS_NOISE);
+      expect(rig(game).exposed, `turn ${turn}`).toBe(findSlot(rig(game), "plating"));
+      if (turn < ENGINE.hands.turns) {
+        expect(shipState(game).work).toEqual({ id, left: ENGINE.hands.turns - turn, tool: "hands" });
+        expect(shipState(game).online).toEqual([]);
+        // By key and not the last line: the first turn in the compartment
+        // is also the turn the run says what the three systems are for.
+        const work = game.log.lines.filter((l) => l.key === "log.system.work").at(-1)?.text;
+        expect(work).toBe(
+          `ENGINE by hand, loud. ${ENGINE.hands.turns - turn} more ${ENGINE.hands.turns - turn === 1 ? "turn" : "turns"}.`,
+        );
+      }
+    }
+    expect(shipState(game).online).toEqual(["engine"]);
+    expect(shipState(game).work).toBeUndefined();
+    expect(systemIn(game, "r2").online).toBe(true);
+    expect(lines(game)).toContain("ENGINE ONLINE. The ship notices.");
+  });
+
+  it("is a hull that answers: the ship hears the work before the system is up", () => {
+    // The whole game this time, alert included. Twelve turns at the ram's
+    // noise climb the gauge on their own, and the system coming up on top of
+    // them puts the ship at the rung it sends its hunter from.
+    const game = new RoomGame({
+      ...GAME_CONFIG,
+      seed: 5,
+      content: { ...SALVOR, monsterChance: () => 0 },
+      firstShip: () => shipFromText(DERELICT).ship,
+      firstShipId: "1",
+    });
+    standIn(game, "r4");
+    for (let turn = 1; turn < TERMINAL.hands.turns; turn++) {
+      expect(forceOn(game, "r4").ok, `turn ${turn}`).toBe(true);
+    }
+    const heard = alertState(game).level;
+    expect(heard, "the noise alone climbed the gauge").toBeGreaterThanOrEqual(2);
+    expect(shipState(game).online).toEqual([]);
+
+    expect(forceOn(game, "r4").ok).toBe(true);
+    expect(shipState(game).online).toEqual(["terminal"]);
+    expect(alertState(game).level).toBe(heard + 4);
+    expect(alertState(game).level).toBeGreaterThanOrEqual(HUNTER_LEVEL);
+  });
+
+  it("spends no CELL on a reactor raised by hand, and no keycard on a terminal", () => {
+    const game = gameOn(DERELICT);
+    const cell = findSlot(rig(game), "cell")!;
+    const full = rig(game).slots[cell]!.integrity;
+    keys(game, 1);
+
+    standIn(game, "r3");
+    for (let turn = 0; turn < CORE.hands.turns; turn++) expect(forceOn(game, "r3").ok).toBe(true);
+    expect(shipState(game).online).toEqual(["core"]);
+    expect(rig(game).slots[cell]?.integrity).toBe(full);
+
+    standIn(game, "r4");
+    for (let turn = 0; turn < TERMINAL.hands.turns; turn++) expect(forceOn(game, "r4").ok).toBe(true);
+    expect(shipState(game).online).toEqual(["core", "terminal"]);
+    expect(keysOf(game)).toBe(1);
+  });
+
+  it("is dropped the turn anything else happens, and starts over, exactly like a splice", () => {
+    const game = gameOn(DERELICT);
+    drop(game, "cell");
+    standIn(game, "r3");
+
+    forceOn(game, "r3");
+    expect(shipState(game).work?.left).toBe(CORE.hands.turns - 1);
+
+    game.playerCommand({ kind: "wait" });
+    expect(lastLine(game)).toBe("You break off the splice.");
+    expect(shipState(game).work).toBeUndefined();
+
+    expect(forceOn(game, "r3").ok).toBe(true);
+    expect(shipState(game).work?.left).toBe(CORE.hands.turns - 1);
+  });
+
+  it("counts down on the row and on the panel while it runs", () => {
+    const game = gameOn(DERELICT);
+    drop(game, "cell");
+    standIn(game, "r3");
+    expect(objectiveHere(game)).toMatchObject({ doable: false, left: 2 });
+
+    forceOn(game, "r3");
+    // The greyed tool row steps aside while the job runs: a dozen turns of
+    // "needs a CELL" under the row being pressed is a lesson already taken,
+    // on a list with a budget.
+    expect(SHIP.offerActions!(game).map((o) => o.label)).toEqual([`work REACTOR: HANDS ${CORE.hands.turns - 1}`]);
+    const here = objectiveHere(game)!;
+    expect(here.job.tool).toBe("hands");
+    expect(here.doable).toBe(true);
+    expect(here.left).toBe(CORE.hands.turns - 1);
+  });
+
+  it("refuses by hand exactly what it refuses with a tool: no system here, or one already up", () => {
+    const game = gameOn(DERELICT);
+    standIn(game, "r1");
+    const none = game.playerCommand({ kind: "act", verb: "force", target: systemIn(game, "r2").id });
+    expect(none.ok).toBe(false);
+    expect(none.cost).toBe(0);
+
+    keys(game, 1);
+    raiseIn(game, "r4", 1);
+    const up = forceOn(game, "r4");
+    expect(up.ok).toBe(false);
+    expect(up.cost).toBe(0);
+    expect(up.reason).toBe("The TERMINAL is already online.");
+  });
+});
+
 // ------------------------------------------------------- what a system is worth
 
 describe("a system coming online", () => {
@@ -326,7 +487,7 @@ describe("a system coming online", () => {
     expect(loot(game)).toBe(purse);
     expect(lines(game)).toContain("TERMINAL ONLINE. The ship notices.");
     expect(lines(game)).toContain(
-      `The charter pays on account: +${TERMINAL.advance} CR. ${voyageOf(game).credits} CR.`,
+      `Charter advance: +${TERMINAL.advance} CR. ${voyageOf(game).credits} CR.`,
     );
 
     raiseIn(game, "r2", 3);
@@ -334,10 +495,10 @@ describe("a system coming online", () => {
     expect(loot(game)).toBe(purse);
   });
 
-  it("wakes the ship by two, through the alert the game actually runs", () => {
+  it("wakes the ship by four rungs, through the alert the game actually runs", () => {
     // The whole system list this time, ALERT included. The keycard job is the
-    // one that makes no noise at all (`TERMINAL.jobs`), so the two steps on the
-    // gauge are the system coming up and nothing else.
+    // one that makes no noise at all (`TERMINAL.jobs`), so the four steps on
+    // the gauge are the system coming up and nothing else.
     const game = new RoomGame({
       ...GAME_CONFIG,
       seed: 5,
@@ -351,7 +512,8 @@ describe("a system coming online", () => {
     standIn(game, "r4");
     expect(game.playerCommand({ kind: "act", verb: "work", target: systemIn(game, "r4").id }).ok).toBe(true);
 
-    expect(alertState(game).level).toBe(before + 2);
+    // Four rungs of the ten-rung ladder: design-doc.md's +2 of five (G90 A).
+    expect(alertState(game).level).toBe(before + 4);
   });
 
   /**
@@ -368,10 +530,10 @@ describe("a system coming online", () => {
 
     raiseIn(game, "r2", 3);
     raiseIn(game, "r3", 2);
-    expect(lines(game).some((l) => l.startsWith("All three online"))).toBe(false);
+    expect(lines(game).some((l) => l.startsWith("All three started"))).toBe(false);
 
     raiseIn(game, "r4", 1);
-    const said = lines(game).filter((l) => l.startsWith("All three online"));
+    const said = lines(game).filter((l) => l.startsWith("All three started"));
     expect(said).toHaveLength(1);
     // The sum is the hull's own price, and the sentence says where to take it.
     expect(said[0]).toContain(`+${currentDerelict(game).spec.salePrice} CR`);
@@ -385,7 +547,7 @@ describe("a system coming online", () => {
     // to be printed a line above the system that made it stand down (G88, A4).
     const all = lines(game);
     const online = all.indexOf("TERMINAL ONLINE. The ship notices.");
-    const down = all.findIndex((l) => l.startsWith("The ship stands down"));
+    const down = all.findIndex((l) => l.startsWith("Ship neutralised"));
     const paid = all.indexOf(said[0]!);
     expect(online, "the third system is said").toBeGreaterThanOrEqual(0);
     expect(down, "the stand-down is said").toBeGreaterThan(online);
@@ -639,7 +801,7 @@ describe("what the compartment offers", () => {
     expect(SHIP.offerActions!(game)[0]!.label).toBe("work ENGINE: CUTTER 2");
   });
 
-  it("greys out a system the drone has no tool for, and says which it wants", () => {
+  it("greys out a system the drone has no tool for, says which it wants, and offers the slow way under it", () => {
     const game = gameOn(DERELICT);
     drop(game, "cutter");
     standIn(game, "r2");
@@ -650,6 +812,11 @@ describe("what the compartment offers", () => {
         cmd: { kind: "act", verb: "work", target: systemIn(game, "r2").id },
         enabled: false,
         why: "Needs a CUTTER or a WELDER.",
+      },
+      {
+        label: "work ENGINE: HANDS 15",
+        cmd: { kind: "act", verb: "force", target: systemIn(game, "r2").id },
+        enabled: true,
       },
     ]);
   });

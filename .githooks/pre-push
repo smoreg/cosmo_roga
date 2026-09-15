@@ -9,6 +9,33 @@
 # In a genuine emergency: SKIP_VUVKO_CHECKS=1 git push
 set -uo pipefail
 
+# Git LFS first, and unconditionally.
+#
+# The music under vuvko_works/game/public/audio/music/ is stored in LFS, and
+# LFS uploads its objects from this hook. It has to run before the scoping
+# below and before SKIP_VUVKO_CHECKS, because a push that skips the checks
+# still has to carry its bytes. `git lfs install` could not write this itself:
+# there was already a hook here, which is the situation it refuses to
+# overwrite.
+#
+# Guarded, because this is a shared repository and the other half has no need
+# of LFS to work on its own files. Without it installed the push still goes;
+# it is only a push that adds or changes an LFS-tracked file that would then
+# arrive as a pointer with nothing behind it.
+#
+# Both steps want the ref list git sends on stdin, and stdin can only be read
+# once — so it is read here, and each of them is handed a copy. Piping it
+# straight into LFS would leave the scoping loop below with nothing to read,
+# and a hook that silently checks no commits is worse than no hook.
+refs="$(cat)"
+
+if command -v git-lfs >/dev/null 2>&1; then
+  printf '%s\n' "$refs" | git lfs pre-push "$@" || exit $?
+else
+  echo "pre-push: git-lfs is not installed; LFS objects will not be uploaded." >&2
+  echo "          Install it before touching vuvko_works/game/public/audio/." >&2
+fi
+
 root="$(git rev-parse --show-toplevel)"
 game="$root/vuvko_works/game"
 
@@ -34,7 +61,9 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
   if printf '%s\n' "$changed" | grep -q '^vuvko_works/'; then
     touches_vuvko=1
   fi
-done
+done <<REFS
+$refs
+REFS
 
 if [ "$touches_vuvko" -eq 0 ]; then
   exit 0
