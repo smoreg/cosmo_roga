@@ -371,11 +371,28 @@ describe("the dock is read before it is spent", () => {
       (el) => el.textContent === other?.name,
     );
     expect(row).toBeDefined();
+
+    /* Passing over a row changes nothing. The rack sits directly above a list
+       of three, and one that swapped under a pointer on its way somewhere else
+       flickered through all three before settling on the one being aimed at. */
+    act(() => {
+      row?.parentElement?.parentElement?.dispatchEvent(
+        new MouseEvent("mouseover", { bubbles: true }),
+      );
+    });
+    for (const m of flying?.modules ?? []) expect(text(host)).toContain(m);
+
     act(() => {
       row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     /* The rack above now names that hull's modules, not the flying one's. */
     for (const m of other?.modules ?? []) expect(text(host)).toContain(m);
+
+    /* And pressing it again puts the rack back on the drone that exists. */
+    act(() => {
+      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    for (const m of flying?.modules ?? []) expect(text(host)).toContain(m);
     unmount();
   });
 });

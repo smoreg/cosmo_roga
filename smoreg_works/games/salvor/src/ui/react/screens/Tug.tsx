@@ -311,29 +311,43 @@ function Drones({
   hulls: TugModel["hulls"];
   onLook: (id: string | null) => void;
 }): ReactElement {
-  /* Hovering points the rack at a hull for as long as the pointer is on it;
-     clicking holds it there, so two of them can be read one after the other
-     without the pointer having to stay put. */
+  /* A click points the rack at a hull, and nothing else does.
+     Hover used to, and it made the rack flicker through three drones on the
+     way down the list to the one being aimed at — a panel that changes under
+     a pointer merely passing over is a panel you cannot read while reaching
+     for anything else. Clicking is the whole gesture: press to look, press
+     again to put it back. The row still lights under the pointer, because it
+     is a thing that can be pressed and has to say so. */
   const [held, setHeld] = useState<string | null>(null);
-  const [look, setLook] = useState<string | null>(null);
-  const shown = held ?? look;
   useEffect(
     function tellTheRack() {
-      onLook(shown);
+      onLook(held);
     },
-    [shown],
+    [held],
   );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {hulls.map((hull) => {
-        const open = shown === hull.id;
+        const open = held === hull.id;
         return (
           <div
             key={hull.id}
-            onMouseEnter={() => setLook(hull.id)}
-            onMouseLeave={() => setLook(null)}
             onClick={() => setHeld(held === hull.id ? null : hull.id)}
-            title={hull.on ? "the drone on the rails" : "look at this one in the rack above"}
+            onMouseEnter={(e) => {
+              if (!open)
+                e.currentTarget.style.background =
+                  "color-mix(in oklab, var(--sv-amber) 7%, transparent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
+            title={
+              open
+                ? "put the rack back"
+                : hull.on
+                  ? "the drone on the rails"
+                  : "show this one in the rack above"
+            }
             style={{
               padding: "6px 8px",
               cursor: "pointer",
