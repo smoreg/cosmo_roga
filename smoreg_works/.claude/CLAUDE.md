@@ -106,7 +106,15 @@ node tools/deck/bake.mjs          # из games/salvor: палубная граф
 node tools/audio/copy.mjs        # из games/salvor: музыка в public/audio
 node tools/machines/fetch.mjs    # из games/salvor: иконки машин и дрона (сеть)
 npm run zip -w games/salvor      # dist + проверка + derelict-rogue-web.zip
+npm run publish:itch -w games/salvor   # то же + butler push на itch
 ```
+
+**Куда публикуется:** <https://vuvko.itch.io/derelict-rogue>, канал `html5`.
+`butler push` отправляет папку `dist`, а не zip: butler считает разницу, и
+следующая заливка везёт только изменившееся. Zip остаётся для ручной загрузки
+через форму. Перед заливкой отрабатывает `tools/itch/check.mjs`: все ссылки в
+html относительные и на месте, все плитки из манифеста существуют, музыка есть,
+оба уведомления о лицензиях едут внутри сборки.
 
 **Палуба под отсеками — сборка, а не содержимое репозитория.** `public/deck/`
 в `.gitignore`: 11 МБ чужой графики под **CC BY-NC**, взятой из скачанного
