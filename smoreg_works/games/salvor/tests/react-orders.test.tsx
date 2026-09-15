@@ -757,3 +757,85 @@ describe("the strain is something you can act on", () => {
     host.remove();
   });
 });
+
+describe("a step you named is a step you take", () => {
+  beforeAll(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        onchange: null,
+        dispatchEvent: () => false,
+      }),
+    });
+  });
+
+  const LINE = `
+    TUG -a1- r1
+    r1 -d1- r2 -d2- r3
+    r1: docking
+    r2: corridor
+    r3: armory
+  `;
+
+  function aboardWith(where: string): RoomGame {
+    const game = new RoomGame({
+      ...GAME_CONFIG,
+      seed: 7,
+      systems: [RIG, DOORS],
+      content: { ...SALVOR, monsterChance: () => 0 },
+      firstShip: () => shipFromText(LINE).ship,
+      firstShipId: "1",
+    });
+    const foe = spawnMonsterIn(SCOUT, game.ship.room(where).id);
+    game.schedule.admit(foe);
+    game.entities.push(foe);
+    game.refreshSight();
+    return game;
+  }
+
+  /**
+   * The dead end this exists for: the traveller hands the ship back the moment
+   * a machine is in sight and asks that before the first step. Right for "walk
+   * over there", catastrophic for "go through this door" — with an ENFORCER in
+   * the next compartment every way of taking one step refused, the door's own
+   * `go` line included, and nothing said why, because "there is a machine in
+   * sight" is not news to a player looking straight at it.
+   */
+  it("steps through the door with a machine standing on the other side", () => {
+    const game = aboardWith("r2");
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<Screen game={game} />);
+    });
+
+    const to = game.ship.room("r2").id;
+    const hex = host.querySelector(`[data-room="${String(to)}"]`);
+    expect(hex).not.toBeNull();
+    act(() => {
+      hex!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(game.player.room, "the drone would not take one step").toBe(to);
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it("still hands a longer walk back when something is in sight", () => {
+    /* The rule is not gone, it is scoped: naming a route two compartments off
+       while a machine watches is still the traveller's to refuse. */
+    const game = aboardWith("r2");
+    const far = game.ship.room("r3").id;
+    expect(isStop(makeTraveller(far).step(game))).toBe(true);
+  });
+});

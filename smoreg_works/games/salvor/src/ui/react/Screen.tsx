@@ -391,8 +391,34 @@ export function Screen({
     [],
   );
 
-  const walk = (to: RoomId): void => {
+  const walk = (to: RoomId, path: readonly RoomId[] = []): void => {
     sfx.click();
+
+    /*
+     * One compartment is one command, and never the traveller's business.
+     *
+     * The traveller hands the ship back the moment a machine is in sight, and
+     * it asks that before the first step — which is right for "walk over
+     * there" and catastrophic for "go through this door": with an ENFORCER
+     * standing in the next compartment, every way of taking a single step
+     * refused. Clicking the door's own `go` line, clicking the compartment
+     * next to you, both. The drone could not move at all, and nothing said
+     * why, because "there is a machine in sight" is not news to a player
+     * looking straight at it.
+     *
+     * A step the player named is a step. There is nothing to hand back: they
+     * pressed the one thing, and the one thing happens.
+     */
+    if (path.length === 1) {
+      const from = game.roomOf(game.player).id;
+      const door = game.ship.doorsOf(from).find((d) => game.ship.other(d, from) === to);
+      if (door !== undefined) {
+        game.playerCommand({ kind: "go", door: door.id });
+        again();
+        return;
+      }
+    }
+
     /* A second destination replaces the first rather than racing it. */
     walking.current?.cancel();
     const traveller = makeTraveller(to);
@@ -520,7 +546,7 @@ export function Screen({
             hullMoved={hullMoved}
             drone={board.drone}
             route={route}
-            onWalk={(to) => walk(to)}
+            onWalk={(to, path) => walk(to, path)}
             onAct={act}
             onDoorAct={doorAct}
             who={who}
